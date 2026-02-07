@@ -1,4 +1,4 @@
-This is XeTeX, Version 3.141592653-2.6-0.999997 (TeX Live 2025) (preloaded format=xelatex 2025.9.11)  5 JAN 2026 21:09
+This is XeTeX, Version 3.141592653-2.6-0.999997 (TeX Live 2025) (preloaded format=xelatex 2025.9.11)  5 JAN 2026 21:42
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -1105,36 +1105,36 @@ Dictionary: translator-theorem-dictionary, Language: English
 [2
 
 ]
-LaTeX Font Info:    Trying to load font information for U+msa on input line 118
+LaTeX Font Info:    Trying to load font information for U+msa on input line 120
 .
  (d:/Programs/TeXLive/2025/texmf-dist/tex/latex/amsfonts/umsa.fd
 File: umsa.fd 2013/01/14 v3.01 AMS symbols A
 )
-LaTeX Font Info:    Trying to load font information for U+msb on input line 118
+LaTeX Font Info:    Trying to load font information for U+msb on input line 120
 .
 
 (d:/Programs/TeXLive/2025/texmf-dist/tex/latex/amsfonts/umsb.fd
 File: umsb.fd 2013/01/14 v3.01 AMS symbols B
 )
 LaTeX Font Info:    Font shape `TU/lmss/m/it' in size <10.95> not available
-(Font)              Font shape `TU/lmss/m/sl' tried instead on input line 118.
+(Font)              Font shape `TU/lmss/m/sl' tried instead on input line 120.
 LaTeX Font Info:    Font shape `TU/lmss/m/it' in size <8> not available
-(Font)              Font shape `TU/lmss/m/sl' tried instead on input line 118.
+(Font)              Font shape `TU/lmss/m/sl' tried instead on input line 120.
 LaTeX Font Info:    Font shape `TU/lmss/m/it' in size <6> not available
-(Font)              Font shape `TU/lmss/m/sl' tried instead on input line 118.
+(Font)              Font shape `TU/lmss/m/sl' tried instead on input line 120.
 LaTeX Font Info:    Font shape `TU/lmss/bx/it' in size <10.95> not available
-(Font)              Font shape `TU/lmss/bx/sl' tried instead on input line 118.
+(Font)              Font shape `TU/lmss/bx/sl' tried instead on input line 120.
 
 LaTeX Font Info:    Font shape `TU/lmss/bx/it' in size <8> not available
-(Font)              Font shape `TU/lmss/bx/sl' tried instead on input line 118.
+(Font)              Font shape `TU/lmss/bx/sl' tried instead on input line 120.
 
 LaTeX Font Info:    Font shape `TU/lmss/bx/it' in size <6> not available
-(Font)              Font shape `TU/lmss/bx/sl' tried instead on input line 118.
+(Font)              Font shape `TU/lmss/bx/sl' tried instead on input line 120.
 
 File: figures/fig_1d_transfer_chain.pdf Graphic file (type pdf)
 <use figures/fig_1d_transfer_chain.pdf>
 
-Overfull \vbox (42.36533pt too high) detected at line 118
+Overfull \vbox (2.53125pt too high) detected at line 120
  []
 
 
@@ -1152,22 +1152,22 @@ File: figures/fig_1d_varying_couplings.pdf Graphic file (type pdf)
 File: figures/fig_1d_tmrg_environments.png Graphic file (type bmp)
 <figures/fig_1d_tmrg_environments.png>
 LaTeX Font Info:    Font shape `TU/lmss/m/it' in size <10> not available
-(Font)              Font shape `TU/lmss/m/sl' tried instead on input line 208.
+(Font)              Font shape `TU/lmss/m/sl' tried instead on input line 210.
 LaTeX Font Info:    Font shape `TU/lmss/m/it' in size <7> not available
-(Font)              Font shape `TU/lmss/m/sl' tried instead on input line 208.
+(Font)              Font shape `TU/lmss/m/sl' tried instead on input line 210.
 LaTeX Font Info:    Font shape `TU/lmss/m/it' in size <5> not available
-(Font)              Font shape `TU/lmss/m/sl' tried instead on input line 208.
+(Font)              Font shape `TU/lmss/m/sl' tried instead on input line 210.
 LaTeX Font Info:    Font shape `TU/lmss/bx/it' in size <10> not available
-(Font)              Font shape `TU/lmss/bx/sl' tried instead on input line 208.
+(Font)              Font shape `TU/lmss/bx/sl' tried instead on input line 210.
 
 LaTeX Font Info:    Font shape `TU/lmss/bx/it' in size <7> not available
-(Font)              Font shape `TU/lmss/bx/sl' tried instead on input line 208.
+(Font)              Font shape `TU/lmss/bx/sl' tried instead on input line 210.
 
 LaTeX Font Info:    Font shape `TU/lmss/bx/it' in size <5> not available
-(Font)              Font shape `TU/lmss/bx/sl' tried instead on input line 208.
+(Font)              Font shape `TU/lmss/bx/sl' tried instead on input line 210.
 
 
-Overfull \hbox (23.86797pt too wide) detected at line 208
+Overfull \hbox (23.86797pt too wide) detected at line 210
 [] [][][] $[]$[][][][][][][][] $[]$[][][][][][] 
  []
 
@@ -1190,7 +1190,7 @@ File: figures/fig_2d_tensor_network.pdf Graphic file (type pdf)
 File: figures/fig_2d_local_environment.pdf Graphic file (type pdf)
 <use figures/fig_2d_local_environment.pdf>
 
-Overfull \vbox (20.84874pt too high) detected at line 356
+Overfull \vbox (20.84874pt too high) detected at line 358
  []
 
 
@@ -1201,12 +1201,12 @@ Overfull \vbox (20.84874pt too high) detected at line 356
 File: figures/fig_2d_ctmrg_structure.png Graphic file (type bmp)
 <figures/fig_2d_ctmrg_structure.png>
 LaTeX Font Info:    Font shape `TU/lmss/m/it' in size <12> not available
-(Font)              Font shape `TU/lmss/m/sl' tried instead on input line 398.
+(Font)              Font shape `TU/lmss/m/sl' tried instead on input line 400.
 LaTeX Font Info:    Font shape `TU/lmss/bx/it' in size <12> not available
-(Font)              Font shape `TU/lmss/bx/sl' tried instead on input line 398.
+(Font)              Font shape `TU/lmss/bx/sl' tried instead on input line 400.
 
 
-Overfull \vbox (11.74257pt too high) detected at line 398
+Overfull \vbox (1.09706pt too high) detected at line 400
  []
 
 
@@ -1216,10 +1216,6 @@ Overfull \vbox (11.74257pt too high) detected at line 398
 ]
 File: figures/fig_plaquette_tensor.pdf Graphic file (type pdf)
 <use figures/fig_plaquette_tensor.pdf>
-
-Overfull \vbox (30.78264pt too high) detected at line 419
- []
-
 
 
 [10
@@ -1235,7 +1231,7 @@ File: figures/fig_ctmrg_grow.pdf Graphic file (type pdf)
 File: figures/fig_ctmrg_truncate.pdf Graphic file (type pdf)
 <use figures/fig_ctmrg_truncate.pdf>
 
-Overfull \vbox (13.36398pt too high) detected at line 439
+Overfull \vbox (13.36398pt too high) detected at line 443
  []
 
 
@@ -1265,10 +1261,10 @@ File: figures/aaa.png Graphic file (type bmp)
 ]
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `\translate ' on input line 515.
+(hyperref)                removing `\translate ' on input line 519.
 
 
-Overfull \vbox (33.02466pt too high) detected at line 558
+Overfull \vbox (33.02466pt too high) detected at line 562
  []
 
 
@@ -1276,7 +1272,7 @@ Overfull \vbox (33.02466pt too high) detected at line 558
 [16
 
 ]
-Overfull \vbox (59.33939pt too high) detected at line 590
+Overfull \vbox (59.33939pt too high) detected at line 594
  []
 
 
@@ -1284,7 +1280,7 @@ Overfull \vbox (59.33939pt too high) detected at line 590
 [17
 
 ]
-Overfull \vbox (17.33656pt too high) detected at line 639
+Overfull \vbox (17.33656pt too high) detected at line 643
  []
 
 
@@ -1296,7 +1292,7 @@ Overfull \vbox (17.33656pt too high) detected at line 639
 [19
 
 ]
-Overfull \vbox (16.6042pt too high) detected at line 739
+Overfull \vbox (16.6042pt too high) detected at line 743
  []
 
 
@@ -1308,7 +1304,7 @@ Overfull \vbox (16.6042pt too high) detected at line 739
 [21
 
 ]
-Overfull \vbox (9.77637pt too high) detected at line 829
+Overfull \vbox (9.77637pt too high) detected at line 833
  []
 
 
@@ -1320,7 +1316,7 @@ Overfull \vbox (9.77637pt too high) detected at line 829
 [23
 
 ]
-Overfull \vbox (67.65768pt too high) detected at line 917
+Overfull \vbox (67.65768pt too high) detected at line 921
  []
 
 
@@ -1328,7 +1324,7 @@ Overfull \vbox (67.65768pt too high) detected at line 917
 [24
 
 ]
-Overfull \vbox (58.95158pt too high) detected at line 954
+Overfull \vbox (58.95158pt too high) detected at line 958
  []
 
 
@@ -1340,7 +1336,7 @@ Overfull \vbox (58.95158pt too high) detected at line 954
 [26
 
 ]
-Overfull \vbox (35.31856pt too high) detected at line 1040
+Overfull \vbox (35.31856pt too high) detected at line 1044
  []
 
 
@@ -1348,7 +1344,7 @@ Overfull \vbox (35.31856pt too high) detected at line 1040
 [27
 
 ]
-Overfull \vbox (11.41086pt too high) detected at line 1074
+Overfull \vbox (11.41086pt too high) detected at line 1078
  []
 
 
@@ -1363,7 +1359,7 @@ Overfull \vbox (11.41086pt too high) detected at line 1074
 File: figures/fig_nishino_result.png Graphic file (type bmp)
 <figures/fig_nishino_result.png>
 
-Overfull \vbox (80.91356pt too high) detected at line 1131
+Overfull \vbox (80.91356pt too high) detected at line 1135
  []
 
 
@@ -1374,7 +1370,7 @@ Overfull \vbox (80.91356pt too high) detected at line 1131
 File: figures/fig_ruby_lattice.png Graphic file (type bmp)
 <figures/fig_ruby_lattice.png>
 
-Overfull \vbox (50.4952pt too high) detected at line 1153
+Overfull \vbox (50.4952pt too high) detected at line 1157
  []
 
 
@@ -1402,7 +1398,7 @@ Package rerunfilecheck Info: File `beamer_pre.out' has not changed.
 Here is how much of TeX's memory you used:
  28598 strings out of 468441
  602761 string characters out of 5445089
- 994332 words of memory out of 5000000
+ 994333 words of memory out of 5000000
  56425 multiletter control sequences out of 15000+600000
  642675 words of font info for 126 fonts, out of 8000000 for 9000
  1348 hyphenation exceptions out of 8191

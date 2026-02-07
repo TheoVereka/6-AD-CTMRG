@@ -78,24 +78,26 @@
     \begin{columns}
         \begin{column}{0.5\textwidth}
             \textbf{1D Ising Model:}
+            \vspace{-0.2cm}
             \[
             H = -J \sum_i \sigma_i \sigma_{i+1}
             \]
             
-            \vspace{0.3cm}
+            \vspace{-0.3cm}
             
             \textbf{Partition function as contraction:}
             \[
             Z = \text{Tr}(T \cdot T \cdot T \cdots T) = \text{Tr}(T^N)
             \]
             
-            \vspace{0.2cm}
+            \vspace{-0.2cm}
             
             where $T \in \mathbb{R}^{2 \times 2}$ encodes local interactions.
             
-            \vspace{0.3cm}
+            \vspace{0.2cm}
             
             \textbf{Local observable:}
+            \vspace{-0.1cm}
             \[
             \langle \sigma_k \rangle = \frac{\text{Tr}(T^{k} \cdot f(\uparrow,\downarrow) \cdot T^{N-k})}{\text{Tr}(T^N)}
             \]
@@ -104,7 +106,7 @@
         \begin{column}{0.5\textwidth}
             % === FIGURE: 1D chain with transfer matrices ===
             \begin{center}
-                \includegraphics[width=0.95\textwidth]{figures/fig_1d_transfer_chain.pdf}
+                \includegraphics[width=\textwidth]{figures/fig_1d_transfer_chain.pdf}
             \end{center}
         \end{column}
     \end{columns}
@@ -393,7 +395,7 @@
     \vspace{0.1cm}
     
     \begin{block}{Key: What is $a$?}
-        $a$ is a \highlight{rank-4 tensor} --- for computing $Z$: $a = W$ \textit{plaquette tensor}; for $\langle \sigma_1 \rangle$: $a = s_1 W_{s_1s_2s_3s_4}$, etc.
+        $a$ is a \highlight{rank-4 tensor}: for computing $Z$: $a = W$ \textit{plaquette tensor}; for $\langle \sigma_1 \rangle$: $a = s_1 W_{s_1s_2s_3s_4}$, etc.
     \end{block}
 \end{frame}
 
@@ -402,14 +404,16 @@
 % ------------------------------------------------------------
 \begin{frame}{The Plaquette Tensor: From Bonds to Faces}
     
+    \vspace{-0.3cm}
+    
     \begin{center}
-        \includegraphics[width=0.85\textwidth]{figures/fig_plaquette_tensor.pdf}
+        \includegraphics[width=0.75\textwidth]{figures/fig_plaquette_tensor.pdf}
     \end{center}
     
-    \vspace{-0.2cm}
+    \vspace{-0.3cm}
     
     \begin{block}{Key: Simple scalar multiplication of 4 bond weights}
-        \vspace{-0.2cm}
+        \vspace{-0.1cm}
         \[
         W_{s_1,s_2,s_3,s_4} = T_{s_1,s_2} \cdot T_{s_2,s_3} \cdot T_{s_3,s_4} \cdot T_{s_4,s_1}
         \quad\text{where}\quad
