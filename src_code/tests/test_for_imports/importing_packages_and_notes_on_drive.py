@@ -15,6 +15,7 @@ pytorch==2.5.1
 NOTE: cuDNN is bundled inside the PyTorch 2.5.1 wheel (ships cuDNN 9.1.0).
 No separate cuDNN installation is required.
 
+
 # --- Laptop (MX250, CC 6.1, Ubuntu 24.04, driver 580 supports CUDA >=11.8) ---
 pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu118
 
