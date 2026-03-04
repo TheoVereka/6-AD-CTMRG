@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# Virtual environments (keep venv outside the repo as agreed)
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+
+# VS Code — launch.json and settings.json are committed (use ${env:HOME}, so portable)
+# Add here only machine-specific overrides you do NOT want shared:
+# .vscode/extensions.json
