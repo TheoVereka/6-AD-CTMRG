@@ -25,28 +25,86 @@ def initialize_environmentCTs_1(A,B,C,D,E,F, D_squared, chi):
     pass
     # return nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E
 
+
+
+
 def check_env_convergence(lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E, 
                           nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, 
-                          last_environmentCTs_2, 
-                          now_environmentCTs_2, 
-                          last_environmentCTs_3, 
-                          now_environmentCTs_3, 
+                          lastC21EB, lastC32AD, lastC13CF, lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A, 
+                          nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A, 
+                          lastC21AF, lastC32CB, lastC13ED, lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C, 
+                          nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C,
                           env_conv_threshold):
-    if last_environmentCTs_3 is None:
+    
+    if lastT1C is None:
         return False
-    pass
+    
+    total_numel = lastC21CD.numel() + lastC32EF.numel() + lastC13AB.numel() + \
+                  lastT1F.numel()  + lastT2A.numel()  + lastT2B.numel()  + \
+                  lastT3C.numel()  + lastT3D.numel()  + lastT1E.numel()  + \
+                  lastC21EB.numel() + lastC32AD.numel() + lastC13CF.numel() + \
+                  lastT1D.numel()   + lastT2C.numel()   + lastT2F.numel()   + \
+                  lastT3E.numel()   + lastT3B.numel()   + lastT1A.numel()   + \
+                  lastC21AF.numel() + lastC32CB.numel() + lastC13ED.numel() + \
+                  lastT1B.numel()   + lastT2E.numel()   + lastT2D.numel()   + \
+                  lastT3A.numel()   + lastT3F.numel()   + lastT1C.numel()
+    
+
+    total_sq =  torch.sum(torch.abs(lastC21CD - nowC21CD) ** 2) + \
+                torch.sum(torch.abs(lastC32EF - nowC32EF) ** 2) + \
+                torch.sum(torch.abs(lastC13AB - nowC13AB) ** 2) + \
+                torch.sum(torch.abs(lastT1F   - nowT1F  ) ** 2) + \
+                torch.sum(torch.abs(lastT2A   - nowT2A  ) ** 2) + \
+                torch.sum(torch.abs(lastT2B   - nowT2B  ) ** 2) + \
+                torch.sum(torch.abs(lastT3C   - nowT3C  ) ** 2) + \
+                torch.sum(torch.abs(lastT3D   - nowT3D  ) ** 2) + \
+                torch.sum(torch.abs(lastT1E   - nowT1E  ) ** 2) + \
+                torch.sum(torch.abs(lastC21EB - nowC21EB) ** 2) + \
+                torch.sum(torch.abs(lastC32AD - nowC32AD) ** 2) + \
+                torch.sum(torch.abs(lastC13CF - nowC13CF) ** 2) + \
+                torch.sum(torch.abs(lastT1D   - nowT1D  ) ** 2) + \
+                torch.sum(torch.abs(lastT2C   - nowT2C  ) ** 2) + \
+                torch.sum(torch.abs(lastT2F   - nowT2F  ) ** 2) + \
+                torch.sum(torch.abs(lastT3E   - nowT3E  ) ** 2) + \
+                torch.sum(torch.abs(lastT3B   - nowT3B  ) ** 2) + \
+                torch.sum(torch.abs(lastT1A   - nowT1A  ) ** 2) + \
+                torch.sum(torch.abs(lastC21AF - nowC21AF) ** 2) + \
+                torch.sum(torch.abs(lastC32CB - nowC32CB) ** 2) + \
+                torch.sum(torch.abs(lastC13ED - nowC13ED) ** 2) + \
+                torch.sum(torch.abs(lastT1B   - nowT1B  ) ** 2) + \
+                torch.sum(torch.abs(lastT2E   - nowT2E  ) ** 2) + \
+                torch.sum(torch.abs(lastT2D   - nowT2D  ) ** 2) + \
+                torch.sum(torch.abs(lastT3A   - nowT3A  ) ** 2) + \
+                torch.sum(torch.abs(lastT3F   - nowT3F  ) ** 2) + \
+                torch.sum(torch.abs(lastT1C   - nowT1C  ) ** 2)
+
+    rms_diff = torch.sqrt(total_sq) / torch.sqrt(total_numel)
+    return bool(rms_diff.item() < env_conv_threshold)
+
+
+
+
 
 def update_environmentCTs_1to2(nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, A,B,C,D,E,F, D_squared, chi):
 
     pass
 
-def update_environmentCTs_2to3(now_environmentCTs_2, A,B,C,D,E,F, D_squared, chi):
+
+
+
+def update_environmentCTs_2to3(nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A, A,B,C,D,E,F, D_squared, chi):
 
     pass
 
-def update_environmentCTs_3to1(now_environmentCTs_3, A,B,C,D,E,F, D_squared, chi):
+
+
+
+def update_environmentCTs_3to1(nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C, A,B,C,D,E,F, D_squared, chi):
 
     pass
+
+
+
 
 def CTMRG_from_init_to_stop(A,B,C,D,E,F,
                             D_squared: int,
@@ -64,28 +122,26 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
         env_conv_threshold (float): The threshold for environment convergence.
 
     Returns:
-        last_environmentCTs (dict): A dictionary containing the last environment corner and edge transfer tensors.
-        now_environmentCTs (dict): A dictionary containing the current environment corner and edge transfer tensors.
+        A tuple containing the final environment corner and edge transfer tensors, and the number of iterations performed.
     """
     # Initialize the environment corner and edge transfer tensors
 
-
     lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E = None, None, None, None, None, None, None, None, None
-    last_environmentCTs_2 = None, None, None, None, None, None, None, None, None
-    last_environmentCTs_3 = None, None, None, None, None, None, None, None, None
+    lastC21EB, lastC32AD, lastC13CF, lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A = None, None, None, None, None, None, None, None, None
+    lastC21AF, lastC32CB, lastC13ED, lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C = None, None, None, None, None, None, None, None, None
     nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E = initialize_environmentCTs_1(A,B,C,D,E,F, D_squared, chi)
-    now_environmentCTs_2 = None, None, None, None, None, None, None, None, None
-    now_environmentCTs_3 = None, None, None, None, None, None, None, None, None
+    nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A = None, None, None, None, None, None, None, None, None
+    nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C = None, None, None, None, None, None, None, None, None
 
     # Perform the CTMRG iterations until convergence
-    for iteration in tqdm(range(max_iterations)):
+    for iteration in range(max_iterations):
 
         if check_env_convergence(lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E, 
                                  nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, 
-                                 last_environmentCTs_2, 
-                                 now_environmentCTs_2, 
-                                 last_environmentCTs_3, 
-                                 now_environmentCTs_3, 
+                                 lastC21EB, lastC32AD, lastC13CF, lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A, 
+                                 nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A, 
+                                 lastC21AF, lastC32CB, lastC13ED, lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C, 
+                                 nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C, 
                                  env_conv_threshold):
             print(f"Convergence achieved at iteration {iteration}.")
             break
@@ -93,29 +149,29 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
         # Update the environment corner and edge transfer tensors
         match iteration % 3 :
             case 0 : 
-                last_environmentCTs_2 = \
-                now_environmentCTs_2
-                now_environmentCTs_2 = update_environmentCTs_1to2(
+                lastC21EB, lastC32AD, lastC13CF, lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A = \
+                nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A
+                nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A = update_environmentCTs_1to2(
                 nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, A,B,C,D,E,F, D_squared, chi)
             
             case 1 : 
-                last_environmentCTs_3 = \
-                now_environmentCTs_3
+                lastC21AF, lastC32CB, lastC13ED, lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C = \
+                nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C
 
-                now_environmentCTs_3 = update_environmentCTs_2to3(
-                now_environmentCTs_2, A,B,C,D,E,F, D_squared, chi)
+                nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C = update_environmentCTs_2to3(
+                nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A, A,B,C,D,E,F, D_squared, chi)
             
             case 2 : 
                 lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E = \
                 nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E
                 
                 nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E = update_environmentCTs_3to1(
-                now_environmentCTs_3, A,B,C,D,E,F, D_squared, chi)
+                nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C, A,B,C,D,E,F, D_squared, chi)
     
-    return iteration%3, \
+    return iteration % 3, \
         nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, \
-        now_environmentCTs_2, \
-        now_environmentCTs_3
+        nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A, \
+        nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C
 
 
 
