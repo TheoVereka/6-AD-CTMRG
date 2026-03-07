@@ -22,8 +22,8 @@ import os, sys
 import torch
 
 def initialize_environmentCTs_1(A,B,C,D,E,F, D_squared, chi):
-    pass
-    # return nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E
+    
+    return C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
 
 
 
@@ -83,25 +83,83 @@ def check_env_convergence(lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, las
 
 
 
-
-
-def update_environmentCTs_1to2(nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, A,B,C,D,E,F, D_squared, chi):
-
-    pass
-
+def SVD_trunc_CCC(matC21, matC32, matC13, D_squared, chi):
+    
+    return U, C21, Vdag, U, C32, Vdag, U, C13, Vdag
 
 
 
-def update_environmentCTs_2to3(nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A, A,B,C,D,E,F, D_squared, chi):
+def update_environmentCTs_1to2(C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E, A,B,C,D,E,F, D_squared, chi):
 
-    pass
+    bigC21EB = oe.contract("YX,MYa,LXβ,amg,lbg->MmLl",
+                           C21CD,T1F,T2A,E,B,
+                           optimize=[(0,2),(0,3),(1,2),(0,1)],
+                           backend='pytorch')
+    
+    matC21EB = bigC21EB.view(chi*D_squared,chi*D_squared)
+    
+    bigC32AD = oe.contract("ZY,NZβ,MYg,abn,amg->NnMm",
+                           C32EF,T2B,T3C,A,D,
+                           optimize=[(0,2),(0,3),(1,2),(0,1)],
+                           backend='pytorch')
+    
+    matC32AD = bigC32AD.view(chi*D_squared,chi*D_squared)
+    
+    bigC13CF = oe.contract("XZ,LXg,NZa,lbg,abn->LlNn",
+                           C13AB,T3D,T1E,C,F,
+                           optimize=[(0,2),(0,3),(1,2),(0,1)],
+                           backend='pytorch')
+    
+    matC13CF = bigC13CF.view(chi*D_squared,chi*D_squared)
+
+    U, C21EB, Vdag, U, C32AD, Vdag, U, C13CF, Vdag = SVDs_trunc_CCC(
+                        matC21EB, matC32AD, matC13CF, D_squared, chi)
+
+    T3E = oe.contract("OYa,abg,MOb->MYg",
+                        T1F,E,Vdag1F,
+                        optimize=[(0,1),(0,1)],
+                        backend='pytorch')
+
+    T3B = oe.contract("OXb,abg,LOa->LXg",
+                        T2A,B,U2A,
+                        optimize=[(0,1),(0,1)],
+                        backend='pytorch')
+    
+    T1A = oe.contract("OZb,abg,NOg->NZa",
+                        T2B,A,Vdag2B,
+                        optimize=[(0,1),(0,1)],
+                        backend='pytorch')
+    
+    T1D = oe.contract("OYg,abg,MOb->MYa",
+                        T3C,D,U3C,
+                        optimize=[(0,1),(0,1)],
+                        backend='pytorch')
+    
+    T2C = oe.contract("OXg,abg,LOa->LXb",
+                        T3D,C,Vdag3D,
+                        optimize=[(0,1),(0,1)],
+                        backend='pytorch')
+    
+    T2F = oe.contract("OZa,abg,NOg->NZb",
+                        T1E,F,U1E,
+                        optimize=[(0,1),(0,1)],
+                        backend='pytorch')
+
+    return C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A
 
 
 
 
-def update_environmentCTs_3to1(nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C, A,B,C,D,E,F, D_squared, chi):
+def update_environmentCTs_2to3(C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A, A,B,C,D,E,F, D_squared, chi):
 
-    pass
+    return C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C
+
+
+
+
+def update_environmentCTs_3to1(C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C, A,B,C,D,E,F, D_squared, chi):
+
+    return C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
 
 
 
