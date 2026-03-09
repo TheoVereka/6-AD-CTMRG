@@ -83,65 +83,119 @@ def check_env_convergence(lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, las
 
 
 
-def SVD_trunc_CCC(matC21, matC32, matC13, D_squared, chi):
+def trunc_rhoCCC(matC21, matC32, matC13, D_squared, chi):
+
+    rho32 = oe.contract("UZ,ZY,YV->UV",
+                               matC13,matC32,matC21,
+                               optimize=[(0,1),(0,1)],
+                               backend='pytorch')
     
-    return U, C21, Vdag, U, C32, Vdag, U, C13, Vdag
+    U3, sv32, V2 = torch.linalg.svd(rho32,driver='gesvd')
+
+    U3 = U3[:,:chi].conjugate()
+    V2 = V2[:chi,:].conjugate()
+    
+    rho13 = oe.contract("UX,XZ,ZV->UV",
+                               matC21,matC13,matC32,
+                               optimize=[(0,1),(0,1)],
+                               backend='pytorch')
+    
+    U1, sv13, V3 = torch.linalg.svd(rho13,driver='gesvd')
+
+    U1 = U1[:,:chi].conjugate() #conjugate transpose
+    V3 = V3[:chi,:].conjugate()
+    
+
+    rho21 = oe.contract("UY,YX,XV->UV",
+                               matC32,matC21,matC13,
+                               optimize=[(0,1),(0,1)],
+                               backend='pytorch')
+    
+    U2, sv21, V1 = torch.linalg.svd(rho21,driver='gesvd')
+    
+    U2 = U2[:,:chi].conjugate()
+    V1 = V1[:chi,:].conjugate()
+
+    C21 = oe.contract("Yy,YX,xX->yx",
+                               U1,matC21,V2,
+                               optimize=[(0,1),(0,1)],
+                               backend='pytorch')
+
+    C32 = oe.contract("Zz,ZY,yY->zy",
+                               U2,matC32,V3,
+                               optimize=[(0,1),(0,1)],
+                               backend='pytorch')
+
+    C13 = oe.contract("Xx,XZ,zZ->xz",
+                               U3,matC13,V1,
+                               optimize=[(0,1),(0,1)],
+                               backend='pytorch')
+    
+    U1 = U1.reshape(chi,D_squared, chi)
+    U2 = U2.reshape(chi,D_squared, chi)
+    U3 = U3.reshape(chi,D_squared, chi)
+
+    V1 = V1.reshape(chi, chi,D_squared)
+    V2 = V2.reshape(chi, chi,D_squared)
+    V3 = V3.reshape(chi, chi,D_squared)
+
+    return V2, C21, U1, V3, C32, U2, V1, C13, U3 #, diagnostic_trunc
 
 
 
 def update_environmentCTs_1to2(C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E, A,B,C,D,E,F, D_squared, chi):
 
-    bigC21EB = oe.contract("YX,MYa,LXβ,amg,lbg->MmLl",
+    matC21EB = oe.contract("YX,MYa,LXβ,amg,lbg->MmLl",
                            C21CD,T1F,T2A,E,B,
                            optimize=[(0,2),(0,3),(1,2),(0,1)],
                            backend='pytorch')
     
-    matC21EB = bigC21EB.view(chi*D_squared,chi*D_squared)
+    matC21EB = matC21EB.view(chi*D_squared,chi*D_squared)
     
-    bigC32AD = oe.contract("ZY,NZβ,MYg,abn,amg->NnMm",
+    matC32AD = oe.contract("ZY,NZβ,MYg,abn,amg->NnMm",
                            C32EF,T2B,T3C,A,D,
                            optimize=[(0,2),(0,3),(1,2),(0,1)],
                            backend='pytorch')
     
-    matC32AD = bigC32AD.view(chi*D_squared,chi*D_squared)
+    matC32AD = matC32AD.view(chi*D_squared,chi*D_squared)
     
-    bigC13CF = oe.contract("XZ,LXg,NZa,lbg,abn->LlNn",
+    matC13CF = oe.contract("XZ,LXg,NZa,lbg,abn->LlNn",
                            C13AB,T3D,T1E,C,F,
                            optimize=[(0,2),(0,3),(1,2),(0,1)],
                            backend='pytorch')
     
-    matC13CF = bigC13CF.view(chi*D_squared,chi*D_squared)
+    matC13CF = matC13CF.view(chi*D_squared,chi*D_squared)
 
-    U, C21EB, Vdag, U, C32AD, Vdag, U, C13CF, Vdag = SVDs_trunc_CCC(
+    V2A, C21EB, U1F, V3C, C32AD, U2B, V1E, C13CF, U3D = trunc_rhoCCC(
                         matC21EB, matC32AD, matC13CF, D_squared, chi)
 
-    T3E = oe.contract("OYa,abg,MOb->MYg",
-                        T1F,E,Vdag1F,
+    T3E = oe.contract("OYa,abg,ObM->MYg",
+                        T1F,E,U1F,
                         optimize=[(0,1),(0,1)],
                         backend='pytorch')
 
     T3B = oe.contract("OXb,abg,LOa->LXg",
-                        T2A,B,U2A,
+                        T2A,B,V2A,
                         optimize=[(0,1),(0,1)],
                         backend='pytorch')
     
-    T1A = oe.contract("OZb,abg,NOg->NZa",
-                        T2B,A,Vdag2B,
+    T1A = oe.contract("OZb,abg,OgN->NZa",
+                        T2B,A,U2B,
                         optimize=[(0,1),(0,1)],
                         backend='pytorch')
     
     T1D = oe.contract("OYg,abg,MOb->MYa",
-                        T3C,D,U3C,
+                        T3C,D,V3C,
                         optimize=[(0,1),(0,1)],
                         backend='pytorch')
     
-    T2C = oe.contract("OXg,abg,LOa->LXb",
-                        T3D,C,Vdag3D,
+    T2C = oe.contract("OXg,abg,OaL->LXb",
+                        T3D,C,U3D,
                         optimize=[(0,1),(0,1)],
                         backend='pytorch')
     
     T2F = oe.contract("OZa,abg,NOg->NZb",
-                        T1E,F,U1E,
+                        T1E,F,V1E,
                         optimize=[(0,1),(0,1)],
                         backend='pytorch')
 
