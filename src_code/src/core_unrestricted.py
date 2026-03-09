@@ -39,12 +39,12 @@ def initialize_abcdef(initialize_way:str, D_bond:int, d_PHYS:int, noise_scale:fl
 
     if initialize_way == 'random' :
 
-        a += torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=torch.complex64)
-        b += torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=torch.complex64)
-        c += torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=torch.complex64)
-        d += torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=torch.complex64)
-        e += torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=torch.complex64)
-        f += torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=torch.complex64)
+        a = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=torch.complex64)
+        b = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=torch.complex64)
+        c = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=torch.complex64)
+        d = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=torch.complex64)
+        e = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=torch.complex64)
+        f = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=torch.complex64)
 
     elif initialize_way == 'product' : # product state but always with small noise
 
@@ -94,9 +94,117 @@ def abcdef_to_ABCDEF(a,b,c,d,e,f, D_squared:int):
 
 
 
+def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
+
+    rho32 = oe.contract("UZ,ZY,YV->UV",
+                               matC13,matC32,matC21,
+                               optimize=[(0,1),(0,1)],
+                               backend='pytorch')
+    
+    U3, sv32, V2 = torch.linalg.svd(rho32,driver='gesvd')
+
+    U3 = U3[:,:chi].conjugate()
+    V2 = V2[:chi,:].conjugate()
+    
+    rho13 = oe.contract("UX,XZ,ZV->UV",
+                               matC21,matC13,matC32,
+                               optimize=[(0,1),(0,1)],
+                               backend='pytorch')
+    
+    U1, sv13, V3 = torch.linalg.svd(rho13,driver='gesvd')
+
+    U1 = U1[:,:chi].conjugate() #conjugate transpose
+    V3 = V3[:chi,:].conjugate()
+    
+
+    rho21 = oe.contract("UY,YX,XV->UV",
+                               matC32,matC21,matC13,
+                               optimize=[(0,1),(0,1)],
+                               backend='pytorch')
+    
+    U2, sv21, V1 = torch.linalg.svd(rho21,driver='gesvd')
+    
+    U2 = U2[:,:chi].conjugate()
+    V1 = V1[:chi,:].conjugate()
+
+    C21 = oe.contract("Yy,YX,xX->yx",
+                               U1,matC21,V2,
+                               optimize=[(0,1),(0,1)],
+                               backend='pytorch')
+
+    C32 = oe.contract("Zz,ZY,yY->zy",
+                               U2,matC32,V3,
+                               optimize=[(0,1),(0,1)],
+                               backend='pytorch')
+
+    C13 = oe.contract("Xx,XZ,zZ->xz",
+                               U3,matC13,V1,
+                               optimize=[(0,1),(0,1)],
+                               backend='pytorch')
+    
+    C21 = normalize_tensor(C21)
+    C32 = normalize_tensor(C32)
+    C13 = normalize_tensor(C13)
+
+    U1 = U1.reshape(chi,D_squared, chi)
+    U2 = U2.reshape(chi,D_squared, chi)
+    U3 = U3.reshape(chi,D_squared, chi)
+
+    V1 = V1.reshape(chi, chi,D_squared)
+    V2 = V2.reshape(chi, chi,D_squared)
+    V3 = V3.reshape(chi, chi,D_squared)
+
+    return V2, C21, U1, V3, C32, U2, V1, C13, U3 #, diagnostic_trunc
+
+
+
+
 
 def initialize_environmentCTs_1(A,B,C,D,E,F, chi, D_squared):
+
+    C21AF = oe.contract("oyg,xog->yx", A,F, optimize=[(0,1)], backend='pytorch')
+    C32CB = oe.contract("aoz,ayo->zy", C,B, optimize=[(0,1)], backend='pytorch')
+    C13ED = oe.contract("xbo,obz->xz", E,D, optimize=[(0,1)], backend='pytorch')
+
+    T2ET3F = oe.contract("ubi,jki,jlk,vlg->ubvg", E,B,C,F, optimize=[(1,2),(0,1),(0,1)], backend='pytorch')
+    T3AT1B = oe.contract("iug,ijk,kjl,avl->ugva", A,D,E,B, optimize=[(1,2),(0,1),(0,1)], backend='pytorch')
+    T1CT2D = oe.contract("aiu,kij,lkj,lbv->uavb", C,F,A,D, optimize=[(1,2),(0,1),(0,1)], backend='pytorch')
+
+    T2ET3F = T2ET3F.reshape(D_squared*D_squared, D_squared*D_squared)
+    T3AT1B = T3AT1B.reshape(D_squared*D_squared, D_squared*D_squared)
+    T1CT2D = T1CT2D.reshape(D_squared*D_squared, D_squared*D_squared)
+
+    U2E, sv23, Vdag3F = torch.linalg.svd(T2ET3F,driver='gesvd')
+    U3A, sv31, Vdag1B = torch.linalg.svd(T3AT1B,driver='gesvd')
+    U1C, sv12, Vdag2D = torch.linalg.svd(T1CT2D,driver='gesvd')
+
+    # adding clip to prevent sqrt of negative numbers due to numerical issues
+    # cast to complex64: singular values are real (float32) but will be mixed
+    # with complex64 U/V matrices in the diag matmul below — dtypes must match.
+    sqrt_sv23 = torch.sqrt(torch.clamp(sv23[:chi], min=1e-9)).to(torch.complex64)
+    sqrt_sv31 = torch.sqrt(torch.clamp(sv31[:chi], min=1e-9)).to(torch.complex64)
+    sqrt_sv12 = torch.sqrt(torch.clamp(sv12[:chi], min=1e-9)).to(torch.complex64)
+
+    T2E = U2E[:,:chi] @ torch.diag(sqrt_sv23)
+    T3A = U3A[:,:chi] @ torch.diag(sqrt_sv31)
+    T1C = U1C[:,:chi] @ torch.diag(sqrt_sv12)
+    T3F = torch.diag(sqrt_sv23) @ Vdag3F[:chi,:]
+    T1B = torch.diag(sqrt_sv31) @ Vdag1B[:chi,:]
+    T2D = torch.diag(sqrt_sv12) @ Vdag2D[:chi,:]
+
+    T2E = T2E.reshape(D_squared, D_squared, chi)
+    T3A = T3A.reshape(D_squared, D_squared, chi)
+    T1C = T1C.reshape(D_squared, D_squared, chi)
+    T3F = T3F.reshape(chi, D_squared, D_squared)
+    T1B = T1B.reshape(chi, D_squared, D_squared)
+    T2D = T2D.reshape(chi, D_squared, D_squared)
+    T2E = T2E.permute(2,0,1)
+    T3A = T3A.permute(2,0,1)
+    T1C = T1C.permute(2,0,1)
     
+    C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E = update_environmentCTs_3to1(
+        C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C, A,B,C,D,E,F, chi, D_squared)
+
     return C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
 
 
@@ -154,70 +262,6 @@ def check_env_convergence(lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, las
 
     rms_diff = torch.sqrt(total_sq) / torch.sqrt(total_numel)
     return bool(rms_diff.item() < env_conv_threshold)
-
-
-
-def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
-
-    rho32 = oe.contract("UZ,ZY,YV->UV",
-                               matC13,matC32,matC21,
-                               optimize=[(0,1),(0,1)],
-                               backend='pytorch')
-    
-    U3, sv32, V2 = torch.linalg.svd(rho32,driver='gesvd')
-
-    U3 = U3[:,:chi].conjugate()
-    V2 = V2[:chi,:].conjugate()
-    
-    rho13 = oe.contract("UX,XZ,ZV->UV",
-                               matC21,matC13,matC32,
-                               optimize=[(0,1),(0,1)],
-                               backend='pytorch')
-    
-    U1, sv13, V3 = torch.linalg.svd(rho13,driver='gesvd')
-
-    U1 = U1[:,:chi].conjugate() #conjugate transpose
-    V3 = V3[:chi,:].conjugate()
-    
-
-    rho21 = oe.contract("UY,YX,XV->UV",
-                               matC32,matC21,matC13,
-                               optimize=[(0,1),(0,1)],
-                               backend='pytorch')
-    
-    U2, sv21, V1 = torch.linalg.svd(rho21,driver='gesvd')
-    
-    U2 = U2[:,:chi].conjugate()
-    V1 = V1[:chi,:].conjugate()
-
-    C21 = oe.contract("Yy,YX,xX->yx",
-                               U1,matC21,V2,
-                               optimize=[(0,1),(0,1)],
-                               backend='pytorch')
-
-    C32 = oe.contract("Zz,ZY,yY->zy",
-                               U2,matC32,V3,
-                               optimize=[(0,1),(0,1)],
-                               backend='pytorch')
-
-    C13 = oe.contract("Xx,XZ,zZ->xz",
-                               U3,matC13,V1,
-                               optimize=[(0,1),(0,1)],
-                               backend='pytorch')
-    
-    C21 = normalize_tensor(C21)
-    C32 = normalize_tensor(C32)
-    C13 = normalize_tensor(C13)
-
-    U1 = normalize_tensor(U1.reshape(chi,D_squared, chi))
-    U2 = normalize_tensor(U2.reshape(chi,D_squared, chi))
-    U3 = normalize_tensor(U3.reshape(chi,D_squared, chi))
-
-    V1 = normalize_tensor(V1.reshape(chi, chi,D_squared))
-    V2 = normalize_tensor(V2.reshape(chi, chi,D_squared))
-    V3 = normalize_tensor(V3.reshape(chi, chi,D_squared))
-
-    return V2, C21, U1, V3, C32, U2, V1, C13, U3 #, diagnostic_trunc
 
 
 
@@ -483,7 +527,7 @@ def Loss_as_energy_expectation(a,b,c,d,e,f, a_lot_of_bond_Hamiltonians, chi, D_b
 
 
 def energy_expectation_nearest_neighbor_6_bonds(a,b,c,d,e,f, 
-                                                Hab,Hbc,Hcd,Hde,Hef,Hfa, 
+                                                Hab,Hbc,Hcd,Hde,Hef,Hfa, # (d_PHYS * d_PHYS, d_PHYS * d_PHYS) matrices
                                                 chi, D_bond, d_PHYS,
                                                 C21CD,C32EF,C13AB,T1F,T2A,T2B,T3C,T3D,T1E):
     pass
@@ -493,10 +537,10 @@ def energy_expectation_nearest_neighbor_6_bonds(a,b,c,d,e,f,
 
 
 def optmization_iPEPS(Hab,Hbc,Hcd,Hde,Hef,Hfa,
-                      opt_conv_threshold: float = 1e-8, # SCALES with Hamiltonian!!!!
+                      opt_conv_threshold: float = 1e-6, # SCALES with Hamiltonian!!!!
                       chi: int=10, D_bond: int=3, d_PHYS: int=2,
                       a_third_max_steps_CTMRG: int = 70, 
-                      CTM_env_conv_threshold: float = 1e-9,
+                      CTM_env_conv_threshold: float = 1e-7,
                       a2f_initialize_way: str = 'random',
                       a2f_noise_scale: float = 1e-3,
                       max_opt_steps: int = 200,
@@ -504,7 +548,7 @@ def optmization_iPEPS(Hab,Hbc,Hcd,Hde,Hef,Hfa,
                       lbfgs_lr: float = 1.0,
                       lbfgs_history: int = 100,
                       opt_tolerance_grad: float = 1e-7,
-                      opt_tolerance_change: float = 1e-9):
+                      opt_tolerance_change: float = 1e-8):
     """
     Optimize the iPEPS tensors a,b,c,d,e,f using L-BFGS.
 
@@ -611,9 +655,9 @@ def check_optimized_iPEPS(a,b,c,d,e,f, old_loss,
                           Hab,Hbc,Hcd,Hde,Hef,Hfa,
                           new_chi, D_bond, d_PHYS,
                           a_third_max_steps_CTMRG: int = 70, 
-                          CTM_env_conv_threshold: float = 1e-9,
+                          CTM_env_conv_threshold: float = 1e-7,
                         # ↓ SCALES with Hamiltonian!!!! ↓
-                          delta_loss_threshold: float = 1e-7):
+                          delta_loss_threshold: float = 1e-6):
     
 
     D_squared = D_bond ** 2
