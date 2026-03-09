@@ -21,6 +21,14 @@ import h5py
 import os, sys
 import torch
 
+
+
+
+# for now only the case of ABCDEF, exact SVD, chi > D^2 .
+
+
+
+
 def initialize_environmentCTs_1(A,B,C,D,E,F, D_squared, chi):
     
     return C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
@@ -206,12 +214,120 @@ def update_environmentCTs_1to2(C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
 
 def update_environmentCTs_2to3(C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A, A,B,C,D,E,F, D_squared, chi):
 
+    matC21AF = oe.contract("YX,MYa,LXβ,amg,lbg->MmLl",
+                           C21EB,T1D,T2C,A,F,
+                           optimize=[(0,2),(0,3),(1,2),(0,1)],
+                           backend='pytorch')
+    
+    matC21AF = matC21AF.view(chi*D_squared,chi*D_squared)
+    
+    matC32CB = oe.contract("ZY,NZβ,MYg,abn,amg->NnMm",
+                           C32AD,T2F,T3E,C,B,
+                           optimize=[(0,2),(0,3),(1,2),(0,1)],
+                           backend='pytorch')
+    
+    matC32CB = matC32CB.view(chi*D_squared,chi*D_squared)
+    
+    matC13ED = oe.contract("XZ,LXg,NZa,lbg,abn->LlNn",
+                           C13CF,T3B,T1A,E,D,
+                           optimize=[(0,2),(0,3),(1,2),(0,1)],
+                           backend='pytorch')
+    
+    matC13ED = matC13ED.view(chi*D_squared,chi*D_squared)
+
+    V2C, C21AF, U1D, V3E, C32CB, U2F, V1A, C13ED, U3B = trunc_rhoCCC(
+                        matC21AF, matC32CB, matC13ED, D_squared, chi)
+
+    T3A = oe.contract("OYa,abg,ObM->MYg",
+                        T1D,A,U1D,
+                        optimize=[(0,1),(0,1)],
+                        backend='pytorch')
+
+    T3F = oe.contract("OXb,abg,LOa->LXg",
+                        T2C,F,V2C,
+                        optimize=[(0,1),(0,1)],
+                        backend='pytorch')
+    
+    T1C = oe.contract("OZb,abg,OgN->NZa",
+                        T2F,C,U2F,
+                        optimize=[(0,1),(0,1)],
+                        backend='pytorch')
+    
+    T1B = oe.contract("OYg,abg,MOb->MYa",
+                        T3E,B,V3E,
+                        optimize=[(0,1),(0,1)],
+                        backend='pytorch')
+    
+    T2E = oe.contract("OXg,abg,OaL->LXb",
+                        T3B,E,U3B,
+                        optimize=[(0,1),(0,1)],
+                        backend='pytorch')
+    
+    T2D = oe.contract("OZa,abg,NOg->NZb",
+                        T1A,D,V1A,
+                        optimize=[(0,1),(0,1)],
+                        backend='pytorch')
+
     return C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C
 
 
 
 
 def update_environmentCTs_3to1(C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C, A,B,C,D,E,F, D_squared, chi):
+
+    matC21CD = oe.contract("YX,MYa,LXβ,amg,lbg->MmLl",
+                           C21AF,T1B,T2E,C,D,
+                           optimize=[(0,2),(0,3),(1,2),(0,1)],
+                           backend='pytorch')
+    
+    matC21CD = matC21CD.view(chi*D_squared,chi*D_squared)
+    
+    matC32EF = oe.contract("ZY,NZβ,MYg,abn,amg->NnMm",
+                           C32CB,T2D,T3A,E,F,
+                           optimize=[(0,2),(0,3),(1,2),(0,1)],
+                           backend='pytorch')
+    
+    matC32EF = matC32EF.view(chi*D_squared,chi*D_squared)
+    
+    matC13AB = oe.contract("XZ,LXg,NZa,lbg,abn->LlNn",
+                           C13ED,T3F,T1C,A,B,
+                           optimize=[(0,2),(0,3),(1,2),(0,1)],
+                           backend='pytorch')
+    
+    matC13AB = matC13AB.view(chi*D_squared,chi*D_squared)
+
+    V2E, C21CD, U1B, V3A, C32EF, U2D, V1C, C13AB, U3F = trunc_rhoCCC(
+                        matC21CD, matC32EF, matC13AB, D_squared, chi)
+
+    T3C = oe.contract("OYa,abg,ObM->MYg",
+                        T1B,C,U1B,
+                        optimize=[(0,1),(0,1)],
+                        backend='pytorch')
+
+    T3D = oe.contract("OXb,abg,LOa->LXg",
+                        T2E,D,V2E,
+                        optimize=[(0,1),(0,1)],
+                        backend='pytorch')
+    
+    T1E = oe.contract("OZb,abg,OgN->NZa",
+                        T2D,E,U2D,
+                        optimize=[(0,1),(0,1)],
+                        backend='pytorch')
+    
+    T1F = oe.contract("OYg,abg,MOb->MYa",
+                        T3A,F,V3A,
+                        optimize=[(0,1),(0,1)],
+                        backend='pytorch')
+    
+    T2A = oe.contract("OXg,abg,OaL->LXb",
+                        T3F,A,U3F,
+                        optimize=[(0,1),(0,1)],
+                        backend='pytorch')
+    
+    T2B = oe.contract("OZa,abg,NOg->NZb",
+                        T1C,B,V1C,
+                        optimize=[(0,1),(0,1)],
+                        backend='pytorch')
 
     return C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
 
