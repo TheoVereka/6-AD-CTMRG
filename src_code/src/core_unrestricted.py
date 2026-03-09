@@ -24,12 +24,78 @@ import torch
 
 
 
-# for now only the case of ABCDEF, exact SVD, chi > D^2 .
+# for now only the case of ABCDEF, nearest neighbor, exact SVD, D^4 >= chi > D^2 .
+
+def normalize_tensor(tensor):
+    norm = torch.norm(tensor,p=2)
+    if norm > 0:
+        return tensor / norm
+    else:
+        return tensor
+
+
+
+def initialize_abcdef(initialize_way:str, D_bond:int, d_PHYS:int, noise_scale:float):
+
+    if initialize_way == 'random' :
+
+        a += torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=torch.complex64)
+        b += torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=torch.complex64)
+        c += torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=torch.complex64)
+        d += torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=torch.complex64)
+        e += torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=torch.complex64)
+        f += torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=torch.complex64)
+
+    elif initialize_way == 'product' : # product state but always with small noise
+
+        pass
+
+    elif initialize_way == 'singlet' : # Mz=0 sector's singlet state representable as PEPS
+
+        pass
+
+    else :
+
+        raise ValueError(f"Invalid initialize_way: {initialize_way}")
+    
+    return a,b,c,d,e,f
 
 
 
 
-def initialize_environmentCTs_1(A,B,C,D,E,F, D_squared, chi):
+def abcdef_to_ABCDEF(a,b,c,d,e,f, D_squared:int):
+
+    A = oe.contract("uvwφ,xyzφ->uxvywz", a,a.conj(), optimize=[(0,1)], backend='pytorch')
+    A = normalize_tensor(A)
+    A = A.reshape(D_squared, D_squared)
+
+    B = oe.contract("uvwφ,xyzφ->uxvywz", b,b.conj(), optimize=[(0,1)], backend='pytorch')
+    B = normalize_tensor(B)
+    B = B.reshape(D_squared, D_squared)
+
+    C = oe.contract("uvwφ,xyzφ->uxvywz", c,c.conj(), optimize=[(0,1)], backend='pytorch')
+    C = normalize_tensor(C)
+    C = C.reshape(D_squared, D_squared)
+
+    D = oe.contract("uvwφ,xyzφ->uxvywz", d,d.conj(), optimize=[(0,1)], backend='pytorch')
+    D = normalize_tensor(D)
+    D = D.reshape(D_squared, D_squared)
+
+    E = oe.contract("uvwφ,xyzφ->uxvywz", e,e.conj(), optimize=[(0,1)], backend='pytorch')
+    E = normalize_tensor(E)
+    E = E.reshape(D_squared, D_squared)
+
+    F = oe.contract("uvwφ,xyzφ->uxvywz", f,f.conj(), optimize=[(0,1)], backend='pytorch')
+    F = normalize_tensor(F)
+    F = F.reshape(D_squared, D_squared)
+
+    return A,B,C,D,E,F
+
+
+
+
+
+def initialize_environmentCTs_1(A,B,C,D,E,F, chi, D_squared):
     
     return C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
 
@@ -91,7 +157,7 @@ def check_env_convergence(lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, las
 
 
 
-def trunc_rhoCCC(matC21, matC32, matC13, D_squared, chi):
+def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
 
     rho32 = oe.contract("UZ,ZY,YV->UV",
                                matC13,matC32,matC21,
@@ -139,19 +205,23 @@ def trunc_rhoCCC(matC21, matC32, matC13, D_squared, chi):
                                optimize=[(0,1),(0,1)],
                                backend='pytorch')
     
-    U1 = U1.reshape(chi,D_squared, chi)
-    U2 = U2.reshape(chi,D_squared, chi)
-    U3 = U3.reshape(chi,D_squared, chi)
+    C21 = normalize_tensor(C21)
+    C32 = normalize_tensor(C32)
+    C13 = normalize_tensor(C13)
 
-    V1 = V1.reshape(chi, chi,D_squared)
-    V2 = V2.reshape(chi, chi,D_squared)
-    V3 = V3.reshape(chi, chi,D_squared)
+    U1 = normalize_tensor(U1.reshape(chi,D_squared, chi))
+    U2 = normalize_tensor(U2.reshape(chi,D_squared, chi))
+    U3 = normalize_tensor(U3.reshape(chi,D_squared, chi))
+
+    V1 = normalize_tensor(V1.reshape(chi, chi,D_squared))
+    V2 = normalize_tensor(V2.reshape(chi, chi,D_squared))
+    V3 = normalize_tensor(V3.reshape(chi, chi,D_squared))
 
     return V2, C21, U1, V3, C32, U2, V1, C13, U3 #, diagnostic_trunc
 
 
 
-def update_environmentCTs_1to2(C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E, A,B,C,D,E,F, D_squared, chi):
+def update_environmentCTs_1to2(C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E, A,B,C,D,E,F, chi, D_squared):
 
     matC21EB = oe.contract("YX,MYa,LXβ,amg,lbg->MmLl",
                            C21CD,T1F,T2A,E,B,
@@ -175,44 +245,44 @@ def update_environmentCTs_1to2(C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
     matC13CF = matC13CF.view(chi*D_squared,chi*D_squared)
 
     V2A, C21EB, U1F, V3C, C32AD, U2B, V1E, C13CF, U3D = trunc_rhoCCC(
-                        matC21EB, matC32AD, matC13CF, D_squared, chi)
+                        matC21EB, matC32AD, matC13CF, chi, D_squared)
 
-    T3E = oe.contract("OYa,abg,ObM->MYg",
+    T3E = normalize_tensor(oe.contract("OYa,abg,ObM->MYg",
                         T1F,E,U1F,
                         optimize=[(0,1),(0,1)],
-                        backend='pytorch')
+                        backend='pytorch'))
 
-    T3B = oe.contract("OXb,abg,LOa->LXg",
+    T3B = normalize_tensor(oe.contract("OXb,abg,LOa->LXg",
                         T2A,B,V2A,
                         optimize=[(0,1),(0,1)],
-                        backend='pytorch')
+                        backend='pytorch'))
     
-    T1A = oe.contract("OZb,abg,OgN->NZa",
+    T1A = normalize_tensor(oe.contract("OZb,abg,OgN->NZa",
                         T2B,A,U2B,
                         optimize=[(0,1),(0,1)],
-                        backend='pytorch')
+                        backend='pytorch'))
     
-    T1D = oe.contract("OYg,abg,MOb->MYa",
+    T1D = normalize_tensor(oe.contract("OYg,abg,MOb->MYa",
                         T3C,D,V3C,
                         optimize=[(0,1),(0,1)],
-                        backend='pytorch')
+                        backend='pytorch'))
     
-    T2C = oe.contract("OXg,abg,OaL->LXb",
+    T2C = normalize_tensor(oe.contract("OXg,abg,OaL->LXb",
                         T3D,C,U3D,
                         optimize=[(0,1),(0,1)],
-                        backend='pytorch')
+                        backend='pytorch'))
     
-    T2F = oe.contract("OZa,abg,NOg->NZb",
+    T2F = normalize_tensor(oe.contract("OZa,abg,NOg->NZb",
                         T1E,F,V1E,
                         optimize=[(0,1),(0,1)],
-                        backend='pytorch')
+                        backend='pytorch'))
 
     return C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A
 
 
 
 
-def update_environmentCTs_2to3(C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A, A,B,C,D,E,F, D_squared, chi):
+def update_environmentCTs_2to3(C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A, A,B,C,D,E,F, chi, D_squared):
 
     matC21AF = oe.contract("YX,MYa,LXβ,amg,lbg->MmLl",
                            C21EB,T1D,T2C,A,F,
@@ -236,44 +306,44 @@ def update_environmentCTs_2to3(C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A
     matC13ED = matC13ED.view(chi*D_squared,chi*D_squared)
 
     V2C, C21AF, U1D, V3E, C32CB, U2F, V1A, C13ED, U3B = trunc_rhoCCC(
-                        matC21AF, matC32CB, matC13ED, D_squared, chi)
+                        matC21AF, matC32CB, matC13ED, chi, D_squared)
 
-    T3A = oe.contract("OYa,abg,ObM->MYg",
+    T3A = normalize_tensor(oe.contract("OYa,abg,ObM->MYg",
                         T1D,A,U1D,
                         optimize=[(0,1),(0,1)],
-                        backend='pytorch')
+                        backend='pytorch'))
 
-    T3F = oe.contract("OXb,abg,LOa->LXg",
+    T3F = normalize_tensor(oe.contract("OXb,abg,LOa->LXg",
                         T2C,F,V2C,
                         optimize=[(0,1),(0,1)],
-                        backend='pytorch')
+                        backend='pytorch'))
     
-    T1C = oe.contract("OZb,abg,OgN->NZa",
+    T1C = normalize_tensor(oe.contract("OZb,abg,OgN->NZa",
                         T2F,C,U2F,
                         optimize=[(0,1),(0,1)],
-                        backend='pytorch')
+                        backend='pytorch'))
     
-    T1B = oe.contract("OYg,abg,MOb->MYa",
+    T1B = normalize_tensor(oe.contract("OYg,abg,MOb->MYa",
                         T3E,B,V3E,
                         optimize=[(0,1),(0,1)],
-                        backend='pytorch')
+                        backend='pytorch'))
     
-    T2E = oe.contract("OXg,abg,OaL->LXb",
+    T2E = normalize_tensor(oe.contract("OXg,abg,OaL->LXb",
                         T3B,E,U3B,
                         optimize=[(0,1),(0,1)],
-                        backend='pytorch')
+                        backend='pytorch'))
     
-    T2D = oe.contract("OZa,abg,NOg->NZb",
+    T2D = normalize_tensor(oe.contract("OZa,abg,NOg->NZb",
                         T1A,D,V1A,
                         optimize=[(0,1),(0,1)],
-                        backend='pytorch')
+                        backend='pytorch'))
 
     return C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C
 
 
 
 
-def update_environmentCTs_3to1(C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C, A,B,C,D,E,F, D_squared, chi):
+def update_environmentCTs_3to1(C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C, A,B,C,D,E,F, chi, D_squared):
 
     matC21CD = oe.contract("YX,MYa,LXβ,amg,lbg->MmLl",
                            C21AF,T1B,T2E,C,D,
@@ -297,37 +367,37 @@ def update_environmentCTs_3to1(C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C
     matC13AB = matC13AB.view(chi*D_squared,chi*D_squared)
 
     V2E, C21CD, U1B, V3A, C32EF, U2D, V1C, C13AB, U3F = trunc_rhoCCC(
-                        matC21CD, matC32EF, matC13AB, D_squared, chi)
+                        matC21CD, matC32EF, matC13AB, chi, D_squared)
 
-    T3C = oe.contract("OYa,abg,ObM->MYg",
+    T3C = normalize_tensor(oe.contract("OYa,abg,ObM->MYg",
                         T1B,C,U1B,
                         optimize=[(0,1),(0,1)],
-                        backend='pytorch')
+                        backend='pytorch'))
 
-    T3D = oe.contract("OXb,abg,LOa->LXg",
+    T3D = normalize_tensor(oe.contract("OXb,abg,LOa->LXg",
                         T2E,D,V2E,
                         optimize=[(0,1),(0,1)],
-                        backend='pytorch')
+                        backend='pytorch'))
     
-    T1E = oe.contract("OZb,abg,OgN->NZa",
+    T1E = normalize_tensor(oe.contract("OZb,abg,OgN->NZa",
                         T2D,E,U2D,
                         optimize=[(0,1),(0,1)],
-                        backend='pytorch')
+                        backend='pytorch'))
     
-    T1F = oe.contract("OYg,abg,MOb->MYa",
+    T1F = normalize_tensor(oe.contract("OYg,abg,MOb->MYa",
                         T3A,F,V3A,
                         optimize=[(0,1),(0,1)],
-                        backend='pytorch')
+                        backend='pytorch'))
     
-    T2A = oe.contract("OXg,abg,OaL->LXb",
+    T2A = normalize_tensor(oe.contract("OXg,abg,OaL->LXb",
                         T3F,A,U3F,
                         optimize=[(0,1),(0,1)],
-                        backend='pytorch')
+                        backend='pytorch'))
     
-    T2B = oe.contract("OZa,abg,NOg->NZb",
+    T2B = normalize_tensor(oe.contract("OZa,abg,NOg->NZb",
                         T1C,B,V1C,
                         optimize=[(0,1),(0,1)],
-                        backend='pytorch')
+                        backend='pytorch'))
 
     return C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
 
@@ -335,9 +405,9 @@ def update_environmentCTs_3to1(C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C
 
 
 def CTMRG_from_init_to_stop(A,B,C,D,E,F,
-                            D_squared: int,
                             chi: int, 
-                            max_iterations: int, 
+                            D_squared: int,
+                            a_third_max_iterations: int, 
                             env_conv_threshold: float) :
     """
     This function performs the CTMRG algorithm from the initial state to the stopping criterion.
@@ -357,12 +427,12 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
     lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E = None, None, None, None, None, None, None, None, None
     lastC21EB, lastC32AD, lastC13CF, lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A = None, None, None, None, None, None, None, None, None
     lastC21AF, lastC32CB, lastC13ED, lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C = None, None, None, None, None, None, None, None, None
-    nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E = initialize_environmentCTs_1(A,B,C,D,E,F, D_squared, chi)
+    nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E = initialize_environmentCTs_1(A,B,C,D,E,F, chi, D_squared)
     nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A = None, None, None, None, None, None, None, None, None
     nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C = None, None, None, None, None, None, None, None, None
 
     # Perform the CTMRG iterations until convergence
-    for iteration in range(max_iterations):
+    for iteration in range(a_third_max_iterations):
 
         if check_env_convergence(lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E, 
                                  nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, 
@@ -375,33 +445,196 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
             break
 
         # Update the environment corner and edge transfer tensors
-        match iteration % 3 :
-            case 0 : 
-                lastC21EB, lastC32AD, lastC13CF, lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A = \
-                nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A
-                nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A = update_environmentCTs_1to2(
-                nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, A,B,C,D,E,F, D_squared, chi)
+        # match iteration % 3 :
+        #     case 0 : 
+        lastC21EB, lastC32AD, lastC13CF, lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A = \
+        nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A
+        nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A = update_environmentCTs_1to2(
+        nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, A,B,C,D,E,F, chi, D_squared)
             
-            case 1 : 
-                lastC21AF, lastC32CB, lastC13ED, lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C = \
-                nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C
-
-                nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C = update_environmentCTs_2to3(
-                nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A, A,B,C,D,E,F, D_squared, chi)
-            
-            case 2 : 
-                lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E = \
-                nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E
-                
-                nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E = update_environmentCTs_3to1(
-                nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C, A,B,C,D,E,F, D_squared, chi)
-    
-    return iteration % 3, \
-        nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, \
-        nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A, \
+        #     case 1 : 
+        lastC21AF, lastC32CB, lastC13ED, lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C = \
         nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C
 
+        nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C = update_environmentCTs_2to3(
+        nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A, A,B,C,D,E,F, chi, D_squared)
+            
+        #     case 2 : 
+        lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E = \
+        nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E
+        
+        nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E = update_environmentCTs_3to1(
+        nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C, A,B,C,D,E,F, chi, D_squared)
+    
+    return  nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, \
+            nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A, \
+            nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C
 
+
+
+
+def Loss_as_energy_expectation(a,b,c,d,e,f, a_lot_of_bond_Hamiltonians, chi, D_bond, d_PHYS,
+                              C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E,
+                              C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A,
+                              C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C):
+    pass
+    # return bra_H_ket
+
+
+
+def energy_expectation_nearest_neighbor_6_bonds(a,b,c,d,e,f, 
+                                                Hab,Hbc,Hcd,Hde,Hef,Hfa, 
+                                                chi, D_bond, d_PHYS,
+                                                C21CD,C32EF,C13AB,T1F,T2A,T2B,T3C,T3D,T1E):
+    pass
+                              
+
+
+
+
+def optmization_iPEPS(Hab,Hbc,Hcd,Hde,Hef,Hfa,
+                      opt_conv_threshold: float = 1e-8, # SCALES with Hamiltonian!!!!
+                      chi: int=10, D_bond: int=3, d_PHYS: int=2,
+                      a_third_max_steps_CTMRG: int = 70, 
+                      CTM_env_conv_threshold: float = 1e-9,
+                      a2f_initialize_way: str = 'random',
+                      a2f_noise_scale: float = 1e-3,
+                      max_opt_steps: int = 200,
+                      lbfgs_max_iter: int = 20,
+                      lbfgs_lr: float = 1.0,
+                      lbfgs_history: int = 100,
+                      opt_tolerance_grad: float = 1e-7,
+                      opt_tolerance_change: float = 1e-9):
+    """
+    Optimize the iPEPS tensors a,b,c,d,e,f using L-BFGS.
+
+    Strategy (standard for AD-CTMRG):
+      • Outer loop  (max_opt_steps iterations):
+          1. Recompute double-layer tensors A..F and run CTMRG to convergence
+             inside torch.no_grad() — environment is treated as fixed.
+          2. Run L-BFGS (up to lbfgs_max_iter sub-steps with strong-Wolfe line
+             search).  The closure recomputes only the cheap energy evaluation
+             and calls backward() through a..f; gradients do NOT flow back
+             through the CTMRG iterations.
+          3. Check outer convergence on the loss change.
+
+    This is the "environment-fixed" / implicit-differentiation variant.
+    Gradients through the full CTMRG unroll are available in principle but
+    are prohibitively expensive for production runs.
+
+    Args:
+        Hab..Hfa                : 2-site nearest-neighbour Hamiltonians
+        chi                     : environment bond dimension
+        D_bond                  : physical projector bond dimension
+        d_PHYS                  : physical Hilbert-space dimension
+        a_third_max_steps_CTMRG  : max CTMRG sweeps per environment update
+        CTM_env_conv_threshold      : CTMRG convergence criterion
+        a2f_initialize_way      : initialisation mode ('random', 'product', ...)
+        a2f_noise_scale         : noise amplitude for initialisation
+        max_opt_steps           : max outer optimisation iterations
+        lbfgs_max_iter          : max L-BFGS sub-iterations per outer step
+        lbfgs_lr                : initial step size for L-BFGS
+        lbfgs_history           : L-BFGS history size
+        opt_conv_threshold      : stop when |Δloss| < this value
+
+    Returns:
+        a, b, c, d, e, f  —  optimised site tensors (still require_grad=True)
+    """
+    D_squared = D_bond ** 2
+
+    # ── 1. Initialise site tensors ────────────────────────────────────────────
+    a, b, c, d, e, f = initialize_abcdef(a2f_initialize_way, D_bond, d_PHYS, a2f_noise_scale)
+    a.requires_grad_(True)
+    b.requires_grad_(True)
+    c.requires_grad_(True)
+    d.requires_grad_(True)
+    e.requires_grad_(True)
+    f.requires_grad_(True)
+
+    # ── 2. Set up L-BFGS ─────────────────────────────────────────────────────
+    optimizer = torch.optim.LBFGS(
+        [a, b, c, d, e, f],
+        lr=lbfgs_lr,
+        max_iter=lbfgs_max_iter,
+        tolerance_grad=opt_tolerance_grad,
+        tolerance_change=opt_tolerance_change,
+        history_size=lbfgs_history,
+        line_search_fn='strong_wolfe',
+    )
+
+    prev_loss = None
+
+    # ── 3. Outer optimisation loop ────────────────────────────────────────────
+    for opt_step in range(max_opt_steps):
+
+        # 3a. Rebuild double-layer tensors and converge the CTMRG environment.
+        #     No gradients needed here — the environment is treated as a fixed
+        #     external field during the L-BFGS line search.
+        with torch.no_grad():
+            A, B, C, D, E, F = abcdef_to_ABCDEF(a, b, c, d, e, f, D_squared)
+            
+            (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
+             C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
+             C21AF, C32CB, C13ED, T1B,  T2E,  T2D,  T3A,  T3F,  T1C) = \
+            CTMRG_from_init_to_stop(A, B, C, D, E, F, chi, D_squared,
+                a_third_max_steps_CTMRG, CTM_env_conv_threshold)
+
+        # 3b. L-BFGS closure: energy evaluation + backward through a..f only.
+        def closure():
+            optimizer.zero_grad()
+            loss = energy_expectation_nearest_neighbor_6_bonds(
+                a, b, c, d, e, f,
+                Hab, Hbc, Hcd, Hde, Hef, Hfa,
+                chi, D_bond, d_PHYS,
+                C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E)
+            loss.backward()
+            return loss
+
+        # 3c. Run L-BFGS sub-iterations (strong-Wolfe line search built in).
+        loss_val = optimizer.step(closure)
+
+        loss_item = loss_val.item()
+        delta = (loss_item - prev_loss) if prev_loss is not None else float('inf')
+        print(f"  opt {opt_step:4d}  loss = {loss_item:+.10f}  Δloss = {delta:.3e}")
+
+        # 3d. Outer convergence check.
+        if prev_loss is not None and abs(delta) < opt_conv_threshold:
+            print(f"  Outer convergence achieved at step {opt_step} (Δloss={delta:.3e}).")
+            break
+        prev_loss = loss_item
+
+    return a, b, c, d, e, f, loss_item
+
+
+
+def check_optimized_iPEPS(a,b,c,d,e,f, old_loss, 
+                          Hab,Hbc,Hcd,Hde,Hef,Hfa,
+                          new_chi, D_bond, d_PHYS,
+                          a_third_max_steps_CTMRG: int = 70, 
+                          CTM_env_conv_threshold: float = 1e-9,
+                        # ↓ SCALES with Hamiltonian!!!! ↓
+                          delta_loss_threshold: float = 1e-7):
+    
+
+    D_squared = D_bond ** 2
+
+    with torch.no_grad():
+        A, B, C, D, E, F = abcdef_to_ABCDEF(a, b, c, d, e, f, D_squared)
+        
+        (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
+        C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
+        C21AF, C32CB, C13ED, T1B,  T2E,  T2D,  T3A,  T3F,  T1C) = \
+        CTMRG_from_init_to_stop(A, B, C, D, E, F, new_chi, D_squared,
+                a_third_max_steps_CTMRG, CTM_env_conv_threshold)
+        
+        new_loss_under_new_chi = energy_expectation_nearest_neighbor_6_bonds(
+            a,b,c,d,e,f,Hab,Hbc,Hcd,Hde,Hef,Hfa, new_chi, D_bond, d_PHYS, 
+            C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E).item()
+        
+        delta_loss = new_loss_under_new_chi - old_loss
+        print(f"  Check optimized iPEPS with chi={new_chi}: loss = {new_loss_under_new_chi:+.10f}  Δloss = {delta_loss:.3e}")
+        return bool(abs(delta_loss) < delta_loss_threshold)
+    
 
 
 
