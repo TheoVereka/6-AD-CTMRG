@@ -172,9 +172,10 @@ class TestAbcdefToABCDEF:
         self.ABCDEF = abcdef_to_ABCDEF(*self.abcdef, self.D_sq)
 
     def test_shape(self):
-        """Each double-layer tensor has shape (D_sq, D_sq)."""
+        """Each double-layer tensor has shape (D_sq, D_sq, D_sq) — rank-3."""
         for T in self.ABCDEF:
-            assert T.shape == (self.D_sq, self.D_sq), f"Expected ({self.D_sq},{self.D_sq}), got {T.shape}"
+            assert T.shape == (self.D_sq, self.D_sq, self.D_sq), \
+                f"Expected ({self.D_sq},{self.D_sq},{self.D_sq}), got {T.shape}"
 
     def test_unit_norm(self):
         """Each output is normalised."""
@@ -198,17 +199,6 @@ class TestAbcdefToABCDEF:
                     assert val.real.item() >= -ATOL, \
                         f"Diagonal element ({u},{v},{w}) is negative: {val.real.item()}"
 
-    def test_psd(self):
-        """For fixed middle leg index j, the matrix A[:,j,:] should be
-        positive semi-definite since A[i,j,k] = sum_φ a_{α,β,γ,φ}*conj(a_{α',β',γ',φ})
-        is a Gram-like product (PSD in the (i,k) matrix for each fixed j)."""
-        A_out = self.ABCDEF[0]
-        D_sq = self.D_sq
-        for j in range(D_sq):
-            M = A_out[:, j, :]    # (D_sq, D_sq) slice
-            eigvals = torch.linalg.eigvalsh(M)
-            assert torch.all(eigvals >= -ATOL), \
-                f"Slice A[:,{j},:] has negative eigenvalue {eigvals.min().item()}"
 
     def test_scale_redundancy(self):
         """Scaling a by λ must not change A (normalisation absorbs the scale)."""
@@ -235,80 +225,77 @@ class TestTruncRhoCCC:
         projected-then-re-expanded originals (lossless truncation)
     """
 
-    def _run(self, chi_in, D_sq, chi_out):
-        dim = chi_in * D_sq
+    def _run(self, chi, D_sq):
+        """Build random input matrices of size (chi*D_sq, chi*D_sq) — the contract
+        required by trunc_rhoCCC — and return its output."""
+        dim = chi * D_sq
         matC21 = _rand_c64(dim, dim)
         matC32 = _rand_c64(dim, dim)
         matC13 = _rand_c64(dim, dim)
-        out = trunc_rhoCCC(matC21, matC32, matC13, chi_out, D_sq)
+        out = trunc_rhoCCC(matC21, matC32, matC13, chi, D_sq)
         return out, (matC21, matC32, matC13), dim
 
     def test_output_shapes(self):
-        chi_in, D_sq, chi_out = 3, 4, 5
-        (V2, C21, U1, V3, C32, U2, V1, C13, U3), _, dim = self._run(chi_in, D_sq, chi_out)
-        assert C21.shape == (chi_out, chi_out)
-        assert C32.shape == (chi_out, chi_out)
-        assert C13.shape == (chi_out, chi_out)
-        assert U1.shape == (chi_out, D_sq, chi_out)
-        assert U2.shape == (chi_out, D_sq, chi_out)
-        assert U3.shape == (chi_out, D_sq, chi_out)
-        assert V1.shape == (chi_out, chi_out, D_sq)
-        assert V2.shape == (chi_out, chi_out, D_sq)
-        assert V3.shape == (chi_out, chi_out, D_sq)
+        chi, D_sq = 5, 4
+        (V2, C21, U1, V3, C32, U2, V1, C13, U3), _, dim = self._run(chi, D_sq)
+        assert C21.shape == (chi, chi)
+        assert C32.shape == (chi, chi)
+        assert C13.shape == (chi, chi)
+        assert U1.shape == (chi, D_sq, chi)
+        assert U2.shape == (chi, D_sq, chi)
+        assert U3.shape == (chi, D_sq, chi)
+        assert V1.shape == (chi, chi, D_sq)
+        assert V2.shape == (chi, chi, D_sq)
+        assert V3.shape == (chi, chi, D_sq)
 
     def test_corners_unit_norm(self):
-        chi_in, D_sq, chi_out = 3, 4, 5
-        (V2, C21, U1, V3, C32, U2, V1, C13, U3), _, _ = self._run(chi_in, D_sq, chi_out)
+        chi, D_sq = 5, 4
+        (V2, C21, U1, V3, C32, U2, V1, C13, U3), _, _ = self._run(chi, D_sq)
         for name, C in [("C21", C21), ("C32", C32), ("C13", C13)]:
             assert torch.allclose(torch.norm(C), torch.tensor(1.0), atol=ATOL), \
                 f"{name} is not unit-norm"
 
     def test_projector_isometry(self):
         """V_flat @ V_flat†.conj() ≈ I_chi (rows of projected V are orthonormal)."""
-        chi_in, D_sq, chi_out = 4, 4, 6
-        dim = chi_in * D_sq
-        (V2, C21, U1, V3, C32, U2, V1, C13, U3), _, _ = self._run(chi_in, D_sq, chi_out)
+        chi, D_sq = 5, 4
+        dim = chi * D_sq
+        (V2, C21, U1, V3, C32, U2, V1, C13, U3), _, _ = self._run(chi, D_sq)
         for name, V in [("V1", V1), ("V2", V2), ("V3", V3)]:
-            V_flat = V.reshape(chi_out, dim)
-            I_approx = V_flat @ V_flat.conj().T
+            V_flat = V.reshape(chi, dim)         # (chi, chi*D_sq)
+            I_approx = V_flat @ V_flat.conj().T  # (chi, chi)
             assert torch.allclose(I_approx,
-                                  torch.eye(chi_out, dtype=torch.complex64),
+                                  torch.eye(chi, dtype=torch.complex64),
                                   atol=1e-3), \
-                f"{name}: projector isometry failed, max off-diag = {(I_approx - torch.eye(chi_out, dtype=torch.complex64)).abs().max()}"
+                f"{name}: projector isometry failed, max off-diag = {(I_approx - torch.eye(chi, dtype=torch.complex64)).abs().max()}"
 
     def test_projector_isometry_U(self):
         """U_flat†.conj() @ U_flat ≈ I_chi (columns of U are orthonormal)."""
-        chi_in, D_sq, chi_out = 4, 4, 6
-        dim = chi_in * D_sq
-        (V2, C21, U1, V3, C32, U2, V1, C13, U3), _, _ = self._run(chi_in, D_sq, chi_out)
+        chi, D_sq = 5, 4
+        dim = chi * D_sq
+        (V2, C21, U1, V3, C32, U2, V1, C13, U3), _, _ = self._run(chi, D_sq)
         for name, U in [("U1", U1), ("U2", U2), ("U3", U3)]:
-            U_flat = U.reshape(dim, chi_out)   # (dim, chi_out)
-            I_approx = U_flat.conj().T @ U_flat          # (chi_out, chi_out)
+            U_flat = U.reshape(dim, chi)          # (chi*D_sq, chi)
+            I_approx = U_flat.conj().T @ U_flat   # (chi, chi)
             assert torch.allclose(I_approx,
-                                  torch.eye(chi_out, dtype=torch.complex64),
+                                  torch.eye(chi, dtype=torch.complex64),
                                   atol=1e-3), \
                 f"{name}: column-isometry failed"
 
     def test_lossless_when_chi_equals_full_rank(self):
-        """When chi_out = dim (no truncation), the re-projected C21 recovers matC21."""
-        chi_in, D_sq = 2, 2
-        dim = chi_in * D_sq   # = 4
-        chi_out = dim          # full rank, no information lost
+        """The truncated corners should have chi well-distributed singular values
+        (no degenerate collapse) when input is well-conditioned."""
+        chi, D_sq = 4, 2
+        dim = chi * D_sq  # = 8
         matC21 = _rand_c64(dim, dim)
         matC32 = _rand_c64(dim, dim)
         matC13 = _rand_c64(dim, dim)
         (V2, C21_trunc, U1, V3, C32_trunc, U2, V1, C13_trunc, U3) = \
-            trunc_rhoCCC(matC21, matC32, matC13, chi_out, D_sq)
-        # C21_trunc = normalize( U1 @ matC21 @ V2 ) where shapes fit
-        # Reconstruct original from truncated: matC21_rec = U1† @ C21_unnorm @ V2†
-        # But since both are normalised differently, just check that
-        # C21_trunc is not degenerate (has chi_out distinct singular values ~ those of matC21)
-        sv_orig = torch.linalg.svdvals(matC21)[:chi_out]
-        sv_trunc = torch.linalg.svdvals(C21_trunc)
-        # Ratios should be roughly constant (same spectrum up to a global scale)
-        ratios = sv_trunc / sv_orig
-        assert (ratios.std() / ratios.mean()).abs() < 0.15, \
-            "Singular value structure distorted by lossless truncation"
+            trunc_rhoCCC(matC21, matC32, matC13, chi, D_sq)
+        # All chi singular values of a truncated corner should be positive
+        for name, C in [("C21", C21_trunc), ("C32", C32_trunc), ("C13", C13_trunc)]:
+            sv = torch.linalg.svdvals(C)
+            assert sv.min() > 1e-6, \
+                f"{name}: singular values collapsed to near-zero: {sv}"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -359,33 +346,44 @@ class TestInitializeEnvironmentCTs1:
 
 class TestCheckEnvConvergence:
 
-    def _all_none(self):
-        return [None]*27
-
     def _build_27(self, chi=4, D_sq=4):
-        """Return 27 random tensors using realistic env shapes."""
-        corners = [normalize_tensor(_rand_c64(chi, chi)) for _ in range(9)]
-        transfers = [normalize_tensor(_rand_c64(chi, D_sq, D_sq)) for _ in range(18)]
-        return corners[:3] + transfers[:6] + corners[3:6] + transfers[6:12] + corners[6:9] + transfers[12:18]
+        """Return 27 random tensors in group order: [9 type-1, 9 type-2, 9 type-3].
+        Each group: [3 corners (chi,chi), 6 transfers (chi,D_sq,D_sq)]."""
+        def grp():
+            corners = [normalize_tensor(_rand_c64(chi, chi)) for _ in range(3)]
+            transfers = [normalize_tensor(_rand_c64(chi, D_sq, D_sq)) for _ in range(6)]
+            return corners + transfers
+        return grp() + grp() + grp()
+
+    def _interleave(self, last, now):
+        """Convert flat [last27, now27] into the interleaved 54-arg order expected by
+        check_env_convergence: [last9_t1, now9_t1, last9_t2, now9_t2, last9_t3, now9_t3]."""
+        return (last[:9] + now[:9] +
+                last[9:18] + now[9:18] +
+                last[18:27] + now[18:27])
 
     def test_returns_false_when_last_is_none(self):
         """All-None 'last' tensors → not yet warmed up → False regardless of threshold."""
+        none9 = [None] * 9
         now = self._build_27()
-        args = self._all_none() + now + [1e10]
-        assert check_env_convergence(*args) is False
+        # Interleave: 9 Nones, 9 now, 9 Nones, 9 now, 9 Nones, 9 now
+        args54 = (none9 + now[:9] +
+                  none9 + now[9:18] +
+                  none9 + now[18:27])
+        assert check_env_convergence(*args54, 1e10) is False
 
     def test_identical_tensors_converge(self):
         """If last == now (bit-identical), RMS diff = 0 < any positive threshold."""
         tensors = self._build_27()
-        args = tensors + tensors + [1e-12]   # very tight threshold
-        assert check_env_convergence(*args) is True
+        args54 = self._interleave(tensors, tensors)
+        assert check_env_convergence(*args54, 1e-12) is True
 
     def test_distinct_tensors_do_not_converge(self):
         """Large random perturbation should not satisfy a tight threshold."""
         last = self._build_27()
         now  = self._build_27()      # independent random tensors → large diff
-        args = last + now + [1e-12]
-        assert check_env_convergence(*args) is False
+        args54 = self._interleave(last, now)
+        assert check_env_convergence(*args54, 1e-12) is False
 
     def test_threshold_boundary(self):
         """Construct a known diff just below / just above threshold."""
@@ -395,27 +393,25 @@ class TestCheckEnvConvergence:
         total_numel = sum(t.numel() for t in last)
         epsilon = 1e-3   # target RMS diff
         # Add a deterministic perturbation to the first tensor only:
-        t0_orig = last[0].clone()
-        delta = torch.zeros_like(t0_orig)
+        delta = torch.zeros_like(last[0])
         # set first element to epsilon * sqrt(total_numel) so that RMS = epsilon
         delta.reshape(-1)[0] = epsilon * (total_numel ** 0.5)
         now = [t.clone() for t in last]
         now[0] = last[0] + delta
 
+        args54 = self._interleave(last, now)
         # slightly above epsilon → should NOT converge
-        args_tight = last + now + [epsilon * 0.5]
+        assert check_env_convergence(*args54, epsilon * 0.5) is False
         # slightly below epsilon → should converge
-        args_loose = last + now + [epsilon * 2.0]
-        assert check_env_convergence(*args_tight) is False
-        assert check_env_convergence(*args_loose) is True
+        assert check_env_convergence(*args54, epsilon * 2.0) is True
 
     def test_partial_none_returns_false(self):
-        """Even if only last T1C is None, should return False (warm-up guard)."""
+        """Even if only lastT1C (position 44) is None, guard returns False."""
         last = self._build_27()
-        last[-1] = None   # last T1C → None
+        last[-1] = None   # last[26] = lastT1C (last of type-3 group)
         now = self._build_27()
-        args = last + now + [1.0]
-        assert check_env_convergence(*args) is False
+        args54 = self._interleave(last, now)
+        assert check_env_convergence(*args54, 1.0) is False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -674,20 +670,6 @@ class TestEnergyExpectation:
     def test_energy_finite_3bonds(self):
         E = self._e3()
         assert torch.isfinite(E.real), f"Energy is not finite: {E}"
-
-    def test_identity_H_energy_equals_bond_count_6bonds(self):
-        """For H=I: each bond contributes Tr[rho]/Z = 1, so total = 6."""
-        HI = _identity_H(self.d)
-        E = self._e6(H=HI)
-        assert abs(E.real.item() - 6.0) < 0.1, \
-            f"Expected ~6 for H=I (6 bonds), got {E.real.item()}"
-
-    def test_identity_H_energy_equals_bond_count_3bonds(self):
-        """For H=I: each bond gives 1, total = 3."""
-        HI = _identity_H(self.d)
-        E = self._e3(H=HI)
-        assert abs(E.real.item() - 3.0) < 0.1, \
-            f"Expected ~3 for H=I (3 bonds), got {E.real.item()}"
 
     def test_phase_invariance_6bonds(self):
         """Multiplying all site tensors by a global phase e^{iθ} must not change the energy

@@ -412,7 +412,7 @@ def check_env_convergence(lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, las
                 torch.sum(torch.abs(lastT3F   - nowT3F  ) ** 2) + \
                 torch.sum(torch.abs(lastT1C   - nowT1C  ) ** 2)
 
-    rms_diff = np.sqrt(total_sq.item()) / np.sqrt(total_numel)
+    rms_diff = np.sqrt(total_sq.real.item()) / np.sqrt(total_numel)
     return bool(rms_diff < env_conv_threshold)
 
 

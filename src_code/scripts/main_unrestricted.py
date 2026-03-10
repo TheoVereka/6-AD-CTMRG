@@ -14,3 +14,6 @@ pytorch==2.5.1
 
 from src.core_unrestricted import *
 
+t = torch.randn(3, 4, 5)
+normalize_tensor(t)
+print(t)
