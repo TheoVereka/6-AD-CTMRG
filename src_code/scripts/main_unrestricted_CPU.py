@@ -255,6 +255,9 @@ def main():
 
             # ── Optimise ─────────────────────────────────────────────────
             # optmization_iPEPS returns 7 values: (a, b, c, d, e, f, loss_item)
+            # Use warm_abcdef for first chi step if available (D_bond warm-start),
+            # or best_abcdef from the previous chi within the same D_bond.
+            init_tensors = warm_abcdef if (chi_idx == 0 and warm_abcdef is not None) else best_abcdef
             a, b, c, d_t, e, f, loss = optmization_iPEPS(
                 Hed, Had, Haf, Hcf, Hcb, Heb, Hcd, Hef, Hab,
                 opt_conv_threshold=opt_conv_threshold,
@@ -269,6 +272,7 @@ def main():
                 lbfgs_history=lbfgs_history,
                 opt_tolerance_grad=opt_tolerance_grad,
                 opt_tolerance_change=opt_tolerance_change,
+                init_abcdef=init_tensors,
             )
 
             # ── Re-evaluate energy cleanly at this chi ───────────────────

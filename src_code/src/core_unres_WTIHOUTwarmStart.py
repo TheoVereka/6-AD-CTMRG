@@ -1193,8 +1193,7 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
                       lbfgs_lr: float = 1.0,
                       lbfgs_history: int = 100,
                       opt_tolerance_grad: float = 1e-7,
-                      opt_tolerance_change: float = 1e-8,
-                      init_abcdef=None):
+                      opt_tolerance_change: float = 1e-8):
     """
     Optimize the iPEPS tensors a,b,c,d,e,f using L-BFGS.
 
@@ -1228,15 +1227,12 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
         opt_conv_threshold      : stop when |Δloss| < this value
 
     Returns:
-        a, b, c, d, e, f  —  optimised site tensors. TODO:(still require_grad=True),
+        a, b, c, d, e, f  —  optimised site tensors. TODO:(still require_grad=True), AND YET NOT NORMALIZED!
     """
     D_squared = D_bond ** 2
 
     # ── 1. Initialise site tensors ────────────────────────────────────────────
-    if init_abcdef is not None:
-        a, b, c, d, e, f = [t.detach().clone().to(torch.complex64) for t in init_abcdef]
-    else:
-        a, b, c, d, e, f = initialize_abcdef(a2f_initialize_way, D_bond, d_PHYS, a2f_noise_scale)
+    a, b, c, d, e, f = initialize_abcdef(a2f_initialize_way, D_bond, d_PHYS, a2f_noise_scale)
     a.requires_grad_(True)
     b.requires_grad_(True)
     c.requires_grad_(True)
