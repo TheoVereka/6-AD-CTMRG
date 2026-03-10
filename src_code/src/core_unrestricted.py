@@ -87,11 +87,11 @@ def initialize_abcdef(initialize_way:str, D_bond:int, d_PHYS:int, noise_scale:fl
 
     elif initialize_way == 'product' : # product state but always with small noise
 
-        pass
+        raise NotImplementedError("'product' initialisation is not yet implemented")
 
     elif initialize_way == 'singlet' : # Mz=0 sector's singlet state representable as PEPS
 
-        pass
+        raise NotImplementedError("'singlet' initialisation is not yet implemented")
 
     else :
 
@@ -670,10 +670,10 @@ def update_environmentCTs_3to1(C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C
 
 
 def CTMRG_from_init_to_stop(A,B,C,D,E,F,
-                            chi: int, 
+                            chi: int,
                             D_squared: int,
-                            a_third_max_iterations: int, 
-                            env_conv_threshold: float) :
+                            a_third_max_iterations: int,
+                            env_conv_threshold: float) -> tuple[torch.Tensor | None, ...]:
     """
     This function performs the CTMRG algorithm from the initial state to the stopping criterion.
 
@@ -685,7 +685,7 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
         env_conv_threshold (float): The threshold for environment convergence.
 
     Returns:
-        A tuple containing the final environment corner and edge transfer tensors.
+        A tuple containing the final environment corner and edge transfer tensors (27 elements total).
     """
     # Initialize the environment corner and edge transfer tensors
 
@@ -965,6 +965,7 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
     f.requires_grad_(True)
 
     prev_loss = None
+    loss_item: float = float('nan')
 
     # ── 2 & 3. Outer optimisation loop ───────────────────────────────────────
     # Note: a–f are scale-redundant (the energy is a ratio, hence invariant to

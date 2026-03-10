@@ -370,20 +370,20 @@ class TestCheckEnvConvergence:
         args54 = (none9 + now[:9] +
                   none9 + now[9:18] +
                   none9 + now[18:27])
-        assert check_env_convergence(*args54, 1e10) is False
+        assert check_env_convergence(*args54, 1e10) is False  # type: ignore[call-arg]
 
     def test_identical_tensors_converge(self):
         """If last == now (bit-identical), RMS diff = 0 < any positive threshold."""
         tensors = self._build_27()
         args54 = self._interleave(tensors, tensors)
-        assert check_env_convergence(*args54, 1e-12) is True
+        assert check_env_convergence(*args54, 1e-12) is True  # type: ignore[call-arg]
 
     def test_distinct_tensors_do_not_converge(self):
         """Large random perturbation should not satisfy a tight threshold."""
         last = self._build_27()
         now  = self._build_27()      # independent random tensors → large diff
         args54 = self._interleave(last, now)
-        assert check_env_convergence(*args54, 1e-12) is False
+        assert check_env_convergence(*args54, 1e-12) is False  # type: ignore[call-arg]
 
     def test_threshold_boundary(self):
         """Construct a known diff just below / just above threshold."""
@@ -401,9 +401,9 @@ class TestCheckEnvConvergence:
 
         args54 = self._interleave(last, now)
         # slightly above epsilon → should NOT converge
-        assert check_env_convergence(*args54, epsilon * 0.5) is False
+        assert check_env_convergence(*args54, epsilon * 0.5) is False  # type: ignore[call-arg]
         # slightly below epsilon → should converge
-        assert check_env_convergence(*args54, epsilon * 2.0) is True
+        assert check_env_convergence(*args54, epsilon * 2.0) is True  # type: ignore[call-arg]
 
     def test_partial_none_returns_false(self):
         """Even if only lastT1C (position 44) is None, guard returns False."""
@@ -411,7 +411,7 @@ class TestCheckEnvConvergence:
         last[-1] = None   # last[26] = lastT1C (last of type-3 group)
         now = self._build_27()
         args54 = self._interleave(last, now)
-        assert check_env_convergence(*args54, 1.0) is False
+        assert check_env_convergence(*args54, 1.0) is False  # type: ignore[call-arg]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
