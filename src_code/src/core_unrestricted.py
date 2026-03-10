@@ -1257,12 +1257,12 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
         #     already unit-norm, harmless otherwise).  Done via .data so that
         #     the computation graph and grad accumulators are untouched.
         with torch.no_grad():
-            a = normalize_tensor(a)
-            b = normalize_tensor(b)
-            c = normalize_tensor(c)
-            d = normalize_tensor(d)
-            e = normalize_tensor(e)
-            f = normalize_tensor(f)
+            a.data = normalize_tensor(a.data)
+            b.data = normalize_tensor(b.data)
+            c.data = normalize_tensor(c.data)
+            d.data = normalize_tensor(d.data)
+            e.data = normalize_tensor(e.data)
+            f.data = normalize_tensor(f.data)
 
         # 3b. Fresh L-BFGS for this outer step (environment will change, so old
         #     curvature history is irrelevant and would only mislead the solver).
@@ -1302,7 +1302,7 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
                         a,b,c,d,e,f, 
                         Hcd,Hef,Hab, 
                         chi, D_bond, # d_PHYS, 
-                        C21AF,C32CB,C13ED,T1B,T2E,T2D,T3A,T3F,T1C))
+                        C21AF,C32CB,C13ED,T1B,T2E,T2D,T3A,T3F,T1C)).real
 
             loss.backward()
             return loss
@@ -1339,8 +1339,8 @@ def check_optimized_iPEPS(a,b,c,d,e,f, old_loss,
         A, B, C, D, E, F = abcdef_to_ABCDEF(a, b, c, d, e, f, D_squared)
         
         (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
-        C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
-        C21AF, C32CB, C13ED, T1B,  T2E,  T2D,  T3A,  T3F,  T1C) = \
+         C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
+         C21AF, C32CB, C13ED, T1B,  T2E,  T2D,  T3A,  T3F,  T1C) = \
         CTMRG_from_init_to_stop(A, B, C, D, E, F, new_chi, D_squared,
                 a_third_max_steps_CTMRG, CTM_env_conv_threshold)
         
