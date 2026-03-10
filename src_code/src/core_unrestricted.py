@@ -517,26 +517,107 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
 
 
 
-def Loss_as_energy_expectation(a,b,c,d,e,f, a_lot_of_bond_Hamiltonians, chi, D_bond, d_PHYS,
-                              C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E,
-                              C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A,
-                              C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C):
-    pass
-    # return bra_H_ket
 
 
 
 def energy_expectation_nearest_neighbor_6_bonds(a,b,c,d,e,f, 
-                                                Hab,Hbc,Hcd,Hde,Hef,Hfa, # (d_PHYS * d_PHYS, d_PHYS * d_PHYS) matrices
-                                                chi, D_bond, d_PHYS,
+                                                Hed,Had,Haf,Hcf,Hcb,Heb, # (d_PHYS * d_PHYS^*, d_PHYS * d_PHYS^*) matrices
+                                                chi, D_bond, # d_PHYS,
                                                 C21CD,C32EF,C13AB,T1F,T2A,T2B,T3C,T3D,T1E):
-    pass
+    
+    T1F = T1F.reshape(chi,chi,D_bond,D_bond)
+    T2A = T2A.reshape(chi,chi,D_bond,D_bond)
+    T2B = T2B.reshape(chi,chi,D_bond,D_bond)
+    T3C = T3C.reshape(chi,chi,D_bond,D_bond)
+    T3D = T3D.reshape(chi,chi,D_bond,D_bond)
+    T1E = T1E.reshape(chi,chi,D_bond,D_bond)
+
+    open_E = oe.contract("YX,MYar,abci,rstj->MbsXctij", C21CD, T1F, e, e.conjugate(), optimize=[(0,1),(0,1),(0,1)], backend="pytorch")
+    open_D = oe.contract("MYct,abci,rstj->YarMbsij", T3C, d, d.conjugate(), optimize=[(0,1),(0,1)], backend="pytorch")
+    open_A = oe.contract("ZY,NZbs,abci,rstj->NctYarij", C32EF, T2B, a, a.conjugate(), optimize=[(0,1),(0,1),(0,1)], backend="pytorch")
+    open_F = oe.contract("NZar,abci,rstj->ZbsNctij", T1E, f, f.conjugate(), optimize=[(0,1),(0,1)], backend="pytorch")
+    open_C = oe.contract("XZ,LXct,abci,rstj->LarZbsij", C13AB, T3D, c, c.conjugate(), optimize=[(0,1),(0,1),(0,1)], backend="pytorch")
+    open_B = oe.contract("LXbs,abci,rstj->XctLarij", T2A, b, b.conjugate(), optimize=[(0,1),(0,1)], backend="pytorch")
                               
+    closed_E = oe.contract("MbsXctii->MbsXct", open_E, backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_D = oe.contract("YarMbsii->YarMbs", open_D, backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_A = oe.contract("NctYarii->NctYar", open_A, backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_F = oe.contract("ZbsNctii->ZbsNct", open_F, backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_C = oe.contract("LarZbsii->LarZbs", open_C, backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_B = oe.contract("XctLarii->XctLar", open_B, backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+
+    H_DE = oe.contract("MbsXctij,ijkl,YarMbskl->YarXct", open_E, Hed, open_D, optimize=[(0,1),(0,1)], backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    H_AD = oe.contract("NctYarij,ijkl,YarMbskl->NctMbs", open_A, Had, open_D, optimize=[(0,1),(0,1)], backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    H_FA = oe.contract("NctYarij,ijkl,ZbsNctkl->ZbsYar", open_A, Haf, open_F, optimize=[(0,1),(0,1)], backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    H_CF = oe.contract("LarZbsij,ijkl,ZbsNctkl->LarNct", open_C, Hcf, open_F, optimize=[(0,1),(0,1)], backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    H_BC = oe.contract("LarZbsij,ijkl,XctLarkl->XctZbs", open_C, Hcb, open_B, optimize=[(0,1),(0,1)], backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    H_EB = oe.contract("MbsXctij,ijkl,XctLarkl->MbsLar", open_E, Heb, open_B, optimize=[(0,1),(0,1)], backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+
+    DE = torch.mm(closed_D, closed_E)
+    AD = torch.mm(closed_A, closed_D)
+    FA = torch.mm(closed_F, closed_A)
+    CF = torch.mm(closed_C, closed_F)
+    BC = torch.mm(closed_B, closed_C)
+    EB = torch.mm(closed_E, closed_B)
+
+    E_unnormed_DE = oe.contract("xy,yz,zx->", H_DE, BC, FA, backend="pytorch")
+    E_unnormed_AD = oe.contract("xy,yz,zx->", H_AD, EB, CF, backend="pytorch")
+    E_unnormed_FA = oe.contract("xy,yz,zx->", H_FA, DE, BC, backend="pytorch")
+    E_unnormed_CF = oe.contract("xy,yz,zx->", H_CF, AD, EB, backend="pytorch")
+    E_unnormed_BC = oe.contract("xy,yz,zx->", H_BC, FA, DE, backend="pytorch")
+    E_unnormed_EB = oe.contract("xy,yz,zx->", H_EB, CF, AD, backend="pytorch")
+
+    norm_1st_env = oe.contract("xy,yz,zx->", DE, BC, FA, backend="pytorch")
+    energyNearestNeighbor_6_bonds = (E_unnormed_DE + E_unnormed_AD + E_unnormed_FA + E_unnormed_CF + E_unnormed_BC + E_unnormed_EB) / norm_1st_env
+    return energyNearestNeighbor_6_bonds
+
+
+
+def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f, 
+                                                      Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, d_PHYS, d_PHYS^*) matrices
+                                                      chi, D_bond, # d_PHYS,
+                                                      C21AF,C32CB,C13ED,T1B,T2E,T2D,T3A,T3F,T1C):
+    T1B = T1B.reshape(chi,chi,D_bond,D_bond)
+    T2E = T2E.reshape(chi,chi,D_bond,D_bond)
+    T2D = T2D.reshape(chi,chi,D_bond,D_bond)
+    T3A = T3A.reshape(chi,chi,D_bond,D_bond)
+    T3F = T3F.reshape(chi,chi,D_bond,D_bond)
+    T1C = T1C.reshape(chi,chi,D_bond,D_bond)
+
+    open_C = oe.contract("YX,MYar,abci,rstj->MbsXctij", C21AF, T1B, c, c.conjugate(), optimize=[(0,1),(0,1),(0,1)], backend="pytorch")
+    open_F = oe.contract("MYct,abci,rstj->YarMbsij", T3A, f, f.conjugate(), optimize=[(0,1),(0,1)], backend="pytorch")
+    open_E = oe.contract("ZY,NZbs,abci,rstj->NctYarij", C32CB, T2D, e, e.conjugate(), optimize=[(0,1),(0,1),(0,1)], backend="pytorch")
+    open_B = oe.contract("NZar,abci,rstj->ZbsNctij", T1C, b, b.conjugate(), optimize=[(0,1),(0,1)], backend="pytorch")
+    open_A = oe.contract("XZ,LXct,abci,rstj->LarZbsij", C13ED, T3F, a, a.conjugate(), optimize=[(0,1),(0,1),(0,1)], backend="pytorch")
+    open_D = oe.contract("LXbs,abci,rstj->XctLarij", T2E, d, d.conjugate(), optimize=[(0,1),(0,1)], backend="pytorch")
+                              
+    closed_C = oe.contract("MbsXctii->MbsXct", open_C, backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_F = oe.contract("YarMbsii->YarMbs", open_F, backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_E = oe.contract("NctYarii->NctYar", open_E, backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_B = oe.contract("ZbsNctii->ZbsNct", open_B, backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_A = oe.contract("LarZbsii->LarZbs", open_A, backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_D = oe.contract("XctLarii->XctLar", open_D, backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+
+    H_EF = oe.contract("NctYarij,ijkl,YarMbskl->NctMbs", open_E, Hef, open_F, optimize=[(0,1),(0,1)], backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    H_AB = oe.contract("LarZbsij,ijkl,ZbsNctkl->LarNct", open_A, Hab, open_B, optimize=[(0,1),(0,1)], backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    H_CD = oe.contract("MbsXctij,ijkl,XctLarkl->MbsLar", open_C, Hcd, open_D, optimize=[(0,1),(0,1)], backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+
+    EF = torch.mm(closed_E, closed_F)
+    AB = torch.mm(closed_A, closed_B)
+    CD = torch.mm(closed_C, closed_D)
+
+    E_unnormed_EF = oe.contract("xy,yz,zx->", H_EF, CD, AB, backend="pytorch")
+    E_unnormed_AB = oe.contract("xy,yz,zx->", H_AB, EF, CD, backend="pytorch")
+    E_unnormed_CD = oe.contract("xy,yz,zx->", H_CD, AB, EF, backend="pytorch")
+
+    norm_3rd_env= oe.contract("xy,yz,zx->", EF, CD, AB, backend="pytorch")
+    energyNearestNeighbor_3_bonds = (E_unnormed_EF + E_unnormed_AB + E_unnormed_CD) / norm_3rd_env
+    return energyNearestNeighbor_3_bonds
 
 
 
 
-def optmization_iPEPS(Hab,Hbc,Hcd,Hde,Hef,Hfa,
+def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, d_PHYS, d_PHYS^*) matrices
                       opt_conv_threshold: float = 1e-6, # SCALES with Hamiltonian!!!!
                       chi: int=10, D_bond: int=3, d_PHYS: int=2,
                       a_third_max_steps_CTMRG: int = 70, 
@@ -623,14 +704,22 @@ def optmization_iPEPS(Hab,Hbc,Hcd,Hde,Hef,Hfa,
             CTMRG_from_init_to_stop(A, B, C, D, E, F, chi, D_squared,
                 a_third_max_steps_CTMRG, CTM_env_conv_threshold)
 
-        # 3b. L-BFGS closure: energy evaluation + backward through a..f only.
+        # 3b. L-BFGS closure: energy evaluation + backward through a...f only.
         def closure():
             optimizer.zero_grad()
-            loss = energy_expectation_nearest_neighbor_6_bonds(
-                a, b, c, d, e, f,
-                Hab, Hbc, Hcd, Hde, Hef, Hfa,
-                chi, D_bond, d_PHYS,
-                C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E)
+
+            loss = (energy_expectation_nearest_neighbor_6_bonds(
+                        a,b,c,d,e,f, 
+                        Hed,Had,Haf,Hcf,Hcb,Heb, 
+                        chi, D_bond, # d_PHYS, 
+                        C21CD,C32EF,C13AB,T1F,T2A,T2B,T3C,T3D,T1E)
+                    +
+                    energy_expectation_nearest_neighbor_other_3_bonds(
+                        a,b,c,d,e,f, 
+                        Hcd,Hef,Hab, 
+                        chi, D_bond, # d_PHYS, 
+                        C21AF,C32CB,C13ED,T1B,T2E,T2D,T3A,T3F,T1C))
+
             loss.backward()
             return loss
 
@@ -652,7 +741,7 @@ def optmization_iPEPS(Hab,Hbc,Hcd,Hde,Hef,Hfa,
 
 
 def check_optimized_iPEPS(a,b,c,d,e,f, old_loss, 
-                          Hab,Hbc,Hcd,Hde,Hef,Hfa,
+                          Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, d_PHYS, d_PHYS^*) matrices
                           new_chi, D_bond, d_PHYS,
                           a_third_max_steps_CTMRG: int = 70, 
                           CTM_env_conv_threshold: float = 1e-7,
@@ -671,9 +760,19 @@ def check_optimized_iPEPS(a,b,c,d,e,f, old_loss,
         CTMRG_from_init_to_stop(A, B, C, D, E, F, new_chi, D_squared,
                 a_third_max_steps_CTMRG, CTM_env_conv_threshold)
         
-        new_loss_under_new_chi = energy_expectation_nearest_neighbor_6_bonds(
-            a,b,c,d,e,f,Hab,Hbc,Hcd,Hde,Hef,Hfa, new_chi, D_bond, d_PHYS, 
-            C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E).item()
+        new_loss_under_new_chi = (
+            energy_expectation_nearest_neighbor_6_bonds(
+                a,b,c,d,e,f, 
+                Hed,Had,Haf,Hcf,Hcb,Heb, 
+                new_chi, D_bond, # d_PHYS, 
+                C21CD,C32EF,C13AB,T1F,T2A,T2B,T3C,T3D,T1E)
+            +
+            energy_expectation_nearest_neighbor_other_3_bonds(
+                a,b,c,d,e,f, 
+                Hcd,Hef,Hab, 
+                new_chi, D_bond, # d_PHYS, 
+                C21AF,C32CB,C13ED,T1B,T2E,T2D,T3A,T3F,T1C)
+        ).item()
         
         delta_loss = new_loss_under_new_chi - old_loss
         print(f"  Check optimized iPEPS with chi={new_chi}: loss = {new_loss_under_new_chi:+.10f}  Δloss = {delta_loss:.3e}")
