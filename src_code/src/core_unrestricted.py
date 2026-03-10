@@ -124,7 +124,8 @@ def abcdef_to_ABCDEF(a,b,c,d,e,f, D_squared:int):
 
     Returns:
         Tuple[torch.Tensor, ...]: ``(A, B, C, D, E, F)``, each of shape
-        ``(D_squared, D_squared)``, dtype ``torch.complex64``.
+        ``(D_squared, D_squared, D_squared)`` (rank-3, one fused virtual-index
+        pair per honeycomb leg), dtype ``torch.complex64``.
     """
 
     A = oe.contract("uvwφ,xyzφ->uxvywz", a,a.conj(), optimize=[(0,1)], backend='torch')
@@ -197,8 +198,8 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     
     U3, sv32, V2 = torch.linalg.svd(rho32)
 
-    U3 = U3[:,:chi].conjugate()
-    V2 = V2[:chi,:].conjugate()
+    U3 = U3[:,:chi].conj()
+    V2 = V2[:chi,:].conj()
     
     rho13 = oe.contract("UX,XZ,ZV->UV",
                                matC21,matC13,matC32,
@@ -207,8 +208,8 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     
     U1, sv13, V3 = torch.linalg.svd(rho13)
 
-    U1 = U1[:,:chi].conjugate() #conjugate transpose
-    V3 = V3[:chi,:].conjugate()
+    U1 = U1[:,:chi].conj() #conjugate transpose
+    V3 = V3[:chi,:].conj()
     
 
     rho21 = oe.contract("UY,YX,XV->UV",
@@ -218,8 +219,8 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     
     U2, sv21, V1 = torch.linalg.svd(rho21)
     
-    U2 = U2[:,:chi].conjugate()
-    V1 = V1[:chi,:].conjugate()
+    U2 = U2[:,:chi].conj()
+    V1 = V1[:chi,:].conj()
 
     C21 = oe.contract("Yy,YX,xX->yx",
                                U1,matC21,V2,
@@ -791,26 +792,26 @@ def energy_expectation_nearest_neighbor_6_bonds(a,b,c,d,e,f,
     T3D = T3D.reshape(chi,chi,D_bond,D_bond)
     T1E = T1E.reshape(chi,chi,D_bond,D_bond)
 
-    open_E = oe.contract("YX,MYar,abci,rstj->MbsXctij", C21CD, T1F, e, e.conjugate(), optimize=[(0,1),(0,1),(0,1)], backend="pytorch")
-    open_D = oe.contract("MYct,abci,rstj->YarMbsij", T3C, d, d.conjugate(), optimize=[(0,1),(0,1)], backend="pytorch")
-    open_A = oe.contract("ZY,NZbs,abci,rstj->NctYarij", C32EF, T2B, a, a.conjugate(), optimize=[(0,1),(0,1),(0,1)], backend="pytorch")
-    open_F = oe.contract("NZar,abci,rstj->ZbsNctij", T1E, f, f.conjugate(), optimize=[(0,1),(0,1)], backend="pytorch")
-    open_C = oe.contract("XZ,LXct,abci,rstj->LarZbsij", C13AB, T3D, c, c.conjugate(), optimize=[(0,1),(0,1),(0,1)], backend="pytorch")
-    open_B = oe.contract("LXbs,abci,rstj->XctLarij", T2A, b, b.conjugate(), optimize=[(0,1),(0,1)], backend="pytorch")
+    open_E = oe.contract("YX,MYar,abci,rstj->MbsXctij", C21CD, T1F, e, e.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch")
+    open_D = oe.contract("MYct,abci,rstj->YarMbsij", T3C, d, d.conj(), optimize=[(0,1),(0,1)], backend="torch")
+    open_A = oe.contract("ZY,NZbs,abci,rstj->NctYarij", C32EF, T2B, a, a.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch")
+    open_F = oe.contract("NZar,abci,rstj->ZbsNctij", T1E, f, f.conj(), optimize=[(0,1),(0,1)], backend="torch")
+    open_C = oe.contract("XZ,LXct,abci,rstj->LarZbsij", C13AB, T3D, c, c.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch")
+    open_B = oe.contract("LXbs,abci,rstj->XctLarij", T2A, b, b.conj(), optimize=[(0,1),(0,1)], backend="torch")
                               
-    closed_E = oe.contract("MbsXctii->MbsXct", open_E, backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_D = oe.contract("YarMbsii->YarMbs", open_D, backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_A = oe.contract("NctYarii->NctYar", open_A, backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_F = oe.contract("ZbsNctii->ZbsNct", open_F, backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_C = oe.contract("LarZbsii->LarZbs", open_C, backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_B = oe.contract("XctLarii->XctLar", open_B, backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_E = oe.contract("MbsXctii->MbsXct", open_E, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_D = oe.contract("YarMbsii->YarMbs", open_D, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_A = oe.contract("NctYarii->NctYar", open_A, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_F = oe.contract("ZbsNctii->ZbsNct", open_F, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_C = oe.contract("LarZbsii->LarZbs", open_C, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_B = oe.contract("XctLarii->XctLar", open_B, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
 
-    H_DE = oe.contract("MbsXctij,ijkl,YarMbskl->YarXct", open_E, Hed, open_D, optimize=[(0,1),(0,1)], backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    H_AD = oe.contract("NctYarij,ijkl,YarMbskl->NctMbs", open_A, Had, open_D, optimize=[(0,1),(0,1)], backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    H_FA = oe.contract("NctYarij,ijkl,ZbsNctkl->ZbsYar", open_A, Haf, open_F, optimize=[(0,1),(0,1)], backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    H_CF = oe.contract("LarZbsij,ijkl,ZbsNctkl->LarNct", open_C, Hcf, open_F, optimize=[(0,1),(0,1)], backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    H_BC = oe.contract("LarZbsij,ijkl,XctLarkl->XctZbs", open_C, Hcb, open_B, optimize=[(0,1),(0,1)], backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    H_EB = oe.contract("MbsXctij,ijkl,XctLarkl->MbsLar", open_E, Heb, open_B, optimize=[(0,1),(0,1)], backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    H_DE = oe.contract("MbsXctij,ijkl,YarMbskl->YarXct", open_E, Hed, open_D, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    H_AD = oe.contract("NctYarij,ijkl,YarMbskl->NctMbs", open_A, Had, open_D, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    H_FA = oe.contract("NctYarij,ijkl,ZbsNctkl->ZbsYar", open_A, Haf, open_F, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    H_CF = oe.contract("LarZbsij,ijkl,ZbsNctkl->LarNct", open_C, Hcf, open_F, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    H_BC = oe.contract("LarZbsij,ijkl,XctLarkl->XctZbs", open_C, Hcb, open_B, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    H_EB = oe.contract("MbsXctij,ijkl,XctLarkl->MbsLar", open_E, Heb, open_B, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
 
     DE = torch.mm(closed_D, closed_E)
     AD = torch.mm(closed_A, closed_D)
@@ -819,14 +820,14 @@ def energy_expectation_nearest_neighbor_6_bonds(a,b,c,d,e,f,
     BC = torch.mm(closed_B, closed_C)
     EB = torch.mm(closed_E, closed_B)
 
-    E_unnormed_DE = oe.contract("xy,yz,zx->", H_DE, BC, FA, backend="pytorch")
-    E_unnormed_AD = oe.contract("xy,yz,zx->", H_AD, EB, CF, backend="pytorch")
-    E_unnormed_FA = oe.contract("xy,yz,zx->", H_FA, DE, BC, backend="pytorch")
-    E_unnormed_CF = oe.contract("xy,yz,zx->", H_CF, AD, EB, backend="pytorch")
-    E_unnormed_BC = oe.contract("xy,yz,zx->", H_BC, FA, DE, backend="pytorch")
-    E_unnormed_EB = oe.contract("xy,yz,zx->", H_EB, CF, AD, backend="pytorch")
+    E_unnormed_DE = oe.contract("xy,yz,zx->", H_DE, BC, FA, backend="torch")
+    E_unnormed_AD = oe.contract("xy,yz,zx->", H_AD, EB, CF, backend="torch")
+    E_unnormed_FA = oe.contract("xy,yz,zx->", H_FA, DE, BC, backend="torch")
+    E_unnormed_CF = oe.contract("xy,yz,zx->", H_CF, AD, EB, backend="torch")
+    E_unnormed_BC = oe.contract("xy,yz,zx->", H_BC, FA, DE, backend="torch")
+    E_unnormed_EB = oe.contract("xy,yz,zx->", H_EB, CF, AD, backend="torch")
 
-    norm_1st_env = oe.contract("xy,yz,zx->", DE, BC, FA, backend="pytorch")
+    norm_1st_env = oe.contract("xy,yz,zx->", DE, BC, FA, backend="torch")
     energyNearestNeighbor_6_bonds = (E_unnormed_DE + E_unnormed_AD + E_unnormed_FA + E_unnormed_CF + E_unnormed_BC + E_unnormed_EB) / norm_1st_env
     return energyNearestNeighbor_6_bonds
 
@@ -871,33 +872,33 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
     T3F = T3F.reshape(chi,chi,D_bond,D_bond)
     T1C = T1C.reshape(chi,chi,D_bond,D_bond)
 
-    open_C = oe.contract("YX,MYar,abci,rstj->MbsXctij", C21AF, T1B, c, c.conjugate(), optimize=[(0,1),(0,1),(0,1)], backend="pytorch")
-    open_F = oe.contract("MYct,abci,rstj->YarMbsij", T3A, f, f.conjugate(), optimize=[(0,1),(0,1)], backend="pytorch")
-    open_E = oe.contract("ZY,NZbs,abci,rstj->NctYarij", C32CB, T2D, e, e.conjugate(), optimize=[(0,1),(0,1),(0,1)], backend="pytorch")
-    open_B = oe.contract("NZar,abci,rstj->ZbsNctij", T1C, b, b.conjugate(), optimize=[(0,1),(0,1)], backend="pytorch")
-    open_A = oe.contract("XZ,LXct,abci,rstj->LarZbsij", C13ED, T3F, a, a.conjugate(), optimize=[(0,1),(0,1),(0,1)], backend="pytorch")
-    open_D = oe.contract("LXbs,abci,rstj->XctLarij", T2E, d, d.conjugate(), optimize=[(0,1),(0,1)], backend="pytorch")
+    open_C = oe.contract("YX,MYar,abci,rstj->MbsXctij", C21AF, T1B, c, c.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch")
+    open_F = oe.contract("MYct,abci,rstj->YarMbsij", T3A, f, f.conj(), optimize=[(0,1),(0,1)], backend="torch")
+    open_E = oe.contract("ZY,NZbs,abci,rstj->NctYarij", C32CB, T2D, e, e.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch")
+    open_B = oe.contract("NZar,abci,rstj->ZbsNctij", T1C, b, b.conj(), optimize=[(0,1),(0,1)], backend="torch")
+    open_A = oe.contract("XZ,LXct,abci,rstj->LarZbsij", C13ED, T3F, a, a.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch")
+    open_D = oe.contract("LXbs,abci,rstj->XctLarij", T2E, d, d.conj(), optimize=[(0,1),(0,1)], backend="torch")
                               
-    closed_C = oe.contract("MbsXctii->MbsXct", open_C, backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_F = oe.contract("YarMbsii->YarMbs", open_F, backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_E = oe.contract("NctYarii->NctYar", open_E, backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_B = oe.contract("ZbsNctii->ZbsNct", open_B, backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_A = oe.contract("LarZbsii->LarZbs", open_A, backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_D = oe.contract("XctLarii->XctLar", open_D, backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_C = oe.contract("MbsXctii->MbsXct", open_C, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_F = oe.contract("YarMbsii->YarMbs", open_F, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_E = oe.contract("NctYarii->NctYar", open_E, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_B = oe.contract("ZbsNctii->ZbsNct", open_B, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_A = oe.contract("LarZbsii->LarZbs", open_A, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_D = oe.contract("XctLarii->XctLar", open_D, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
 
-    H_EF = oe.contract("NctYarij,ijkl,YarMbskl->NctMbs", open_E, Hef, open_F, optimize=[(0,1),(0,1)], backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    H_AB = oe.contract("LarZbsij,ijkl,ZbsNctkl->LarNct", open_A, Hab, open_B, optimize=[(0,1),(0,1)], backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    H_CD = oe.contract("MbsXctij,ijkl,XctLarkl->MbsLar", open_C, Hcd, open_D, optimize=[(0,1),(0,1)], backend="pytorch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    H_EF = oe.contract("NctYarij,ijkl,YarMbskl->NctMbs", open_E, Hef, open_F, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    H_AB = oe.contract("LarZbsij,ijkl,ZbsNctkl->LarNct", open_A, Hab, open_B, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    H_CD = oe.contract("MbsXctij,ijkl,XctLarkl->MbsLar", open_C, Hcd, open_D, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
 
     EF = torch.mm(closed_E, closed_F)
     AB = torch.mm(closed_A, closed_B)
     CD = torch.mm(closed_C, closed_D)
 
-    E_unnormed_EF = oe.contract("xy,yz,zx->", H_EF, CD, AB, backend="pytorch")
-    E_unnormed_AB = oe.contract("xy,yz,zx->", H_AB, EF, CD, backend="pytorch")
-    E_unnormed_CD = oe.contract("xy,yz,zx->", H_CD, AB, EF, backend="pytorch")
+    E_unnormed_EF = oe.contract("xy,yz,zx->", H_EF, CD, AB, backend="torch")
+    E_unnormed_AB = oe.contract("xy,yz,zx->", H_AB, EF, CD, backend="torch")
+    E_unnormed_CD = oe.contract("xy,yz,zx->", H_CD, AB, EF, backend="torch")
 
-    norm_3rd_env= oe.contract("xy,yz,zx->", EF, CD, AB, backend="pytorch")
+    norm_3rd_env= oe.contract("xy,yz,zx->", EF, CD, AB, backend="torch")
     energyNearestNeighbor_3_bonds = (E_unnormed_EF + E_unnormed_AB + E_unnormed_CD) / norm_3rd_env
     return energyNearestNeighbor_3_bonds
 

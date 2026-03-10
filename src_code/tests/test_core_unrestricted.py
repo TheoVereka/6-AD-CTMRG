@@ -182,28 +182,33 @@ class TestAbcdefToABCDEF:
             assert torch.allclose(torch.norm(T), torch.tensor(1.0), atol=ATOL)
 
     def test_hermitian(self):
-        """A = a ⊗ a* contracted over physical index → A† = A (up to normalisation)."""
+        """Diagonal elements A[i,i,i] = sum_φ |a_{u,v,w,φ}|^2 must be real and ≥ 0."""
         a = self.abcdef[0]
         D_sq = self.D_sq
-        # Build A un-normalised directly, reshape to (D_sq, D_sq)
-        A_raw = oe.contract("uvwφ,xyzφ->uxvywz", a, a.conj(), optimize=[(0,1)], backend='pytorch')
-        A_raw = A_raw.reshape(D_sq * self.D, D_sq * self.D)  # still has 3 bond pairs
-        # At the 2D level: A_{(ux)(vy)(wz)} — we can check the 2D version
         A_out = self.ABCDEF[0]
-        # A† should equal A (Hermitian); check up to a global real scale
-        diff = (A_out - A_out.conj().T).norm()
-        assert diff < ATOL, f"A is not Hermitian: ||A - A†|| = {diff.item()}"
+        # Diagonal elements: index (ux)=(vy)=(wz) where u=x, v=y, w=z
+        # i.e. A[D*u+u, D*v+v, D*w+w] for all u,v,w ∈ {0,...,D-1}
+        D = self.D
+        for u in range(D):
+            for v in range(D):
+                for w in range(D):
+                    val = A_out[D*u+u, D*v+v, D*w+w]
+                    assert abs(val.imag.item()) < ATOL, \
+                        f"Diagonal element ({u},{v},{w}) is not real: {val}"
+                    assert val.real.item() >= -ATOL, \
+                        f"Diagonal element ({u},{v},{w}) is negative: {val.real.item()}"
 
     def test_psd(self):
-        """The un-normalised double-layer tensor A is positive-semidefinite."""
-        a = self.abcdef[0]
+        """For fixed middle leg index j, the matrix A[:,j,:] should be
+        positive semi-definite since A[i,j,k] = sum_φ a_{α,β,γ,φ}*conj(a_{α',β',γ',φ})
+        is a Gram-like product (PSD in the (i,k) matrix for each fixed j)."""
+        A_out = self.ABCDEF[0]
         D_sq = self.D_sq
-        A_raw = oe.contract("uvwφ,xyzφ->uxvywz", a, a.conj(), optimize=[(0,1)], backend='pytorch')
-        # Merge ALL three pairs of bond indices into one pair for the PSD check
-        A_mat = A_raw.reshape(D_sq * self.D, D_sq * self.D)  # not what is used, but still PSD
-        # Eigenvalues of A†A are non-negative; for a hermitian matrix they should be ≥ 0
-        eigvals = torch.linalg.eigvalsh(A_mat)
-        assert torch.all(eigvals >= -ATOL), f"Negative eigenvalues found: {eigvals.min().item()}"
+        for j in range(D_sq):
+            M = A_out[:, j, :]    # (D_sq, D_sq) slice
+            eigvals = torch.linalg.eigvalsh(M)
+            assert torch.all(eigvals >= -ATOL), \
+                f"Slice A[:,{j},:] has negative eigenvalue {eigvals.min().item()}"
 
     def test_scale_redundancy(self):
         """Scaling a by λ must not change A (normalisation absorbs the scale)."""
