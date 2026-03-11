@@ -68,7 +68,7 @@ import matplotlib.pyplot as plt
 import opt_einsum as oe
 import torch
 
-from core_unrestricted import (
+from core_unrestricted_two_tensors import (
     normalize_tensor,
     initialize_abcdef,
     abcdef_to_ABCDEF,
@@ -120,7 +120,7 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 #             receive EQUAL time budget and IDENTICAL L-BFGS settings, making
 #             results at different chi directly comparable.
 
-DEFAULT_D_BUDGET_FRACS = {2: 0.1, 3: 0.4, 4: 0.5}
+DEFAULT_D_BUDGET_FRACS = {2: 0.07, 3: 0.33, 4: 0.6}
 #   Fraction of the total wall-clock budget allocated to each D_bond value.
 #   Normalised to sum=1 before use, so only the RATIOS matter.
 #   Rationale:
@@ -345,9 +345,9 @@ def pad_tensor(t: torch.Tensor, old_D: int, new_D: int,
     return normalize_tensor(out)
 
 
-def evaluate_energy_clean(a, b, c, d, e, f,
-                          Hs, chi: int, D_bond: int) -> float:
+def evaluate_energy_clean(a, b, Hs, chi: int, D_bond: int) -> float:
     """Re-converge environment from scratch and return total energy (float)."""
+    c, d, e, f = a, b, a, b
     D_sq = D_bond ** 2
     with torch.no_grad():
         A, B, C, Dt, E, F = abcdef_to_ABCDEF(a, b, c, d, e, f, D_sq)
@@ -369,8 +369,7 @@ def save_checkpoint(path: str, abcdef: tuple, D_bond: int, chi: int,
                     step: int, log: list) -> None:
     # always save CPU tensors so checkpoints are portable across machines
     torch.save({
-        'a': abcdef[0].cpu(), 'b': abcdef[1].cpu(), 'c': abcdef[2].cpu(),
-        'd': abcdef[3].cpu(), 'e': abcdef[4].cpu(), 'f': abcdef[5].cpu(),
+        'a': abcdef[0].cpu(), 'b': abcdef[1].cpu(),
         'D_bond': D_bond, 'chi': chi,
         'loss': loss, 'energy': energy,
         'step': step, 'timestamp': timestamp(),
@@ -406,16 +405,16 @@ def optimize_at_chi(
 
     # initialise tensors — always on DEVICE
     if init_abcdef is not None:
-        a, b, c, d, e, f = [t.detach().clone().to(torch.complex64).to(DEVICE)
-                             for t in init_abcdef]
+        a = init_abcdef[0].detach().clone().to(torch.complex64).to(DEVICE)
+        b = init_abcdef[1].detach().clone().to(torch.complex64).to(DEVICE)
     else:
-        a, b, c, d, e, f = initialize_abcdef('random', D_bond, d_PHYS, INIT_NOISE)
-        a, b, c, d, e, f = [t.to(DEVICE) for t in (a, b, c, d, e, f)]
-    for t in (a, b, c, d, e, f):
-        t.requires_grad_(True)
+        _init = initialize_abcdef('random', D_bond, d_PHYS, INIT_NOISE)
+        a, b = _init[0].to(DEVICE), _init[1].to(DEVICE)
+    a.requires_grad_(True)
+    b.requires_grad_(True)
 
     best_loss     = float('inf')
-    best_abcdef   = tuple(t.detach().clone() for t in (a, b, c, d, e, f))
+    best_abcdef   = (a.detach().clone(), b.detach().clone())
     prev_loss     = None
     loss_history  = collections.deque(maxlen=12)  # cycle detection up to length 12
     step          = step_offset
@@ -429,14 +428,10 @@ def optimize_at_chi(
         with torch.no_grad():
             a.data = normalize_tensor(a.data)
             b.data = normalize_tensor(b.data)
-            c.data = normalize_tensor(c.data)
-            d.data = normalize_tensor(d.data)
-            e.data = normalize_tensor(e.data)
-            f.data = normalize_tensor(f.data)
 
         # fresh L-BFGS for this outer step
         optimizer = torch.optim.LBFGS(
-            [a, b, c, d, e, f],
+            [a, b],
             lr=LBFGS_LR,
             max_iter=lbfgs_max_iter,
             tolerance_grad=OPT_TOL_GRAD,
@@ -447,6 +442,7 @@ def optimize_at_chi(
 
         # converge environment (no grad); ctm_steps returned directly from core
         with torch.no_grad():
+            c, d, e, f = a, b, a, b
             A, B, C, D, E, F = abcdef_to_ABCDEF(a, b, c, d, e, f, D_sq)
             (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
              C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
@@ -459,6 +455,7 @@ def optimize_at_chi(
         # closure: cheap energy + backward through a..f only
         def closure():
             optimizer.zero_grad()
+            c, d, e, f = a, b, a, b
             loss = (
                 energy_expectation_nearest_neighbor_6_bonds(
                     a, b, c, d, e, f,
@@ -487,7 +484,7 @@ def optimize_at_chi(
 
         if loss_item < best_loss:
             best_loss   = loss_item
-            best_abcdef = tuple(t.detach().clone() for t in (a, b, c, d, e, f))
+            best_abcdef = (a.detach().clone(), b.detach().clone())
             if best_path:
                 save_checkpoint(best_path, best_abcdef, D_bond, chi,
                                 best_loss, None, step, loss_log)
@@ -650,8 +647,7 @@ def main():
         resume_D   = ckpt.get('D_bond')
         resume_chi = ckpt.get('chi')
         # load to DEVICE so the optimizer immediately uses the right device
-        best_abcdef_by_D[resume_D] = tuple(
-            ckpt[k].to(DEVICE) for k in ('a', 'b', 'c', 'd', 'e', 'f'))
+        best_abcdef_by_D[resume_D] = (ckpt['a'].to(DEVICE), ckpt['b'].to(DEVICE))
         global_step = ckpt.get('step', 0) + 1
         print(f"  Resumed from {args.resume}  "
               f"(D={resume_D}, chi={resume_chi}, "

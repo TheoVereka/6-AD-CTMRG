@@ -49,6 +49,12 @@ def normalize_tensor(tensor):
 
 
 
+# ── Two-tensor ansatz:  c = e = a,  d = f = b ──────────────────────────
+def _expand_two(a, b):
+    """Return all six site tensors from the two free tensors a, b."""
+    return a, b, a, b, a, b
+
+
 def initialize_abcdef(initialize_way:str, D_bond:int, d_PHYS:int, noise_scale:float):
     """
     Initialise the six single-layer iPEPS site tensors a, b, c, d, e, f.
@@ -1235,17 +1241,15 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
     """
     D_squared = D_bond ** 2
 
-    # ── 1. Initialise site tensors ────────────────────────────────────────────
+    # ── 1. Initialise site tensors (two free tensors: a, b) ─────────────────
     if init_abcdef is not None:
-        a, b, c, d, e, f = [t.detach().clone().to(torch.complex64) for t in init_abcdef]
+        a = init_abcdef[0].detach().clone().to(torch.complex64)
+        b = init_abcdef[1].detach().clone().to(torch.complex64)
     else:
-        a, b, c, d, e, f = initialize_abcdef(a2f_initialize_way, D_bond, d_PHYS, a2f_noise_scale)
+        _init = initialize_abcdef(a2f_initialize_way, D_bond, d_PHYS, a2f_noise_scale)
+        a, b = _init[0], _init[1]
     a.requires_grad_(True)
     b.requires_grad_(True)
-    c.requires_grad_(True)
-    d.requires_grad_(True)
-    e.requires_grad_(True)
-    f.requires_grad_(True)
 
     prev_loss = None
     loss_item: float = float('nan')
@@ -1260,21 +1264,15 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
     # quasi-Newton updates built against a different loss landscape.
     for opt_step in range(max_opt_steps):
 
-        # 3a. Normalise a–f (scale redundancy; no-op on first step if init is
-        #     already unit-norm, harmless otherwise).  Done via .data so that
-        #     the computation graph and grad accumulators are untouched.
+        # 3a. Normalise a, b (scale redundancy).  Derived tensors follow.
         with torch.no_grad():
             a.data = normalize_tensor(a.data)
             b.data = normalize_tensor(b.data)
-            c.data = normalize_tensor(c.data)
-            d.data = normalize_tensor(d.data)
-            e.data = normalize_tensor(e.data)
-            f.data = normalize_tensor(f.data)
 
         # 3b. Fresh L-BFGS for this outer step (environment will change, so old
         #     curvature history is irrelevant and would only mislead the solver).
         optimizer = torch.optim.LBFGS(
-            [a, b, c, d, e, f],
+            [a, b],
             lr=lbfgs_lr,
             max_iter=lbfgs_max_iter,
             tolerance_grad=opt_tolerance_grad,
@@ -1287,6 +1285,7 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
         #     No gradients needed here — the environment is treated as a fixed
         #     external field during the L-BFGS line search.
         with torch.no_grad():
+            a, b, c, d, e, f = _expand_two(a, b)
             A, B, C, D, E, F = abcdef_to_ABCDEF(a, b, c, d, e, f, D_squared)
             
             (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
@@ -1299,7 +1298,7 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
         # 3d. L-BFGS closure: energy evaluation + backward through a...f only.
         def closure():
             optimizer.zero_grad()
-
+            _, _, c, d, e, f = _expand_two(a, b)  # c=a,d=b,e=a,f=b; a,b captured from outer scope
             loss = (energy_expectation_nearest_neighbor_6_bonds(
                         a,b,c,d,e,f, 
                         Hed,Had,Haf,Hcf,Hcb,Heb, 
@@ -1328,11 +1327,11 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
             break
         prev_loss = loss_item
 
-    return a, b, c, d, e, f, loss_item
+    return a, b, loss_item
 
 
 
-def check_optimized_iPEPS(a,b,c,d,e,f, old_loss, 
+def check_optimized_iPEPS(a, b, old_loss, 
                           Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, d_PHYS, d_PHYS^*) matrices
                           new_chi, D_bond, d_PHYS,
                           a_third_max_steps_CTMRG: int = 70, 
@@ -1341,6 +1340,7 @@ def check_optimized_iPEPS(a,b,c,d,e,f, old_loss,
                           delta_loss_threshold: float = 1e-6):
     
 
+    a, b, c, d, e, f = _expand_two(a, b)
     D_squared = D_bond ** 2
 
     with torch.no_grad():

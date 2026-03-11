@@ -49,6 +49,7 @@ Outputs (all in log/)
 """
 
 import argparse
+import collections
 import datetime
 import json
 import os
@@ -377,10 +378,11 @@ def optimize_at_chi(
     for t in (a, b, c, d, e, f):
         t.requires_grad_(True)
 
-    best_loss   = float('inf')
-    best_abcdef = tuple(t.detach().clone() for t in (a, b, c, d, e, f))
-    prev_loss   = None
-    step        = step_offset
+    best_loss     = float('inf')
+    best_abcdef   = tuple(t.detach().clone() for t in (a, b, c, d, e, f))
+    prev_loss     = None
+    loss_history  = collections.deque(maxlen=12)  # cycle detection up to length 12
+    step          = step_offset
 
     while True:
         elapsed = time.perf_counter() - t_start
@@ -461,6 +463,11 @@ def optimize_at_chi(
         if prev_loss is not None and abs(delta) < OPT_CONV_THRESHOLD:
             print(f"    Outer convergence at step {step} (Δ={delta:.2e})")
             break
+        if any(abs(loss_item - h) < 1e-10 for h in loss_history):
+            print(f"    Cycle detected at step {step} "
+                  f"(amplitude={abs(delta):.3e}); stopping.")
+            break
+        loss_history.append(loss_item)
         prev_loss = loss_item
         step += 1
 
