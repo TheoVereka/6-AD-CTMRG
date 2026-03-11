@@ -49,12 +49,6 @@ def normalize_tensor(tensor):
 
 
 
-# ── Single-tensor ansatz:  b = d = f = −a,  c = e = a ───────────────────────
-def _expand_single(a):
-    """Return all six site tensors from the single free tensor a."""
-    return a, -a, a, -a, a, -a
-
-
 def initialize_abcdef(initialize_way:str, D_bond:int, d_PHYS:int, noise_scale:float):
     """
     Initialise the six single-layer iPEPS site tensors a, b, c, d, e, f.
@@ -597,69 +591,78 @@ def check_env_convergence(lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, las
                           nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C,
                           env_conv_threshold):
     """
-    Decide whether all 9 CTMRG corner matrices have converged.
+    Decide whether all 27 CTMRG environment tensors have converged.
 
-    Convergence is measured by comparing the **singular-value spectra** of the
-    nine corner matrices (three per environment type) between consecutive
-    CTMRG cycles.  Singular values are gauge-invariant — unlike raw tensor
-    elements, they are unaffected by the sign/phase ambiguity that arises from
-    the SVD-based projectors inside ``trunc_rhoCCC``.  Using raw Frobenius
-    distance on the environment tensors would *never* converge because those
-    sign flips produce an O(1) Frobenius difference even when the physical
-    environment is at its fixed point.
-
-    The convergence metric is:
+    Convergence is measured as the RMS element-wise difference over all
+    ``(3+6)*3*2 = 54`` tensors (27 last + 27 now, but we compare pairs):
 
     .. math::
 
-        d = \\max_{c \\in \\{9\\,\\text{corners}\\}}
-              \\max_k \\left|
-                \\sigma_k^{\\text{now}}(c) - \\sigma_k^{\\text{last}}(c)
-              \\right|
+        d = \\frac{\\sqrt{\\sum_{t} \\|\\text{last}_t - \\text{now}_t\\|_F^2}}
+                  {\\sqrt{\\sum_{t} N_t}}
 
-    where :math:`\\sigma_k(c)` are the singular values of corner matrix ``c``
-    normalised so that :math:`\\sigma_1 = 1`.  The function returns
-    ``True`` when ``d < env_conv_threshold``.
+    where the sum runs over all 27 tensor pairs and ``N_t`` is the number of
+    elements in tensor ``t``.  This is the global RMS Frobenius-norm distance.
 
     The function returns ``False`` immediately when any of the ``last*``
-    corner tensors is ``None`` (i.e. during the first full cycle where not all
-    three environment types have been computed yet).
+    tensors is ``None`` (i.e. during the first full cycle where not all three
+    environment types have been computed yet).
 
     Args:
         lastC21CD … lastT1C: The 27 environment tensors from the previous
-            CTMRG cycle (corner tensors may be ``None`` during warm-up;
-            transfer tensors are accepted but not used for convergence).
+            CTMRG cycle (any may be ``None`` during warm-up).
         nowC21CD … nowT1C: The 27 environment tensors from the current cycle.
         env_conv_threshold (float): Convergence threshold for ``d``.
 
     Returns:
         bool: ``True`` iff ``d < env_conv_threshold``, ``False`` otherwise
-        (including when any ``last*`` corner tensor is ``None``).
+        (including when any ``last*`` tensor is ``None``).
     """
-
-    # Warm-up guard: all three env types must have been computed at least once.
-    if lastC21CD is None or lastC21EB is None or lastC21AF is None:
+    
+    if lastT1C is None:
         return False
+    
+    total_numel = lastC21CD.numel() + lastC32EF.numel() + lastC13AB.numel() + \
+                  lastT1F.numel()  + lastT2A.numel()  + lastT2B.numel()  + \
+                  lastT3C.numel()  + lastT3D.numel()  + lastT1E.numel()  + \
+                  lastC21EB.numel() + lastC32AD.numel() + lastC13CF.numel() + \
+                  lastT1D.numel()   + lastT2C.numel()   + lastT2F.numel()   + \
+                  lastT3E.numel()   + lastT3B.numel()   + lastT1A.numel()   + \
+                  lastC21AF.numel() + lastC32CB.numel() + lastC13ED.numel() + \
+                  lastT1B.numel()   + lastT2E.numel()   + lastT2D.numel()   + \
+                  lastT3A.numel()   + lastT3F.numel()   + lastT1C.numel()
+    
 
-    # The 9 corner pairs (last, now) across all three environment types.
-    corner_pairs = [
-        (lastC21CD, nowC21CD), (lastC32EF, nowC32EF), (lastC13AB, nowC13AB),
-        (lastC21EB, nowC21EB), (lastC32AD, nowC32AD), (lastC13CF, nowC13CF),
-        (lastC21AF, nowC21AF), (lastC32CB, nowC32CB), (lastC13ED, nowC13ED),
-    ]
+    total_sq =  torch.sum(torch.abs(lastC21CD - nowC21CD) ** 2) + \
+                torch.sum(torch.abs(lastC32EF - nowC32EF) ** 2) + \
+                torch.sum(torch.abs(lastC13AB - nowC13AB) ** 2) + \
+                torch.sum(torch.abs(lastT1F   - nowT1F  ) ** 2) + \
+                torch.sum(torch.abs(lastT2A   - nowT2A  ) ** 2) + \
+                torch.sum(torch.abs(lastT2B   - nowT2B  ) ** 2) + \
+                torch.sum(torch.abs(lastT3C   - nowT3C  ) ** 2) + \
+                torch.sum(torch.abs(lastT3D   - nowT3D  ) ** 2) + \
+                torch.sum(torch.abs(lastT1E   - nowT1E  ) ** 2) + \
+                torch.sum(torch.abs(lastC21EB - nowC21EB) ** 2) + \
+                torch.sum(torch.abs(lastC32AD - nowC32AD) ** 2) + \
+                torch.sum(torch.abs(lastC13CF - nowC13CF) ** 2) + \
+                torch.sum(torch.abs(lastT1D   - nowT1D  ) ** 2) + \
+                torch.sum(torch.abs(lastT2C   - nowT2C  ) ** 2) + \
+                torch.sum(torch.abs(lastT2F   - nowT2F  ) ** 2) + \
+                torch.sum(torch.abs(lastT3E   - nowT3E  ) ** 2) + \
+                torch.sum(torch.abs(lastT3B   - nowT3B  ) ** 2) + \
+                torch.sum(torch.abs(lastT1A   - nowT1A  ) ** 2) + \
+                torch.sum(torch.abs(lastC21AF - nowC21AF) ** 2) + \
+                torch.sum(torch.abs(lastC32CB - nowC32CB) ** 2) + \
+                torch.sum(torch.abs(lastC13ED - nowC13ED) ** 2) + \
+                torch.sum(torch.abs(lastT1B   - nowT1B  ) ** 2) + \
+                torch.sum(torch.abs(lastT2E   - nowT2E  ) ** 2) + \
+                torch.sum(torch.abs(lastT2D   - nowT2D  ) ** 2) + \
+                torch.sum(torch.abs(lastT3A   - nowT3A  ) ** 2) + \
+                torch.sum(torch.abs(lastT3F   - nowT3F  ) ** 2) + \
+                torch.sum(torch.abs(lastT1C   - nowT1C  ) ** 2)
 
-    max_delta = 0.0
-    for last_c, now_c in corner_pairs:
-        sv_last = torch.linalg.svdvals(last_c).real
-        sv_now  = torch.linalg.svdvals(now_c ).real
-        # Normalise so that the largest singular value is 1 (scale-invariant).
-        sv_last = sv_last / (sv_last[0] + 1e-30)
-        sv_now  = sv_now  / (sv_now [0] + 1e-30)
-        delta = (sv_now - sv_last).abs().max().item()
-        if delta > max_delta:
-            max_delta = delta
-
-    return bool(max_delta < env_conv_threshold)
+    rms_diff = np.sqrt(total_sq.real.item()) / np.sqrt(total_numel)
+    return bool(rms_diff < env_conv_threshold)
 
 
 
@@ -1232,12 +1235,17 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
     """
     D_squared = D_bond ** 2
 
-    # ── 1. Initialise site tensors (single free tensor: a only) ─────────────
+    # ── 1. Initialise site tensors ────────────────────────────────────────────
     if init_abcdef is not None:
-        a = init_abcdef[0].detach().clone().to(torch.complex64)
+        a, b, c, d, e, f = [t.detach().clone().to(torch.complex64) for t in init_abcdef]
     else:
-        a = initialize_abcdef(a2f_initialize_way, D_bond, d_PHYS, a2f_noise_scale)[0]
+        a, b, c, d, e, f = initialize_abcdef(a2f_initialize_way, D_bond, d_PHYS, a2f_noise_scale)
     a.requires_grad_(True)
+    b.requires_grad_(True)
+    c.requires_grad_(True)
+    d.requires_grad_(True)
+    e.requires_grad_(True)
+    f.requires_grad_(True)
 
     prev_loss = None
     loss_item: float = float('nan')
@@ -1252,14 +1260,21 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
     # quasi-Newton updates built against a different loss landscape.
     for opt_step in range(max_opt_steps):
 
-        # 3a. Normalise a (scale redundancy).  Derived tensors follow.
+        # 3a. Normalise a–f (scale redundancy; no-op on first step if init is
+        #     already unit-norm, harmless otherwise).  Done via .data so that
+        #     the computation graph and grad accumulators are untouched.
         with torch.no_grad():
             a.data = normalize_tensor(a.data)
+            b.data = normalize_tensor(b.data)
+            c.data = normalize_tensor(c.data)
+            d.data = normalize_tensor(d.data)
+            e.data = normalize_tensor(e.data)
+            f.data = normalize_tensor(f.data)
 
         # 3b. Fresh L-BFGS for this outer step (environment will change, so old
         #     curvature history is irrelevant and would only mislead the solver).
         optimizer = torch.optim.LBFGS(
-            [a],
+            [a, b, c, d, e, f],
             lr=lbfgs_lr,
             max_iter=lbfgs_max_iter,
             tolerance_grad=opt_tolerance_grad,
@@ -1272,7 +1287,6 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
         #     No gradients needed here — the environment is treated as a fixed
         #     external field during the L-BFGS line search.
         with torch.no_grad():
-            b, c, d, e, f = _expand_single(a)[1:]
             A, B, C, D, E, F = abcdef_to_ABCDEF(a, b, c, d, e, f, D_squared)
             
             (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
@@ -1285,7 +1299,7 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
         # 3d. L-BFGS closure: energy evaluation + backward through a...f only.
         def closure():
             optimizer.zero_grad()
-            b, c, d, e, f = _expand_single(a)[1:]
+
             loss = (energy_expectation_nearest_neighbor_6_bonds(
                         a,b,c,d,e,f, 
                         Hed,Had,Haf,Hcf,Hcb,Heb, 
@@ -1314,11 +1328,11 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
             break
         prev_loss = loss_item
 
-    return a, loss_item
+    return a, b, c, d, e, f, loss_item
 
 
 
-def check_optimized_iPEPS(a, old_loss, 
+def check_optimized_iPEPS(a,b,c,d,e,f, old_loss, 
                           Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, d_PHYS, d_PHYS^*) matrices
                           new_chi, D_bond, d_PHYS,
                           a_third_max_steps_CTMRG: int = 70, 
@@ -1327,7 +1341,6 @@ def check_optimized_iPEPS(a, old_loss,
                           delta_loss_threshold: float = 1e-6):
     
 
-    b, c, d, e, f = _expand_single(a)[1:]
     D_squared = D_bond ** 2
 
     with torch.no_grad():
