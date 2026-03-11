@@ -922,7 +922,7 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
                             chi: int,
                             D_squared: int,
                             a_third_max_iterations: int,
-                            env_conv_threshold: float) -> tuple[torch.Tensor | None, ...]:
+                            env_conv_threshold: float) -> tuple:
     """
     This function performs the CTMRG algorithm from the initial state to the stopping criterion.
 
@@ -934,7 +934,8 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
         env_conv_threshold (float): The threshold for environment convergence.
 
     Returns:
-        A tuple containing the final environment corner and edge transfer tensors (27 elements total).
+        A tuple of 28 elements: the 27 final environment tensors followed by
+        ctm_steps (int) — the number of CTMRG iterations actually performed.
     """
     # Initialize the environment corner and edge transfer tensors
 
@@ -973,6 +974,7 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
 
 
     # Perform the CTMRG iterations until convergence
+    ctm_steps = a_third_max_iterations  # will be overwritten on early convergence
     for iteration in range(a_third_max_iterations):
 
         if check_env_convergence(lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E, 
@@ -982,7 +984,7 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
                                  lastC21AF, lastC32CB, lastC13ED, lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C, 
                                  nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C, 
                                  env_conv_threshold):
-            print(f"Convergence achieved at iteration {iteration}.")
+            ctm_steps = iteration
             break
 
         # Update the environment corner and edge transfer tensors
@@ -1009,7 +1011,8 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
     
     return  nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, \
             nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A, \
-            nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C
+            nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C, \
+            ctm_steps
 
 
 
@@ -1288,7 +1291,8 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
             
             (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
              C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
-             C21AF, C32CB, C13ED, T1B,  T2E,  T2D,  T3A,  T3F,  T1C) = \
+             C21AF, C32CB, C13ED, T1B,  T2E,  T2D,  T3A,  T3F,  T1C,
+             _ctm_steps) = \
             CTMRG_from_init_to_stop(A, B, C, D, E, F, chi, D_squared,
                 a_third_max_steps_CTMRG, CTM_env_conv_threshold)
 
@@ -1344,7 +1348,8 @@ def check_optimized_iPEPS(a,b,c,d,e,f, old_loss,
         
         (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
          C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
-         C21AF, C32CB, C13ED, T1B,  T2E,  T2D,  T3A,  T3F,  T1C) = \
+         C21AF, C32CB, C13ED, T1B,  T2E,  T2D,  T3A,  T3F,  T1C,
+         _ctm_steps) = \
         CTMRG_from_init_to_stop(A, B, C, D, E, F, new_chi, D_squared,
                 a_third_max_steps_CTMRG, CTM_env_conv_threshold)
         
