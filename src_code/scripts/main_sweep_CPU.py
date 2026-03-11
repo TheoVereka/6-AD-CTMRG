@@ -88,8 +88,8 @@ DEFAULT_CHI_MAX = {2: 16, 3: 81, 4: 80}
 # Default chi schedules (geometric, all values in D²<chi≤D⁴)
 DEFAULT_CHI_SCHEDULES = {
     2: [5, 8, 12, 16],
-    3: [10, 18, 32, 57, 81],
-    4: [17, 26, 40, 62, 80],
+    3: [10, 18, 32],#, 57, 81],
+    4: [17, 26]#, 40, 62, 80],
 }
 
 # L-BFGS hyper-parameters
