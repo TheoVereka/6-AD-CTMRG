@@ -480,8 +480,7 @@ def initialize_environmentCTs_2(A,B,C,D,E,F, chi, D_squared):
 
 #########################################################################
     
-    # FUCK MY LIFE AND MAKE IT WORK, THAT'S ENOUGH
-    # I'M PHYSICIST NOT A PRO-CODER.
+
 
 
     matC21EB = oe.contract("YX,MYa,LXβ,amg,lbg->MmLl",

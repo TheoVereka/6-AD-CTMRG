@@ -211,6 +211,30 @@ OPT_CONV_THRESHOLD = 1e-8
 #   next (D, chi) level.  Set to 0 to disable early stopping and always
 #   run until the time budget is exhausted.
 
+# ── Optimizer choice ──────────────────────────────────────────────────────────
+
+OPTIMIZER = 'lbfgs'
+#   'lbfgs' : L-BFGS with strong-Wolfe line search (default).
+#             Converges fast on smooth landscapes; may oscillate on noisy ones.
+#   'adam'  : Adam (adaptive moment estimation).
+#             More robust on noisy/non-convex landscapes.  Each outer step runs
+#             ADAM_STEPS_PER_CTM gradient updates with a fixed environment.
+#   Override at runtime:  --optimizer {lbfgs,adam}
+
+# ── Adam hyperparameters (used only when OPTIMIZER='adam') ───────────────────
+
+ADAM_LR = 3e-4
+#   Adam learning rate.  Typical range: 1e-4 – 1e-3.
+ADAM_BETAS = (0.9, 0.999)
+#   Exponential decay rates for 1st and 2nd moment estimates.
+ADAM_EPS = 1e-8
+#   Denominator epsilon for numerical stability.
+ADAM_WEIGHT_DECAY = 0.0
+#   L2 regularisation strength.  0.0 = no regularisation (recommended).
+ADAM_STEPS_PER_CTM = 5
+#   Number of Adam gradient steps between consecutive CTMRG environment
+#   refreshes.  Higher = cheaper; lower = more accurate environment.
+
 # ── CTMRG algorithm ──────────────────────────────────────────────────────────
 #
 #   CTMRG (Corner Transfer Matrix Renormalisation Group) builds 9 corner
@@ -437,6 +461,14 @@ def optimize_at_chi(
     loss_history  = collections.deque(maxlen=12)  # cycle detection up to length 12
     step          = step_offset
 
+    # ── pre-create Adam optimizer (state persists across outer steps) ─────────
+    _adam: torch.optim.Optimizer | None = None
+    if OPTIMIZER == 'adam':
+        _adam = torch.optim.Adam(
+            [a, b, c, d, e, f],
+            lr=ADAM_LR, betas=ADAM_BETAS, eps=ADAM_EPS,
+            weight_decay=ADAM_WEIGHT_DECAY)
+
     while True:
         elapsed = time.perf_counter() - t_start
         if elapsed >= budget_seconds:
@@ -451,17 +483,6 @@ def optimize_at_chi(
             e.data = normalize_tensor(e.data)
             f.data = normalize_tensor(f.data)
 
-        # fresh L-BFGS for this outer step
-        optimizer = torch.optim.LBFGS(
-            [a, b, c, d, e, f],
-            lr=LBFGS_LR,
-            max_iter=lbfgs_max_iter,
-            tolerance_grad=OPT_TOL_GRAD,
-            tolerance_change=OPT_TOL_CHANGE,
-            history_size=LBFGS_HISTORY,
-            line_search_fn='strong_wolfe',
-        )
-
         # converge environment (no grad); ctm_steps returned directly from core
         with torch.no_grad():
             A, B, C, D, E, F = abcdef_to_ABCDEF(a, b, c, d, e, f, D_sq)
@@ -473,10 +494,8 @@ def optimize_at_chi(
                     A, B, C, D, E, F, chi, D_sq,
                     CTM_MAX_STEPS, CTM_CONV_THR)
 
-        # closure: cheap energy + backward through a..f only
-        def closure():
-            optimizer.zero_grad()
-            loss = (
+        def _energy():
+            return (
                 energy_expectation_nearest_neighbor_6_bonds(
                     a, b, c, d, e, f,
                     Hs[0], Hs[1], Hs[2], Hs[3], Hs[4], Hs[5],
@@ -488,11 +507,31 @@ def optimize_at_chi(
                     chi, D_bond,
                     C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C)
             ).real
-            loss.backward()
-            return loss
 
-        loss_val  = optimizer.step(closure)
-        loss_item = loss_val.item()
+        if OPTIMIZER == 'lbfgs':
+            _opt = torch.optim.LBFGS(
+                [a, b, c, d, e, f],
+                lr=LBFGS_LR,
+                max_iter=lbfgs_max_iter,
+                tolerance_grad=OPT_TOL_GRAD,
+                tolerance_change=OPT_TOL_CHANGE,
+                history_size=LBFGS_HISTORY,
+                line_search_fn='strong_wolfe',
+            )
+            def closure():
+                _opt.zero_grad()
+                loss = _energy()
+                loss.backward()
+                return loss
+            loss_val  = _opt.step(closure)
+            loss_item = loss_val.item()
+        else:  # adam — persistent state, ADAM_STEPS_PER_CTM micro-steps per env refresh
+            for _s in range(ADAM_STEPS_PER_CTM):
+                _adam.zero_grad()
+                _loss = _energy()
+                _loss.backward()
+                _adam.step()
+            loss_item = _loss.detach().item()
         delta     = (loss_item - prev_loss) if prev_loss is not None else float('inf')
         elapsed   = time.perf_counter() - t_start
 
@@ -532,6 +571,7 @@ def optimize_at_chi(
 # ══════════════════════════════════════════════════════════════════════════════
 
 def main():
+    global CDTYPE, OPTIMIZER
     parser = argparse.ArgumentParser(
         description="10-12 h iPEPS benchmark: sweep D_bond (outer) × chi (inner) [GPU]",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -565,12 +605,16 @@ def main():
         '--double', action='store_true', default=USE_DOUBLE_PRECISION,
         help='Use float64/complex128 everywhere (default: float32/complex64). '
              'Same throughput on CPU/MKL; 2–4× slower on CUDA consumer GPUs.')
+    parser.add_argument(
+        '--optimizer', choices=['lbfgs', 'adam'], default=OPTIMIZER,
+        help="Optimiser: 'lbfgs' (default, fast on smooth landscapes) or "
+             "'adam' (more robust on noisy landscapes, constant LR).")
     args = parser.parse_args()
 
-    # ── Precision setup (must happen before any tensor is allocated) ────────────
-    global CDTYPE
+    # ── Precision + optimizer setup ───────────────────────────────────────────
     CDTYPE = torch.complex128 if args.double else torch.complex64
     set_dtype(args.double)
+    OPTIMIZER = args.optimizer
 
     # ── device info ───────────────────────────────────────────────────────────
     if DEVICE.type == 'cuda':
@@ -641,9 +685,36 @@ def main():
                  for D in D_bond_list}
 
     # ── output directory ──────────────────────────────────────────────────────
-    output_dir = args.output_dir or os.path.join(
-        os.path.dirname(__file__), '..', 'log')
+    run_ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    _default_outdir = os.path.join('/home/chye/6ADctmrg/data/raw',
+                                   f'6tensors_{run_ts}')
+    output_dir = args.output_dir or _default_outdir
     os.makedirs(output_dir, exist_ok=True)
+
+    # ── save hyperparameters to YAML (JSON fallback if PyYAML not installed) ──
+    _hp = dict(
+        ansatz='6tensors',
+        optimizer=OPTIMIZER,
+        lbfgs_lr=LBFGS_LR, lbfgs_max_iter=LBFGS_MAX_ITER,
+        lbfgs_history=LBFGS_HISTORY, opt_tol_grad=OPT_TOL_GRAD,
+        opt_tol_change=OPT_TOL_CHANGE, opt_conv_threshold=OPT_CONV_THRESHOLD,
+        adam_lr=ADAM_LR, adam_betas=list(ADAM_BETAS), adam_eps=ADAM_EPS,
+        adam_weight_decay=ADAM_WEIGHT_DECAY, adam_steps_per_ctm=ADAM_STEPS_PER_CTM,
+        ctm_max_steps=CTM_MAX_STEPS, ctm_conv_thr=CTM_CONV_THR,
+        J=args.J, d_phys=d_PHYS, double=args.double, device=str(DEVICE),
+        hours=args.hours, D_bond_list=D_bond_list,
+        chi_max_map={str(k): v for k, v in chi_max_map.items()},
+        schedules={str(k): v for k, v in schedules.items()},
+        run_timestamp=run_ts,
+    )
+    try:
+        import yaml
+        with open(os.path.join(output_dir, 'hyperparams.yaml'), 'w') as _fp:
+            yaml.dump(_hp, _fp, default_flow_style=False, sort_keys=False)
+    except ImportError:
+        import json as _json
+        with open(os.path.join(output_dir, 'hyperparams.yaml'), 'w') as _fp:
+            _json.dump(_hp, _fp, indent=2)
 
     # ── Hamiltonians — placed on DEVICE ───────────────────────────────────────
     H  = build_heisenberg_H(args.J, d_PHYS)   # already on DEVICE
