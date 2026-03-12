@@ -118,7 +118,7 @@ from core_unrestricted import (
 # Time Budget
 # ══════════════════════════════════════════════════════════════════════════════
 
-TOTAL_BUDGET_HOURS = 0.3
+TOTAL_BUDGET_HOURS = 0.1
 
 # Total wall-clock time for the entire sweep.  The sweep is designed to run
 # for a fixed time rather than a fixed number of steps, so that results at
@@ -580,7 +580,7 @@ def optimize_at_chi(
         elapsed   = time.perf_counter() - t_start
 
         # ──────────────────────────────────────────────────────────────────────
-        # DIAGNOSTIC CODE: Detect and log extreme loss values
+        # DIAGNOSTIC CODE: Enhanced detection and logging of loss values
         # ──────────────────────────────────────────────────────────────────────
         
         # Compute individual energy components
@@ -600,26 +600,59 @@ def optimize_at_chi(
                 Hs[6],Hs[7],Hs[8], chi, D_bond,
                 C21AF,C32CB,C13ED,T1B,T2E,T2D,T3A,T3F,T1C).real.item()
         
-        # Check if loss exceeds physical bounds
+        # Physical bounds and diagnostic levels
         N_BONDS = 9
         PHYSICAL_MIN_PER_BOND = -0.75
         PHYSICAL_MAX_PER_BOND = +0.25
         
         loss_per_bond = loss_item / N_BONDS
-        is_extreme = (loss_per_bond < PHYSICAL_MIN_PER_BOND - 0.1 or 
-                      loss_per_bond > PHYSICAL_MAX_PER_BOND + 0.1)
+        E1_per_bond = E1_diag / 3
+        E2_per_bond = E2_diag / 3
+        E3_per_bond = E3_diag / 3
+        
+        # Multiple diagnostic levels
+        is_extreme = (loss_per_bond < PHYSICAL_MIN_PER_BOND - 0.05 or 
+                      loss_per_bond > PHYSICAL_MAX_PER_BOND + 0.05)
+        is_suspicious = (loss_per_bond < PHYSICAL_MIN_PER_BOND + 0.1 or 
+                        loss_per_bond > PHYSICAL_MAX_PER_BOND - 0.1)
+        is_component_extreme = (abs(E1_per_bond) > 2.0 or abs(E2_per_bond) > 2.0 or abs(E3_per_bond) > 2.0)
+        
+        # Track diagnostic statistics
+        if not hasattr(optimize_at_chi, '_diag_stats'):
+            optimize_at_chi._diag_stats = {
+                'total_steps': 0, 'extreme_count': 0, 'suspicious_count': 0, 'component_extreme_count': 0,
+                'min_loss_per_bond': float('inf'), 'max_loss_per_bond': float('-inf'),
+                'extreme_examples': []
+            }
+        
+        stats = optimize_at_chi._diag_stats
+        stats['total_steps'] += 1
+        stats['min_loss_per_bond'] = min(stats['min_loss_per_bond'], loss_per_bond)
+        stats['max_loss_per_bond'] = max(stats['max_loss_per_bond'], loss_per_bond)
         
         if is_extreme:
+            stats['extreme_count'] += 1
+            stats['extreme_examples'].append((step, loss_per_bond, E1_per_bond, E2_per_bond, E3_per_bond))
+        if is_suspicious:
+            stats['suspicious_count'] += 1
+        if is_component_extreme:
+            stats['component_extreme_count'] += 1
+        
+        # Report extreme cases
+        if is_extreme or is_component_extreme:
             print("\n" + "="*70)
-            print(f"⚠️  EXTREME LOSS DETECTED AT STEP {step}")
+            if is_extreme:
+                print(f"⚠️  EXTREME LOSS DETECTED AT STEP {step}")
+            else:
+                print(f"⚠️  EXTREME COMPONENT DETECTED AT STEP {step}")
             print("="*70)
             print(f"Loss: {loss_item:+.6f} (per bond: {loss_per_bond:+.6f})")
             print(f"Physical bounds: [{PHYSICAL_MIN_PER_BOND:.2f}, {PHYSICAL_MAX_PER_BOND:.2f}] per bond")
             
             print(f"\nEnergy components:")
-            print(f"  E1 (bonds EB,AD,CF): {E1_diag:+.6f}  (per bond: {E1_diag/3:+.6f})")
-            print(f"  E2 (bonds AF,CB,ED): {E2_diag:+.6f}  (per bond: {E2_diag/3:+.6f})")
-            print(f"  E3 (bonds CD,EF,AB): {E3_diag:+.6f}  (per bond: {E3_diag/3:+.6f})")
+            print(f"  E1 (bonds EB,AD,CF): {E1_diag:+.6f}  (per bond: {E1_per_bond:+.6f})")
+            print(f"  E2 (bonds AF,CB,ED): {E2_diag:+.6f}  (per bond: {E2_per_bond:+.6f})")
+            print(f"  E3 (bonds CD,EF,AB): {E3_diag:+.6f}  (per bond: {E3_per_bond:+.6f})")
             print(f"  Sum: {E1_diag + E2_diag + E3_diag:+.6f}")
             print(f"  Reported loss_item: {loss_item:+.6f}")
             print(f"  Discrepancy: {abs(loss_item - (E1_diag + E2_diag + E3_diag)):.3e}")
@@ -663,12 +696,17 @@ def optimize_at_chi(
                 'E1': E1_diag,
                 'E2': E2_diag,
                 'E3': E3_diag,
+                'E1_per_bond': E1_per_bond,
+                'E2_per_bond': E2_per_bond,
+                'E3_per_bond': E3_per_bond,
                 'ctm_steps': ctm_steps,
                 'ctm_converged': ctm_steps < CTM_MAX_STEPS,
                 'tensor_norms': tensor_norms,
                 'has_nan': has_nan,
                 'has_inf': has_inf,
-                'optimizer': OPTIMIZER
+                'optimizer': OPTIMIZER,
+                'is_extreme': is_extreme,
+                'is_component_extreme': is_component_extreme
             }
             
             with open(diag_file, 'w') as f:
@@ -679,17 +717,25 @@ def optimize_at_chi(
                 'a': a.detach().cpu(),
                 'b': b.detach().cpu(),
                 'c': c.detach().cpu(),
-                'd': d.detach().cpu(),
+                'd': d.detach().cpu(), 
                 'e': e.detach().cpu(),
                 'f': f.detach().cpu(),
             }, os.path.join(diag_dir, f"tensors_step_{step}.pt"))
+        
+        # Print periodic progress summary with more detail  
+        if step % 10 == 0 or is_suspicious:
+            print(f"    step {step:5d}  ctm={ctm_steps:3d}  loss={loss_item:+.10f}"
+                  f"  (E1:{E1_per_bond:+.3f} E2:{E2_per_bond:+.3f} E3:{E3_per_bond:+.3f})"
+                  f"  Δ={delta:+.3e}  {elapsed:.0f}/{budget_seconds:.0f}s")
+        else:
+            print(f"    step {step:5d}  ctm={ctm_steps:3d}  loss={loss_item:+.10f}"
+                  f"  Δ={delta:+.3e}  {elapsed:.0f}/{budget_seconds:.0f}s")
         
         # ────────────────────────────────────────────────────────────────────────
         # END DIAGNOSTIC CODE
         # ────────────────────────────────────────────────────────────────────────
 
-        print(f"    step {step:5d}  ctm={ctm_steps:3d}  loss={loss_item:+.10f}"
-              f"  Δ={delta:+.3e}  {elapsed:.0f}/{budget_seconds:.0f}s")
+        # Note: Progress printing is now handled in diagnostic section above
         loss_log.append({'step': step, 'ctm_steps': ctm_steps, 'loss': loss_item,
                          'D_bond': D_bond, 'chi': chi,
                          'elapsed': round(elapsed, 1)})
@@ -715,6 +761,22 @@ def optimize_at_chi(
         loss_history.append(loss_item)
         prev_loss = loss_item
         step += 1
+
+    # Print diagnostic summary
+    if hasattr(optimize_at_chi, '_diag_stats'):
+        stats = optimize_at_chi._diag_stats
+        print(f"\n🔍 DIAGNOSTIC SUMMARY (D={D_bond}, chi={chi}):")
+        print(f"   Total steps: {stats['total_steps']}")
+        print(f"   Loss range per bond: [{stats['min_loss_per_bond']:+.6f}, {stats['max_loss_per_bond']:+.6f}]")
+        print(f"   Extreme cases: {stats['extreme_count']} ({100*stats['extreme_count']/stats['total_steps']:.1f}%)")
+        print(f"   Suspicious cases: {stats['suspicious_count']} ({100*stats['suspicious_count']/stats['total_steps']:.1f}%)")
+        print(f"   Component extremes: {stats['component_extreme_count']} ({100*stats['component_extreme_count']/stats['total_steps']:.1f}%)")
+        if stats['extreme_examples']:
+            print(f"   Examples of extreme losses (step, total_per_bond, E1_per_bond, E2_per_bond, E3_per_bond):")
+            for example in stats['extreme_examples'][:3]:  # Show first 3 examples
+                step_ex, total_ex, e1_ex, e2_ex, e3_ex = example
+                print(f"     Step {step_ex}: {total_ex:+.6f} = ({e1_ex:+.6f}, {e2_ex:+.6f}, {e3_ex:+.6f})")
+        print()
 
     return (*best_abcdef, best_loss, step)
 

@@ -1551,3 +1551,21 @@ def check_optimized_iPEPS(a,b,c,d,e,f, old_loss,
         delta_loss = new_loss_under_new_chi - old_loss
         print(f"  Check optimized iPEPS with chi={new_chi}: loss = {new_loss_under_new_chi:+.10f}  Δloss = {delta_loss:.3e}")
         return bool(abs(delta_loss) < delta_loss_threshold)
+
+
+
+
+
+
+
+def build_heisenberg_H(J: float = 1.0, d: int = 2) -> torch.Tensor:
+    sx = torch.tensor([[0, 1], [1, 0]], dtype=CDTYPE) / 2
+    sy = torch.tensor([[0, -1j], [1j, 0]], dtype=CDTYPE) / 2
+    sz = torch.tensor([[1, 0], [0, -1]], dtype=CDTYPE) / 2
+    SdotS = (oe.contract("ij,kl->ikjl", sx, sx)
+           + oe.contract("ij,kl->ikjl", sy, sy)
+           + oe.contract("ij,kl->ikjl", sz, sz))
+    return J * SdotS
+
+
+    
