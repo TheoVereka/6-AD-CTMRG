@@ -222,11 +222,15 @@ LBFGS_LR = 0.1
 #   and almost always correct.  Only change if you observe line-search
 #   failures or divergence.
 
-LBFGS_HISTORY = 100
+LBFGS_HISTORY = LBFGS_MAX_ITER
 #   Number of (s, y) curvature vector pairs retained for the L-BFGS inverse-
-#   Hessian approximation.  More pairs → better Hessian estimate at the cost
-#   of extra memory (~100 × 6 × D³×d_phys complex64 tensors).  100 is
-#   generous; 50 is fine for most problem sizes.
+#   Hessian approximation.  In our alternating-optimisation scheme the LBFGS
+#   instance is RECREATED from scratch at every outer step, so curvature pairs
+#   accumulate only within a single optimizer.step() call (≤ LBFGS_MAX_ITER
+#   sub-iterations).  Any history_size > LBFGS_MAX_ITER allocates buffer
+#   memory that is never filled — setting it equal to LBFGS_MAX_ITER is exact
+#   and wastes nothing.  Old values like 50–100 were appropriate for classical
+#   L-BFGS that runs continuously; they do not apply here.
 
 OPT_TOL_GRAD = 1e-7
 #   L-BFGS inner convergence criterion on the infinity-norm of the gradient:
@@ -246,7 +250,7 @@ OPT_CONV_THRESHOLD = 1e-8
 
 # ── Optimizer choice ──────────────────────────────────────────────────────────
 
-OPTIMIZER = 'lbfgs'
+OPTIMIZER = 'adam'
 #   'lbfgs' : L-BFGS with strong-Wolfe line search (default).
 #             Converges fast on smooth landscapes; may oscillate on noisy ones.
 #   'adam'  : Adam (adaptive moment estimation).

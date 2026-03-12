@@ -136,7 +136,7 @@ USE_DOUBLE_PRECISION = True
 #             receive EQUAL time budget and IDENTICAL L-BFGS settings, making
 #             results at different chi directly comparable.
 
-DEFAULT_D_BUDGET_FRACS = {2: 0.1, 3: 0.4, 4: 0.5}
+DEFAULT_D_BUDGET_FRACS = {2: 0.15, 3: 0.35, 4: 0.5}
 #   Fraction of the total wall-clock budget allocated to each D_bond value.
 #   Normalised to sum=1 before use, so only the RATIOS matter.
 #   Rationale:
@@ -191,11 +191,15 @@ LBFGS_LR = 0.1 # TODO!!!!!!!!!!!
 #   and almost always correct.  Only change if you observe line-search
 #   failures or divergence.
 
-LBFGS_HISTORY = 100
+LBFGS_HISTORY = LBFGS_MAX_ITER
 #   Number of (s, y) curvature vector pairs retained for the L-BFGS inverse-
-#   Hessian approximation.  More pairs → better Hessian estimate at the cost
-#   of extra memory (~100 × 6 × D³×d_phys complex64 tensors).  100 is
-#   generous; 50 is fine for most problem sizes.
+#   Hessian approximation.  In our alternating-optimisation scheme the LBFGS
+#   instance is RECREATED from scratch at every outer step, so curvature pairs
+#   accumulate only within a single optimizer.step() call (≤ LBFGS_MAX_ITER
+#   sub-iterations).  Any history_size > LBFGS_MAX_ITER allocates buffer
+#   memory that is never filled — setting it equal to LBFGS_MAX_ITER is exact
+#   and wastes nothing.  Old values like 50–100 were appropriate for classical
+#   L-BFGS that runs continuously; they do not apply here.
 
 OPT_TOL_GRAD = 1e-7
 #   L-BFGS inner convergence criterion on the infinity-norm of the gradient:
@@ -215,7 +219,7 @@ OPT_CONV_THRESHOLD = 1e-8
 
 # ── Optimizer choice ──────────────────────────────────────────────────────────
 
-OPTIMIZER = 'lbfgs'
+OPTIMIZER = 'adam'
 #   'lbfgs' : L-BFGS with strong-Wolfe line search (default).
 #             Converges fast on smooth landscapes; may oscillate on noisy ones.
 #   'adam'  : Adam (adaptive moment estimation).
@@ -245,13 +249,13 @@ ADAM_STEPS_PER_CTM = 5
 #   CTMRG "step" grows the environment by one unit-cell layer and then
 #   compresses via SVD truncation to keep the environment bond dim = chi.
 
-CTM_MAX_STEPS = 90
+CTM_MAX_STEPS = 70
 #   Hard cap on CTMRG iterations per environment convergence call.
 #   With the singular-value convergence criterion and CTM_CONV_THR=1e-3,
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
 #   ansatz ~4 steps, 6-tensor ~40 steps).  90 is a safe upper bound.
 
-CTM_CONV_THR = 1e-3
+CTM_CONV_THR = 1e-9
 #   CTMRG convergence threshold: stop iterating when the max change in
 #   normalised corner singular values between consecutive steps is below
 #   this value.  The convergence criterion compares the spectra of all 9

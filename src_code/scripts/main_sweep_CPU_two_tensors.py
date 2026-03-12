@@ -95,7 +95,7 @@ from core_unrestricted_two_tensors import (
 # Time Budget
 # ══════════════════════════════════════════════════════════════════════════════
 
-TOTAL_BUDGET_HOURS = 0.5
+TOTAL_BUDGET_HOURS = 1.0
 
 # Total wall-clock time for the entire sweep.  The sweep is designed to run
 # for a fixed time rather than a fixed number of steps, so that results at
@@ -144,7 +144,14 @@ LBFGS_LR = 0.02
 #   Two-tensor ansatz has no single-tensor chain-rule amplification,
 #   so the standard lr=1.0 is correct.
 
-LBFGS_HISTORY = 100
+LBFGS_HISTORY = LBFGS_MAX_ITER
+#   Number of (s, y) curvature vector pairs retained for the L-BFGS inverse-
+#   Hessian approximation.  In our alternating-optimisation scheme the LBFGS
+#   instance is RECREATED from scratch at every outer step, so curvature pairs
+#   accumulate only within a single optimizer.step() call (≤ LBFGS_MAX_ITER
+#   sub-iterations).  Any history_size > LBFGS_MAX_ITER allocates buffer
+#   memory that is never filled — setting it equal to LBFGS_MAX_ITER is exact
+#   and wastes nothing.
 
 OPT_TOL_GRAD = 1e-7
 OPT_TOL_CHANGE = 1e-9
@@ -168,8 +175,8 @@ ADAM_STEPS_PER_CTM = 5
 
 # ── CTMRG algorithm ──────────────────────────────────────────────────────────
 
-CTM_MAX_STEPS = 90
-CTM_CONV_THR = 1e-3
+CTM_MAX_STEPS = 70
+CTM_CONV_THR = 1e-9
 
 # ── Checkpointing & memory guard ─────────────────────────────────────────────
 

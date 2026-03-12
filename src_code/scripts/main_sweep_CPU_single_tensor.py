@@ -104,7 +104,7 @@ from core_unrestricted_single_tensor import (
 # Time Budget
 # ══════════════════════════════════════════════════════════════════════════════
 
-TOTAL_BUDGET_HOURS = 0.5
+TOTAL_BUDGET_HOURS = 1.0
 
 # Total wall-clock time for the entire sweep.  The sweep is designed to run
 # for a fixed time rather than a fixed number of steps, so that results at
@@ -172,8 +172,14 @@ LBFGS_LR = 0.01
 #   gradient amplification via chain rule compared to the unrestricted ansatz.
 #   lr=0.01 compensates; do NOT use lr=1.0 here.
 
-LBFGS_HISTORY = 100
-#   Number of (s, y) curvature vector pairs retained.
+LBFGS_HISTORY = LBFGS_MAX_ITER
+#   Number of (s, y) curvature vector pairs retained for the L-BFGS inverse-
+#   Hessian approximation.  In our alternating-optimisation scheme the LBFGS
+#   instance is RECREATED from scratch at every outer step, so curvature pairs
+#   accumulate only within a single optimizer.step() call (≤ LBFGS_MAX_ITER
+#   sub-iterations).  Any history_size > LBFGS_MAX_ITER allocates buffer
+#   memory that is never filled — setting it equal to LBFGS_MAX_ITER is exact
+#   and wastes nothing.
 
 OPT_TOL_GRAD = 1e-7
 #   L-BFGS inner convergence: infinity-norm of gradient.
@@ -205,10 +211,10 @@ ADAM_STEPS_PER_CTM = 5
 
 # ── CTMRG algorithm ──────────────────────────────────────────────────────────
 
-CTM_MAX_STEPS = 90
+CTM_MAX_STEPS = 70
 #   Hard cap on CTMRG iterations.  Single-tensor converges in ~4 steps.
 
-CTM_CONV_THR = 1e-3
+CTM_CONV_THR = 1e-9
 #   CTMRG convergence threshold (corner SVD spectrum, gauge-invariant).
 
 # ── Checkpointing & memory guard ─────────────────────────────────────────────
