@@ -22,6 +22,32 @@ import os, sys
 import torch
 
 
+# ── Precision control ─────────────────────────────────────────────────────────
+# Default: float32 / complex64 — fastest on both CPU (MKL) and CUDA.
+# Call  set_dtype(True)  BEFORE allocating any tensor to switch to
+# float64 / complex128 (double precision).
+#   CPU (Intel MKL): float64 is native → same throughput, 2× more memory.
+#   CUDA: float64 is 2–4× slower (no fp64 tensor cores on consumer GPUs).
+CDTYPE: torch.dtype = torch.complex64   # complex dtype for all tensors
+RDTYPE: torch.dtype = torch.float32     # real dtype (SVD singular values, norms)
+
+
+def set_dtype(use_double: bool) -> None:
+    """Switch all core computations between float32/complex64 and float64/complex128.
+
+    Must be called BEFORE any tensor is allocated — ideally right after import.
+
+    Args:
+        use_double: ``True``  → complex128 / float64 (double precision).
+                    ``False`` → complex64  / float32 (single precision, default).
+    """
+    global CDTYPE, RDTYPE
+    if use_double:
+        CDTYPE = torch.complex128
+        RDTYPE = torch.float64
+    else:
+        CDTYPE = torch.complex64
+        RDTYPE = torch.float32
 
 
 # for now only the case of ABCDEF, nearest neighbor, exact SVD, D^4 >= chi > D^2 .
@@ -78,12 +104,12 @@ def initialize_abcdef(initialize_way:str, D_bond:int, d_PHYS:int, noise_scale:fl
 
     if initialize_way == 'random' :
 
-        a = normalize_tensor(torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=torch.complex64))
-        b = normalize_tensor(torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=torch.complex64))
-        c = normalize_tensor(torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=torch.complex64))
-        d = normalize_tensor(torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=torch.complex64))
-        e = normalize_tensor(torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=torch.complex64))
-        f = normalize_tensor(torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=torch.complex64))
+        a = normalize_tensor(torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=CDTYPE))
+        b = normalize_tensor(torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=CDTYPE))
+        c = normalize_tensor(torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=CDTYPE))
+        d = normalize_tensor(torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=CDTYPE))
+        e = normalize_tensor(torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=CDTYPE))
+        f = normalize_tensor(torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=CDTYPE))
 
     elif initialize_way == 'product' : # product state but always with small noise
 
@@ -303,11 +329,11 @@ def initialize_environmentCTs_2(A,B,C,D,E,F, chi, D_squared):
     U1C, sv12, Vdag2D = torch.linalg.svd(T1CT2D)
 
     # adding clip to prevent sqrt of negative numbers due to numerical issues
-    # cast to complex64: singular values are real (float32) but will be mixed
-    # with complex64 U/V matrices in the diag matmul below — dtypes must match.
-    sqrt_sv23 = torch.sqrt(torch.clamp(sv23[:chi], min=1e-9)).to(torch.complex64)
-    sqrt_sv31 = torch.sqrt(torch.clamp(sv31[:chi], min=1e-9)).to(torch.complex64)
-    sqrt_sv12 = torch.sqrt(torch.clamp(sv12[:chi], min=1e-9)).to(torch.complex64)
+    # Cast to CDTYPE: singular values are real but U/V matrices are complex;
+    # dtypes must match for the diag matmul below.
+    sqrt_sv23 = torch.sqrt(torch.clamp(sv23[:chi], min=1e-9)).to(CDTYPE)
+    sqrt_sv31 = torch.sqrt(torch.clamp(sv31[:chi], min=1e-9)).to(CDTYPE)
+    sqrt_sv12 = torch.sqrt(torch.clamp(sv12[:chi], min=1e-9)).to(CDTYPE)
 
     T2E = U2E[:,:chi] @ torch.diag(sqrt_sv23)
     T3A = U3A[:,:chi] @ torch.diag(sqrt_sv31)
@@ -1228,7 +1254,7 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
 
     # ── 1. Initialise site tensors ────────────────────────────────────────────
     if init_abcdef is not None:
-        a, b, c, d, e, f = [t.detach().clone().to(torch.complex64) for t in init_abcdef]
+        a, b, c, d, e, f = [t.detach().clone().to(CDTYPE) for t in init_abcdef]
     else:
         a, b, c, d, e, f = initialize_abcdef(a2f_initialize_way, D_bond, d_PHYS, a2f_noise_scale)
     a.requires_grad_(True)

@@ -75,7 +75,11 @@ from core_unrestricted_single_tensor import (
     CTMRG_from_init_to_stop,
     energy_expectation_nearest_neighbor_6_bonds,
     energy_expectation_nearest_neighbor_other_3_bonds,
+    set_dtype,
 )
+
+# Default complex dtype — updated to complex128 by --double / USE_DOUBLE_PRECISION.
+CDTYPE: torch.dtype = torch.complex64
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Time Budget
@@ -100,6 +104,16 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║                  ALL TUNABLE PARAMETERS — EDIT HERE                     ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
+
+# ── Precision ─────────────────────────────────────────────────────────────────
+
+USE_DOUBLE_PRECISION = False
+#   False → complex64  / float32 (default): fastest on both CPU (Intel MKL)
+#            and CUDA (fp32 tensor cores give full throughput).
+#   True  → complex128 / float64: double precision.
+#            CPU (Intel MKL): float64 is native, same throughput, 2× RAM.
+#            CUDA: 2–4× slower on consumer GPUs (no fp64 tensor cores).
+#   Overrideable at runtime: --double CLI flag takes precedence.
 
 # ── Physical sweep dimensions ────────────────────────────────────────────────
 #
@@ -332,9 +346,9 @@ def validate_chi(chi: int, D_bond: int, label: str = '') -> None:
 
 
 def build_heisenberg_H(J: float = 1.0, d: int = 2) -> torch.Tensor:
-    sx = torch.tensor([[0, 1], [1, 0]], dtype=torch.complex64) / 2
-    sy = torch.tensor([[0, -1j], [1j, 0]], dtype=torch.complex64) / 2
-    sz = torch.tensor([[1, 0], [0, -1]], dtype=torch.complex64) / 2
+    sx = torch.tensor([[0, 1], [1, 0]], dtype=CDTYPE) / 2
+    sy = torch.tensor([[0, -1j], [1j, 0]], dtype=CDTYPE) / 2
+    sz = torch.tensor([[1, 0], [0, -1]], dtype=CDTYPE) / 2
     SdotS = (oe.contract("ij,kl->ikjl", sx, sx)
            + oe.contract("ij,kl->ikjl", sy, sy)
            + oe.contract("ij,kl->ikjl", sz, sz))
@@ -344,7 +358,7 @@ def build_heisenberg_H(J: float = 1.0, d: int = 2) -> torch.Tensor:
 def pad_tensor(t: torch.Tensor, old_D: int, new_D: int,
                d_PHYS: int, noise: float) -> torch.Tensor:
     out = noise * torch.randn(new_D, new_D, new_D, d_PHYS,
-                              dtype=torch.complex64, device=DEVICE)
+                              dtype=CDTYPE, device=DEVICE)
     s = old_D
     out[:s, :s, :s, :] = t[:s, :s, :s, :].to(DEVICE)
     return normalize_tensor(out)
@@ -410,7 +424,7 @@ def optimize_at_chi(
 
     # initialise tensors — always on DEVICE
     if init_abcdef is not None:
-        a = init_abcdef[0].detach().clone().to(torch.complex64).to(DEVICE)
+        a = init_abcdef[0].detach().clone().to(CDTYPE).to(DEVICE)
     else:
         a = initialize_abcdef('random', D_bond, d_PHYS, INIT_NOISE)[0].to(DEVICE)
     a.requires_grad_(True)
@@ -542,7 +556,16 @@ def main():
     parser.add_argument(
         '--noise', type=float, default=PAD_NOISE,
         help='Gaussian noise amplitude when padding tensors for D→D+1 (= PAD_NOISE).')
+    parser.add_argument(
+        '--double', action='store_true', default=USE_DOUBLE_PRECISION,
+        help='Use float64/complex128 everywhere (default: float32/complex64). '
+             'Same throughput on CPU/MKL; 2–4× slower on CUDA consumer GPUs.')
     args = parser.parse_args()
+
+    # ── Precision setup (must happen before any tensor is allocated) ────────────
+    global CDTYPE
+    CDTYPE = torch.complex128 if args.double else torch.complex64
+    set_dtype(args.double)
 
     # ── device info ───────────────────────────────────────────────────────────
     if DEVICE.type == 'cuda':

@@ -1,51 +1,39 @@
 #!/usr/bin/env python3
 """
-main_sweep.py
-=============
-10-12 h iPEPS benchmark that sweeps over growing D_bond (outer loop) and
-growing chi (inner loop) for the AFM Heisenberg model on the 6-site
-honeycomb unit cell, using AD-CTMRG.
+main_sweep_CPU_two_tensors.py
+=============================
+CPU edition of main_sweep_GPU_two_tensors.py — two-tensor ansatz
+  c = e = a,   d = f = b   (4 constraints, 2 free tensors).
+
+This is a good middle ground between the full 6-tensor unrestricted
+ansatz and the very restricted single-tensor ansatz:
+  • More expressive than single-tensor (captures staggered order better).
+  • Cheaper than 6-tensor (~2x fewer gradient parameters).
+  • CTMRG convergence in ~5-15 steps (between single ~4 and 6-tensor ~40).
+  • Standard LBFGS_LR = 1.0 (no gradient amplification from constraints).
+  • On 4-16 core CPU hardware this can keep pace with a typical laptop GPU
+    for D <= 3 thanks to Intel MKL parallelism.
 
 Structure
 ---------
-  for D_bond in [2, 3, 4]:          ← outer loop
-      for chi in chi_schedule(D):    ← inner loop, D²<chi≤D⁴
+  for D_bond in [2, 3, 4]:          <- outer loop
+      for chi in chi_schedule(D):    <- inner loop, D²<chi<=D⁴
           optimise until chi-budget exhausted
-
-  Each (D, chi) level is warm-started from the previous one.
-  D → D+1 warm-start: best tensors padded to new bond dimension.
-
-Default chi schedules (geometric spacing):
-  D=2: [5, 8, 12, 16]          (D⁴ = 16)
-  D=3: [10, 18, 32, 57, 81]   (D⁴ = 81)
-  D=4: [17, 26, 40, 62, 80]   (D⁴ = 256; capped at 80 ≈ 250 s/step)
-
-Default time budget fractions (of wall-clock total):
-  D=2:  3 %    (~20 min for 11 h run)
-  D=3: 52 %    (~ 5.7 h — main workhorse)
-  D=4: 45 %    (~ 5.0 h — best physical result)
-
-Within each D budget:
-  all chi levels receive equal time  (D_budget / num_chi_levels each).
-  Every chi level uses the same L-BFGS hyper-parameters, so results are
-  directly comparable across chi values.
 
 Usage
 -----
-  python scripts/main_sweep.py                       # all defaults (11 h)
-  python scripts/main_sweep.py --hours 11
-  python scripts/main_sweep.py --hours 6 --D-bonds 2,3
-  python scripts/main_sweep.py --hours 11 --chi-maxes 16,81,100
-  python scripts/main_sweep.py --resume log/sweep_D3_chi81_best.pt --D-bonds 3,4
+  python scripts/main_sweep_CPU_two_tensors.py                # all defaults
+  python scripts/main_sweep_CPU_two_tensors.py --hours 4
+  python scripts/main_sweep_CPU_two_tensors.py --double       # float64
 
 Outputs (all in log/)
 ---------------------
   sweep_D{D}_chi{chi}_best.pt    best checkpoint for each (D,chi)
   sweep_D{D}_chi{chi}_latest.pt  last checkpoint for each (D,chi)
-  sweep_results.json             JSON table of all energies
-  sweep_loss_D{D}.pdf            loss curve per D
-  sweep_energy_vs_chi.pdf        E/bond vs chi for each D
-  sweep_energy_vs_D.pdf          E/bond vs D at chi_max (convergence in D)
+  sweep_results_two_tensors.json JSON table of all energies
+  sweep_loss_D{D}_two_tensors.pdf  loss curve per D
+  sweep_energy_vs_chi_two_tensors.pdf
+  sweep_energy_vs_D_two_tensors.pdf
 """
 
 import argparse
@@ -67,24 +55,16 @@ import time
 # using 8 threads starves each other rather than doubling throughput.
 #
 # Use os.environ.setdefault so a user can still override from the shell:
-#   OMP_NUM_THREADS=2 python scripts/main_sweep_CPU.py   ← respected
+#   OMP_NUM_THREADS=2 python scripts/main_sweep_CPU_two_tensors.py
 _N_PHYSICAL_CORES = 4
 os.environ.setdefault("OMP_NUM_THREADS", str(_N_PHYSICAL_CORES))
 os.environ.setdefault("MKL_NUM_THREADS", str(_N_PHYSICAL_CORES))
 # Prevent MKL from silently reducing thread count when it detects nested
-# parallelism or high system load — we always want the full 4 threads.
+# parallelism or high system load.
 os.environ.setdefault("MKL_DYNAMIC", "FALSE")
 # Pin each OpenMP thread to a distinct physical core (not a hyperthread sibling).
-# granularity=fine  → thread-level pinning (finest possible)
-# compact           → pack onto as few sockets as possible (single-socket here)
-# 1                 → permute: fill one HT per core before doubling up (with
-#                     4 threads on 4 cores this has no effect, but future-proofs)
-# 0                 → offset: start from logical CPU 0
-# Result: threads 0-3 map to cores 0-3, no migration between iterations.
 os.environ.setdefault("KMP_AFFINITY", "granularity=fine,compact,1,0")
-# After a parallel region the OpenMP workers normally spin-wait for ~200 ms
-# before going to sleep, burning a whole core.  Set to 0 so they yield
-# immediately — the outer L-BFGS loop is sequential so this saves real time.
+# After a parallel region yield immediately instead of spin-waiting 200 ms.
 os.environ.setdefault("KMP_BLOCKTIME", "0")
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -95,14 +75,10 @@ import matplotlib.pyplot as plt
 import opt_einsum as oe
 import torch
 
-# Tell PyTorch's own dispatcher to use all physical cores for intra-op
-# parallelism (matrix multiply, SVD, etc.) and only 1 thread for the
-# inter-op pool — our outer loop is serial, extra inter-op threads just
-# compete with the intra-op pool for the same physical cores.
 torch.set_num_threads(_N_PHYSICAL_CORES)
 torch.set_num_interop_threads(1)
 
-from core_unrestricted import (
+from core_unrestricted_two_tensors import (
     normalize_tensor,
     initialize_abcdef,
     abcdef_to_ABCDEF,
@@ -113,9 +89,6 @@ from core_unrestricted import (
 )
 
 # Default complex dtype — updated to complex128 by --double / USE_DOUBLE_PRECISION.
-# Python functions look up globals at call time, so build_heisenberg_H(),
-# pad_tensor(), and optimize_at_chi() all see the updated value after main()
-# calls set_dtype() and reassigns CDTYPE.
 CDTYPE: torch.dtype = torch.complex64
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -125,191 +98,66 @@ CDTYPE: torch.dtype = torch.complex64
 # ── Precision ─────────────────────────────────────────────────────────────────
 
 USE_DOUBLE_PRECISION = False
-#   False → complex64  / float32 (default): fastest on both CPU (Intel MKL)
+#   False -> complex64  / float32 (default): fastest on both CPU (Intel MKL)
 #            and CUDA (fp32 tensor cores give full throughput).
-#   True  → complex128 / float64: double precision.
-#            CPU (Intel MKL): float64 is native, same throughput, 2× RAM.
-#            CUDA: 2–4× slower on consumer GPUs (no fp64 tensor cores).
+#   True  -> complex128 / float64: double precision.
+#            CPU (Intel MKL): float64 is native, same throughput, 2x RAM.
+#            CUDA: 2-4x slower on consumer GPUs (no fp64 tensor cores).
 #   Overrideable at runtime: --double CLI flag takes precedence.
 
 # ── Physical sweep dimensions ────────────────────────────────────────────────
-#
-#   D_bond  : iPEPS virtual bond dimension.  Controls the expressiveness of
-#             the wave-function ansatz.  Computational cost of each CTMRG
-#             step scales as O(chi · D^4 · d_phys).  We sweep D in ascending
-#             order; each new D warm-starts from the best tensors found at
-#             D-1 (zero-padded + small random noise), giving a smooth path
-#             in parameter space rather than re-initialising from scratch.
-#
-#   chi     : Environment (CTMRG) bond dimension.  Controls how faithfully
-#             the infinite-lattice environment is represented.  The physical
-#             constraint for our honeycomb ansatz is  D² < chi ≤ D⁴.
-#             Too-small chi → environment too compressed → biased energy;
-#             too-large chi → CTMRG is slow and memory-hungry.
-#             We sweep chi from the smallest valid value up to chi_max,
-#             warm-starting each chi level from the previous.  ALL chi levels
-#             receive EQUAL time budget and IDENTICAL L-BFGS settings, making
-#             results at different chi directly comparable.
 
 DEFAULT_D_BUDGET_FRACS = {2: 0.1, 3: 0.4, 4: 0.5}
-#   Fraction of the total wall-clock budget allocated to each D_bond value.
-#   Normalised to sum=1 before use, so only the RATIOS matter.
-#   Rationale:
-#     D=2 : small tensors, converges quickly — 3 % is enough.
-#     D=3 : main physics workhorse, needs the most time — 52 %.
-#     D=4 : highest accuracy but very slow per step — 45 %.
-#   NOTE: This is the ONLY intentional asymmetry in the sweep.  Different D
-#   values have genuinely different computational costs and scientific weight.
-#   Within each D, every chi level gets equal time (see below).
 
 DEFAULT_CHI_MAX = {2: 16, 3: 81, 4: 80}
-#   Largest chi to attempt for each D_bond.  Hard upper bound is D⁴
-#   (gives 16, 81, 256 for D=2,3,4).  We cap D=4 at 80 because chi >> 80
-#   requires too much RAM on a typical workstation and adds negligible accuracy.
-#   Increase if you have more memory; decrease if you hit OOM.
 
 DEFAULT_CHI_SCHEDULES = {
     2: [5, 8, 14],
-    3: [10, 17, 29],       # , 57, 81],  ← append to extend the schedule
-    4: [17, 29],           # , 40, 62, 80] ← append to extend the schedule
+    3: [10, 17, 29],       # , 57, 81],  <- append to extend the schedule
+    4: [17, 29],           # , 40, 62, 80] <- append to extend the schedule
 }
-#   Explicit chi schedule for each D (must all satisfy D² < chi ≤ D⁴).
-#   Used as-is when chi_max == DEFAULT_CHI_MAX[D]; otherwise a geometric
-#   sequence from D²+1 to chi_max in ~5 steps is generated automatically.
-#   The D_bond budget is split EQUALLY across all chi values in the schedule:
-#
-#       chi_budget = D_budget / len(chis)     ← same for every chi level
-#
-#   This means every chi level gets the same wall-clock time and the same
-#   L-BFGS settings — no special treatment for any particular chi.
 
 # ── L-BFGS optimiser ─────────────────────────────────────────────────────────
-#
-#   Optimisation strategy: alternating CTMRG + L-BFGS.
-#     1. Converge the CTMRG environment at fixed tensors (a..f).  No grad.
-#     2. Run one L-BFGS call (up to LBFGS_MAX_ITER sub-iterations) to
-#        minimise the energy w.r.t. a..f, keeping environment fixed.
-#     3. Repeat until time budget is exhausted or OPT_CONV_THRESHOLD hit.
-#   This is the "cheap-environment" AD-CTMRG gradient scheme.
 
 LBFGS_MAX_ITER = 30
-#   Maximum L-BFGS sub-iterations per outer step (= max closure evaluations
-#   inside a single optimizer.step() call).  Each sub-iteration does a
-#   forward + backward pass through the energy formula.  30 gives a thorough
-#   line search and good curvature estimation without being excessively slow.
-#   Applies UNIFORMLY to every (D, chi) level — no difference between small
-#   and large chi.
+#   Maximum L-BFGS sub-iterations per outer step.
 
 LBFGS_LR = 1.0
-#   Step-size seed for the strong-Wolfe line search.  The line search
-#   automatically scales the actual step, so lr=1.0 is the standard default
-#   and almost always correct.  Only change if you observe line-search
-#   failures or divergence.
+#   Step-size seed for the strong-Wolfe line search.
+#   Two-tensor ansatz has no single-tensor chain-rule amplification,
+#   so the standard lr=1.0 is correct.
 
 LBFGS_HISTORY = 100
-#   Number of (s, y) curvature vector pairs retained for the L-BFGS inverse-
-#   Hessian approximation.  More pairs → better Hessian estimate at the cost
-#   of extra memory (~100 × 6 × D³×d_phys complex64 tensors).  100 is
-#   generous; 50 is fine for most problem sizes.
 
 OPT_TOL_GRAD = 1e-7
-#   L-BFGS inner convergence criterion on the infinity-norm of the gradient:
-#   the sub-iteration loop exits early if  ||∇loss||_∞ < OPT_TOL_GRAD.
-#   This is an inner stopping rule inside a single optimizer.step() call.
-
 OPT_TOL_CHANGE = 1e-9
-#   L-BFGS inner convergence criterion on consecutive loss change:
-#   sub-iteration exits if  |L_{k+1} – L_k| < OPT_TOL_CHANGE.
-#   Set tighter than OPT_TOL_GRAD to catch near-flat regions.
-
 OPT_CONV_THRESHOLD = 1e-8
-#   Outer-loop early-stop criterion: if |loss(step k) – loss(step k–1)|
-#   < OPT_CONV_THRESHOLD, the outer while-loop exits and we move to the
-#   next (D, chi) level.  Set to 0 to disable early stopping and always
-#   run until the time budget is exhausted.
 
 # ── CTMRG algorithm ──────────────────────────────────────────────────────────
-#
-#   CTMRG (Corner Transfer Matrix Renormalisation Group) builds 9 corner
-#   matrices and 18 transfer tensors that represent the environment of the
-#   6-site honeycomb unit cell embedded in the infinite lattice.  Each
-#   CTMRG "step" grows the environment by one unit-cell layer and then
-#   compresses via SVD truncation to keep the environment bond dim = chi.
 
 CTM_MAX_STEPS = 90
-#   Hard cap on CTMRG iterations per environment convergence call.
-#   With the singular-value convergence criterion and CTM_CONV_THR=1e-3,
-#   convergence occurs in 4–40 steps for typical tensors (single-tensor
-#   ansatz ~4 steps, 6-tensor ~40 steps).  90 is a safe upper bound.
-
 CTM_CONV_THR = 1e-3
-#   CTMRG convergence threshold: stop iterating when the max change in
-#   normalised corner singular values between consecutive steps is below
-#   this value.  The convergence criterion compares the spectra of all 9
-#   corner matrices (gauge-invariant), so raw-element Frobenius oscillations
-#   from SVD sign ambiguity do NOT affect it.  In float32 the spectral noise
-#   floor is ~5e-5–2e-4, so any threshold below ~5e-4 effectively never
-#   triggers; 1e-3 converges in 7–20 steps across all tested D/chi configs.
 
 # ── Checkpointing & memory guard ─────────────────────────────────────────────
 
 SAVE_EVERY = 20
-#   Frequency (in outer optimisation steps) at which the "latest" checkpoint
-#   is written.  The "best" checkpoint is written immediately whenever a new
-#   minimum energy is found, independently of SAVE_EVERY.  Lower = more I/O
-#   but safer against crashes; higher = less I/O.
-
 RAM_SAFETY_GB = 0.4
-#   Minimum free RAM that must remain available before attempting a (D, chi)
-#   level.  If free_RAM < peak_estimate + RAM_SAFETY_GB, the level is skipped
-#   with a warning.  Peak memory estimate per CTMRG step: 3 corners × 4×
-#   SVD workspace × (chi·D²)² × 8 bytes (complex64).  Increase if OOM.
 
 # ── Physical model ────────────────────────────────────────────────────────────
 
 J_COUPLING = 1.0
-#   Isotropic Heisenberg exchange coupling constant.  J > 0 = antiferromagnetic
-#   (AFM), ground state is a singlet.  The Hamiltonian is
-#   H = J Σ_{<i,j>} S_i · S_j  summed over all nearest-neighbour pairs on the
-#   honeycomb.  For the AFM sign convention the optimal iPEPS energy is
-#   E/bond ≈ −0.3646 J in the D→∞ limit (QMC reference).
-
 D_PHYS = 2
-#   Physical Hilbert-space dimension per lattice site.
-#   d=2 for spin-1/2 (default), d=3 for spin-1, d=4 for two-site, etc.
-
 N_BONDS = 9
-#   Number of nearest-neighbour bonds in the 6-site honeycomb unit cell.
-#   Breakdown: 6 bonds of the primary type (connecting sub-lattices A–D–C–F–B–E
-#   cyclically) + 3 bonds of the secondary type = 9 total.
-#   Used only to compute the reported E/bond = E_total / N_BONDS.
 
 # ── Sweep control ─────────────────────────────────────────────────────────────
 
 D_BOND_LIST = [2, 3, 4]
-#   Ordered list of iPEPS virtual bond dimensions to sweep (outer loop).
-#   Each D is warm-started from the best tensors found at the previous D
-#   (zero-padded to the new size + PAD_NOISE Gaussian noise).
 
 # ── Tensor initialisation & padding ──────────────────────────────────────────
 
 INIT_NOISE = 1e-3
-#   Gaussian noise amplitude for RANDOM tensor initialisation at the very
-#   first (D, chi) level or whenever no warm-start is available.
-#   1e-3 keeps tensors near the origin so the first CTMRG converges quickly.
-
-PAD_NOISE = 1e-3
-#   Gaussian noise amplitude added to the ZERO-PADDED new indices when
-#   enlarging tensors from D → D+1.  Non-zero noise breaks the symmetry of
-#   the padded zeros and prevents the optimiser from getting stuck in the
-#   subspace of the smaller-D manifold.  Keep comparable to INIT_NOISE.
-
+PAD_NOISE  = 1e-3
 GEO_SCHEDULE_STEPS = 5
-#   Number of chi values generated by the geometric FALLBACK schedule.
-#   Only used when --chi-maxes is given on the command line and chi_max
-#   differs from DEFAULT_CHI_MAX[D], meaning DEFAULT_CHI_SCHEDULES cannot
-#   be used.  Generates GEO_SCHEDULE_STEPS log-uniformly spaced values
-#   from D²+1 to chi_max (inclusive).
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -337,18 +185,16 @@ def free_ram_gb() -> float:
 
 
 def peak_ram_gb(chi: int, D_sq: int) -> float:
-    """Estimate peak RAM for one CTMRG step in GB."""
     n = chi * D_sq
-    return 3 * 4 * n * n * 8 / 1e9   # 3 corners × 4× SVD workspace × element size
+    return 3 * 4 * n * n * 8 / 1e9
 
 
 def validate_chi(chi: int, D_bond: int, label: str = '') -> None:
     D_sq, D4 = D_bond ** 2, D_bond ** 4
     if not (D_sq < chi <= D4):
         raise ValueError(
-            f"{label}chi={chi} violates D²={D_sq} < chi ≤ D⁴={D4} "
-            f"(D_bond={D_bond})."
-        )
+            f"{label}chi={chi} violates D²={D_sq} < chi <= D⁴={D4} "
+            f"(D_bond={D_bond}).")
 
 
 def build_heisenberg_H(J: float = 1.0, d: int = 2) -> torch.Tensor:
@@ -363,16 +209,18 @@ def build_heisenberg_H(J: float = 1.0, d: int = 2) -> torch.Tensor:
 
 def pad_tensor(t: torch.Tensor, old_D: int, new_D: int,
                d_PHYS: int, noise: float) -> torch.Tensor:
-    out = noise * torch.randn(new_D, new_D, new_D, d_PHYS,
-                              dtype=CDTYPE)
+    out = noise * torch.randn(new_D, new_D, new_D, d_PHYS, dtype=CDTYPE)
     s = old_D
     out[:s, :s, :s, :] = t[:s, :s, :s, :]
     return normalize_tensor(out)
 
 
-def evaluate_energy_clean(a, b, c, d, e, f,
-                          Hs, chi: int, D_bond: int) -> float:
-    """Re-converge environment from scratch and return total energy (float)."""
+def evaluate_energy_clean(a, b, Hs, chi: int, D_bond: int) -> float:
+    """Re-converge environment from scratch and return total energy (float).
+
+    Two-tensor ansatz: c=e=a, d=f=b.
+    """
+    c, d, e, f = a, b, a, b
     D_sq = D_bond ** 2
     with torch.no_grad():
         A, B, C, Dt, E, F = abcdef_to_ABCDEF(a, b, c, d, e, f, D_sq)
@@ -392,13 +240,14 @@ def evaluate_energy_clean(a, b, c, d, e, f,
 def save_checkpoint(path: str, abcdef: tuple, D_bond: int, chi: int,
                     loss: float, energy: float | None,
                     step: int, log: list) -> None:
+    # `a` and `b` are the two independent tensors; c..f are derived.
     torch.save({
-        'a': abcdef[0], 'b': abcdef[1], 'c': abcdef[2],
-        'd': abcdef[3], 'e': abcdef[4], 'f': abcdef[5],
+        'a': abcdef[0], 'b': abcdef[1],
         'D_bond': D_bond, 'chi': chi,
         'loss': loss, 'energy': energy,
         'step': step, 'timestamp': timestamp(),
         'log': log,
+        'ansatz': 'two_tensors',
     }, path)
 
 
@@ -417,48 +266,43 @@ def optimize_at_chi(
         loss_log: list | None = None,
 ) -> tuple:
     """
-    Outer L-BFGS loop at fixed (D_bond, chi) until budget_seconds elapsed
-    or opt_conv_threshold hit.
+    Outer L-BFGS loop at fixed (D_bond, chi) until budget_seconds elapsed.
 
-    Returns (a, b, c, d, e, f, best_loss, steps_done).
+    Two-tensor ansatz: `a` and `b` are optimised; c=e=a, d=f=b derived.
+    Returns (a, b, best_loss, steps_done).
     """
     if loss_log is None:
         loss_log = []
     D_sq = D_bond ** 2
     t_start = time.perf_counter()
 
-    # initialise tensors
+    # initialise tensors `a` and `b`
     if init_abcdef is not None:
-        a, b, c, d, e, f = [t.detach().clone().to(CDTYPE)
-                             for t in init_abcdef]
+        a = init_abcdef[0].detach().clone().to(CDTYPE)
+        b = init_abcdef[1].detach().clone().to(CDTYPE)
     else:
-        a, b, c, d, e, f = initialize_abcdef('random', D_bond, d_PHYS, INIT_NOISE)
-    for t in (a, b, c, d, e, f):
-        t.requires_grad_(True)
+        _init = initialize_abcdef('random', D_bond, d_PHYS, INIT_NOISE)
+        a, b = _init[0], _init[1]
+    a.requires_grad_(True)
+    b.requires_grad_(True)
 
-    best_loss     = float('inf')
-    best_abcdef   = tuple(t.detach().clone() for t in (a, b, c, d, e, f))
-    prev_loss     = None
-    loss_history  = collections.deque(maxlen=12)  # cycle detection up to length 12
-    step          = step_offset
+    best_loss    = float('inf')
+    best_abcdef  = (a.detach().clone(), b.detach().clone())
+    prev_loss    = None
+    loss_history = collections.deque(maxlen=12)
+    step = step_offset
 
     while True:
         elapsed = time.perf_counter() - t_start
         if elapsed >= budget_seconds:
             break
 
-        # normalise (scale-redundancy fix, preserves requires_grad)
         with torch.no_grad():
             a.data = normalize_tensor(a.data)
             b.data = normalize_tensor(b.data)
-            c.data = normalize_tensor(c.data)
-            d.data = normalize_tensor(d.data)
-            e.data = normalize_tensor(e.data)
-            f.data = normalize_tensor(f.data)
 
-        # fresh L-BFGS for this outer step
         optimizer = torch.optim.LBFGS(
-            [a, b, c, d, e, f],
+            [a, b],
             lr=LBFGS_LR,
             max_iter=lbfgs_max_iter,
             tolerance_grad=OPT_TOL_GRAD,
@@ -467,8 +311,9 @@ def optimize_at_chi(
             line_search_fn='strong_wolfe',
         )
 
-        # converge environment (no grad); ctm_steps returned directly from core
+        # converge environment (no grad)
         with torch.no_grad():
+            c, d, e, f = a, b, a, b
             A, B, C, D, E, F = abcdef_to_ABCDEF(a, b, c, d, e, f, D_sq)
             (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
              C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
@@ -478,9 +323,9 @@ def optimize_at_chi(
                     A, B, C, D, E, F, chi, D_sq,
                     CTM_MAX_STEPS, CTM_CONV_THR)
 
-        # closure: cheap energy + backward through a..f only
         def closure():
             optimizer.zero_grad()
+            c, d, e, f = a, b, a, b
             loss = (
                 energy_expectation_nearest_neighbor_6_bonds(
                     a, b, c, d, e, f,
@@ -509,7 +354,7 @@ def optimize_at_chi(
 
         if loss_item < best_loss:
             best_loss   = loss_item
-            best_abcdef = tuple(t.detach().clone() for t in (a, b, c, d, e, f))
+            best_abcdef = (a.detach().clone(), b.detach().clone())
             if best_path:
                 save_checkpoint(best_path, best_abcdef, D_bond, chi,
                                 best_loss, None, step, loss_log)
@@ -538,7 +383,7 @@ def optimize_at_chi(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="10-12 h iPEPS benchmark: sweep D_bond (outer) × chi (inner)",
+        description="iPEPS sweep (two-tensor ansatz) — AD-CTMRG — CPU",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
@@ -549,8 +394,7 @@ def main():
         help='Comma-separated list of D_bond values to sweep, in order.')
     parser.add_argument(
         '--chi-maxes', default=None,
-        help='Comma-separated chi_max for each D_bond (must satisfy D²<chi≤D⁴). '
-             'Defaults: 16,81,80 for D=2,3,4.')
+        help='Comma-separated chi_max for each D_bond (must satisfy D²<chi<=D⁴).')
     parser.add_argument(
         '--d-phys', type=int, default=D_PHYS,
         help='Physical Hilbert-space dimension (d=2 for spin-1/2).')
@@ -565,14 +409,14 @@ def main():
         help='Path to a .pt checkpoint to resume from (skips earlier (D,chi)).')
     parser.add_argument(
         '--noise', type=float, default=PAD_NOISE,
-        help='Gaussian noise amplitude when padding tensors for D→D+1 (= PAD_NOISE).')
+        help='Gaussian noise amplitude when padding tensors for D->D+1.')
     parser.add_argument(
         '--double', action='store_true', default=USE_DOUBLE_PRECISION,
         help='Use float64/complex128 everywhere (default: float32/complex64). '
-             'Same throughput on CPU/MKL; 2–4× slower on CUDA consumer GPUs.')
+             'Same throughput on CPU/MKL; 2-4x slower on CUDA consumer GPUs.')
     args = parser.parse_args()
 
-    # ── Precision setup (must happen before any tensor is allocated) ────────────
+    # ── Precision setup (must happen before any tensor is allocated) ──────────
     global CDTYPE
     CDTYPE = torch.complex128 if args.double else torch.complex64
     set_dtype(args.double)
@@ -597,16 +441,10 @@ def main():
         validate_chi(chi_max_map[D], D, label=f'D={D} ')
 
     # ── chi schedules ─────────────────────────────────────────────────────────
-    # Use defaults for known D values, otherwise compute geometrically.
     def chi_schedule(D: int, chi_max: int) -> list[int]:
         if chi_max_map.get(D) == DEFAULT_CHI_MAX.get(D) and D in DEFAULT_CHI_SCHEDULES:
-            # Use the explicit schedule defined in DEFAULT_CHI_SCHEDULES as-is.
-            # Commented-out entries stay commented out — nothing is auto-appended.
             sched = list(DEFAULT_CHI_SCHEDULES[D])
         else:
-            # Geometric fallback: GEO_SCHEDULE_STEPS log-uniform values
-            # from D²+1 to chi_max.  Only reached when --chi-maxes is given
-            # with a value different from DEFAULT_CHI_MAX[D].
             import math
             D_sq = D ** 2
             chi_min = D_sq + 1
@@ -619,18 +457,15 @@ def main():
                 + [round(chi_min * ratio**k) for k in range(1, n)]
                 + [chi_max]))
             sched = [c for c in sched if D_sq < c <= chi_max]
-        # Clip to valid range D² < chi ≤ chi_max (catches typos in schedule).
-        # NOTE: chi_max itself is NOT auto-appended — the schedule is used
-        # exactly as written in DEFAULT_CHI_SCHEDULES.
         sched = [c for c in sched if D**2 < c <= chi_max]
         if not sched:
-            raise ValueError(f"Empty chi schedule for D={D} after clipping to ({D**2}, {chi_max}].")
+            raise ValueError(
+                f"Empty chi schedule for D={D} after clipping to ({D**2}, {chi_max}].")
         return sorted(set(sched))
 
     schedules = {D: chi_schedule(D, chi_max_map[D]) for D in D_bond_list}
 
     # ── time budget per D_bond ────────────────────────────────────────────────
-    # Use defaults for configured D values; normalise to sum to 1.
     raw_fracs = {D: DEFAULT_D_BUDGET_FRACS.get(D, 1.0) for D in D_bond_list}
     total_frac = sum(raw_fracs.values())
     d_budgets = {D: total_budget * raw_fracs[D] / total_frac
@@ -641,14 +476,18 @@ def main():
         os.path.dirname(__file__), '..', 'log')
     os.makedirs(output_dir, exist_ok=True)
 
-    # ── Hamiltonians (isotropic; all 9 bonds equal) ───────────────────────────
+    # ── Hamiltonians ──────────────────────────────────────────────────────────
     H  = build_heisenberg_H(args.J, d_PHYS)
     Hs = [H] * 9
 
     # ── Banner ────────────────────────────────────────────────────────────────
+    dtype_str = 'float64/complex128' if args.double else 'float32/complex64'
     print("=" * 76)
     print("  iPEPS sweep  —  AD-CTMRG  —  AFM Heisenberg on 6-site honeycomb")
-    print(f"  J={args.J}  d_phys={d_PHYS}  Total budget: {args.hours:.1f} h")
+    print("  Ansatz       : two-tensor  (c=e=a,  d=f=b)")
+    print(f"  J={args.J}  d_phys={d_PHYS}  dtype={dtype_str}")
+    print(f"  CPU threads  : {_N_PHYSICAL_CORES} (intra-op), 1 (inter-op)")
+    print(f"  Total budget : {args.hours:.1f} h")
     print(f"  D_bond sweep : {D_bond_list}")
     for D in D_bond_list:
         bh = d_budgets[D] / 3600
@@ -659,8 +498,8 @@ def main():
     print("=" * 76)
 
     # ── State ─────────────────────────────────────────────────────────────────
-    all_loss_logs: dict[tuple, list] = {}     # (D, chi) → list of step records
-    energy_table: list[dict] = []             # [{D, chi, loss, energy, ...}, ...]
+    all_loss_logs: dict[tuple, list] = {}
+    energy_table: list[dict] = []
     best_abcdef_by_D: dict[int, tuple | None] = {D: None for D in D_bond_list}
     global_step = 0
 
@@ -670,9 +509,7 @@ def main():
         ckpt = torch.load(args.resume, map_location='cpu')
         resume_D   = ckpt.get('D_bond')
         resume_chi = ckpt.get('chi')
-        best_abcdef_by_D[resume_D] = (
-            ckpt['a'], ckpt['b'], ckpt['c'],
-            ckpt['d'], ckpt['e'], ckpt['f'])
+        best_abcdef_by_D[resume_D] = (ckpt['a'], ckpt['b'])
         global_step = ckpt.get('step', 0) + 1
         print(f"  Resumed from {args.resume}  "
               f"(D={resume_D}, chi={resume_chi}, "
@@ -701,28 +538,25 @@ def main():
                 and prev_D is not None
                 and best_abcdef_by_D.get(prev_D) is not None):
             print(f"  Warm-starting from D={prev_D} tensors "
-                  f"(padding {prev_D}→{D_bond}, noise={args.noise})")
+                  f"(padding {prev_D}->{D_bond}, noise={args.noise})")
             prev_tensors = best_abcdef_by_D[prev_D]
             best_abcdef_by_D[D_bond] = tuple(
                 pad_tensor(t, prev_D, D_bond, d_PHYS, args.noise)
                 for t in prev_tensors)
 
-        # current best tensors at this D (None = random init at first chi)
         cur_abcdef = best_abcdef_by_D.get(D_bond)
 
         # ── Inner loop: chi ───────────────────────────────────────────────────
         for chi in chis:
-            # Skip (D, chi) pairs that come before the resume point
             if resume_D is not None and resume_chi is not None:
                 if D_bond < resume_D:
                     continue
                 if D_bond == resume_D and chi < resume_chi:
                     continue
                 if D_bond == resume_D and chi == resume_chi:
-                    resume_D = None   # resume point reached; continue normally
+                    resume_D = None
                     cur_abcdef = best_abcdef_by_D.get(D_bond)
 
-            # equal time budget for every chi level within this D
             chi_budget = D_budget / len(chis)
 
             # RAM guard
@@ -733,8 +567,6 @@ def main():
                       f"need {need_gb:.2f} GB + {RAM_SAFETY_GB} GB safety, "
                       f"only {avail_gb:.1f} GB free.")
                 continue
-
-            lbfgs_iters = LBFGS_MAX_ITER
 
             print(f"\n  ┌── D={D_bond}  chi={chi}"
                   f"  budget={chi_budget:.0f}s={chi_budget/60:.1f}min"
@@ -750,26 +582,24 @@ def main():
             *out, best_loss, global_step = optimize_at_chi(
                 Hs, D_bond, chi, d_PHYS,
                 budget_seconds=chi_budget,
-                lbfgs_max_iter=lbfgs_iters,
+                lbfgs_max_iter=LBFGS_MAX_ITER,
                 init_abcdef=cur_abcdef,
                 step_offset=global_step,
                 best_path=best_path,
                 latest_path=latest_path,
                 loss_log=loss_log,
             )
-            cur_abcdef = tuple(out[:6])  # warm-start for next chi
+            cur_abcdef = tuple(out[:2])  # `a` and `b`
 
             # Clean energy evaluation
             print(f"  │  Evaluating energy at (D={D_bond}, chi={chi}) ...")
             energy = evaluate_energy_clean(
-                *cur_abcdef, Hs, chi, D_bond)
+                cur_abcdef[0], cur_abcdef[1], Hs, chi, D_bond)
             energy_per_bond = energy / N_BONDS
 
-            # Save final checkpoint for this (D, chi)
             save_checkpoint(best_path, cur_abcdef, D_bond, chi,
                             best_loss, energy, global_step, loss_log)
 
-            # Log
             record = {
                 'D_bond': D_bond, 'chi': chi,
                 'best_loss': best_loss, 'energy': energy,
@@ -782,12 +612,11 @@ def main():
             print(f"  └── E={energy:+.10f}  E/bond={energy_per_bond:+.10f}"
                   f"  wall={wall/3600:.2f}h")
 
-        # Store best tensors at this D for warm-starting next D
         best_abcdef_by_D[D_bond] = cur_abcdef
 
         D_elapsed = time.perf_counter() - D_start_time
         print(f"\n  D={D_bond} complete in {D_elapsed/3600:.2f} h")
-        global_step += 1   # gap marker
+        global_step += 1
 
     # ══════════════════════════════════════════════════════════════════════════
     # Results summary
@@ -795,7 +624,7 @@ def main():
     total_elapsed = time.perf_counter() - t_global_start
 
     print("\n" + "=" * 76)
-    print("  RESULTS SUMMARY")
+    print("  RESULTS SUMMARY  (two-tensor ansatz)")
     print("=" * 76)
     print(f"  {'D':>2}  {'chi':>5}  {'steps':>6}  "
           f"{'E_total':>18}  {'E/bond':>14}")
@@ -804,17 +633,19 @@ def main():
         print(f"  {row['D_bond']:2d}  {row['chi']:5d}  {row['steps']:6d}  "
               f"{row['energy']:+18.10f}  {row['energy_per_bond']:+14.10f}")
     print()
-    best_overall = min(energy_table, key=lambda r: r['energy_per_bond'])
-    print(f"  Best E/bond = {best_overall['energy_per_bond']:+.10f}  "
-          f"(D={best_overall['D_bond']}, chi={best_overall['chi']})")
-    print(f"  QMC reference (D→∞): E/bond ≈ −0.3646")
+    if energy_table:
+        best_overall = min(energy_table, key=lambda r: r['energy_per_bond'])
+        print(f"  Best E/bond = {best_overall['energy_per_bond']:+.10f}  "
+              f"(D={best_overall['D_bond']}, chi={best_overall['chi']})")
+    print(f"  QMC reference (D->inf): E/bond ≈ −0.3646")
     print(f"  Total wall time: {total_elapsed/3600:.2f} h ({total_elapsed:.0f} s)")
     print(f"  Finished: {timestamp()}")
     print("=" * 76)
 
     # ── JSON ──────────────────────────────────────────────────────────────────
-    results_path = os.path.join(output_dir, "sweep_results.json")
+    results_path = os.path.join(output_dir, "sweep_results_two_tensors.json")
     json_out = {
+        'ansatz': 'two_tensors',
         'D_bond_list': D_bond_list,
         'chi_max_map': {str(k): v for k, v in chi_max_map.items()},
         'schedules':   {str(k): v for k, v in schedules.items()},
@@ -827,7 +658,7 @@ def main():
     }
     with open(results_path, 'w') as fp:
         json.dump(json_out, fp, indent=2)
-    print(f"\n  Results JSON → {results_path}")
+    print(f"\n  Results JSON -> {results_path}")
 
     # ── Plot 1: E/bond vs chi for each D ─────────────────────────────────────
     fig, ax = plt.subplots(figsize=(9, 5))
@@ -839,16 +670,17 @@ def main():
         y = [r['energy_per_bond'] for r in rows]
         ax.plot(x, y, 'o-', label=f'D={D}', markerfacecolor='white',
                 markersize=7)
-    ax.axhline(-0.3646, color='grey', ls='--', lw=1, label='QMC (D→∞) ≈ −0.3646')
+    ax.axhline(-0.3646, color='grey', ls='--', lw=1, label='QMC (D->inf) ≈ −0.3646')
     ax.set_xlabel(r'Environment bond dimension $\chi$', fontsize=12)
     ax.set_ylabel(r'Energy per bond $E/J$', fontsize=12)
-    ax.set_title('iPEPS ground-state energy — AFM Heisenberg (honeycomb)', fontsize=12)
+    ax.set_title('iPEPS — two-tensor ansatz — AFM Heisenberg (honeycomb)',
+                 fontsize=12)
     ax.legend(); ax.grid(True, alpha=0.3)
     fig.tight_layout()
-    fig.savefig(os.path.join(output_dir, 'sweep_energy_vs_chi.pdf'))
+    fig.savefig(os.path.join(output_dir, 'sweep_energy_vs_chi_two_tensors.pdf'))
     plt.close(fig)
 
-    # ── Plot 2: E/bond vs D at largest chi each D ─────────────────────────────
+    # ── Plot 2: E/bond vs D ───────────────────────────────────────────────────
     D_vals, E_best = [], []
     for D in D_bond_list:
         rows = [r for r in energy_table if r['D_bond'] == D]
@@ -863,13 +695,14 @@ def main():
         ax2.axhline(-0.3646, color='grey', ls='--', lw=1, label='QMC')
         ax2.set_xlabel(r'Bond dimension $D$', fontsize=12)
         ax2.set_ylabel(r'Best $E/\text{bond}$', fontsize=12)
-        ax2.set_title('iPEPS convergence in D')
+        ax2.set_title('iPEPS convergence in D (two-tensor)')
         ax2.legend(); ax2.grid(True, alpha=0.3)
         fig2.tight_layout()
-        fig2.savefig(os.path.join(output_dir, 'sweep_energy_vs_D.pdf'))
+        fig2.savefig(
+            os.path.join(output_dir, 'sweep_energy_vs_D_two_tensors.pdf'))
         plt.close(fig2)
 
-    # ── Plot 3: loss vs step for each D (separate panels) ────────────────────
+    # ── Plot 3: loss vs step for each D ──────────────────────────────────────
     for D in D_bond_list:
         d_logs = {chi: all_loss_logs[(D, chi)]
                   for chi in schedules[D]
@@ -882,13 +715,14 @@ def main():
             losses_ = [r['loss'] for r in log]
             ax3.plot(steps_, losses_, '-', lw=0.9, alpha=0.8, label=f'χ={chi}')
         ax3.set_xlabel('Outer step'); ax3.set_ylabel('Loss (total energy)')
-        ax3.set_title(f'Loss curve  D={D}')
+        ax3.set_title(f'Loss curve  D={D}  (two-tensor)')
         ax3.legend(fontsize=8); ax3.grid(True, alpha=0.3)
         fig3.tight_layout()
-        fig3.savefig(os.path.join(output_dir, f'sweep_loss_D{D}.pdf'))
+        fig3.savefig(
+            os.path.join(output_dir, f'sweep_loss_D{D}_two_tensors.pdf'))
         plt.close(fig3)
 
-    print(f"  Plots → {output_dir}/sweep_*.pdf")
+    print(f"  Plots -> {output_dir}/sweep_*_two_tensors.pdf")
 
 
 if __name__ == '__main__':
