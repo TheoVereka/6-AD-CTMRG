@@ -281,7 +281,7 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     V2 = V2.reshape(chi, chi,D_squared)
     V3 = V3.reshape(chi, chi,D_squared)
 
-    return V2, C21, U1, V3, C32, U2, V1, C13, U3 #, diagnostic_trunc
+    return V2, C21, U1, V3, C32, U2, V1, C13, U3#, diagnostic_trunc
 
 
 

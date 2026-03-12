@@ -116,7 +116,7 @@ from core_unrestricted import (
 # Time Budget
 # ══════════════════════════════════════════════════════════════════════════════
 
-TOTAL_BUDGET_HOURS = 2
+TOTAL_BUDGET_HOURS = 0.5
 
 # Total wall-clock time for the entire sweep.  The sweep is designed to run
 # for a fixed time rather than a fixed number of steps, so that results at
@@ -138,7 +138,7 @@ CDTYPE: torch.dtype = torch.complex64
 
 # ── Precision ─────────────────────────────────────────────────────────────────
 
-USE_DOUBLE_PRECISION = False
+USE_DOUBLE_PRECISION = True
 #   False → complex64  / float32 (default): fastest on both CPU (Intel MKL)
 #            and CUDA (fp32 tensor cores give full throughput).
 #   True  → complex128 / float64: double precision.
