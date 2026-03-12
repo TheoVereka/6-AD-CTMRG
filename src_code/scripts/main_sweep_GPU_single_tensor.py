@@ -73,7 +73,9 @@ from core_unrestricted_single_tensor import (
     initialize_abcdef,
     abcdef_to_ABCDEF,
     CTMRG_from_init_to_stop,
-    energy_expectation_nearest_neighbor_6_bonds,
+    #energy_expectation_nearest_neighbor_6_bonds,
+    energy_expectation_nearest_neighbor_3ebadcf_bonds,
+    energy_expectation_nearest_neighbor_3afcbed_bonds,
     energy_expectation_nearest_neighbor_other_3_bonds,
     set_dtype,
 )
@@ -388,15 +390,22 @@ def evaluate_energy_clean(a, Hs, chi: int, D_bond: int) -> float:
         A, B, C, Dt, E, F = abcdef_to_ABCDEF(a, b, c, d, e, f, D_sq)
         all27 = CTMRG_from_init_to_stop(
                 A, B, C, Dt, E, F, chi, D_sq, CTM_MAX_STEPS, CTM_CONV_THR)
-        E6 = energy_expectation_nearest_neighbor_6_bonds(
-            a, b, c, d, e, f,
-            Hs[0], Hs[1], Hs[2], Hs[3], Hs[4], Hs[5],
-            chi, D_bond, *all27[:9])
+        E3ebadcf = energy_expectation_nearest_neighbor_3ebadcf_bonds(
+                a,b,c,d,e,f, 
+                Hs[0],Hs[1],Hs[2],
+                chi, D_bond, # d_PHYS, 
+                *all27[:9])
+        E3afcbed = energy_expectation_nearest_neighbor_3afcbed_bonds(
+                a,b,c,d,e,f, 
+                Hs[3],Hs[4],Hs[5], 
+                chi, D_bond, # d_PHYS, 
+                *all27[9:18])
+            
         E3 = energy_expectation_nearest_neighbor_other_3_bonds(
             a, b, c, d, e, f,
             Hs[6], Hs[7], Hs[8],
             chi, D_bond, *all27[18:27])
-        return (E6 + E3).real.item()
+        return (E3ebadcf + E3afcbed + E3).real.item()
 
 
 def save_checkpoint(path: str, abcdef: tuple, D_bond: int, chi: int,
@@ -483,12 +492,19 @@ def optimize_at_chi(
         def _energy():
             b, c, d, e, f = -a, a, -a, a, -a
             return (
-                energy_expectation_nearest_neighbor_6_bonds(
-                    a, b, c, d, e, f,
-                    Hs[0], Hs[1], Hs[2], Hs[3], Hs[4], Hs[5],
-                    chi, D_bond,
-                    C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E)
-              + energy_expectation_nearest_neighbor_other_3_bonds(
+            energy_expectation_nearest_neighbor_3ebadcf_bonds(
+                a,b,c,d,e,f, 
+                Hs[0],Hs[1],Hs[2],
+                chi, D_bond, # d_PHYS, 
+                C21CD,C32EF,C13AB,T1F,T2A,T2B,T3C,T3D,T1E)
+            +
+            energy_expectation_nearest_neighbor_3afcbed_bonds(
+                a,b,c,d,e,f, 
+                Hs[3],Hs[4],Hs[5], 
+                chi, D_bond, # d_PHYS, 
+                C21EB, C32AD,C13CF,T1D,T2C,T2F,T3E,T3B,T1A)
+            +
+            energy_expectation_nearest_neighbor_other_3_bonds(
                     a, b, c, d, e, f,
                     Hs[6], Hs[7], Hs[8],
                     chi, D_bond,

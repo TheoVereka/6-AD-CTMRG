@@ -687,6 +687,65 @@ def check_env_convergence(lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, las
     return bool(max_delta < env_conv_threshold)
 
 
+def check_env_CV_using_3rho(lastC21CD, lastC32EF, lastC13AB, 
+                            nowC21CD, nowC32EF, nowC13AB, 
+                            lastC21EB, lastC32AD, lastC13CF, 
+                            nowC21EB, nowC32AD, nowC13CF, 
+                            lastC21AF, lastC32CB, lastC13ED, 
+                            nowC21AF, nowC32CB, nowC13ED, 
+                            env_conv_threshold):
+   
+    # Warm-up guard: all three env types must have been computed at least once.
+    if lastC21CD is None or lastC21EB is None or lastC21AF is None:
+        return False
+
+    # The rhos defined by 1-1 cut: 13 @ 32 @ 21
+    last_rhoABEFCD = oe.contract("UZ,ZY,YV->UV",
+                                lastC13AB,lastC32EF,lastC21CD,
+                                optimize=[(0,1),(0,1)],
+                                backend='torch')
+    now_rhoABEFCD = oe.contract("UZ,ZY,YV->UV",
+                                nowC13AB,nowC32EF,nowC21CD,
+                                optimize=[(0,1),(0,1)],
+                                backend='torch')
+    last_rhoCFADEB = oe.contract("UZ,ZY,YV->UV",
+                                lastC13CF,lastC32AD,lastC21EB,
+                                optimize=[(0,1),(0,1)],
+                                backend='torch')
+    now_rhoCFADEB = oe.contract("UZ,ZY,YV->UV",
+                                nowC13CF,nowC32AD,nowC21EB,
+                                optimize=[(0,1),(0,1)],
+                                backend='torch')
+    last_rhoEDCBAF = oe.contract("UZ,ZY,YV->UV",
+                                lastC13ED,lastC32CB,lastC21AF,
+                                optimize=[(0,1),(0,1)],
+                                backend='torch')
+    now_rhoEDCBAF = oe.contract("UZ,ZY,YV->UV",
+                                nowC13ED,nowC32CB,nowC21AF, 
+                                optimize=[(0,1),(0,1)],
+                                backend='torch')
+
+    rho_pairs = [
+        (last_rhoABEFCD, now_rhoABEFCD),
+        (last_rhoCFADEB, now_rhoCFADEB),
+        (last_rhoEDCBAF, now_rhoEDCBAF),
+    ]
+
+    max_delta = 0.0
+    for last_c, now_c in rho_pairs:
+        sv_last = torch.linalg.svdvals(last_c).real
+        sv_now  = torch.linalg.svdvals(now_c ).real
+        # Normalise so that the largest singular value is 1 (scale-invariant).
+        sv_last = sv_last / (sv_last[0] + 1e-30)
+        sv_now  = sv_now  / (sv_now [0] + 1e-30)
+        delta = (sv_now - sv_last).abs().max().item()
+        if delta > max_delta:
+            max_delta = delta
+
+    return bool(max_delta < env_conv_threshold)
+
+
+
 
 def update_environmentCTs_1to2(C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E, A,B,C,D,E,F, chi, D_squared):
     """
@@ -999,12 +1058,12 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
     ctm_steps = a_third_max_iterations  # will be overwritten on early convergence
     for iteration in range(a_third_max_iterations):
 
-        if check_env_convergence(lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E, 
-                                 nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, 
-                                 lastC21EB, lastC32AD, lastC13CF, lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A, 
-                                 nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A, 
-                                 lastC21AF, lastC32CB, lastC13ED, lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C, 
-                                 nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C, 
+        if check_env_CV_using_3rho(lastC21CD, lastC32EF, lastC13AB, #lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E, 
+                                 nowC21CD, nowC32EF, nowC13AB, #nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, 
+                                 lastC21EB, lastC32AD, lastC13CF, #lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A, 
+                                 nowC21EB, nowC32AD, nowC13CF, #nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A, 
+                                 lastC21AF, lastC32CB, lastC13ED, #lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C, 
+                                 nowC21AF, nowC32CB, nowC13ED, #nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C, 
                                  env_conv_threshold):
             ctm_steps = iteration + 1
             break
@@ -1131,6 +1190,101 @@ def energy_expectation_nearest_neighbor_6_bonds(a,b,c,d,e,f,
     norm_1st_env = oe.contract("xy,yz,zx->", DE, BC, FA, backend="torch")
     energyNearestNeighbor_6_bonds = (E_unnormed_DE + E_unnormed_AD + E_unnormed_FA + E_unnormed_CF + E_unnormed_BC + E_unnormed_EB) / norm_1st_env
     return energyNearestNeighbor_6_bonds
+
+
+
+
+
+
+def energy_expectation_nearest_neighbor_3ebadcf_bonds(
+                a,b,c,d,e,f, 
+                Heb,Had,Hcf,
+                chi, D_bond, # d_PHYS, 
+                C21CD,C32EF,C13AB,T1F,T2A,T2B,T3C,T3D,T1E):
+    
+    T1F = T1F.reshape(chi,chi,D_bond,D_bond)
+    T2A = T2A.reshape(chi,chi,D_bond,D_bond)
+    T2B = T2B.reshape(chi,chi,D_bond,D_bond)
+    T3C = T3C.reshape(chi,chi,D_bond,D_bond)
+    T3D = T3D.reshape(chi,chi,D_bond,D_bond)
+    T1E = T1E.reshape(chi,chi,D_bond,D_bond)
+
+    open_E = oe.contract("YX,MYar,abci,rstj->MbsXctij", C21CD, T1F, e, e.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch")
+    open_D = oe.contract("MYct,abci,rstj->YarMbsij", T3C, d, d.conj(), optimize=[(0,1),(0,1)], backend="torch")
+    open_A = oe.contract("ZY,NZbs,abci,rstj->NctYarij", C32EF, T2B, a, a.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch")
+    open_F = oe.contract("NZar,abci,rstj->ZbsNctij", T1E, f, f.conj(), optimize=[(0,1),(0,1)], backend="torch")
+    open_C = oe.contract("XZ,LXct,abci,rstj->LarZbsij", C13AB, T3D, c, c.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch")
+    open_B = oe.contract("LXbs,abci,rstj->XctLarij", T2A, b, b.conj(), optimize=[(0,1),(0,1)], backend="torch")
+                              
+    closed_E = oe.contract("MbsXctii->MbsXct", open_E, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_D = oe.contract("YarMbsii->YarMbs", open_D, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_A = oe.contract("NctYarii->NctYar", open_A, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_F = oe.contract("ZbsNctii->ZbsNct", open_F, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_C = oe.contract("LarZbsii->LarZbs", open_C, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_B = oe.contract("XctLarii->XctLar", open_B, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+
+    H_AD = oe.contract("NctYarij,ijkl,YarMbskl->NctMbs", open_A, Had, open_D, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    H_CF = oe.contract("LarZbsij,ijkl,ZbsNctkl->LarNct", open_C, Hcf, open_F, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    H_EB = oe.contract("MbsXctij,ijkl,XctLarkl->MbsLar", open_E, Heb, open_B, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+
+
+    AD = torch.mm(closed_A, closed_D)
+    CF = torch.mm(closed_C, closed_F)
+    EB = torch.mm(closed_E, closed_B)
+
+    E_unnormed_AD = oe.contract("xy,yz,zx->", H_AD, EB, CF, backend="torch")
+    E_unnormed_CF = oe.contract("xy,yz,zx->", H_CF, AD, EB, backend="torch")
+    E_unnormed_EB = oe.contract("xy,yz,zx->", H_EB, CF, AD, backend="torch")
+
+    norm_1st_env = oe.contract("xy,yz,zx->", AD, EB, CF, backend="torch")
+    energyNearestNeighbor_3_bonds = (E_unnormed_AD + E_unnormed_CF + E_unnormed_EB) / norm_1st_env
+    return energyNearestNeighbor_3_bonds
+
+
+
+def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,Haf,Hcb,Hed, 
+                chi, D_bond, # d_PHYS, 
+                C21EB, C32AD,C13CF,T1D,T2C,T2F,T3E,T3B,T1A):
+
+    T1D = T1D.reshape(chi,chi,D_bond,D_bond)
+    T2C = T2C.reshape(chi,chi,D_bond,D_bond)
+    T2F = T2F.reshape(chi,chi,D_bond,D_bond)
+    T3E = T3E.reshape(chi,chi,D_bond,D_bond)
+    T3B = T3B.reshape(chi,chi,D_bond,D_bond)
+    T1A = T1A.reshape(chi,chi,D_bond,D_bond)
+
+    open_A = oe.contract("YX,MYar,abci,rstj->MbsXctij", C21EB, T1D, a, a.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch")
+    open_B = oe.contract("MYct,abci,rstj->YarMbsij", T3E, b, b.conj(), optimize=[(0,1),(0,1)], backend="torch")
+    open_C = oe.contract("ZY,NZbs,abci,rstj->NctYarij", C32AD, T2F, c, c.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch")
+    open_D = oe.contract("NZar,abci,rstj->ZbsNctij", T1A, d, d.conj(), optimize=[(0,1),(0,1)], backend="torch")
+    open_E = oe.contract("XZ,LXct,abci,rstj->LarZbsij", C13CF, T3B, e, e.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch")
+    open_F = oe.contract("LXbs,abci,rstj->XctLarij", T2C, f, f.conj(), optimize=[(0,1),(0,1)], backend="torch")
+                              
+    closed_A = oe.contract("MbsXctii->MbsXct", open_A, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_B = oe.contract("YarMbsii->YarMbs", open_B, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_C = oe.contract("NctYarii->NctYar", open_C, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_D = oe.contract("ZbsNctii->ZbsNct", open_D, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_E = oe.contract("LarZbsii->LarZbs", open_E, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_F = oe.contract("XctLarii->XctLar", open_F, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+
+    H_CB = oe.contract("NctYarij,ijkl,YarMbskl->NctMbs", open_C, Hcb, open_B, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    H_ED = oe.contract("LarZbsij,ijkl,ZbsNctkl->LarNct", open_E, Hed, open_D, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    H_AF = oe.contract("MbsXctij,ijkl,XctLarkl->MbsLar", open_A, Haf, open_F, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+
+    CB = torch.mm(closed_C, closed_B)
+    ED = torch.mm(closed_E, closed_D)
+    AF = torch.mm(closed_A, closed_F)
+
+    E_unnormed_CB = oe.contract("xy,yz,zx->", H_CB, AF, ED, backend="torch")
+    E_unnormed_ED = oe.contract("xy,yz,zx->", H_ED, CB, AF, backend="torch")
+    E_unnormed_AF = oe.contract("xy,yz,zx->", H_AF, ED, CB, backend="torch")
+
+    norm_2nd_env= oe.contract("xy,yz,zx->", CB, AF, ED, backend="torch")
+    energyNearestNeighbor_3_bonds = (E_unnormed_CB + E_unnormed_AF + E_unnormed_ED) / norm_2nd_env
+    return energyNearestNeighbor_3_bonds
+
+
+
 
 
 
@@ -1315,13 +1469,20 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
         def closure():
             optimizer.zero_grad()
             _, _, c, d, e, f = _expand_two(a, b)  # c=a,d=b,e=a,f=b; a,b captured from outer scope
-            loss = (energy_expectation_nearest_neighbor_6_bonds(
-                        a,b,c,d,e,f, 
-                        Hed,Had,Haf,Hcf,Hcb,Heb, 
-                        chi, D_bond, # d_PHYS, 
-                        C21CD,C32EF,C13AB,T1F,T2A,T2B,T3C,T3D,T1E)
-                    +
-                    energy_expectation_nearest_neighbor_other_3_bonds(
+            loss = (
+            energy_expectation_nearest_neighbor_3ebadcf_bonds(
+                a,b,c,d,e,f, 
+                Heb,Had,Hcf,
+                chi, D_bond, # d_PHYS, 
+                C21CD,C32EF,C13AB,T1F,T2A,T2B,T3C,T3D,T1E)
+            +
+            energy_expectation_nearest_neighbor_3afcbed_bonds(
+                a,b,c,d,e,f, 
+                Haf,Hcb,Hed, 
+                chi, D_bond, # d_PHYS, 
+                C21EB, C32AD,C13CF,T1D,T2C,T2F,T3E,T3B,T1A)
+            +
+            energy_expectation_nearest_neighbor_other_3_bonds(
                         a,b,c,d,e,f, 
                         Hcd,Hef,Hab, 
                         chi, D_bond, # d_PHYS, 
@@ -1370,11 +1531,17 @@ def check_optimized_iPEPS(a, b, old_loss,
                 a_third_max_steps_CTMRG, CTM_env_conv_threshold)
         
         new_loss_under_new_chi = (
-            energy_expectation_nearest_neighbor_6_bonds(
+            energy_expectation_nearest_neighbor_3ebadcf_bonds(
                 a,b,c,d,e,f, 
-                Hed,Had,Haf,Hcf,Hcb,Heb, 
+                Heb,Had,Hcf,
                 new_chi, D_bond, # d_PHYS, 
                 C21CD,C32EF,C13AB,T1F,T2A,T2B,T3C,T3D,T1E)
+            +
+            energy_expectation_nearest_neighbor_3afcbed_bonds(
+                a,b,c,d,e,f, 
+                Haf,Hcb,Hed, 
+                new_chi, D_bond, # d_PHYS, 
+                C21EB, C32AD,C13CF,T1D,T2C,T2F,T3E,T3B,T1A)
             +
             energy_expectation_nearest_neighbor_other_3_bonds(
                 a,b,c,d,e,f, 

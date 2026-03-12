@@ -107,7 +107,9 @@ from core_unrestricted import (
     initialize_abcdef,
     abcdef_to_ABCDEF,
     CTMRG_from_init_to_stop,
-    energy_expectation_nearest_neighbor_6_bonds,
+    #energy_expectation_nearest_neighbor_6_bonds,
+    energy_expectation_nearest_neighbor_3ebadcf_bonds,
+    energy_expectation_nearest_neighbor_3afcbed_bonds,
     energy_expectation_nearest_neighbor_other_3_bonds,
     set_dtype,
 )
@@ -274,13 +276,13 @@ ADAM_STEPS_PER_CTM = 5
 #   CTMRG "step" grows the environment by one unit-cell layer and then
 #   compresses via SVD truncation to keep the environment bond dim = chi.
 
-CTM_MAX_STEPS = 90
+CTM_MAX_STEPS = 70
 #   Hard cap on CTMRG iterations per environment convergence call.
 #   With the singular-value convergence criterion and CTM_CONV_THR=1e-3,
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
 #   ansatz ~4 steps, 6-tensor ~40 steps).  90 is a safe upper bound.
 
-CTM_CONV_THR = 1e-3
+CTM_CONV_THR = 1e-9
 #   CTMRG convergence threshold: stop iterating when the max change in
 #   normalised corner singular values between consecutive steps is below
 #   this value.  The convergence criterion compares the spectra of all 9
@@ -416,15 +418,26 @@ def evaluate_energy_clean(a, b, c, d, e, f,
         A, B, C, Dt, E, F = abcdef_to_ABCDEF(a, b, c, d, e, f, D_sq)
         all27 = CTMRG_from_init_to_stop(
                 A, B, C, Dt, E, F, chi, D_sq, CTM_MAX_STEPS, CTM_CONV_THR)
-        E6 = energy_expectation_nearest_neighbor_6_bonds(
-            a, b, c, d, e, f,
-            Hs[0], Hs[1], Hs[2], Hs[3], Hs[4], Hs[5],
-            chi, D_bond, *all27[:9])
+        #E6 = energy_expectation_nearest_neighbor_6_bonds(
+        #    a, b, c, d, e, f,
+        #    Hs[0], Hs[1], Hs[2], Hs[3], Hs[4], Hs[5],
+        #    chi, D_bond, *all27[:9])
+        E3ebadcf = energy_expectation_nearest_neighbor_3ebadcf_bonds(
+                a,b,c,d,e,f, 
+                Hs[0],Hs[1],Hs[2],
+                chi, D_bond, # d_PHYS, 
+                *all27[:9])
+        E3afcbed = energy_expectation_nearest_neighbor_3afcbed_bonds(
+                a,b,c,d,e,f, 
+                Hs[3],Hs[4],Hs[5], 
+                chi, D_bond, # d_PHYS, 
+                *all27[9:18])
+            
         E3 = energy_expectation_nearest_neighbor_other_3_bonds(
             a, b, c, d, e, f,
             Hs[6], Hs[7], Hs[8],
             chi, D_bond, *all27[18:27])
-        return (E6 + E3).real.item()
+        return (E3ebadcf + E3afcbed + E3).real.item()
 
 
 def save_checkpoint(path: str, abcdef: tuple, D_bond: int, chi: int,
@@ -515,12 +528,19 @@ def optimize_at_chi(
 
         def _energy():
             return (
-                energy_expectation_nearest_neighbor_6_bonds(
-                    a, b, c, d, e, f,
-                    Hs[0], Hs[1], Hs[2], Hs[3], Hs[4], Hs[5],
-                    chi, D_bond,
-                    C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E)
-              + energy_expectation_nearest_neighbor_other_3_bonds(
+            energy_expectation_nearest_neighbor_3ebadcf_bonds(
+                a,b,c,d,e,f, 
+                Hs[0],Hs[1],Hs[2],
+                chi, D_bond, # d_PHYS, 
+                C21CD,C32EF,C13AB,T1F,T2A,T2B,T3C,T3D,T1E)
+            +
+            energy_expectation_nearest_neighbor_3afcbed_bonds(
+                a,b,c,d,e,f, 
+                Hs[3],Hs[4],Hs[5], 
+                chi, D_bond, # d_PHYS, 
+                C21EB, C32AD,C13CF,T1D,T2C,T2F,T3E,T3B,T1A)
+            +
+            energy_expectation_nearest_neighbor_other_3_bonds(
                     a, b, c, d, e, f,
                     Hs[6], Hs[7], Hs[8],
                     chi, D_bond,
@@ -729,7 +749,7 @@ def main():
 
     # ── Hamiltonians (isotropic; all 9 bonds equal) ───────────────────────────
     H  = build_heisenberg_H(args.J, d_PHYS)
-    Hs = [H] * 9
+    Hs = [H] * 9  # the order defined as 0~8 as Heb,Had,Hcf, Haf,Hcb,Hed, Hcd,Hef,Hab
 
     # ── Banner ────────────────────────────────────────────────────────────────
     print("=" * 76)
