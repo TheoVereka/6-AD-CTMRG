@@ -250,7 +250,7 @@ OPT_CONV_THRESHOLD = 1e-8
 
 # ── Optimizer choice ──────────────────────────────────────────────────────────
 
-OPTIMIZER = 'adam'
+OPTIMIZER = 'lbfgs'
 #   'lbfgs' : L-BFGS with strong-Wolfe line search (default).
 #             Converges fast on smooth landscapes; may oscillate on noisy ones.
 #   'adam'  : Adam (adaptive moment estimation).
@@ -578,6 +578,115 @@ def optimize_at_chi(
             loss_item = _loss.detach().item()
         delta     = (loss_item - prev_loss) if prev_loss is not None else float('inf')
         elapsed   = time.perf_counter() - t_start
+
+        # ──────────────────────────────────────────────────────────────────────
+        # DIAGNOSTIC CODE: Detect and log extreme loss values
+        # ──────────────────────────────────────────────────────────────────────
+        
+        # Compute individual energy components
+        with torch.no_grad():
+            E1_diag = energy_expectation_nearest_neighbor_3ebadcf_bonds(
+                a.detach(),b.detach(),c.detach(),d.detach(),e.detach(),f.detach(),
+                Hs[0],Hs[1],Hs[2], chi, D_bond,
+                C21CD,C32EF,C13AB,T1F,T2A,T2B,T3C,T3D,T1E).real.item()
+            
+            E2_diag = energy_expectation_nearest_neighbor_3afcbed_bonds(
+                a.detach(),b.detach(),c.detach(),d.detach(),e.detach(),f.detach(),
+                Hs[3],Hs[4],Hs[5], chi, D_bond,
+                C21EB,C32AD,C13CF,T1D,T2C,T2F,T3E,T3B,T1A).real.item()
+            
+            E3_diag = energy_expectation_nearest_neighbor_other_3_bonds(
+                a.detach(),b.detach(),c.detach(),d.detach(),e.detach(),f.detach(),
+                Hs[6],Hs[7],Hs[8], chi, D_bond,
+                C21AF,C32CB,C13ED,T1B,T2E,T2D,T3A,T3F,T1C).real.item()
+        
+        # Check if loss exceeds physical bounds
+        N_BONDS = 9
+        PHYSICAL_MIN_PER_BOND = -0.75
+        PHYSICAL_MAX_PER_BOND = +0.25
+        
+        loss_per_bond = loss_item / N_BONDS
+        is_extreme = (loss_per_bond < PHYSICAL_MIN_PER_BOND - 0.1 or 
+                      loss_per_bond > PHYSICAL_MAX_PER_BOND + 0.1)
+        
+        if is_extreme:
+            print("\n" + "="*70)
+            print(f"⚠️  EXTREME LOSS DETECTED AT STEP {step}")
+            print("="*70)
+            print(f"Loss: {loss_item:+.6f} (per bond: {loss_per_bond:+.6f})")
+            print(f"Physical bounds: [{PHYSICAL_MIN_PER_BOND:.2f}, {PHYSICAL_MAX_PER_BOND:.2f}] per bond")
+            
+            print(f"\nEnergy components:")
+            print(f"  E1 (bonds EB,AD,CF): {E1_diag:+.6f}  (per bond: {E1_diag/3:+.6f})")
+            print(f"  E2 (bonds AF,CB,ED): {E2_diag:+.6f}  (per bond: {E2_diag/3:+.6f})")
+            print(f"  E3 (bonds CD,EF,AB): {E3_diag:+.6f}  (per bond: {E3_diag/3:+.6f})")
+            print(f"  Sum: {E1_diag + E2_diag + E3_diag:+.6f}")
+            print(f"  Reported loss_item: {loss_item:+.6f}")
+            print(f"  Discrepancy: {abs(loss_item - (E1_diag + E2_diag + E3_diag)):.3e}")
+            
+            print(f"\nTensor statistics:")
+            tensor_norms = {
+                'a': torch.norm(a).item(),
+                'b': torch.norm(b).item(),
+                'c': torch.norm(c).item(),
+                'd': torch.norm(d).item(),
+                'e': torch.norm(e).item(),
+                'f': torch.norm(f).item()
+            }
+            for name, norm in tensor_norms.items():
+                print(f"  ||{name}|| = {norm:.6f}")
+            
+            has_nan = any(torch.isnan(t).any().item() for t in [a,b,c,d,e,f])
+            has_inf = any(torch.isinf(t).any().item() for t in [a,b,c,d,e,f])
+            print(f"  Contains NaN: {has_nan}")
+            print(f"  Contains Inf: {has_inf}")
+            
+            print(f"\nOptimization state:")
+            print(f"  D_bond={D_bond}, chi={chi}")
+            print(f"  CTMRG steps: {ctm_steps} (max={CTM_MAX_STEPS})")
+            if ctm_steps >= CTM_MAX_STEPS:
+                print(f"  ⚠️  CTMRG DID NOT CONVERGE")
+            print(f"  Optimizer: {OPTIMIZER}")
+            print("="*70 + "\n")
+            
+            # Save diagnostic data
+            diag_dir = os.path.join(os.path.dirname(__file__), "..", "diagnostics")
+            os.makedirs(diag_dir, exist_ok=True)
+            diag_file = os.path.join(diag_dir, f"extreme_loss_step_{step}.json")
+            
+            diag_data = {
+                'step': step,
+                'D_bond': D_bond,
+                'chi': chi,
+                'loss': loss_item,
+                'loss_per_bond': loss_per_bond,
+                'E1': E1_diag,
+                'E2': E2_diag,
+                'E3': E3_diag,
+                'ctm_steps': ctm_steps,
+                'ctm_converged': ctm_steps < CTM_MAX_STEPS,
+                'tensor_norms': tensor_norms,
+                'has_nan': has_nan,
+                'has_inf': has_inf,
+                'optimizer': OPTIMIZER
+            }
+            
+            with open(diag_file, 'w') as f:
+                json.dump(diag_data, f, indent=2)
+            
+            print(f"Diagnostic data saved to: {diag_file}")
+            torch.save({
+                'a': a.detach().cpu(),
+                'b': b.detach().cpu(),
+                'c': c.detach().cpu(),
+                'd': d.detach().cpu(),
+                'e': e.detach().cpu(),
+                'f': f.detach().cpu(),
+            }, os.path.join(diag_dir, f"tensors_step_{step}.pt"))
+        
+        # ────────────────────────────────────────────────────────────────────────
+        # END DIAGNOSTIC CODE
+        # ────────────────────────────────────────────────────────────────────────
 
         print(f"    step {step:5d}  ctm={ctm_steps:3d}  loss={loss_item:+.10f}"
               f"  Δ={delta:+.3e}  {elapsed:.0f}/{budget_seconds:.0f}s")

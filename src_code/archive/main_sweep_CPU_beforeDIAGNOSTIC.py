@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 """
-main_sweep_GPU.py
-=================
-GPU edition of main_sweep.py — identical parameters, identical logic.
-The only additions are device placement (CUDA tensors), VRAM guard, and
-CPU-safe checkpoint saving.  Falls back to CPU if no GPU is present.
-
+main_sweep.py
+=============
 10-12 h iPEPS benchmark that sweeps over growing D_bond (outer loop) and
 growing chi (inner loop) for the AFM Heisenberg model on the 6-site
 honeycomb unit cell, using AD-CTMRG.
@@ -60,6 +56,37 @@ import os
 import sys
 import time
 
+# ── CPU threading ─────────────────────────────────────────────────────────────
+# MUST be set BEFORE importing NumPy / PyTorch / MKL — they read these at init.
+#
+# Hardware: Intel Core i7-8665U — 4 physical cores × 2 HT = 8 logical CPUs.
+# PyTorch is built with Intel MKL (BLAS/LAPACK) + OpenMP.
+#
+# Use 4 = physical core count.  Hyperthreading does NOT help SVD / dense
+# matmul: both HTs on the same core share the same FPU and L1/L2 cache, so
+# using 8 threads starves each other rather than doubling throughput.
+#
+# Use os.environ.setdefault so a user can still override from the shell:
+#   OMP_NUM_THREADS=2 python scripts/main_sweep_CPU.py   ← respected
+_N_PHYSICAL_CORES = 4
+os.environ.setdefault("OMP_NUM_THREADS", str(_N_PHYSICAL_CORES))
+os.environ.setdefault("MKL_NUM_THREADS", str(_N_PHYSICAL_CORES))
+# Prevent MKL from silently reducing thread count when it detects nested
+# parallelism or high system load — we always want the full 4 threads.
+os.environ.setdefault("MKL_DYNAMIC", "FALSE")
+# Pin each OpenMP thread to a distinct physical core (not a hyperthread sibling).
+# granularity=fine  → thread-level pinning (finest possible)
+# compact           → pack onto as few sockets as possible (single-socket here)
+# 1                 → permute: fill one HT per core before doubling up (with
+#                     4 threads on 4 cores this has no effect, but future-proofs)
+# 0                 → offset: start from logical CPU 0
+# Result: threads 0-3 map to cores 0-3, no migration between iterations.
+os.environ.setdefault("KMP_AFFINITY", "granularity=fine,compact,1,0")
+# After a parallel region the OpenMP workers normally spin-wait for ~200 ms
+# before going to sleep, burning a whole core.  Set to 0 so they yield
+# immediately — the outer L-BFGS loop is sequential so this saves real time.
+os.environ.setdefault("KMP_BLOCKTIME", "0")
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 import matplotlib
@@ -67,6 +94,13 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import opt_einsum as oe
 import torch
+
+# Tell PyTorch's own dispatcher to use all physical cores for intra-op
+# parallelism (matrix multiply, SVD, etc.) and only 1 thread for the
+# inter-op pool — our outer loop is serial, extra inter-op threads just
+# compete with the intra-op pool for the same physical cores.
+torch.set_num_threads(_N_PHYSICAL_CORES)
+torch.set_num_interop_threads(1)
 
 from core_unrestricted import (
     normalize_tensor,
@@ -80,14 +114,11 @@ from core_unrestricted import (
     set_dtype,
 )
 
-# Default complex dtype — updated to complex128 by --double / USE_DOUBLE_PRECISION.
-CDTYPE: torch.dtype = torch.complex64
-
 # ══════════════════════════════════════════════════════════════════════════════
 # Time Budget
 # ══════════════════════════════════════════════════════════════════════════════
 
-TOTAL_BUDGET_HOURS = 1.0
+TOTAL_BUDGET_HOURS = 0.5
 
 # Total wall-clock time for the entire sweep.  The sweep is designed to run
 # for a fixed time rather than a fixed number of steps, so that results at
@@ -97,11 +128,11 @@ TOTAL_BUDGET_HOURS = 1.0
 
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Device
-# ══════════════════════════════════════════════════════════════════════════════
-
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# Default complex dtype — updated to complex128 by --double / USE_DOUBLE_PRECISION.
+# Python functions look up globals at call time, so build_heisenberg_H(),
+# pad_tensor(), and optimize_at_chi() all see the updated value after main()
+# calls set_dtype() and reassigns CDTYPE.
+CDTYPE: torch.dtype = torch.complex64
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║                  ALL TUNABLE PARAMETERS — EDIT HERE                     ║
@@ -143,18 +174,18 @@ DEFAULT_D_BUDGET_FRACS = {2: 0.15, 3: 0.35, 4: 0.5}
 #     D=2 : small tensors, converges quickly — 3 % is enough.
 #     D=3 : main physics workhorse, needs the most time — 52 %.
 #     D=4 : highest accuracy but very slow per step — 45 %.
-#   NOTE: This is the ONLY intentional asymmetry in the sweep.  Different D
+#   Note: This is the ONLY intentional asymmetry in the sweep.  Different D
 #   values have genuinely different computational costs and scientific weight.
 #   Within each D, every chi level gets equal time (see below).
 
 DEFAULT_CHI_MAX = {2: 16, 3: 81, 4: 80}
 #   Largest chi to attempt for each D_bond.  Hard upper bound is D⁴
 #   (gives 16, 81, 256 for D=2,3,4).  We cap D=4 at 80 because chi >> 80
-#   requires too much VRAM on the MX250 and adds negligible accuracy.
+#   requires too much RAM on a typical workstation and adds negligible accuracy.
 #   Increase if you have more memory; decrease if you hit OOM.
 
 DEFAULT_CHI_SCHEDULES = {
-    2: [5, 8, 14],#, 16],
+    2: [5, 8, 14],
     3: [10, 17, 29],       # , 57, 81],  ← append to extend the schedule
     4: [17, 29],           # , 40, 62, 80] ← append to extend the schedule
 }
@@ -185,7 +216,7 @@ LBFGS_MAX_ITER = 30
 #   Applies UNIFORMLY to every (D, chi) level — no difference between small
 #   and large chi.
 
-LBFGS_LR = 1.0 # TODO!!!!!!!!!!!
+LBFGS_LR = 0.1
 #   Step-size seed for the strong-Wolfe line search.  The line search
 #   automatically scales the actual step, so lr=1.0 is the standard default
 #   and almost always correct.  Only change if you observe line-search
@@ -227,7 +258,7 @@ OPTIMIZER = 'lbfgs'
 #             ADAM_STEPS_PER_CTM gradient updates with a fixed environment.
 #   Override at runtime:  --optimizer {lbfgs,adam}
 
-# ── Adam hyperparameters (used only when OPTIMIZER='adam') ───────────────────
+# ── Adam hyperparameters (used only when OPTIMIZER='adam') ────────────────────
 
 ADAM_LR = 3e-4
 #   Adam learning rate.  Typical range: 1e-4 – 1e-3.
@@ -272,12 +303,11 @@ SAVE_EVERY = 20
 #   minimum energy is found, independently of SAVE_EVERY.  Lower = more I/O
 #   but safer against crashes; higher = less I/O.
 
-VRAM_SAFETY_GB = 0.3
-#   Minimum free VRAM (CUDA) or RAM (CPU fallback) that must remain available
-#   before we attempt a (D, chi) level.  If free_memory < peak_estimate +
-#   VRAM_SAFETY_GB, the level is skipped with a warning.
-#   Peak memory estimate per CTMRG step: 3 corners × 4× SVD workspace ×
-#   (chi·D²)² × 8 bytes (complex64).  Increase if OOM errors occur.
+RAM_SAFETY_GB = 0.4
+#   Minimum free RAM that must remain available before attempting a (D, chi)
+#   level.  If free_RAM < peak_estimate + RAM_SAFETY_GB, the level is skipped
+#   with a warning.  Peak memory estimate per CTMRG step: 3 corners × 4×
+#   SVD workspace × (chi·D²)² × 8 bytes (complex64).  Increase if OOM.
 
 # ── Physical model ────────────────────────────────────────────────────────────
 
@@ -350,16 +380,8 @@ def free_ram_gb() -> float:
     return float('inf')
 
 
-def free_memory_gb() -> float:
-    """Return free VRAM (CUDA) or free host RAM (CPU)."""
-    if DEVICE.type == 'cuda':
-        free, _ = torch.cuda.mem_get_info(DEVICE)
-        return free / 1e9
-    return free_ram_gb()
-
-
 def peak_ram_gb(chi: int, D_sq: int) -> float:
-    """Estimate peak VRAM/RAM for one CTMRG step in GB."""
+    """Estimate peak RAM for one CTMRG step in GB."""
     n = chi * D_sq
     return 3 * 4 * n * n * 8 / 1e9   # 3 corners × 4× SVD workspace × element size
 
@@ -380,15 +402,15 @@ def build_heisenberg_H(J: float = 1.0, d: int = 2) -> torch.Tensor:
     SdotS = (oe.contract("ij,kl->ikjl", sx, sx)
            + oe.contract("ij,kl->ikjl", sy, sy)
            + oe.contract("ij,kl->ikjl", sz, sz))
-    return (J * SdotS).to(DEVICE)
+    return J * SdotS
 
 
 def pad_tensor(t: torch.Tensor, old_D: int, new_D: int,
                d_PHYS: int, noise: float) -> torch.Tensor:
     out = noise * torch.randn(new_D, new_D, new_D, d_PHYS,
-                              dtype=CDTYPE, device=DEVICE)
+                              dtype=CDTYPE)
     s = old_D
-    out[:s, :s, :s, :] = t[:s, :s, :s, :].to(DEVICE)
+    out[:s, :s, :s, :] = t[:s, :s, :s, :]
     return normalize_tensor(out)
 
 
@@ -400,6 +422,10 @@ def evaluate_energy_clean(a, b, c, d, e, f,
         A, B, C, Dt, E, F = abcdef_to_ABCDEF(a, b, c, d, e, f, D_sq)
         all27 = CTMRG_from_init_to_stop(
                 A, B, C, Dt, E, F, chi, D_sq, CTM_MAX_STEPS, CTM_CONV_THR)
+        #E6 = energy_expectation_nearest_neighbor_6_bonds(
+        #    a, b, c, d, e, f,
+        #    Hs[0], Hs[1], Hs[2], Hs[3], Hs[4], Hs[5],
+        #    chi, D_bond, *all27[:9])
         E3ebadcf = energy_expectation_nearest_neighbor_3ebadcf_bonds(
                 a,b,c,d,e,f, 
                 Hs[0],Hs[1],Hs[2],
@@ -421,15 +447,13 @@ def evaluate_energy_clean(a, b, c, d, e, f,
 def save_checkpoint(path: str, abcdef: tuple, D_bond: int, chi: int,
                     loss: float, energy: float | None,
                     step: int, log: list) -> None:
-    # always save CPU tensors so checkpoints are portable across machines
     torch.save({
-        'a': abcdef[0].cpu(), 'b': abcdef[1].cpu(), 'c': abcdef[2].cpu(),
-        'd': abcdef[3].cpu(), 'e': abcdef[4].cpu(), 'f': abcdef[5].cpu(),
+        'a': abcdef[0], 'b': abcdef[1], 'c': abcdef[2],
+        'd': abcdef[3], 'e': abcdef[4], 'f': abcdef[5],
         'D_bond': D_bond, 'chi': chi,
         'loss': loss, 'energy': energy,
         'step': step, 'timestamp': timestamp(),
         'log': log,
-        'device': str(DEVICE),
     }, path)
 
 
@@ -458,13 +482,12 @@ def optimize_at_chi(
     D_sq = D_bond ** 2
     t_start = time.perf_counter()
 
-    # initialise tensors — always on DEVICE
+    # initialise tensors
     if init_abcdef is not None:
-        a, b, c, d, e, f = [t.detach().clone().to(CDTYPE).to(DEVICE)
+        a, b, c, d, e, f = [t.detach().clone().to(CDTYPE)
                              for t in init_abcdef]
     else:
         a, b, c, d, e, f = initialize_abcdef('random', D_bond, d_PHYS, INIT_NOISE)
-        a, b, c, d, e, f = [t.to(DEVICE) for t in (a, b, c, d, e, f)]
     for t in (a, b, c, d, e, f):
         t.requires_grad_(True)
 
@@ -529,6 +552,7 @@ def optimize_at_chi(
             ).real
 
         if OPTIMIZER == 'lbfgs':
+            # fresh L-BFGS each outer step (resets curvature state)
             _opt = torch.optim.LBFGS(
                 [a, b, c, d, e, f],
                 lr=LBFGS_LR,
@@ -593,7 +617,7 @@ def optimize_at_chi(
 def main():
     global CDTYPE, OPTIMIZER
     parser = argparse.ArgumentParser(
-        description="10-12 h iPEPS benchmark: sweep D_bond (outer) × chi (inner) [GPU]",
+        description="10-12 h iPEPS benchmark: sweep D_bond (outer) × chi (inner)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
@@ -635,15 +659,6 @@ def main():
     CDTYPE = torch.complex128 if args.double else torch.complex64
     set_dtype(args.double)
     OPTIMIZER = args.optimizer
-
-    # ── device info ───────────────────────────────────────────────────────────
-    if DEVICE.type == 'cuda':
-        gpu_name   = torch.cuda.get_device_name(DEVICE)
-        vram_total = torch.cuda.get_device_properties(DEVICE).total_memory / 1e9
-        vram_free  = torch.cuda.mem_get_info(DEVICE)[0] / 1e9
-        device_str = f"CUDA — {gpu_name}  {vram_total:.1f} GB total  {vram_free:.1f} GB free"
-    else:
-        device_str = "CPU (no CUDA device found)"
 
     # ── parse D_bond list ─────────────────────────────────────────────────────
     D_bond_list: list[int] = [int(x) for x in args.D_bonds.split(',')]
@@ -721,7 +736,7 @@ def main():
         adam_lr=ADAM_LR, adam_betas=list(ADAM_BETAS), adam_eps=ADAM_EPS,
         adam_weight_decay=ADAM_WEIGHT_DECAY, adam_steps_per_ctm=ADAM_STEPS_PER_CTM,
         ctm_max_steps=CTM_MAX_STEPS, ctm_conv_thr=CTM_CONV_THR,
-        J=args.J, d_phys=d_PHYS, double=args.double, device=str(DEVICE),
+        J=args.J, d_phys=d_PHYS, double=args.double,
         hours=args.hours, D_bond_list=D_bond_list,
         chi_max_map={str(k): v for k, v in chi_max_map.items()},
         schedules={str(k): v for k, v in schedules.items()},
@@ -736,15 +751,14 @@ def main():
         with open(os.path.join(output_dir, 'hyperparams.yaml'), 'w') as _fp:
             _json.dump(_hp, _fp, indent=2)
 
-    # ── Hamiltonians — placed on DEVICE ───────────────────────────────────────
-    H  = build_heisenberg_H(args.J, d_PHYS)   # already on DEVICE
-    Hs = [H] * 9
+    # ── Hamiltonians (isotropic; all 9 bonds equal) ───────────────────────────
+    H  = build_heisenberg_H(args.J, d_PHYS)
+    Hs = [H] * 9  # the order defined as 0~8 as Heb,Had,Hcf, Haf,Hcb,Hed, Hcd,Hef,Hab
 
     # ── Banner ────────────────────────────────────────────────────────────────
     print("=" * 76)
     print("  iPEPS sweep  —  AD-CTMRG  —  AFM Heisenberg on 6-site honeycomb")
     print(f"  J={args.J}  d_phys={d_PHYS}  Total budget: {args.hours:.1f} h")
-    print(f"  Device       : {device_str}")
     print(f"  D_bond sweep : {D_bond_list}")
     for D in D_bond_list:
         bh = d_budgets[D] / 3600
@@ -766,9 +780,9 @@ def main():
         ckpt = torch.load(args.resume, map_location='cpu')
         resume_D   = ckpt.get('D_bond')
         resume_chi = ckpt.get('chi')
-        # load to DEVICE so the optimizer immediately uses the right device
-        best_abcdef_by_D[resume_D] = tuple(
-            ckpt[k].to(DEVICE) for k in ('a', 'b', 'c', 'd', 'e', 'f'))
+        best_abcdef_by_D[resume_D] = (
+            ckpt['a'], ckpt['b'], ckpt['c'],
+            ckpt['d'], ckpt['e'], ckpt['f'])
         global_step = ckpt.get('step', 0) + 1
         print(f"  Resumed from {args.resume}  "
               f"(D={resume_D}, chi={resume_chi}, "
@@ -821,12 +835,12 @@ def main():
             # equal time budget for every chi level within this D
             chi_budget = D_budget / len(chis)
 
-            # VRAM / RAM guard
+            # RAM guard
             need_gb  = peak_ram_gb(chi, D_sq)
-            avail_gb = free_memory_gb()
-            if avail_gb < need_gb + VRAM_SAFETY_GB:
+            avail_gb = free_ram_gb()
+            if avail_gb < need_gb + RAM_SAFETY_GB:
                 print(f"\n  ⚠  Skipping (D={D_bond}, chi={chi}): "
-                      f"need {need_gb:.2f} GB + {VRAM_SAFETY_GB} GB safety, "
+                      f"need {need_gb:.2f} GB + {RAM_SAFETY_GB} GB safety, "
                       f"only {avail_gb:.1f} GB free.")
                 continue
 
@@ -919,7 +933,6 @@ def main():
         'total_elapsed_h': round(total_elapsed / 3600, 3),
         'total_steps': global_step,
         'energy_table': energy_table,
-        'device': str(DEVICE),
         'timestamp': timestamp(),
     }
     with open(results_path, 'w') as fp:
@@ -957,7 +970,7 @@ def main():
         fig2, ax2 = plt.subplots(figsize=(6, 4))
         ax2.plot(D_vals, E_best, 's-', color='tab:red', markersize=9,
                  markerfacecolor='white')
-        ax2.axhline(-0.3630, color='grey', ls='--', lw=1, label='QMC')
+        ax2.axhline(-0.3646, color='grey', ls='--', lw=1, label='QMC')
         ax2.set_xlabel(r'Bond dimension $D$', fontsize=12)
         ax2.set_ylabel(r'Best $E/\text{bond}$', fontsize=12)
         ax2.set_title('iPEPS convergence in D')
