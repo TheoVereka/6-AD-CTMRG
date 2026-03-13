@@ -31,6 +31,11 @@ import torch
 CDTYPE: torch.dtype = torch.complex64   # complex dtype for all tensors
 RDTYPE: torch.dtype = torch.float32     # real dtype (SVD singular values, norms)
 
+# Set to True to enable a runtime check inside trunc_rhoCCC that the three
+# SV sums (sum(sv32[:chi]), sum(sv13[:chi]), sum(sv21[:chi])) are nearly equal.
+# This is a physical consistency check; disable for production runs.
+DEBUG_CHECK_TRUNC_RHOCCC_SV_SUMS: bool = False
+
 
 def set_dtype(use_double: bool) -> None:
     """Switch all core computations between float32/complex64 and float64/complex128.
@@ -210,7 +215,8 @@ def abcdef_to_ABCDEF(a,b,c,d,e,f, D_squared:int):
 
 
 
-def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
+def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared,
+                 *, check_sv_sums=None, sv_sums_rtol=5e-3, sv_sums_atol=1e-10):
     """
     Compute truncated CTM projectors and renormalised corner matrices.
 
@@ -290,9 +296,30 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
                                optimize=[(0,1),(0,1)],
                                backend='torch')
     
-    C21 = normalize_tensor(C21)
-    C32 = normalize_tensor(C32)
-    C13 = normalize_tensor(C13)
+    # ── Physical corner normalization: divide all three Cs by Tr(rho)^(1/3) ──
+    # Tr(rho32) = sum of kept singular values = sum(sv32[:chi])
+    sum_sv32 = sv32[:chi].sum()
+    sum_sv13 = sv13[:chi].sum()
+    sum_sv21 = sv21[:chi].sum()
+
+    # Optional consistency check: the three SV sums should be nearly equal
+    # (physical requirement of a well-converged CTMRG environment).
+    _do_check = check_sv_sums if check_sv_sums is not None else DEBUG_CHECK_TRUNC_RHOCCC_SV_SUMS
+    if _do_check:
+        if not (torch.allclose(sum_sv32, sum_sv13, rtol=sv_sums_rtol, atol=sv_sums_atol)
+                and torch.allclose(sum_sv32, sum_sv21, rtol=sv_sums_rtol, atol=sv_sums_atol)):
+            raise RuntimeError(
+                f"trunc_rhoCCC: sum(sv[:chi]) mismatch — "
+                f"sv32={sum_sv32.item():.6e}, sv13={sum_sv13.item():.6e}, "
+                f"sv21={sum_sv21.item():.6e} "
+                f"(rtol={sv_sums_rtol}, atol={sv_sums_atol})"
+            )
+
+    scaleC = sum_sv32.pow(1.0 / 3.0)
+    if torch.isfinite(scaleC).item() and (scaleC > torch.finfo(scaleC.dtype).tiny).item():
+        C21 = C21 / scaleC
+        C32 = C32 / scaleC
+        C13 = C13 / scaleC
 
     U1 = U1.reshape(chi,D_squared, chi)
     U2 = U2.reshape(chi,D_squared, chi)
@@ -821,35 +848,96 @@ def update_environmentCTs_1to2(C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
     V2A, C21EB, U1F, V3C, C32AD, U2B, V1E, C13CF, U3D = trunc_rhoCCC(
                         matC21EB, matC32AD, matC13CF, chi, D_squared)
 
-    T3E = normalize_tensor(oe.contract("OYa,abg,ObM->YMg",
+    T3E = oe.contract("OYa,abg,ObM->YMg",
                         T1F,E,U1F,
                         optimize=[(0,1),(0,1)],
-                        backend='torch'))
+                        backend='torch')
 
-    T3B = normalize_tensor(oe.contract("OXb,abg,LOa->XLg",
+    T3B = oe.contract("OXb,abg,LOa->XLg",
                         T2A,B,V2A,
                         optimize=[(0,1),(0,1)],
-                        backend='torch'))
-    
-    T1A = normalize_tensor(oe.contract("OZb,abg,OgN->ZNa",
+                        backend='torch')
+
+    T1A = oe.contract("OZb,abg,OgN->ZNa",
                         T2B,A,U2B,
                         optimize=[(0,1),(0,1)],
-                        backend='torch'))
-    
-    T1D = normalize_tensor(oe.contract("OYg,abg,MOb->YMa",
+                        backend='torch')
+
+    T1D = oe.contract("OYg,abg,MOb->YMa",
                         T3C,D,V3C,
                         optimize=[(0,1),(0,1)],
-                        backend='torch'))
-    
-    T2C = normalize_tensor(oe.contract("OXg,abg,OaL->XLb",
+                        backend='torch')
+
+    T2C = oe.contract("OXg,abg,OaL->XLb",
                         T3D,C,U3D,
                         optimize=[(0,1),(0,1)],
-                        backend='torch'))
-    
-    T2F = normalize_tensor(oe.contract("OZa,abg,NOg->ZNa",
+                        backend='torch')
+
+    T2F = oe.contract("OZa,abg,NOg->ZNa",
                         T1E,F,V1E,
                         optimize=[(0,1),(0,1)],
-                        backend='torch'))
+                        backend='torch')
+
+    # ── End-of-update transfer normalization (mirrors norm_env_2) ────────────
+    # Expand double-layer (D²,D²,D²) → rank-6 (D,D,D,D,D,D) so the contraction
+    # strings are structurally identical to norm_env_2; then divide all 6 Ts
+    # by <iPEPS|iPEPS>^(1/6).
+    D_bond = int(round(D_squared ** 0.5))
+    A6 = A.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)  # indices: (a,r,b,s,c,t)
+    B6 = B.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
+    C6 = C.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
+    D6 = D.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
+    E6 = E.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
+    F6 = F.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
+    T1D4 = T1D.reshape(chi, chi, D_bond, D_bond)
+    T2C4 = T2C.reshape(chi, chi, D_bond, D_bond)
+    T2F4 = T2F.reshape(chi, chi, D_bond, D_bond)
+    T3E4 = T3E.reshape(chi, chi, D_bond, D_bond)
+    T3B4 = T3B.reshape(chi, chi, D_bond, D_bond)
+    T1A4 = T1A.reshape(chi, chi, D_bond, D_bond)
+    # norm_env_2: open_A= "YX,MYar,abci,rstj->MbsXctij" → double-layer: "YX,MYar,arbsct->MbsXct"
+    closed_A = oe.contract("YX,MYar,arbsct->MbsXct",
+                            C21EB, T1D4, A6,
+                            optimize=[(0,1),(0,1)], backend='torch'
+                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
+    # open_B= "MYct,abci,rstj->YarMbsij" → "MYct,arbsct->YarMbs"
+    closed_B = oe.contract("MYct,arbsct->YarMbs",
+                            T3E4, B6,
+                            optimize=[(0,1)], backend='torch'
+                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
+    # open_C= "ZY,NZbs,abci,rstj->NctYarij" → "ZY,NZbs,arbsct->NctYar"
+    closed_C = oe.contract("ZY,NZbs,arbsct->NctYar",
+                            C32AD, T2F4, C6,
+                            optimize=[(0,1),(0,1)], backend='torch'
+                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
+    # open_D= "NZar,abci,rstj->ZbsNctij" → "NZar,arbsct->ZbsNct"
+    closed_D = oe.contract("NZar,arbsct->ZbsNct",
+                            T1A4, D6,
+                            optimize=[(0,1)], backend='torch'
+                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
+    # open_E= "XZ,LXct,abci,rstj->LarZbsij" → "XZ,LXct,arbsct->LarZbs"
+    closed_E = oe.contract("XZ,LXct,arbsct->LarZbs",
+                            C13CF, T3B4, E6,
+                            optimize=[(0,1),(0,1)], backend='torch'
+                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
+    # open_F= "LXbs,abci,rstj->XctLarij" → "LXbs,arbsct->XctLar"
+    closed_F = oe.contract("LXbs,arbsct->XctLar",
+                            T2C4, F6,
+                            optimize=[(0,1)], backend='torch'
+                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
+    CB = torch.mm(closed_C, closed_B)
+    ED = torch.mm(closed_E, closed_D)
+    AF = torch.mm(closed_A, closed_F)
+    norm_val  = oe.contract("xy,yz,zx->", CB, AF, ED, backend='torch')
+    norm_real = norm_val.real
+    scaleT = norm_real.pow(1.0 / 6.0)
+    if torch.isfinite(scaleT).item() and (scaleT > torch.finfo(scaleT.dtype).tiny).item():
+        T3E = T3E / scaleT
+        T3B = T3B / scaleT
+        T1A = T1A / scaleT
+        T1D = T1D / scaleT
+        T2C = T2C / scaleT
+        T2F = T2F / scaleT
 
     return C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A
 
@@ -903,35 +991,93 @@ def update_environmentCTs_2to3(C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A
     V2C, C21AF, U1D, V3E, C32CB, U2F, V1A, C13ED, U3B = trunc_rhoCCC(
                         matC21AF, matC32CB, matC13ED, chi, D_squared)
 
-    T3A = normalize_tensor(oe.contract("OYa,abg,ObM->YMg",
+    T3A = oe.contract("OYa,abg,ObM->YMg",
                         T1D,A,U1D,
                         optimize=[(0,1),(0,1)],
-                        backend='torch'))
+                        backend='torch')
 
-    T3F = normalize_tensor(oe.contract("OXb,abg,LOa->XLg",
+    T3F = oe.contract("OXb,abg,LOa->XLg",
                         T2C,F,V2C,
                         optimize=[(0,1),(0,1)],
-                        backend='torch'))
-    
-    T1C = normalize_tensor(oe.contract("OZb,abg,OgN->ZNa",
+                        backend='torch')
+
+    T1C = oe.contract("OZb,abg,OgN->ZNa",
                         T2F,C,U2F,
                         optimize=[(0,1),(0,1)],
-                        backend='torch'))
-    
-    T1B = normalize_tensor(oe.contract("OYg,abg,MOb->YMa",
+                        backend='torch')
+
+    T1B = oe.contract("OYg,abg,MOb->YMa",
                         T3E,B,V3E,
                         optimize=[(0,1),(0,1)],
-                        backend='torch'))
-    
-    T2E = normalize_tensor(oe.contract("OXg,abg,OaL->XLb",
+                        backend='torch')
+
+    T2E = oe.contract("OXg,abg,OaL->XLb",
                         T3B,E,U3B,
                         optimize=[(0,1),(0,1)],
-                        backend='torch'))
-    
-    T2D = normalize_tensor(oe.contract("OZa,abg,NOg->ZNa",
+                        backend='torch')
+
+    T2D = oe.contract("OZa,abg,NOg->ZNa",
                         T1A,D,V1A,
                         optimize=[(0,1),(0,1)],
-                        backend='torch'))
+                        backend='torch')
+
+    # ── End-of-update transfer normalization (mirrors norm_env_3) ────────────
+    D_bond = int(round(D_squared ** 0.5))
+    A6 = A.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
+    B6 = B.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
+    C6 = C.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
+    D6 = D.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
+    E6 = E.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
+    F6 = F.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
+    T1B4 = T1B.reshape(chi, chi, D_bond, D_bond)
+    T2E4 = T2E.reshape(chi, chi, D_bond, D_bond)
+    T2D4 = T2D.reshape(chi, chi, D_bond, D_bond)
+    T3A4 = T3A.reshape(chi, chi, D_bond, D_bond)
+    T3F4 = T3F.reshape(chi, chi, D_bond, D_bond)
+    T1C4 = T1C.reshape(chi, chi, D_bond, D_bond)
+    # norm_env_3: open_C= "YX,MYar,abci,rstj->MbsXctij" → "YX,MYar,arbsct->MbsXct"
+    closed_C = oe.contract("YX,MYar,arbsct->MbsXct",
+                            C21AF, T1B4, C6,
+                            optimize=[(0,1),(0,1)], backend='torch'
+                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
+    # open_F= "MYct,abci,rstj->YarMbsij" → "MYct,arbsct->YarMbs"
+    closed_F = oe.contract("MYct,arbsct->YarMbs",
+                            T3A4, F6,
+                            optimize=[(0,1)], backend='torch'
+                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
+    # open_E= "ZY,NZbs,abci,rstj->NctYarij" → "ZY,NZbs,arbsct->NctYar"
+    closed_E = oe.contract("ZY,NZbs,arbsct->NctYar",
+                            C32CB, T2D4, E6,
+                            optimize=[(0,1),(0,1)], backend='torch'
+                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
+    # open_B= "NZar,abci,rstj->ZbsNctij" → "NZar,arbsct->ZbsNct"
+    closed_B = oe.contract("NZar,arbsct->ZbsNct",
+                            T1C4, B6,
+                            optimize=[(0,1)], backend='torch'
+                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
+    # open_A= "XZ,LXct,abci,rstj->LarZbsij" → "XZ,LXct,arbsct->LarZbs"
+    closed_A = oe.contract("XZ,LXct,arbsct->LarZbs",
+                            C13ED, T3F4, A6,
+                            optimize=[(0,1),(0,1)], backend='torch'
+                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
+    # open_D= "LXbs,abci,rstj->XctLarij" → "LXbs,arbsct->XctLar"
+    closed_D = oe.contract("LXbs,arbsct->XctLar",
+                            T2E4, D6,
+                            optimize=[(0,1)], backend='torch'
+                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
+    EF = torch.mm(closed_E, closed_F)
+    AB = torch.mm(closed_A, closed_B)
+    CD = torch.mm(closed_C, closed_D)
+    norm_val  = oe.contract("xy,yz,zx->", EF, CD, AB, backend='torch')
+    norm_real = norm_val.real
+    scaleT = norm_real.pow(1.0 / 6.0)
+    if torch.isfinite(scaleT).item() and (scaleT > torch.finfo(scaleT.dtype).tiny).item():
+        T3A = T3A / scaleT
+        T3F = T3F / scaleT
+        T1C = T1C / scaleT
+        T1B = T1B / scaleT
+        T2E = T2E / scaleT
+        T2D = T2D / scaleT
 
     return C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C
 
@@ -985,35 +1131,93 @@ def update_environmentCTs_3to1(C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C
     V2E, C21CD, U1B, V3A, C32EF, U2D, V1C, C13AB, U3F = trunc_rhoCCC(
                         matC21CD, matC32EF, matC13AB, chi, D_squared)
 
-    T3C = normalize_tensor(oe.contract("OYa,abg,ObM->YMg",
+    T3C = oe.contract("OYa,abg,ObM->YMg",
                         T1B,C,U1B,
                         optimize=[(0,1),(0,1)],
-                        backend='torch'))
+                        backend='torch')
 
-    T3D = normalize_tensor(oe.contract("OXb,abg,LOa->XLg",
+    T3D = oe.contract("OXb,abg,LOa->XLg",
                         T2E,D,V2E,
                         optimize=[(0,1),(0,1)],
-                        backend='torch'))
-    
-    T1E = normalize_tensor(oe.contract("OZb,abg,OgN->ZNa",
+                        backend='torch')
+
+    T1E = oe.contract("OZb,abg,OgN->ZNa",
                         T2D,E,U2D,
                         optimize=[(0,1),(0,1)],
-                        backend='torch'))
-    
-    T1F = normalize_tensor(oe.contract("OYg,abg,MOb->YMa",
+                        backend='torch')
+
+    T1F = oe.contract("OYg,abg,MOb->YMa",
                         T3A,F,V3A,
                         optimize=[(0,1),(0,1)],
-                        backend='torch'))
-    
-    T2A = normalize_tensor(oe.contract("OXg,abg,OaL->XLb",
+                        backend='torch')
+
+    T2A = oe.contract("OXg,abg,OaL->XLb",
                         T3F,A,U3F,
                         optimize=[(0,1),(0,1)],
-                        backend='torch'))
-    
-    T2B = normalize_tensor(oe.contract("OZa,abg,NOg->ZNa",
+                        backend='torch')
+
+    T2B = oe.contract("OZa,abg,NOg->ZNa",
                         T1C,B,V1C,
                         optimize=[(0,1),(0,1)],
-                        backend='torch'))
+                        backend='torch')
+
+    # ── End-of-update transfer normalization (mirrors norm_env_1) ────────────
+    D_bond = int(round(D_squared ** 0.5))
+    A6 = A.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
+    B6 = B.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
+    C6 = C.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
+    D6 = D.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
+    E6 = E.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
+    F6 = F.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
+    T1F4 = T1F.reshape(chi, chi, D_bond, D_bond)
+    T2A4 = T2A.reshape(chi, chi, D_bond, D_bond)
+    T2B4 = T2B.reshape(chi, chi, D_bond, D_bond)
+    T3C4 = T3C.reshape(chi, chi, D_bond, D_bond)
+    T3D4 = T3D.reshape(chi, chi, D_bond, D_bond)
+    T1E4 = T1E.reshape(chi, chi, D_bond, D_bond)
+    # norm_env_1: open_E= "YX,MYar,abci,rstj->MbsXctij" → "YX,MYar,arbsct->MbsXct"
+    closed_E = oe.contract("YX,MYar,arbsct->MbsXct",
+                            C21CD, T1F4, E6,
+                            optimize=[(0,1),(0,1)], backend='torch'
+                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
+    # open_D= "MYct,abci,rstj->YarMbsij" → "MYct,arbsct->YarMbs"
+    closed_D = oe.contract("MYct,arbsct->YarMbs",
+                            T3C4, D6,
+                            optimize=[(0,1)], backend='torch'
+                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
+    # open_A= "ZY,NZbs,abci,rstj->NctYarij" → "ZY,NZbs,arbsct->NctYar"
+    closed_A = oe.contract("ZY,NZbs,arbsct->NctYar",
+                            C32EF, T2B4, A6,
+                            optimize=[(0,1),(0,1)], backend='torch'
+                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
+    # open_F= "NZar,abci,rstj->ZbsNctij" → "NZar,arbsct->ZbsNct"
+    closed_F = oe.contract("NZar,arbsct->ZbsNct",
+                            T1E4, F6,
+                            optimize=[(0,1)], backend='torch'
+                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
+    # open_C= "XZ,LXct,abci,rstj->LarZbsij" → "XZ,LXct,arbsct->LarZbs"
+    closed_C = oe.contract("XZ,LXct,arbsct->LarZbs",
+                            C13AB, T3D4, C6,
+                            optimize=[(0,1),(0,1)], backend='torch'
+                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
+    # open_B= "LXbs,abci,rstj->XctLarij" → "LXbs,arbsct->XctLar"
+    closed_B = oe.contract("LXbs,arbsct->XctLar",
+                            T2A4, B6,
+                            optimize=[(0,1)], backend='torch'
+                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
+    AD = torch.mm(closed_A, closed_D)
+    CF = torch.mm(closed_C, closed_F)
+    EB = torch.mm(closed_E, closed_B)
+    norm_val  = oe.contract("xy,yz,zx->", AD, EB, CF, backend='torch')
+    norm_real = norm_val.real
+    scaleT = norm_real.pow(1.0 / 6.0)
+    if torch.isfinite(scaleT).item() and (scaleT > torch.finfo(scaleT.dtype).tiny).item():
+        T3C = T3C / scaleT
+        T3D = T3D / scaleT
+        T1E = T1E / scaleT
+        T1F = T1F / scaleT
+        T2A = T2A / scaleT
+        T2B = T2B / scaleT
 
     return C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
 

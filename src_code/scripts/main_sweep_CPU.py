@@ -727,6 +727,23 @@ def optimize_at_chi(
             print(f"    step {step:5d}  ctm={ctm_steps:3d}  loss={loss_item:+.10f}"
                   f"  (E1:{E1_per_bond:+.3f} E2:{E2_per_bond:+.3f} E3:{E3_per_bond:+.3f})"
                   f"  Δ={delta:+.3e}  {elapsed:.0f}/{budget_seconds:.0f}s")
+            # ── Corner / transfer tensor norm diagnostic ──────────────────────
+            with torch.no_grad():
+                cn = {
+                    'C21CD': torch.linalg.norm(C21CD).item(),
+                    'C32EF': torch.linalg.norm(C32EF).item(),
+                    'C13AB': torch.linalg.norm(C13AB).item(),
+                    'C21EB': torch.linalg.norm(C21EB).item(),
+                    'C32AD': torch.linalg.norm(C32AD).item(),
+                    'C13CF': torch.linalg.norm(C13CF).item(),
+                    'C21AF': torch.linalg.norm(C21AF).item(),
+                    'C32CB': torch.linalg.norm(C32CB).item(),
+                    'C13ED': torch.linalg.norm(C13ED).item(),
+                }
+            print(f"           corner norms │"
+                  f" C21CD={cn['C21CD']:.3e} C32EF={cn['C32EF']:.3e} C13AB={cn['C13AB']:.3e}"
+                  f" │ C21EB={cn['C21EB']:.3e} C32AD={cn['C32AD']:.3e} C13CF={cn['C13CF']:.3e}"
+                  f" │ C21AF={cn['C21AF']:.3e} C32CB={cn['C32CB']:.3e} C13ED={cn['C13ED']:.3e}")
         else:
             print(f"    step {step:5d}  ctm={ctm_steps:3d}  loss={loss_item:+.10f}"
                   f"  Δ={delta:+.3e}  {elapsed:.0f}/{budget_seconds:.0f}s")
