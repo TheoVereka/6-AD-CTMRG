@@ -118,7 +118,7 @@ from core_unrestricted import (
 # Time Budget
 # ══════════════════════════════════════════════════════════════════════════════
 
-TOTAL_BUDGET_HOURS = 0.1
+TOTAL_BUDGET_HOURS = 0.15
 
 # Total wall-clock time for the entire sweep.  The sweep is designed to run
 # for a fixed time rather than a fixed number of steps, so that results at
@@ -216,7 +216,7 @@ LBFGS_MAX_ITER = 30
 #   Applies UNIFORMLY to every (D, chi) level — no difference between small
 #   and large chi.
 
-LBFGS_LR = 0.1
+LBFGS_LR = 0.01
 #   Step-size seed for the strong-Wolfe line search.  The line search
 #   automatically scales the actual step, so lr=1.0 is the standard default
 #   and almost always correct.  Only change if you observe line-search
@@ -280,7 +280,7 @@ ADAM_STEPS_PER_CTM = 5
 #   CTMRG "step" grows the environment by one unit-cell layer and then
 #   compresses via SVD truncation to keep the environment bond dim = chi.
 
-CTM_MAX_STEPS = 90
+CTM_MAX_STEPS = 70
 #   Hard cap on CTMRG iterations per environment convergence call.
 #   With the singular-value convergence criterion and CTM_CONV_THR=1e-3,
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor

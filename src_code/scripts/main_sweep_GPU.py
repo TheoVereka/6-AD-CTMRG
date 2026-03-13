@@ -87,7 +87,7 @@ CDTYPE: torch.dtype = torch.complex64
 # Time Budget
 # ══════════════════════════════════════════════════════════════════════════════
 
-TOTAL_BUDGET_HOURS = 1.0
+TOTAL_BUDGET_HOURS = 0.2
 
 # Total wall-clock time for the entire sweep.  The sweep is designed to run
 # for a fixed time rather than a fixed number of steps, so that results at
@@ -177,7 +177,7 @@ DEFAULT_CHI_SCHEDULES = {
 #     3. Repeat until time budget is exhausted or OPT_CONV_THRESHOLD hit.
 #   This is the "cheap-environment" AD-CTMRG gradient scheme.
 
-LBFGS_MAX_ITER = 30
+LBFGS_MAX_ITER = 20
 #   Maximum L-BFGS sub-iterations per outer step (= max closure evaluations
 #   inside a single optimizer.step() call).  Each sub-iteration does a
 #   forward + backward pass through the energy formula.  30 gives a thorough
@@ -229,7 +229,7 @@ OPTIMIZER = 'lbfgs'
 
 # ── Adam hyperparameters (used only when OPTIMIZER='adam') ───────────────────
 
-ADAM_LR = 3e-4
+ADAM_LR = 3e-3
 #   Adam learning rate.  Typical range: 1e-4 – 1e-3.
 ADAM_BETAS = (0.9, 0.999)
 #   Exponential decay rates for 1st and 2nd moment estimates.
