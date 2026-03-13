@@ -280,7 +280,7 @@ ADAM_STEPS_PER_CTM = 5
 #   CTMRG "step" grows the environment by one unit-cell layer and then
 #   compresses via SVD truncation to keep the environment bond dim = chi.
 
-CTM_MAX_STEPS = 70
+CTM_MAX_STEPS = 90
 #   Hard cap on CTMRG iterations per environment convergence call.
 #   With the singular-value convergence criterion and CTM_CONV_THR=1e-3,
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
@@ -581,46 +581,28 @@ def optimize_at_chi(
 
         # ──────────────────────────────────────────────────────────────────────
         # DIAGNOSTIC CODE: Enhanced detection and logging of loss values
+        # NOTE: Per-component E1/E2/E3 re-computation is omitted here because
+        # the environment (C21*/T*) is stale after L-BFGS updates a..f, giving
+        # wildly wrong values.  loss_item IS the correct energy over all 9 bonds.
         # ──────────────────────────────────────────────────────────────────────
         
-        # Compute individual energy components
-        with torch.no_grad():
-            E1_diag = energy_expectation_nearest_neighbor_3ebadcf_bonds(
-                a.detach(),b.detach(),c.detach(),d.detach(),e.detach(),f.detach(),
-                Hs[0],Hs[1],Hs[2], chi, D_bond,
-                C21CD,C32EF,C13AB,T1F,T2A,T2B,T3C,T3D,T1E).real.item()
-            
-            E2_diag = energy_expectation_nearest_neighbor_3afcbed_bonds(
-                a.detach(),b.detach(),c.detach(),d.detach(),e.detach(),f.detach(),
-                Hs[3],Hs[4],Hs[5], chi, D_bond,
-                C21EB,C32AD,C13CF,T1D,T2C,T2F,T3E,T3B,T1A).real.item()
-            
-            E3_diag = energy_expectation_nearest_neighbor_other_3_bonds(
-                a.detach(),b.detach(),c.detach(),d.detach(),e.detach(),f.detach(),
-                Hs[6],Hs[7],Hs[8], chi, D_bond,
-                C21AF,C32CB,C13ED,T1B,T2E,T2D,T3A,T3F,T1C).real.item()
-        
-        # Physical bounds and diagnostic levels
+        # Physical bounds and diagnostic levels (based on loss_item only)
         N_BONDS = 9
         PHYSICAL_MIN_PER_BOND = -0.75
         PHYSICAL_MAX_PER_BOND = +0.25
         
         loss_per_bond = loss_item / N_BONDS
-        E1_per_bond = E1_diag / 3
-        E2_per_bond = E2_diag / 3
-        E3_per_bond = E3_diag / 3
         
         # Multiple diagnostic levels
         is_extreme = (loss_per_bond < PHYSICAL_MIN_PER_BOND - 0.05 or 
                       loss_per_bond > PHYSICAL_MAX_PER_BOND + 0.05)
         is_suspicious = (loss_per_bond < PHYSICAL_MIN_PER_BOND + 0.1 or 
                         loss_per_bond > PHYSICAL_MAX_PER_BOND - 0.1)
-        is_component_extreme = (abs(E1_per_bond) > 2.0 or abs(E2_per_bond) > 2.0 or abs(E3_per_bond) > 2.0)
         
         # Track diagnostic statistics
         if not hasattr(optimize_at_chi, '_diag_stats'):
             optimize_at_chi._diag_stats = {
-                'total_steps': 0, 'extreme_count': 0, 'suspicious_count': 0, 'component_extreme_count': 0,
+                'total_steps': 0, 'extreme_count': 0, 'suspicious_count': 0,
                 'min_loss_per_bond': float('inf'), 'max_loss_per_bond': float('-inf'),
                 'extreme_examples': []
             }
@@ -632,30 +614,17 @@ def optimize_at_chi(
         
         if is_extreme:
             stats['extreme_count'] += 1
-            stats['extreme_examples'].append((step, loss_per_bond, E1_per_bond, E2_per_bond, E3_per_bond))
+            stats['extreme_examples'].append((step, loss_per_bond))
         if is_suspicious:
             stats['suspicious_count'] += 1
-        if is_component_extreme:
-            stats['component_extreme_count'] += 1
         
         # Report extreme cases
-        if is_extreme or is_component_extreme:
+        if is_extreme:
             print("\n" + "="*70)
-            if is_extreme:
-                print(f"⚠️  EXTREME LOSS DETECTED AT STEP {step}")
-            else:
-                print(f"⚠️  EXTREME COMPONENT DETECTED AT STEP {step}")
+            print(f"⚠️  EXTREME LOSS DETECTED AT STEP {step}")
             print("="*70)
             print(f"Loss: {loss_item:+.6f} (per bond: {loss_per_bond:+.6f})")
             print(f"Physical bounds: [{PHYSICAL_MIN_PER_BOND:.2f}, {PHYSICAL_MAX_PER_BOND:.2f}] per bond")
-            
-            print(f"\nEnergy components:")
-            print(f"  E1 (bonds EB,AD,CF): {E1_diag:+.6f}  (per bond: {E1_per_bond:+.6f})")
-            print(f"  E2 (bonds AF,CB,ED): {E2_diag:+.6f}  (per bond: {E2_per_bond:+.6f})")
-            print(f"  E3 (bonds CD,EF,AB): {E3_diag:+.6f}  (per bond: {E3_per_bond:+.6f})")
-            print(f"  Sum: {E1_diag + E2_diag + E3_diag:+.6f}")
-            print(f"  Reported loss_item: {loss_item:+.6f}")
-            print(f"  Discrepancy: {abs(loss_item - (E1_diag + E2_diag + E3_diag)):.3e}")
             
             print(f"\nTensor statistics:")
             tensor_norms = {
@@ -693,24 +662,17 @@ def optimize_at_chi(
                 'chi': chi,
                 'loss': loss_item,
                 'loss_per_bond': loss_per_bond,
-                'E1': E1_diag,
-                'E2': E2_diag,
-                'E3': E3_diag,
-                'E1_per_bond': E1_per_bond,
-                'E2_per_bond': E2_per_bond,
-                'E3_per_bond': E3_per_bond,
                 'ctm_steps': ctm_steps,
                 'ctm_converged': ctm_steps < CTM_MAX_STEPS,
                 'tensor_norms': tensor_norms,
                 'has_nan': has_nan,
                 'has_inf': has_inf,
                 'optimizer': OPTIMIZER,
-                'is_extreme': is_extreme,
-                'is_component_extreme': is_component_extreme
+                'is_extreme': is_extreme
             }
             
-            with open(diag_file, 'w') as f:
-                json.dump(diag_data, f, indent=2)
+            with open(diag_file, 'w') as f_diag:
+                json.dump(diag_data, f_diag, indent=2)
             
             print(f"Diagnostic data saved to: {diag_file}")
             torch.save({
@@ -725,7 +687,7 @@ def optimize_at_chi(
         # Print periodic progress summary with more detail  
         if step % 10 == 0 or is_suspicious:
             print(f"    step {step:5d}  ctm={ctm_steps:3d}  loss={loss_item:+.10f}"
-                  f"  (E1:{E1_per_bond:+.3f} E2:{E2_per_bond:+.3f} E3:{E3_per_bond:+.3f})"
+                  f"  (per bond: {loss_per_bond:+.6f})"
                   f"  Δ={delta:+.3e}  {elapsed:.0f}/{budget_seconds:.0f}s")
             # ── Corner / transfer tensor norm diagnostic ──────────────────────
             with torch.no_grad():
@@ -787,12 +749,11 @@ def optimize_at_chi(
         print(f"   Loss range per bond: [{stats['min_loss_per_bond']:+.6f}, {stats['max_loss_per_bond']:+.6f}]")
         print(f"   Extreme cases: {stats['extreme_count']} ({100*stats['extreme_count']/stats['total_steps']:.1f}%)")
         print(f"   Suspicious cases: {stats['suspicious_count']} ({100*stats['suspicious_count']/stats['total_steps']:.1f}%)")
-        print(f"   Component extremes: {stats['component_extreme_count']} ({100*stats['component_extreme_count']/stats['total_steps']:.1f}%)")
         if stats['extreme_examples']:
-            print(f"   Examples of extreme losses (step, total_per_bond, E1_per_bond, E2_per_bond, E3_per_bond):")
+            print(f"   Examples of extreme losses (step, total_per_bond):")
             for example in stats['extreme_examples'][:3]:  # Show first 3 examples
-                step_ex, total_ex, e1_ex, e2_ex, e3_ex = example
-                print(f"     Step {step_ex}: {total_ex:+.6f} = ({e1_ex:+.6f}, {e2_ex:+.6f}, {e3_ex:+.6f})")
+                step_ex, total_ex = example
+                print(f"     Step {step_ex}: {total_ex:+.6f}")
         print()
 
     return (*best_abcdef, best_loss, step)

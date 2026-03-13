@@ -321,6 +321,18 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared,
         C32 = C32 / scaleC
         C13 = C13 / scaleC
 
+    # ── Individual equalization: preserve Tr(rho)=1 while balancing magnitudes ──
+    # Scale factors multiply to 1  ⟹  Tr(rho) = Tr(C13·C32·C21) unchanged.
+    n21 = torch.linalg.norm(C21).real
+    n32 = torch.linalg.norm(C32).real
+    n13 = torch.linalg.norm(C13).real
+    nC_prod = n21 * n32 * n13
+    if torch.isfinite(nC_prod).item() and (nC_prod > torch.finfo(n21.dtype).tiny).item():
+        nC_geo = nC_prod.pow(1.0 / 3.0)
+        C21 = C21 * (nC_geo / n21)
+        C32 = C32 * (nC_geo / n32)
+        C13 = C13 * (nC_geo / n13)
+
     U1 = U1.reshape(chi,D_squared, chi)
     U2 = U2.reshape(chi,D_squared, chi)
     U3 = U3.reshape(chi,D_squared, chi)
@@ -929,15 +941,32 @@ def update_environmentCTs_1to2(C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
     ED = torch.mm(closed_E, closed_D)
     AF = torch.mm(closed_A, closed_F)
     norm_val  = oe.contract("xy,yz,zx->", CB, AF, ED, backend='torch')
-    norm_real = norm_val.real
-    scaleT = norm_real.pow(1.0 / 6.0)
-    if torch.isfinite(scaleT).item() and (scaleT > torch.finfo(scaleT.dtype).tiny).item():
+    scaleT = norm_val.abs().pow(1.0 / 6.0)
+    if torch.isfinite(scaleT).item() and (scaleT > torch.finfo(scaleT.real.dtype).tiny).item():
         T3E = T3E / scaleT
         T3B = T3B / scaleT
         T1A = T1A / scaleT
         T1D = T1D / scaleT
         T2C = T2C / scaleT
         T2F = T2F / scaleT
+
+    # ── Individual equalization: preserve norm_env_2=1 while balancing magnitudes ──
+    # Each T appears linearly in exactly one closed_* factor; scale factors multiply to 1.
+    nT3E = torch.linalg.norm(T3E).real
+    nT3B = torch.linalg.norm(T3B).real
+    nT1A = torch.linalg.norm(T1A).real
+    nT1D = torch.linalg.norm(T1D).real
+    nT2C = torch.linalg.norm(T2C).real
+    nT2F = torch.linalg.norm(T2F).real
+    nT_prod = nT3E * nT3B * nT1A * nT1D * nT2C * nT2F
+    if torch.isfinite(nT_prod).item() and (nT_prod > torch.finfo(nT3E.dtype).tiny).item():
+        nT_geo = nT_prod.pow(1.0 / 6.0)
+        T3E = T3E * (nT_geo / nT3E)
+        T3B = T3B * (nT_geo / nT3B)
+        T1A = T1A * (nT_geo / nT1A)
+        T1D = T1D * (nT_geo / nT1D)
+        T2C = T2C * (nT_geo / nT2C)
+        T2F = T2F * (nT_geo / nT2F)
 
     return C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A
 
@@ -1069,15 +1098,31 @@ def update_environmentCTs_2to3(C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A
     AB = torch.mm(closed_A, closed_B)
     CD = torch.mm(closed_C, closed_D)
     norm_val  = oe.contract("xy,yz,zx->", EF, CD, AB, backend='torch')
-    norm_real = norm_val.real
-    scaleT = norm_real.pow(1.0 / 6.0)
-    if torch.isfinite(scaleT).item() and (scaleT > torch.finfo(scaleT.dtype).tiny).item():
+    scaleT = norm_val.abs().pow(1.0 / 6.0)
+    if torch.isfinite(scaleT).item() and (scaleT > torch.finfo(scaleT.real.dtype).tiny).item():
         T3A = T3A / scaleT
         T3F = T3F / scaleT
         T1C = T1C / scaleT
         T1B = T1B / scaleT
         T2E = T2E / scaleT
         T2D = T2D / scaleT
+
+    # ── Individual equalization: preserve norm_env_3=1 while balancing magnitudes ──
+    nT3A = torch.linalg.norm(T3A).real
+    nT3F = torch.linalg.norm(T3F).real
+    nT1C = torch.linalg.norm(T1C).real
+    nT1B = torch.linalg.norm(T1B).real
+    nT2E = torch.linalg.norm(T2E).real
+    nT2D = torch.linalg.norm(T2D).real
+    nT_prod = nT3A * nT3F * nT1C * nT1B * nT2E * nT2D
+    if torch.isfinite(nT_prod).item() and (nT_prod > torch.finfo(nT3A.dtype).tiny).item():
+        nT_geo = nT_prod.pow(1.0 / 6.0)
+        T3A = T3A * (nT_geo / nT3A)
+        T3F = T3F * (nT_geo / nT3F)
+        T1C = T1C * (nT_geo / nT1C)
+        T1B = T1B * (nT_geo / nT1B)
+        T2E = T2E * (nT_geo / nT2E)
+        T2D = T2D * (nT_geo / nT2D)
 
     return C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C
 
@@ -1209,15 +1254,31 @@ def update_environmentCTs_3to1(C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C
     CF = torch.mm(closed_C, closed_F)
     EB = torch.mm(closed_E, closed_B)
     norm_val  = oe.contract("xy,yz,zx->", AD, EB, CF, backend='torch')
-    norm_real = norm_val.real
-    scaleT = norm_real.pow(1.0 / 6.0)
-    if torch.isfinite(scaleT).item() and (scaleT > torch.finfo(scaleT.dtype).tiny).item():
+    scaleT = norm_val.abs().pow(1.0 / 6.0)
+    if torch.isfinite(scaleT).item() and (scaleT > torch.finfo(scaleT.real.dtype).tiny).item():
         T3C = T3C / scaleT
         T3D = T3D / scaleT
         T1E = T1E / scaleT
         T1F = T1F / scaleT
         T2A = T2A / scaleT
         T2B = T2B / scaleT
+
+    # ── Individual equalization: preserve norm_env_1=1 while balancing magnitudes ──
+    nT3C = torch.linalg.norm(T3C).real
+    nT3D = torch.linalg.norm(T3D).real
+    nT1E = torch.linalg.norm(T1E).real
+    nT1F = torch.linalg.norm(T1F).real
+    nT2A = torch.linalg.norm(T2A).real
+    nT2B = torch.linalg.norm(T2B).real
+    nT_prod = nT3C * nT3D * nT1E * nT1F * nT2A * nT2B
+    if torch.isfinite(nT_prod).item() and (nT_prod > torch.finfo(nT3C.dtype).tiny).item():
+        nT_geo = nT_prod.pow(1.0 / 6.0)
+        T3C = T3C * (nT_geo / nT3C)
+        T3D = T3D * (nT_geo / nT3D)
+        T1E = T1E * (nT_geo / nT1E)
+        T1F = T1F * (nT_geo / nT1F)
+        T2A = T2A * (nT_geo / nT2A)
+        T2B = T2B * (nT_geo / nT2B)
 
     return C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
 
@@ -1462,13 +1523,13 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
 
 
 
-    print("E_unnormed_AD = ", E_unnormed_AD.real.item(),"+i*", E_unnormed_AD.imag.item())
+    # print("E_unnormed_AD = ", E_unnormed_AD.real.item(),"+i*", E_unnormed_AD.imag.item())
 
 
     norm_1st_env = oe.contract("xy,yz,zx->", AD, EB, CF, backend="torch")
     
     
-    print("norm_1st_env = ", norm_1st_env.real.item(),"+i*", norm_1st_env.imag.item())
+    # print("norm_1st_env = ", norm_1st_env.real.item(),"+i*", norm_1st_env.imag.item())
 
 
     energyNearestNeighbor_3_bonds = (E_unnormed_AD + E_unnormed_CF + E_unnormed_EB) / norm_1st_env
@@ -1515,6 +1576,10 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,Haf,Hcb,Hed,
 
     norm_2nd_env= oe.contract("xy,yz,zx->", CB, AF, ED, backend="torch")
     energyNearestNeighbor_3_bonds = (E_unnormed_CB + E_unnormed_AF + E_unnormed_ED) / norm_2nd_env
+    
+    # print("E_3bonds = ", energyNearestNeighbor_3_bonds.real.item(),"+i*", energyNearestNeighbor_3_bonds.imag.item())
+    # print("norm_2nd_env = ", norm_2nd_env.real.item(),"+i*", norm_2nd_env.imag.item())
+    
     return energyNearestNeighbor_3_bonds
 
 
