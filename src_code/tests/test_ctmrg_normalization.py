@@ -16,6 +16,7 @@ torch.set_default_dtype(torch.float64)
 
 from core_unrestricted import (
     initialize_abcdef,
+    set_dtype,
     build_heisenberg_H,
     abcdef_to_ABCDEF,
     normalize_tensor,
@@ -288,6 +289,38 @@ def norm_env_3(a, b, c, d, e, f, chi, D_bond, C21AF, C32CB, C13ED, T1B, T2E, T2D
 
 
 def run_test(trials=5, steps_per_trial=20):
+    return run_test_configured(trials=trials, steps_per_trial=steps_per_trial)
+
+
+def _fmt_re_im(z: torch.Tensor, *, re_fmt: str = "+.6e", im_fmt: str = "+.6e") -> str:
+    """Format a scalar tensor as '(re, im)' with scientific notation."""
+    # torch scalars -> python numbers
+    zc = z.item()
+    if isinstance(zc, complex):
+        re = zc.real
+        im = zc.imag
+    else:
+        re = float(zc)
+        im = 0.0
+    return f"({re:{re_fmt}}, {im:{im_fmt}})"
+
+
+def run_test_configured(
+    *,
+    trials: int = 5,
+    steps_per_trial: int = 20,
+    print_every: int = 1,
+    imag_tol: float = 1e-8,
+    use_double: bool = False,
+):
+    """Run the normalization/imaginary-part diagnostic.
+
+    Prints one consistent line every `print_every` steps.
+    """
+    if use_double:
+        # Must be called before allocating core tensors (Hs, a..f, etc.).
+        set_dtype(True)
+
     print("Running CTMRG normalization test using core_unrestricted.py code")
 
     D_bond = 3
@@ -298,12 +331,26 @@ def run_test(trials=5, steps_per_trial=20):
     Hs = [build_heisenberg_H(1.0, d_phys) for _ in range(9)]
 
     neg_counts = {"norm1": 0, "norm2": 0, "norm3": 0}
+    imag_viol = {"E1": 0, "E2": 0, "E3": 0, "Etot": 0, "n1": 0, "n2": 0, "n3": 0}
+    max_imag = {"E1": 0.0, "E2": 0.0, "E3": 0.0, "Etot": 0.0, "n1": 0.0, "n2": 0.0, "n3": 0.0}
     total = 0
 
     for trial in range(trials):
+        if print_every > 0:
+            print(
+                f"\ntrial {trial+1}/{trials} (D={D_bond}, chi={chi}, steps={steps_per_trial}, "
+                f"print_every={print_every}, imag_tol={imag_tol:.1e}, use_double={use_double})"
+            )
+            print(
+                "step | Etot(re,im) | E1(re,im) E2(re,im) E3(re,im) | "
+                "n1(re,im) n2(re,im) n3(re,im) | flags"
+            )
         a, b, c, d, e, f = initialize_abcdef("random", D_bond, d_phys, 1e-3)
         for t in (a, b, c, d, e, f):
             t.requires_grad_(True)
+
+        prev_total_val = None
+        prev_norms = None
 
         for step in range(steps_per_trial):
             with torch.no_grad():
@@ -313,7 +360,7 @@ def run_test(trials=5, steps_per_trial=20):
                 d.data = normalize_tensor(d.data)
                 e.data = normalize_tensor(e.data)
                 f.data = normalize_tensor(f.data)
-
+            
             with torch.no_grad():
                 A, B, C, D, E, F = abcdef_to_ABCDEF(a, b, c, d, e, f, D_sq)
                 all27 = CTMRG_from_init_to_stop(A, B, C, D, E, F, chi, D_sq, 70, 1e-9)
@@ -328,27 +375,71 @@ def run_test(trials=5, steps_per_trial=20):
                 a, b, c, d, e, f, Hs[6], Hs[7], Hs[8], chi, D_bond, *all27[18:27]
             )
 
-            n1 = norm_env_1(a, b, c, d, e, f, chi, D_bond, *all27[:9]).real.item()
-            n2 = norm_env_2(a, b, c, d, e, f, chi, D_bond, *all27[9:18]).real.item()
-            n3 = norm_env_3(a, b, c, d, e, f, chi, D_bond, *all27[18:27]).real.item()
+            Etot = E1 + E2 + E3
+
+            n1c = norm_env_1(a, b, c, d, e, f, chi, D_bond, *all27[:9])
+            n2c = norm_env_2(a, b, c, d, e, f, chi, D_bond, *all27[9:18])
+            n3c = norm_env_3(a, b, c, d, e, f, chi, D_bond, *all27[18:27])
+
+            n1 = n1c.real.item()
+            n2 = n2c.real.item()
+            n3 = n3c.real.item()
+
+            imag_vals = {
+                "E1": abs(E1.imag.item()),
+                "E2": abs(E2.imag.item()),
+                "E3": abs(E3.imag.item()),
+                "Etot": abs(Etot.imag.item()),
+                "n1": abs(n1c.imag.item()),
+                "n2": abs(n2c.imag.item()),
+                "n3": abs(n3c.imag.item()),
+            }
+            for k, v in imag_vals.items():
+                if v > imag_tol:
+                    imag_viol[k] += 1
+                if v > max_imag[k]:
+                    max_imag[k] = v
 
             total += 1
 
+            flags = []
             if n1 < 0:
                 neg_counts["norm1"] += 1
-                print(f"negative norm1 at trial {trial+1} step {step+1}: {n1:.6e}")
+                flags.append("neg_n1")
             if n2 < 0:
                 neg_counts["norm2"] += 1
-                print(f"negative norm2 at trial {trial+1} step {step+1}: {n2:.6e}")
+                flags.append("neg_n2")
             if n3 < 0:
                 neg_counts["norm3"] += 1
-                print(f"negative norm3 at trial {trial+1} step {step+1}: {n3:.6e}")
+                flags.append("neg_n3")
 
-            if (step + 1) % 5 == 0:
-                total_val = (E1 + E2 + E3).real.item()
+            total_val = Etot.real.item()
+            if prev_total_val is not None:
+                dE = abs(total_val - prev_total_val)
+                dN = max(
+                    abs(n1 - prev_norms[0]),
+                    abs(n2 - prev_norms[1]),
+                    abs(n3 - prev_norms[2]),
+                )
+                if dE > 1e-12 or dN > 1e-12:
+                    flags.append(f"drift(dE={dE:.1e},dN={dN:.1e})")
+            prev_total_val = total_val
+            prev_norms = (n1, n2, n3)
+
+            # Per-step consistent printout
+            if print_every > 0 and ((step + 1) % print_every == 0):
+                imag_flag = [k for k, v in imag_vals.items() if v > imag_tol]
+                if imag_flag:
+                    flags.append("imag>tol:" + ",".join(imag_flag))
+                flag_str = "-" if not flags else ";".join(flags)
                 print(
-                    f"trial {trial+1} step {step+1}: total={total_val:+.6f} "
-                    f"norms=({n1:+.3e}, {n2:+.3e}, {n3:+.3e})"
+                    f"{step+1:4d} | "
+                    f"Etot={_fmt_re_im(Etot, re_fmt='+.6e', im_fmt='+.6e')} | "
+                    f"E1={_fmt_re_im(E1)} E2={_fmt_re_im(E2)} E3={_fmt_re_im(E3)} | "
+                    f"n1={_fmt_re_im(n1c, re_fmt='+.6e', im_fmt='+.6e')} "
+                    f"n2={_fmt_re_im(n2c, re_fmt='+.6e', im_fmt='+.6e')} "
+                    f"n3={_fmt_re_im(n3c, re_fmt='+.6e', im_fmt='+.6e')} | "
+                    f"{flag_str}"
                 )
 
     print("\nSummary")
@@ -359,7 +450,18 @@ def run_test(trials=5, steps_per_trial=20):
         f"norm2={neg_counts['norm2']} "
         f"norm3={neg_counts['norm3']}"
     )
+    print(f"imag_tol={imag_tol:.1e}")
+    print(
+        "imag violations: "
+        f"E1={imag_viol['E1']} E2={imag_viol['E2']} E3={imag_viol['E3']} "
+        f"Etot={imag_viol['Etot']} n1={imag_viol['n1']} n2={imag_viol['n2']} n3={imag_viol['n3']}"
+    )
+    print(
+        "max |imag|: "
+        f"E1={max_imag['E1']:.3e} E2={max_imag['E2']:.3e} E3={max_imag['E3']:.3e} "
+        f"Etot={max_imag['Etot']:.3e} n1={max_imag['n1']:.3e} n2={max_imag['n2']:.3e} n3={max_imag['n3']:.3e}"
+    )
 
 
 if __name__ == "__main__":
-    run_test(trials=5, steps_per_trial=20)
+    run_test_configured(trials=5, steps_per_trial=20, print_every=1, imag_tol=1e-8, use_double=False)

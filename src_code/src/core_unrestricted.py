@@ -52,7 +52,8 @@ def set_dtype(use_double: bool) -> None:
 
 # for now only the case of ABCDEF, nearest neighbor, exact SVD, D^4 >= chi > D^2 .
 
-def normalize_tensor(tensor):
+def normalize_tensor(tensor, *, rtol: float | None = None, atol: float | None = None):
+    
     """
     Normalise a tensor in-place-style by its Frobenius (L2) norm.
 
@@ -67,11 +68,37 @@ def normalize_tensor(tensor):
         torch.Tensor: A new tensor with the same shape and dtype as the input
         whose Frobenius norm is 1, or the original tensor if its norm is 0.
     """
-    norm = torch.norm(tensor,p=2)
-    if norm > 0:
-        return tensor / norm
-    else:
+    # Frobenius norm (for arbitrary-rank tensors). Returns a real scalar.
+    norm = torch.linalg.norm(tensor)
+
+    # Choose dtype-appropriate default tolerances.
+    # For complex64 (norm is float32), norms around 1 typically fluctuate at ~1e-7,
+    # so a strict 1e-12 check would *keep renormalizing* and introduce drift.
+    if rtol is None or atol is None:
+        if norm.dtype == torch.float32:
+            default_rtol = 4e-7
+            default_atol = 4e-7
+        else:
+            default_rtol = 1e-13
+            default_atol = 1e-13
+        rtol = default_rtol if rtol is None else rtol
+        atol = default_atol if atol is None else atol
+
+    # Guard against NaNs/Infs.
+    if not torch.isfinite(norm):
         return tensor
+
+    # Avoid division-by-zero for (near) all-zero tensors.
+    if norm <= atol:
+        return tensor
+
+    # Make repeated calls effectively idempotent:
+    # if already normalized within tolerance, return unchanged.
+    one = torch.ones((), dtype=norm.dtype, device=norm.device)
+    if torch.isclose(norm, one, rtol=rtol, atol=atol):
+        return tensor
+
+    return tensor / norm
 
 
 
@@ -104,12 +131,12 @@ def initialize_abcdef(initialize_way:str, D_bond:int, d_PHYS:int, noise_scale:fl
 
     if initialize_way == 'random' :
 
-        a = normalize_tensor(torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=CDTYPE))
-        b = normalize_tensor(torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=CDTYPE))
-        c = normalize_tensor(torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=CDTYPE))
-        d = normalize_tensor(torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=CDTYPE))
-        e = normalize_tensor(torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=CDTYPE))
-        f = normalize_tensor(torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=CDTYPE))
+        a = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=CDTYPE)
+        b = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=CDTYPE)
+        c = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=CDTYPE)
+        d = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=CDTYPE)
+        e = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=CDTYPE)
+        f = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=CDTYPE)
 
     elif initialize_way == 'product' : # product state but always with small noise
 
@@ -155,27 +182,27 @@ def abcdef_to_ABCDEF(a,b,c,d,e,f, D_squared:int):
     """
 
     A = oe.contract("uvwφ,xyzφ->uxvywz", a,a.conj(), optimize=[(0,1)], backend='torch')
-    A = normalize_tensor(A)
+    # A = normalize_tensor(A)
     A = A.reshape(D_squared, D_squared, D_squared)
 
     B = oe.contract("uvwφ,xyzφ->uxvywz", b,b.conj(), optimize=[(0,1)], backend='torch')
-    B = normalize_tensor(B)
+    # B = normalize_tensor(B)
     B = B.reshape(D_squared, D_squared, D_squared)
 
     C = oe.contract("uvwφ,xyzφ->uxvywz", c,c.conj(), optimize=[(0,1)], backend='torch')
-    C = normalize_tensor(C)
+    # C = normalize_tensor(C)
     C = C.reshape(D_squared, D_squared, D_squared)
 
     D = oe.contract("uvwφ,xyzφ->uxvywz", d,d.conj(), optimize=[(0,1)], backend='torch')
-    D = normalize_tensor(D)
+    # D = normalize_tensor(D)
     D = D.reshape(D_squared, D_squared, D_squared)
 
     E = oe.contract("uvwφ,xyzφ->uxvywz", e,e.conj(), optimize=[(0,1)], backend='torch')
-    E = normalize_tensor(E)
+    # E = normalize_tensor(E)
     E = E.reshape(D_squared, D_squared, D_squared)
 
     F = oe.contract("uvwφ,xyzφ->uxvywz", f,f.conj(), optimize=[(0,1)], backend='torch')
-    F = normalize_tensor(F)
+    # F = normalize_tensor(F)
     F = F.reshape(D_squared, D_squared, D_squared)
 
     return A,B,C,D,E,F
@@ -1229,7 +1256,17 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
     E_unnormed_CF = oe.contract("xy,yz,zx->", H_CF, AD, EB, backend="torch")
     E_unnormed_EB = oe.contract("xy,yz,zx->", H_EB, CF, AD, backend="torch")
 
+
+
+    print("E_unnormed_AD = ", E_unnormed_AD.real.item(),"+i*", E_unnormed_AD.imag.item())
+
+
     norm_1st_env = oe.contract("xy,yz,zx->", AD, EB, CF, backend="torch")
+    
+    
+    print("norm_1st_env = ", norm_1st_env.real.item(),"+i*", norm_1st_env.imag.item())
+
+
     energyNearestNeighbor_3_bonds = (E_unnormed_AD + E_unnormed_CF + E_unnormed_EB) / norm_1st_env
     return energyNearestNeighbor_3_bonds
 
