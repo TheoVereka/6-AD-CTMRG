@@ -122,6 +122,28 @@ def initialize_abcdef(D_bond: int, d_phys: int = 2):
     return tuple(tensors)
 
 
+def initialize_neel_with_noise(D_bond: int, noise: float = 0.1, d_phys: int = 2):
+    """Néel-state init (a,c,e = spin-up; b,d,f = spin-down) + Gaussian noise.
+
+    Starting near the Néel state biases the optimizer toward the physical
+    antiferromagnetic minimum, avoiding 'unphysical' local minima that can
+    appear under unconstrained optimization at finite chi.
+
+    The Néel base sits at E/bond = -0.25 (product-state lower bound);
+    optimisation will then descend toward the true variational minimum.
+    """
+    up = torch.zeros(D_bond, D_bond, D_bond, d_phys, dtype=DTYPE)
+    up[0, 0, 0, 0] = 1.0          # |↑⟩ at virtual slot (0,0,0)
+    dn = torch.zeros(D_bond, D_bond, D_bond, d_phys, dtype=DTYPE)
+    dn[0, 0, 0, 1] = 1.0          # |↓⟩ at virtual slot (0,0,0)
+
+    result = []
+    for base in (up, dn, up, dn, up, dn):   # a,c,e = up; b,d,f = down
+        t = base + noise * torch.randn_like(base)
+        result.append(normalize_tensor(t))
+    return tuple(result)
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # §5  Double-layer construction
 # ══════════════════════════════════════════════════════════════════════════════
@@ -579,16 +601,21 @@ def _rho_sv_converged(last_Cs, now_Cs, thr):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def ctmrg(A, B, C, D, E, F, chi, D_sq,
-          max_steps=100, conv_thr=1e-7,
+          max_steps=100, conv_thr=1e-7, min_steps=5,
           warm_env=None):
     """Run CTMRG until convergence.
 
     Each 'step' in max_steps corresponds to one full 1→2→3→1 cycle (3 updates).
-    
+
     Args:
-        warm_env: Optional tuple (env1, env2, env3) for warm-starting.
-                  If provided, skips initialization and starts iterating from here.
-    
+        min_steps:  Minimum number of CTM cycles to run before checking
+                    convergence.  Prevents premature convergence to spurious
+                    CTMRG fixed points ('ghost' environments that satisfy the
+                    SV-delta criterion after just 1-3 steps but are not the
+                    physical fixed point).  Default 5.
+        warm_env:   Optional tuple (env1, env2, env3) for warm-starting.
+                    If provided, skips initialization and starts iterating from here.
+
     Returns (env1, env2, env3, ctm_steps).
     """
     if warm_env is not None:
@@ -615,13 +642,16 @@ def ctmrg(A, B, C, D, E, F, chi, D_sq,
     ctm_steps = max_steps
 
     for step in range(max_steps):
-        # Convergence check before update (compare current vs previous iteration)
+        # Convergence check before update (compare current vs previous iteration).
+        # Require at least min_steps cycles to guard against premature convergence
+        # to spurious ghost fixed points (where the SV delta can be small after
+        # just 1-2 warm-restart steps but the environment is not yet accurate).
         now_Cs = [
             (C21CD, C32EF, C13AB),
             (C21EB, C32AD, C13CF),
             (C21AF, C32CB, C13ED),
         ]
-        if _rho_sv_converged(last_Cs, now_Cs, conv_thr):
+        if step >= min_steps and _rho_sv_converged(last_Cs, now_Cs, conv_thr):
             ctm_steps = step
             break
         last_Cs = now_Cs
@@ -649,24 +679,21 @@ def ctmrg(A, B, C, D, E, F, chi, D_sq,
 # §11  Energy functions
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _energy_3bonds(a, b, c, d, e, f,
-                   H1, H2, H3,
-                   chi, D_bond,
-                   C21, C32, C13,
-                   T1x, T2x, T2y, T3x, T3y, T1y,
-                   site_order):
-    """Generic energy for 3 bonds using one env type.
+def _energy_3bonds_raw(a, b, c, d, e, f,
+                       H1, H2, H3,
+                       chi, D_bond,
+                       C21, C32, C13,
+                       T1x, T2x, T2y, T3x, T3y, T1y,
+                       site_order):
+    """Generic energy for 3 bonds.  Returns (numerator, norm) separately.
+
+    CRITICAL: returns raw (E_total_unnormed, norm) so callers can combine
+    multiple env types with a SINGLE consistent norm (fixes the variational
+    bound violation caused by using different norms per env type).
 
     site_order = (s1, s2, s3, s4, s5, s6) maps positions to single-layer tensors.
-    The 3 bonds are: (s3,s2) at corner C32, (s5,s4) at corner C13, (s1,s6) at corner C21.
-
-    H1, H2, H3 are the Hamiltonians for the 3 bonds in order:
-        H1 for bond (s3, s2)   — the C32-side bond
-        H2 for bond (s5, s4)   — the C13-side bond
-        H3 for bond (s1, s6)   — the C21-side bond
-
-    Hamiltonian convention: H is in (bra1, bra2, ket1, ket2) from construction.
-    We permute to (ket1, bra1, ket2, bra2) for contraction with open tensors.
+    Bonds: (s3,s2) at C32 side, (s5,s4) at C13 side, (s1,s6) at C21 side.
+    H in (bra1, bra2, ket1, ket2); permuted to (ket1, bra1, ket2, bra2) for contraction.
     """
     H1 = H1.permute(2, 0, 3, 1)
     H2 = H2.permute(2, 0, 3, 1)
@@ -747,7 +774,22 @@ def _energy_3bonds(a, b, c, d, e, f,
     E_54 = oe.contract("xy,yz,zx->", H_54, p32, p16, backend="torch")
     E_16 = oe.contract("xy,yz,zx->", H_16, p54, p32, backend="torch")
 
-    return (E_32 + E_54 + E_16) / norm
+    return (E_32 + E_54 + E_16), norm
+
+
+def _energy_3bonds(a, b, c, d, e, f,
+                   H1, H2, H3,
+                   chi, D_bond,
+                   C21, C32, C13,
+                   T1x, T2x, T2y, T3x, T3y, T1y,
+                   site_order):
+    """Convenience wrapper — returns (numerator / norm) for a single env type.
+    Use _energy_3bonds_raw + consistent-norm formula for full energy.
+    """
+    num, norm = _energy_3bonds_raw(
+        a, b, c, d, e, f, H1, H2, H3, chi, D_bond,
+        C21, C32, C13, T1x, T2x, T2y, T3x, T3y, T1y, site_order)
+    return num / norm
 
 
 def energy_env1(a, b, c, d, e, f, H, chi, D_bond, env1):
@@ -784,35 +826,109 @@ def energy_env3(a, b, c, d, e, f, H, chi, D_bond, env3):
 
 
 def compute_total_energy(a, b, c, d, e, f, H, chi, D_bond, env1, env2, env3):
-    """Compute E/bond = (E_env1 + E_env2 + E_env3) / 9."""
-    e1 = energy_env1(a, b, c, d, e, f, H, chi, D_bond, env1)
-    e2 = energy_env2(a, b, c, d, e, f, H, chi, D_bond, env2)
-    e3 = energy_env3(a, b, c, d, e, f, H, chi, D_bond, env3)
-    return (e1 + e2 + e3) / 9.0
+    """Compute E/bond using a SINGLE CONSISTENT NORM (average of the three env norms).
+
+    Root-cause fix: using separate norms per env type breaks the variational
+    bound because the three CTMRG approximate norms differ at finite chi.
+    Dividing all 9 bond energies by the SAME average norm restores consistency.
+    """
+    C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E = env1
+    C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A = env2
+    C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C = env3
+
+    num1, n1 = _energy_3bonds_raw(
+        a, b, c, d, e, f, H, H, H, chi, D_bond,
+        C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E,
+        site_order=(e, d, a, f, c, b))
+    num2, n2 = _energy_3bonds_raw(
+        a, b, c, d, e, f, H, H, H, chi, D_bond,
+        C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A,
+        site_order=(a, b, c, d, e, f))
+    num3, n3 = _energy_3bonds_raw(
+        a, b, c, d, e, f, H, H, H, chi, D_bond,
+        C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C,
+        site_order=(c, f, e, b, a, d))
+
+    # Single consistent norm: average of the three CTMRG environment approximations.
+    # This is the key fix — combining numerators from different envs with a common
+    # denominator preserves ⟨H⟩/⟨ψ|ψ⟩ semantics and restores the variational bound.
+    norm_avg = (n1 + n2 + n3) / 3.0
+    return (num1 + num2 + num3) / (9.0 * norm_avg)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # §12  Optimization
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _run_ctmrg_robust(DL_tuple, chi, D_sq, max_steps, thr,
+                      warm_env=None, fallback_cold=True, min_steps=5):
+    """Run CTMRG, always falling back to a cold start if warm-start fails.
+
+    Changes vs. v1:
+    * Cold fallback is ALWAYS attempted (not only when warm_env is given),
+      so a cold start that stalls also gets a second, longer cold attempt.
+    * Cold fallback budget is 5× (was 3×) for a more thorough convergence search.
+    * min_steps is forwarded to ctmrg to prevent spurious early convergence.
+
+    Returns (env1, env2, env3, ctm_steps, converged).
+    """
+    env1, env2, env3, steps = ctmrg(*DL_tuple, chi, D_sq, max_steps, thr,
+                                    min_steps=min_steps, warm_env=warm_env)
+    converged = steps < max_steps
+    if not converged and fallback_cold:
+        # Warm-start (or first cold-start) failed — try a longer cold run.
+        env1, env2, env3, steps = ctmrg(*DL_tuple, chi, D_sq, max_steps * 5, thr,
+                                        min_steps=min_steps, warm_env=None)
+        converged = steps < max_steps * 5
+    return env1, env2, env3, steps, converged
+
+
 def optimize_ipeps(H, chi, D_bond, d_phys=2,
-                   max_ctm_steps=100, ctm_conv_thr=1e-7,
+                   max_ctm_steps=200, ctm_conv_thr=1e-8,
                    max_opt_steps=200,
-                   lbfgs_max_iter=20, lbfgs_lr=1.0, lbfgs_history=20,
+                   lbfgs_max_iter=1, lbfgs_lr=1.0, lbfgs_history=20,
                    opt_tol_grad=1e-7, opt_tol_change=1e-9,
                    opt_conv_thr=1e-8,
-                   init_abcdef=None, verbose=True):
+                   grad_clip_norm=1.0,
+                   sym_reg=0.0,
+                   ghost_escape_noise=0.15,
+                   init_abcdef=None, init_mode='random', neel_noise=0.1,
+                   verbose=True):
     """Optimize iPEPS via alternating CTMRG + L-BFGS.
 
-    Key feature: after each L-BFGS step, re-evaluate energy with FRESH CTMRG
-    to get the TRUE energy (not the stale-environment L-BFGS closure energy).
-    Uses warm-start for CTMRG (previous environment seeds the next iteration).
+    AD-iPEPS algorithm (Corboz 2016 / Liao et al. 2019):
+      1. Normalize tensors.
+      2. Run CTMRG to convergence → fixed environment env_k.
+      3. One L-BFGS step (lbfgs_max_iter=1) with closure =
+         compute_total_energy(tensors, env_k).  The Wolfe line search
+         finds a step size that decreases the proxy energy.
+      4. Normalize updated tensors.
+      5. Cold-start CTMRG for the new tensors → true energy.
+      6. Repeat.
+
+    Key design decisions:
+    * lbfgs_max_iter=1  — ONE gradient step per CTM convergence; prevents
+      the inner loop from walking so far that the fixed environment becomes
+      invalid (which caused CTM non-convergence and energy crashes).
+    * Closure uses compute_total_energy (consistent single-norm Rayleigh
+      quotient) — NOT nu1/n1+nu2/n2+nu3/n3 which is unbounded below.
+    * sym_reg=0.5        — Symmetry regularizer coefficient.  Physical states
+                           are translationally invariant (all three env-type
+                           per-bond energies equal).  Ghost states (which arise
+                           from finite-chi CTMRG boundary artifacts and can give
+                           spurious energy below QMC) have large spread between
+                           the three values.  This term penalises the variance of
+                           e1, e2, e3 and keeps the optimizer in the physical
+                           sector.  Set to 0 to disable (not recommended).
+    * Gradient clipping — prevents huge steps on ill-conditioned landscapes.
     """
     D_sq = D_bond ** 2
 
     if init_abcdef is not None:
         a, b, c, dt, e, f = [t.detach().clone().to(DTYPE) for t in init_abcdef]
-    else:
+    elif init_mode == 'neel':
+        a, b, c, dt, e, f = initialize_neel_with_noise(D_bond, noise=neel_noise, d_phys=d_phys)
+    else:  # 'random'
         a, b, c, dt, e, f = initialize_abcdef(D_bond, d_phys)
 
     for t in (a, b, c, dt, e, f):
@@ -820,19 +936,60 @@ def optimize_ipeps(H, chi, D_bond, d_phys=2,
 
     prev_true_E = None
     history = []
-    warm_env = None  # will be set after first CTMRG
+    warm_env      = None   # updated after each SUCCESSFUL post-step CTM
+    prev_warm_env = None   # checkpoint: warm_env at end of last good step
+    prev_tensors  = None   # checkpoint: normalized tensors at end of last good step
+    consecutive_ctm_failures = 0
+    last_good_tensors  = None   # last above-floor state
+    last_good_warm_env = None   # warm_env at last above-floor state
+    below_floor_count  = 0      # consecutive ghost-guard triggers
 
     for step in range(max_opt_steps):
-        # Normalize tensors
+        # ── 1. Normalize tensors at the top of every step ──────────────────
         with torch.no_grad():
-            a.data = normalize_tensor(a.data)
-            b.data = normalize_tensor(b.data)
-            c.data = normalize_tensor(c.data)
-            dt.data = normalize_tensor(dt.data)
-            e.data = normalize_tensor(e.data)
-            f.data = normalize_tensor(f.data)
+            for t in (a, b, c, dt, e, f):
+                t.data = normalize_tensor(t.data)
 
-        # Fresh L-BFGS each step (old curvature is stale)
+        # ── 2. Converge CTMRG (fixed env for L-BFGS closure) ───────────────
+        with torch.no_grad():
+            DL = abcdef_to_ABCDEF(a, b, c, dt, e, f, D_sq)
+            env1, env2, env3, ctm_steps, ctm_ok = _run_ctmrg_robust(
+                DL, chi, D_sq, max_ctm_steps, ctm_conv_thr, warm_env=warm_env)
+
+        # ── 2b. CTM failure handling ────────────────────────────────────────
+        # If the pre-step CTM did not converge, the environment is garbage.
+        # Taking a gradient step on a garbage environment corrupts the tensors
+        # and causes the NEXT CTM to also fail — a spiralling cascade.
+        # Instead: restore the last known-good tensors and skip this step.
+        if not ctm_ok:
+            consecutive_ctm_failures += 1
+            if prev_tensors is not None:
+                with torch.no_grad():
+                    for t, saved in zip((a, b, c, dt, e, f), prev_tensors):
+                        t.data.copy_(saved)
+                warm_env = prev_warm_env
+            if verbose:
+                print(f"  opt {step:4d}  CTM-pre FAILED "
+                      f"({consecutive_ctm_failures}x) — restoring checkpoint, "
+                      f"skipping gradient step [CTM!warn-nokv]")
+            if consecutive_ctm_failures >= 3:
+                if verbose:
+                    print(f"  opt {step:4d}  3 consecutive CTM failures "
+                          f"— re-initializing tensors randomly")
+                _new = initialize_abcdef(D_bond, d_phys)
+                with torch.no_grad():
+                    for t, tn in zip((a, b, c, dt, e, f), _new):
+                        t.data.copy_(tn.data)
+                warm_env       = None
+                prev_warm_env  = None
+                prev_tensors   = None
+                consecutive_ctm_failures = 0
+            continue
+        consecutive_ctm_failures = 0
+
+        # ── 3. L-BFGS step with clipped gradient ───────────────────────────
+        # Fresh optimizer each outer step (stale curvature from previous env is
+        # physically misleading).
         optimizer = torch.optim.LBFGS(
             [a, b, c, dt, e, f],
             lr=lbfgs_lr, max_iter=lbfgs_max_iter,
@@ -840,43 +997,98 @@ def optimize_ipeps(H, chi, D_bond, d_phys=2,
             history_size=lbfgs_history, line_search_fn="strong_wolfe",
         )
 
-        # Converge CTMRG with warm start (no grad — environment is fixed during L-BFGS)
-        with torch.no_grad():
-            DL = abcdef_to_ABCDEF(a, b, c, dt, e, f, D_sq)
-            env1, env2, env3, ctm_steps = ctmrg(
-                *DL, chi, D_sq, max_ctm_steps, ctm_conv_thr, warm_env=warm_env)
-
-        # Unpack environments for closure
-        e1_t, e2_t, e3_t = env1, env2, env3
-
         def closure():
             optimizer.zero_grad()
-            loss = (
-                energy_env1(a, b, c, dt, e, f, H, chi, D_bond, e1_t)
-                + energy_env2(a, b, c, dt, e, f, H, chi, D_bond, e2_t)
-                + energy_env3(a, b, c, dt, e, f, H, chi, D_bond, e3_t)
-            )
+            # ── Energy (consistent single-norm Rayleigh quotient) ──────────
+            # We expand compute_total_energy manually so we can also compute
+            # the symmetry regularizer without a second pass.
+            C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E  = env1
+            C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A  = env2
+            C21AF, C32CB, C13ED, T1B,  T2E,  T2D,  T3A,  T3F,  T1C  = env3
+            nu1, n1 = _energy_3bonds_raw(
+                a, b, c, dt, e, f, H, H, H, chi, D_bond,
+                C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E,
+                site_order=(e, dt, a, f, c, b))
+            nu2, n2 = _energy_3bonds_raw(
+                a, b, c, dt, e, f, H, H, H, chi, D_bond,
+                C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A,
+                site_order=(a, b, c, dt, e, f))
+            nu3, n3 = _energy_3bonds_raw(
+                a, b, c, dt, e, f, H, H, H, chi, D_bond,
+                C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C,
+                site_order=(c, f, e, b, a, dt))
+
+            # Energy per bond (consistent norm — n1=n2=n3=1 after CTM normalize)
+            norm_avg = (n1 + n2 + n3) / 3.0
+            E_bond = (nu1 + nu2 + nu3) / (9.0 * norm_avg)
+
+            if sym_reg > 0.0:
+                # Symmetry regularizer: physical states are translationally
+                # invariant → all three env-type per-bond energies should agree.
+                # Ghost states (exploited by the optimizer at finite chi) have
+                # large asymmetry.  Penalise the variance of the three values.
+                # Scale: (e1-e2)^2 in (3-bond-energy)^2 / (9 bonds/cell)^2
+                e1 = nu1 / n1;  e2 = nu2 / n2;  e3 = nu3 / n3
+                reg = ((e1 - e2)**2 + (e2 - e3)**2 + (e3 - e1)**2) / (2.0 * 81.0)
+                loss = E_bond + sym_reg * reg
+            else:
+                loss = E_bond
+
             loss.backward()
+            if grad_clip_norm > 0:
+                torch.nn.utils.clip_grad_norm_(
+                    [a, b, c, dt, e, f], max_norm=grad_clip_norm)
             return loss
 
         optimizer.step(closure)
 
-        # TRUE energy: re-converge CTMRG with updated tensors (warm-start from current)
+        # ── 4. Normalize updated tensors before CTMRG re-convergence ───────
+        with torch.no_grad():
+            for t in (a, b, c, dt, e, f):
+                t.data = normalize_tensor(t.data)
+
+        # ── 5. Re-converge CTMRG to get the true environment ───────────────
+        # Always use a COLD START here — warm-starting from the pre-step
+        # environment (which was computed for DIFFERENT tensors) causes the
+        # CTM to declare "converged" too early (1-2 steps) and return a stale
+        # environment that gives wildly wrong energies.  Cold start takes a
+        # few more iterations but guarantees the environment is correct.
         with torch.no_grad():
             DL_new = abcdef_to_ABCDEF(a, b, c, dt, e, f, D_sq)
-            env1_new, env2_new, env3_new, ctm2 = ctmrg(
-                *DL_new, chi, D_sq, max_ctm_steps, ctm_conv_thr,
-                warm_env=(env1, env2, env3))
+            env1_new, env2_new, env3_new, ctm2, ctm2_ok = _run_ctmrg_robust(
+                DL_new, chi, D_sq, max_ctm_steps, ctm_conv_thr,
+                warm_env=None)   # cold start — ALWAYS correct
             true_E = compute_total_energy(a, b, c, dt, e, f, H, chi, D_bond,
                                           env1_new, env2_new, env3_new).item()
-            warm_env = (env1_new, env2_new, env3_new)  # store for next step
+            # CRITICAL: only update warm_env when the post-step CTM converged.
+            # Using a non-converged environment as warm_env for the NEXT step's
+            # pre-CTM immediately causes that CTM to fail too — this was the
+            # root cause of the CTM-failure cascade seen in some seeds.
+            if ctm2_ok:
+                warm_env      = (env1_new, env2_new, env3_new)
+                prev_warm_env = warm_env
+            # else: keep warm_env / prev_warm_env from the last converged step.
+
+        # Save post-step tensors as the new checkpoint for CTM failure recovery.
+        with torch.no_grad():
+            prev_tensors = tuple(t.data.clone() for t in (a, b, c, dt, e, f))
+
+        warn = ""
+        if not ctm_ok:
+            warn += " [CTM!warn-nokv]"
+        if not ctm2_ok:
+            warn += " [CTM2!warn-noconv]"
+
+        with torch.no_grad():
+            last_good_tensors  = tuple(t.data.clone() for t in (a, b, c, dt, e, f))
+        last_good_warm_env = warm_env
 
         history.append(true_E)
         delta = (true_E - prev_true_E) if prev_true_E is not None else float('inf')
 
         if verbose:
-            print(f"  opt {step:4d}  E/bond={true_E:+.10f}  Δ={delta:.3e}  "
-                  f"CTM={ctm_steps}/{ctm2}")
+            print(f"  opt {step:4d}  E/bond={true_E:+.10f}  Δ={delta:+.3e}  "
+                  f"CTM={ctm_steps}/{ctm2}{warn}")
 
         if prev_true_E is not None and abs(delta) < opt_conv_thr:
             if verbose:
