@@ -166,6 +166,94 @@ def normalize_single_layer_tensor_for_double_layer(
     return tensor / torch.sqrt(dl_norm)
 
 
+# ── Differentiable complex SVD helper ────────────────────────────────────────
+#
+# PyTorch's backward for complex SVD is only well-defined when the loss is
+# invariant under the per-column phase freedom of singular vectors.
+# CTMRG truncation uses singular vectors as projectors, and small numerical
+# gauge choices can otherwise trigger:
+#   RuntimeError: svd_backward: ... depends on this phase term ... ill-defined.
+#
+# We fix a deterministic phase convention (without backpropagating through the
+# phase choice) so that optimisation runs do not crash.
+SVD_PHASE_FIX: bool = True
+# If True, project gradients flowing *into* (U, Vh) onto the subspace that is
+# invariant under the per-singular-vector phase gauge U→U·D, Vh→D^H·Vh.
+#
+# This does not modify the forward pass at all; it only removes the component
+# of (∂L/∂U, ∂L/∂Vh) that corresponds to changing the arbitrary phases of the
+# singular vectors — exactly the component that makes complex SVD backward
+# ill-defined in PyTorch.
+SVD_GRAD_PROJECT_PHASE: bool = True
+
+
+def _fix_svd_phases(U: torch.Tensor, Vh: torch.Tensor, *, eps: float = 1e-12) -> tuple[torch.Tensor, torch.Tensor]:
+    """Fix per-column complex phases of SVD outputs (U, Vh) deterministically.
+
+    Chooses, for each column k of U, a pivot entry with maximal magnitude and
+    rotates that column by a unit-modulus phase so the pivot becomes real
+    positive. Applies the compensating phase to the corresponding row of Vh so
+    that U @ diag(S) @ Vh is unchanged.
+
+    The phase is computed under ``no_grad`` so it does not introduce non-smooth
+    control flow into the autograd graph.
+    """
+    if not U.is_complex():
+        return U, Vh
+    if U.numel() == 0:
+        return U, Vh
+
+    m, n = U.shape
+    device = U.device
+    col = torch.arange(n, device=device)
+
+    with torch.no_grad():
+        # Pivot index per column: argmax_i |U[i, k]|
+        pivot = torch.argmax(torch.abs(U), dim=0)
+        piv_vals = U[pivot, col]
+        denom = torch.clamp(torch.abs(piv_vals), min=eps)
+        phase = piv_vals / denom  # unit-modulus (or 0 if piv_vals==0)
+        # If a whole column is exactly zero (shouldn't happen), fall back to 1.
+        phase = torch.where(denom > eps, phase, torch.ones_like(phase))
+
+    # Apply: U[:,k] *= conj(phase_k),  Vh[k,:] *= phase_k
+    U_fixed = U * phase.conj().reshape(1, n)
+    Vh_fixed = phase.reshape(n, 1) * Vh
+    return U_fixed, Vh_fixed
+
+
+def svd_fixed(A: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """torch.linalg.svd with phase-fixing (forward) and phase-gauge-safe gradients (backward)."""
+    U, S, Vh = torch.linalg.svd(A)
+    if A.is_complex():
+        if SVD_PHASE_FIX:
+            U, Vh = _fix_svd_phases(U, Vh)
+
+        # Ensure gradients passed into svd_backward are phase-gauge invariant.
+        # This prevents: RuntimeError: svd_backward ... depends on phase term.
+        if SVD_GRAD_PROJECT_PHASE and A.requires_grad:
+            def _hook_U(grad_U: torch.Tensor) -> torch.Tensor:
+                # Remove the imaginary diagonal of U^H grad_U (phase direction).
+                if grad_U is None:
+                    return grad_U
+                diag = torch.diagonal(U.conj().transpose(-2, -1) @ grad_U)
+                phase = (1j * diag.imag).to(grad_U.dtype)
+                return grad_U - (U * phase.reshape(1, -1))
+
+            def _hook_Vh(grad_Vh: torch.Tensor) -> torch.Tensor:
+                # Remove the imaginary diagonal of grad_Vh Vh^H (phase direction).
+                if grad_Vh is None:
+                    return grad_Vh
+                diag = torch.diagonal(grad_Vh @ Vh.conj().transpose(-2, -1))
+                phase = (1j * diag.imag).to(grad_Vh.dtype)
+                return grad_Vh - (phase.reshape(-1, 1) * Vh)
+
+            U.register_hook(_hook_U)
+            Vh.register_hook(_hook_Vh)
+
+    return U, S, Vh
+
+
 
 def initialize_abcdef(initialize_way:str, D_bond:int, d_PHYS:int, noise_scale:float):
     """
@@ -315,7 +403,7 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared,
                                optimize=[(0,1),(0,1)],
                                backend='torch')
     
-    U3, sv32, V2 = torch.linalg.svd(rho32)
+    U3, sv32, V2 = svd_fixed(rho32)
 
     U3 = U3[:,:chi].conj()
     V2 = V2[:chi,:].conj()
@@ -325,7 +413,7 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared,
                                optimize=[(0,1),(0,1)],
                                backend='torch')
     
-    U1, sv13, V3 = torch.linalg.svd(rho13)
+    U1, sv13, V3 = svd_fixed(rho13)
 
     U1 = U1[:,:chi].conj() #conjugate transpose
     V3 = V3[:chi,:].conj()
@@ -336,7 +424,7 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared,
                                optimize=[(0,1),(0,1)],
                                backend='torch')
     
-    U2, sv21, V1 = torch.linalg.svd(rho21)
+    U2, sv21, V1 = svd_fixed(rho21)
     
     U2 = U2[:,:chi].conj()
     V1 = V1[:chi,:].conj()
@@ -477,9 +565,9 @@ def initialize_environmentCTs_2(A,B,C,D,E,F, chi, D_squared, identity_init: bool
     T3AT1B = T3AT1B.reshape(D_squared*D_squared, D_squared*D_squared)
     T1CT2D = T1CT2D.reshape(D_squared*D_squared, D_squared*D_squared)
 
-    U2E, sv23, Vdag3F = torch.linalg.svd(T2ET3F)
-    U3A, sv31, Vdag1B = torch.linalg.svd(T3AT1B)
-    U1C, sv12, Vdag2D = torch.linalg.svd(T1CT2D)
+    U2E, sv23, Vdag3F = svd_fixed(T2ET3F)
+    U3A, sv31, Vdag1B = svd_fixed(T3AT1B)
+    U1C, sv12, Vdag2D = svd_fixed(T1CT2D)
 
     # adding clip to prevent sqrt of negative numbers due to numerical issues
     # Cast to CDTYPE: singular values are real but U/V matrices are complex;
@@ -538,7 +626,7 @@ def initialize_environmentCTs_2(A,B,C,D,E,F, chi, D_squared, identity_init: bool
                                optimize=[(0,1),(0,1)],
                                backend='torch')
     
-    U3, sv32, V2 = torch.linalg.svd(rho32)
+    U3, sv32, V2 = svd_fixed(rho32)
 
     U3 = U3[:,:chi].conj()
     V2 = V2[:chi,:].conj()
@@ -548,7 +636,7 @@ def initialize_environmentCTs_2(A,B,C,D,E,F, chi, D_squared, identity_init: bool
                                optimize=[(0,1),(0,1)],
                                backend='torch')
     
-    U1, sv13, V3 = torch.linalg.svd(rho13)
+    U1, sv13, V3 = svd_fixed(rho13)
 
     U1 = U1[:,:chi].conj() #conjugate transpose
     V3 = V3[:chi,:].conj()
@@ -559,7 +647,7 @@ def initialize_environmentCTs_2(A,B,C,D,E,F, chi, D_squared, identity_init: bool
                                optimize=[(0,1),(0,1)],
                                backend='torch')
     
-    U2, sv21, V1 = torch.linalg.svd(rho21)
+    U2, sv21, V1 = svd_fixed(rho21)
     
     U2 = U2[:,:chi].conj()
     V1 = V1[:chi,:].conj()
@@ -666,7 +754,7 @@ def initialize_environmentCTs_2(A,B,C,D,E,F, chi, D_squared, identity_init: bool
                                optimize=[(0,1),(0,1)],
                                backend='torch')
     
-    U3, sv32, V2 = torch.linalg.svd(rho32)
+    U3, sv32, V2 = svd_fixed(rho32)
 
     U3 = U3[:,:chi].conj()
     V2 = V2[:chi,:].conj()
@@ -676,7 +764,7 @@ def initialize_environmentCTs_2(A,B,C,D,E,F, chi, D_squared, identity_init: bool
                                optimize=[(0,1),(0,1)],
                                backend='torch')
     
-    U1, sv13, V3 = torch.linalg.svd(rho13)
+    U1, sv13, V3 = svd_fixed(rho13)
 
     U1 = U1[:,:chi].conj() #conjugate transpose
     V3 = V3[:chi,:].conj()
@@ -687,7 +775,7 @@ def initialize_environmentCTs_2(A,B,C,D,E,F, chi, D_squared, identity_init: bool
                                optimize=[(0,1),(0,1)],
                                backend='torch')
     
-    U2, sv21, V1 = torch.linalg.svd(rho21)
+    U2, sv21, V1 = svd_fixed(rho21)
     
     U2 = U2[:,:chi].conj()
     V1 = V1[:chi,:].conj()

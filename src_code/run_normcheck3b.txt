@@ -1,0 +1,64 @@
+============================================================================
+  iPEPS sweep  —  AD-CTMRG  —  AFM Heisenberg on 6-site honeycomb
+  J=1.0  d_phys=2  Total budget: 0.0 h
+  D_bond sweep : [2]
+    D=2: chi=[5]  budget=0.00 h  (chi_max=5)
+  Output dir   : log/_tmp_sweep_normcheck3b
+  Started      : 2026-03-16 16:16:20
+============================================================================
+
+════════════════════════════════════════════════════════════════════════════
+  D_bond = 2   D²=4  D⁴=16  chi_max=5  budget=0.00 h
+  chi schedule: [5]  (1 levels, equal time split)
+════════════════════════════════════════════════════════════════════════════
+
+  ┌── D=2  chi=5  budget=6s=0.1min  [2026-03-16 16:16:20]
+E_unnormed_AD =  0.10676415363312473 +i* -1.577104522381414e-14
+E_unnormed_CF =  0.12751199954038364 +i* 7.409785538961779e-14
+E_unnormed_EB =  0.10798143810886587 +i* 5.6489685910341e-14
+norm_1st_env =  1.0000000000000004 +i* 1.1175166747399815e-16
+energyNearestNeighbor_3_bonds =  0.34225759128237404
+compare_energy =  0.34225759128237404
+E_unnormed_CB =  0.05038813809170889 +i* 8.282649223808635e-15
+E_unnormed_AF =  0.072200956235675 +i* -5.877517380666622e-14
+E_unnormed_ED =  0.09103082081092109 +i* 9.115320643775733e-14
+norm_2nd_env =  0.9999999999999969 +i* -6.680641106741162e-17
+energyNearestNeighbor_3_bonds =  0.21361991513830564
+compare_energy =  0.21361991513830564
+E_unnormed_EF =  0.16020556751234435 +i* -1.9333957951388024e-13
+E_unnormed_AB =  0.030581667538624867 +i* 6.752357319949676e-14
+E_unnormed_CD =  0.136523571950617 +i* -5.402747393825659e-14
+norm_3rd_env =  0.9999999999999984 +i* -1.1452872944664814e-16
+energyNearestNeighbor_3_bonds =  0.3273108070015867
+compare_energy =  0.3273108070015867
+Traceback (most recent call last):
+  File "/home/chye/6ADctmrg/6-AD-CTMRG/src_code/scripts/main_sweep_CPU.py", line 1233, in <module>
+    main()
+  File "/home/chye/6ADctmrg/6-AD-CTMRG/src_code/scripts/main_sweep_CPU.py", line 1088, in main
+    *out, best_loss, global_step = optimize_at_chi(
+                                   ^^^^^^^^^^^^^^^^
+  File "/home/chye/6ADctmrg/6-AD-CTMRG/src_code/scripts/main_sweep_CPU.py", line 649, in optimize_at_chi
+    loss_val  = _opt.step(closure)
+                ^^^^^^^^^^^^^^^^^^
+  File "/home/chye/venvs/6adctmrg/lib/python3.11/site-packages/torch/optim/optimizer.py", line 487, in wrapper
+    out = func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chye/venvs/6adctmrg/lib/python3.11/site-packages/torch/utils/_contextlib.py", line 116, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chye/venvs/6adctmrg/lib/python3.11/site-packages/torch/optim/lbfgs.py", line 330, in step
+    orig_loss = closure()
+                ^^^^^^^^^
+  File "/home/chye/venvs/6adctmrg/lib/python3.11/site-packages/torch/utils/_contextlib.py", line 116, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chye/6ADctmrg/6-AD-CTMRG/src_code/scripts/main_sweep_CPU.py", line 647, in closure
+    loss.backward()
+  File "/home/chye/venvs/6adctmrg/lib/python3.11/site-packages/torch/_tensor.py", line 581, in backward
+    torch.autograd.backward(
+  File "/home/chye/venvs/6adctmrg/lib/python3.11/site-packages/torch/autograd/__init__.py", line 347, in backward
+    _engine_run_backward(
+  File "/home/chye/venvs/6adctmrg/lib/python3.11/site-packages/torch/autograd/graph.py", line 825, in _engine_run_backward
+    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: svd_backward: The singular vectors in the complex case are specified up to multiplication by e^{i phi}. The specified loss function depends on this phase term, making it ill-defined.
