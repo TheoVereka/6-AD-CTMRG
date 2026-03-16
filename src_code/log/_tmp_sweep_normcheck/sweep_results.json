@@ -1,0 +1,30 @@
+{
+  "D_bond_list": [
+    2
+  ],
+  "chi_max_map": {
+    "2": 5
+  },
+  "schedules": {
+    "2": [
+      5
+    ]
+  },
+  "J": 1.0,
+  "d_phys": 2,
+  "hours_budget": 0.0016,
+  "total_elapsed_h": 0.005,
+  "total_steps": 2,
+  "energy_table": [
+    {
+      "D_bond": 2,
+      "chi": 5,
+      "best_loss": 0.7708715765711838,
+      "energy": -2.521840975487761,
+      "energy_per_bond": -0.28020455283197343,
+      "steps": 1,
+      "timestamp": "2026-03-16 16:10:07"
+    }
+  ],
+  "timestamp": "2026-03-16 16:10:07"
+}

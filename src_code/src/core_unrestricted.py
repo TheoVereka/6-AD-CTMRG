@@ -106,6 +106,66 @@ def normalize_tensor(tensor, *, rtol: float | None = None, atol: float | None = 
     return tensor / norm
 
 
+def normalize_single_layer_tensor_for_double_layer(
+    tensor: torch.Tensor,
+    *,
+    rtol: float | None = None,
+    atol: float | None = None,
+) -> torch.Tensor:
+    """Rescale a single-layer site tensor so its *unnormalized* double-layer has unit Frobenius norm.
+
+    In this codebase, CTMRG consumes double-layer site tensors (A..F) produced by
+    ``abcdef_to_ABCDEF`` which *then* normalizes each A..F to unit Frobenius norm.
+    If energy/contraction routines use the original single-layer tensors directly,
+    a convention mismatch can make denominators like <iPEPS|iPEPS> far from 1 even
+    when the CTMRG environment itself is well-normalized.
+
+    This helper chooses a single-layer rescaling such that the corresponding
+    unnormalized double-layer tensor already has ||DL||_F ≈ 1, making single-layer
+    contractions consistent with the CTMRG convention.
+
+    Scaling rule:
+      DL(t) = contract(t, conj(t)) so ||DL(α t)||_F = |α|^2 ||DL(t)||_F.
+      Choose α = 1/sqrt(||DL(t)||_F) ⇒ ||DL(α t)||_F = 1.
+    """
+    # Compute the unnormalized double-layer tensor DL(t) (rank-6), then fuse
+    # the three (D,D) virtual index pairs into (D^2,D^2,D^2) like abcdef_to_ABCDEF.
+    dl = oe.contract(
+        "uvwp,xyzp->uxvywz",
+        tensor,
+        tensor.conj(),
+        optimize=[(0, 1)],
+        backend="torch",
+    )
+    D_bond = int(tensor.shape[0])
+    D_squared = D_bond * D_bond
+    dl = dl.reshape(D_squared, D_squared, D_squared)
+
+    dl_norm = torch.linalg.norm(dl)
+
+    # Choose dtype-appropriate default tolerances.
+    if rtol is None or atol is None:
+        if dl_norm.dtype == torch.float32:
+            default_rtol = 4e-7
+            default_atol = 4e-7
+        else:
+            default_rtol = 1e-13
+            default_atol = 1e-13
+        rtol = default_rtol if rtol is None else rtol
+        atol = default_atol if atol is None else atol
+
+    if not torch.isfinite(dl_norm):
+        return tensor
+    if dl_norm <= atol:
+        return tensor
+
+    one = torch.ones((), dtype=dl_norm.dtype, device=dl_norm.device)
+    if torch.isclose(dl_norm, one, rtol=rtol, atol=atol):
+        return tensor
+
+    return tensor / torch.sqrt(dl_norm)
+
+
 
 def initialize_abcdef(initialize_way:str, D_bond:int, d_PHYS:int, noise_scale:float):
     """
@@ -295,9 +355,12 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared,
                                U3,matC13,V1,
                                optimize=[(0,1),(0,1)],
                                backend='torch')
-    
-    # ── Physical corner normalization: divide all three Cs by Tr(rho)^(1/3) ──
-    # Tr(rho32) = sum of kept singular values = sum(sv32[:chi])
+
+    # ── Physical corner normalization ───────────────────────────────────────
+    # Target: Tr(C13·C32·C21) = 1 (real, positive).
+    # NOTE: Tr(rho) is not generally equal to sum(singular values) unless rho
+    # is Hermitian PSD; using sum(sv) can therefore fail to remove complex
+    # phase drift.
     sum_sv32 = sv32[:chi].sum()
     sum_sv13 = sv13[:chi].sum()
     sum_sv21 = sv21[:chi].sum()
@@ -315,11 +378,18 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared,
                 f"(rtol={sv_sums_rtol}, atol={sv_sums_atol})"
             )
 
-    scaleC = sum_sv32.pow(1.0 / 3.0)
-    if torch.isfinite(scaleC).item() and (scaleC > torch.finfo(scaleC.dtype).tiny).item():
-        C21 = C21 / scaleC
-        C32 = C32 / scaleC
-        C13 = C13 / scaleC
+    rho_trunc = C13 @ C32 @ C21
+    tr_rho = torch.trace(rho_trunc)
+    tr_abs = tr_rho.abs()
+    if torch.isfinite(tr_abs).item() and (tr_abs > torch.finfo(tr_abs.dtype).tiny).item():
+        phase = tr_rho / tr_abs
+        C21 = C21 / phase
+
+        scaleC = tr_abs.pow(1.0 / 3.0)
+        if torch.isfinite(scaleC).item() and (scaleC > torch.finfo(scaleC.dtype).tiny).item():
+            C21 = C21 / scaleC
+            C32 = C32 / scaleC
+            C13 = C13 / scaleC
 
     # ── Individual equalization: preserve Tr(rho)=1 while balancing magnitudes ──
     # Scale factors multiply to 1  ⟹  Tr(rho) = Tr(C13·C32·C21) unchanged.
@@ -958,14 +1028,20 @@ def update_environmentCTs_1to2(C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
     ED = torch.mm(closed_E, closed_D)
     AF = torch.mm(closed_A, closed_F)
     norm_val  = oe.contract("xy,yz,zx->", CB, AF, ED, backend='torch')
-    scaleT = norm_val.abs().pow(1.0 / 6.0)
-    if torch.isfinite(scaleT).item() and (scaleT > torch.finfo(scaleT.real.dtype).tiny).item():
-        T3E = T3E / scaleT
-        T3B = T3B / scaleT
-        T1A = T1A / scaleT
-        T1D = T1D / scaleT
-        T2C = T2C / scaleT
-        T2F = T2F / scaleT
+    # Fix both magnitude and complex phase so <iPEPS|iPEPS> ≈ 1 (real).
+    norm_abs = norm_val.abs()
+    if torch.isfinite(norm_abs).item() and (norm_abs > torch.finfo(norm_abs.dtype).tiny).item():
+        phase = norm_val / norm_abs
+        T3E = T3E / phase
+
+        scaleT = norm_abs.pow(1.0 / 6.0)
+        if torch.isfinite(scaleT).item() and (scaleT > torch.finfo(scaleT.dtype).tiny).item():
+            T3E = T3E / scaleT
+            T3B = T3B / scaleT
+            T1A = T1A / scaleT
+            T1D = T1D / scaleT
+            T2C = T2C / scaleT
+            T2F = T2F / scaleT
 
     # ── Individual equalization: preserve norm_env_2=1 while balancing magnitudes ──
     # Each T appears linearly in exactly one closed_* factor; scale factors multiply to 1.
@@ -1115,14 +1191,20 @@ def update_environmentCTs_2to3(C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A
     AB = torch.mm(closed_A, closed_B)
     CD = torch.mm(closed_C, closed_D)
     norm_val  = oe.contract("xy,yz,zx->", EF, CD, AB, backend='torch')
-    scaleT = norm_val.abs().pow(1.0 / 6.0)
-    if torch.isfinite(scaleT).item() and (scaleT > torch.finfo(scaleT.real.dtype).tiny).item():
-        T3A = T3A / scaleT
-        T3F = T3F / scaleT
-        T1C = T1C / scaleT
-        T1B = T1B / scaleT
-        T2E = T2E / scaleT
-        T2D = T2D / scaleT
+    # Fix both magnitude and complex phase so <iPEPS|iPEPS> ≈ 1 (real).
+    norm_abs = norm_val.abs()
+    if torch.isfinite(norm_abs).item() and (norm_abs > torch.finfo(norm_abs.dtype).tiny).item():
+        phase = norm_val / norm_abs
+        T3A = T3A / phase
+
+        scaleT = norm_abs.pow(1.0 / 6.0)
+        if torch.isfinite(scaleT).item() and (scaleT > torch.finfo(scaleT.dtype).tiny).item():
+            T3A = T3A / scaleT
+            T3F = T3F / scaleT
+            T1C = T1C / scaleT
+            T1B = T1B / scaleT
+            T2E = T2E / scaleT
+            T2D = T2D / scaleT
 
     # ── Individual equalization: preserve norm_env_3=1 while balancing magnitudes ──
     nT3A = torch.linalg.norm(T3A).real
@@ -1271,14 +1353,20 @@ def update_environmentCTs_3to1(C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C
     CF = torch.mm(closed_C, closed_F)
     EB = torch.mm(closed_E, closed_B)
     norm_val  = oe.contract("xy,yz,zx->", AD, EB, CF, backend='torch')
-    scaleT = norm_val.abs().pow(1.0 / 6.0)
-    if torch.isfinite(scaleT).item() and (scaleT > torch.finfo(scaleT.real.dtype).tiny).item():
-        T3C = T3C / scaleT
-        T3D = T3D / scaleT
-        T1E = T1E / scaleT
-        T1F = T1F / scaleT
-        T2A = T2A / scaleT
-        T2B = T2B / scaleT
+    # Fix both magnitude and complex phase so <iPEPS|iPEPS> ≈ 1 (real).
+    norm_abs = norm_val.abs()
+    if torch.isfinite(norm_abs).item() and (norm_abs > torch.finfo(norm_abs.dtype).tiny).item():
+        phase = norm_val / norm_abs
+        T3C = T3C / phase
+
+        scaleT = norm_abs.pow(1.0 / 6.0)
+        if torch.isfinite(scaleT).item() and (scaleT > torch.finfo(scaleT.dtype).tiny).item():
+            T3C = T3C / scaleT
+            T3D = T3D / scaleT
+            T1E = T1E / scaleT
+            T1F = T1F / scaleT
+            T2A = T2A / scaleT
+            T2B = T2B / scaleT
 
     # ── Individual equalization: preserve norm_env_1=1 while balancing magnitudes ──
     nT3C = torch.linalg.norm(T3C).real

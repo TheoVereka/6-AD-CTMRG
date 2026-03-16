@@ -1,0 +1,36 @@
+{
+  "ansatz": "6tensors",
+  "optimizer": "lbfgs",
+  "lbfgs_lr": 0.01,
+  "lbfgs_max_iter": 30,
+  "lbfgs_history": 30,
+  "opt_tol_grad": 1e-07,
+  "opt_tol_change": 1e-09,
+  "opt_conv_threshold": 1e-08,
+  "adam_lr": 0.0003,
+  "adam_betas": [
+    0.9,
+    0.999
+  ],
+  "adam_eps": 1e-08,
+  "adam_weight_decay": 0.0,
+  "adam_steps_per_ctm": 5,
+  "ctm_max_steps": 70,
+  "ctm_conv_thr": 1e-09,
+  "J": 1.0,
+  "d_phys": 2,
+  "double": true,
+  "hours": 0.0016,
+  "D_bond_list": [
+    2
+  ],
+  "chi_max_map": {
+    "2": 5
+  },
+  "schedules": {
+    "2": [
+      5
+    ]
+  },
+  "run_timestamp": "20260316_160949"
+}

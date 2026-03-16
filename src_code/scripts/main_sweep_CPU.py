@@ -104,6 +104,7 @@ torch.set_num_interop_threads(1)
 
 from core_unrestricted import (
     normalize_tensor,
+    normalize_single_layer_tensor_for_double_layer,
     initialize_abcdef,
     abcdef_to_ABCDEF,
     CTMRG_from_init_to_stop,
@@ -119,7 +120,7 @@ from core_unrestricted import (
 # Time Budget
 # ══════════════════════════════════════════════════════════════════════════════
 
-TOTAL_BUDGET_HOURS = 0.15
+TOTAL_BUDGET_HOURS = 0.05
 
 # Total wall-clock time for the entire sweep.  The sweep is designed to run
 # for a fixed time rather than a fixed number of steps, so that results at
@@ -431,10 +432,23 @@ def pad_tensor(t: torch.Tensor, old_D: int, new_D: int,
 
 def evaluate_energy_clean(a, b, c, d, e, f,
                           Hs, chi: int, D_bond: int) -> float:
-    """Re-converge environment from scratch and return total energy (float)."""
+    """Re-converge environment from scratch and return total energy (float).
+
+    IMPORTANT: CTMRG consumes *double-layer* site tensors which are normalised
+    inside ``abcdef_to_ABCDEF``. For consistency, we rescale the single-layer
+    tensors here in the same convention used inside the optimiser objective.
+    This keeps printed denominators like <iPEPS|iPEPS> close to real 1.
+    """
     D_sq = D_bond ** 2
     with torch.no_grad():
-        A, B, C, Dt, E, F = abcdef_to_ABCDEF(a, b, c, d, e, f, D_sq)
+        aN = normalize_single_layer_tensor_for_double_layer(a)
+        bN = normalize_single_layer_tensor_for_double_layer(b)
+        cN = normalize_single_layer_tensor_for_double_layer(c)
+        dN = normalize_single_layer_tensor_for_double_layer(d)
+        eN = normalize_single_layer_tensor_for_double_layer(e)
+        fN = normalize_single_layer_tensor_for_double_layer(f)
+
+        A, B, C, Dt, E, F = abcdef_to_ABCDEF(aN, bN, cN, dN, eN, fN, D_sq)
         all27 = CTMRG_from_init_to_stop(
                 A, B, C, Dt, E, F, chi, D_sq, CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT)
         #E6 = energy_expectation_nearest_neighbor_6_bonds(
@@ -442,18 +456,18 @@ def evaluate_energy_clean(a, b, c, d, e, f,
         #    Hs[0], Hs[1], Hs[2], Hs[3], Hs[4], Hs[5],
         #    chi, D_bond, *all27[:9])
         E3ebadcf = energy_expectation_nearest_neighbor_3ebadcf_bonds(
-                a,b,c,d,e,f, 
+            aN, bN, cN, dN, eN, fN,
                 Hs[0],Hs[1],Hs[2],
                 chi, D_bond, # d_PHYS, 
                 *all27[:9])
         E3afcbed = energy_expectation_nearest_neighbor_3afcbed_bonds(
-                a,b,c,d,e,f, 
+            aN, bN, cN, dN, eN, fN,
                 Hs[3],Hs[4],Hs[5], 
                 chi, D_bond, # d_PHYS, 
                 *all27[9:18])
             
         E3 = energy_expectation_nearest_neighbor_other_3_bonds(
-            a, b, c, d, e, f,
+            aN, bN, cN, dN, eN, fN,
             Hs[6], Hs[7], Hs[8],
             chi, D_bond, *all27[18:27])
         return (E3ebadcf + E3afcbed + E3).real.item()
@@ -527,7 +541,18 @@ def optimize_at_chi(
         function must be called fresh on every closure evaluation.
         Never reuse environment tensors across calls.
         """
-        A, B, C, Dt, E, F = abcdef_to_ABCDEF(a, b, c, d, e, f, D_sq)
+        # IMPORTANT: Make the single-layer tensors consistent with the CTMRG
+        # convention (double-layer tensors are Frobenius-normalized). Without
+        # this, the energy routines' printed <iPEPS|iPEPS> denominators can be
+        # far from 1 even when CTMRG normalization is correct.
+        aN = normalize_single_layer_tensor_for_double_layer(a)
+        bN = normalize_single_layer_tensor_for_double_layer(b)
+        cN = normalize_single_layer_tensor_for_double_layer(c)
+        dN = normalize_single_layer_tensor_for_double_layer(d)
+        eN = normalize_single_layer_tensor_for_double_layer(e)
+        fN = normalize_single_layer_tensor_for_double_layer(f)
+
+        A, B, C, Dt, E, F = abcdef_to_ABCDEF(aN, bN, cN, dN, eN, fN, D_sq)
         all28 = CTMRG_from_init_to_stop(
             A, B, C, Dt, E, F, chi, D_sq,
             CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT)
@@ -539,23 +564,28 @@ def optimize_at_chi(
 
         loss = (
             energy_expectation_nearest_neighbor_3ebadcf_bonds(
-                a, b, c, d, e, f,
+                aN, bN, cN, dN, eN, fN,
                 Hs[0], Hs[1], Hs[2],
                 chi, D_bond,
                 C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E)
             +
             energy_expectation_nearest_neighbor_3afcbed_bonds(
-                a, b, c, d, e, f,
+                aN, bN, cN, dN, eN, fN,
                 Hs[3], Hs[4], Hs[5],
                 chi, D_bond,
                 C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A)
             +
             energy_expectation_nearest_neighbor_other_3_bonds(
-                a, b, c, d, e, f,
+                aN, bN, cN, dN, eN, fN,
                 Hs[6], Hs[7], Hs[8],
                 chi, D_bond,
                 C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C)
         )
+
+        # Physical corner normalisation diagnostic: Tr(rho)=Tr(C13·C32·C21)
+        tr_rho_1 = torch.trace(C13AB @ C32EF @ C21CD)
+        tr_rho_2 = torch.trace(C13CF @ C32AD @ C21EB)
+        tr_rho_3 = torch.trace(C13ED @ C32CB @ C21AF)
 
         corner_norms = {
             'C21CD': float(torch.linalg.norm(C21CD.detach()).item()),
@@ -567,6 +597,12 @@ def optimize_at_chi(
             'C21AF': float(torch.linalg.norm(C21AF.detach()).item()),
             'C32CB': float(torch.linalg.norm(C32CB.detach()).item()),
             'C13ED': float(torch.linalg.norm(C13ED.detach()).item()),
+            'Tr_rho_1_re': float(tr_rho_1.real.detach().item()),
+            'Tr_rho_1_im': float(tr_rho_1.imag.detach().item()),
+            'Tr_rho_2_re': float(tr_rho_2.real.detach().item()),
+            'Tr_rho_2_im': float(tr_rho_2.imag.detach().item()),
+            'Tr_rho_3_re': float(tr_rho_3.real.detach().item()),
+            'Tr_rho_3_im': float(tr_rho_3.imag.detach().item()),
         }
         return loss, int(ctm_steps), corner_norms
 
@@ -744,6 +780,11 @@ def optimize_at_chi(
                       f" C21CD={cn['C21CD']:.3e} C32EF={cn['C32EF']:.3e} C13AB={cn['C13AB']:.3e}"
                       f" │ C21EB={cn['C21EB']:.3e} C32AD={cn['C32AD']:.3e} C13CF={cn['C13CF']:.3e}"
                       f" │ C21AF={cn['C21AF']:.3e} C32CB={cn['C32CB']:.3e} C13ED={cn['C13ED']:.3e}")
+                if 'Tr_rho_1_re' in cn:
+                    print(f"           Tr(rho)=Tr(C13·C32·C21)"
+                          f" │ type1={cn['Tr_rho_1_re']:.6f}+i*{cn['Tr_rho_1_im']:.2e}"
+                          f" │ type2={cn['Tr_rho_2_re']:.6f}+i*{cn['Tr_rho_2_im']:.2e}"
+                          f" │ type3={cn['Tr_rho_3_re']:.6f}+i*{cn['Tr_rho_3_im']:.2e}")
         else:
             print(f"    step {step:5d}  ctm={ctm_steps:3d}  loss={loss_item:+.10f}"
                   f"  Δ={delta:+.3e}  {elapsed:.0f}/{budget_seconds:.0f}s")
