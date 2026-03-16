@@ -601,8 +601,7 @@ def _rho_sv_converged(last_Cs, now_Cs, thr):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def ctmrg(A, B, C, D, E, F, chi, D_sq,
-          max_steps=100, conv_thr=1e-7, min_steps=5,
-          warm_env=None):
+        max_steps=100, conv_thr=1e-7, min_steps=5):
     """Run CTMRG until convergence.
 
     Each 'step' in max_steps corresponds to one full 1→2→3→1 cycle (3 updates).
@@ -613,30 +612,20 @@ def ctmrg(A, B, C, D, E, F, chi, D_sq,
                     CTMRG fixed points ('ghost' environments that satisfy the
                     SV-delta criterion after just 1-3 steps but are not the
                     physical fixed point).  Default 5.
-        warm_env:   Optional tuple (env1, env2, env3) for warm-starting.
-                    If provided, skips initialization and starts iterating from here.
-
     Returns (env1, env2, env3, ctm_steps).
     """
-    if warm_env is not None:
-        # Warm start: unpack existing environments
-        env1_prev, env2_prev, env3_prev = warm_env
-        C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E = env1_prev
-        C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A = env2_prev
-        C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C = env3_prev
-    else:
-        # Initialize → returns type-2 env
-        env2 = initialize_env(A, B, C, D, E, F, chi, D_sq)
-        C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A = env2
+    # Initialize → returns type-2 env
+    env2 = initialize_env(A, B, C, D, E, F, chi, D_sq)
+    C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A = env2
 
-        # Bootstrap: 2→3 then 3→1 to get all 3 types
-        r3 = update_env_2to3(C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A,
-                             A, B, C, D, E, F, chi, D_sq)
-        C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C = r3[:9]
+    # Bootstrap: 2→3 then 3→1 to get all 3 types
+    r3 = update_env_2to3(C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A,
+                         A, B, C, D, E, F, chi, D_sq)
+    C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C = r3[:9]
 
-        r1 = update_env_3to1(C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C,
-                             A, B, C, D, E, F, chi, D_sq)
-        C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E = r1[:9]
+    r1 = update_env_3to1(C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C,
+                         A, B, C, D, E, F, chi, D_sq)
+    C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E = r1[:9]
 
     last_Cs = None
     ctm_steps = max_steps
@@ -644,8 +633,7 @@ def ctmrg(A, B, C, D, E, F, chi, D_sq,
     for step in range(max_steps):
         # Convergence check before update (compare current vs previous iteration).
         # Require at least min_steps cycles to guard against premature convergence
-        # to spurious ghost fixed points (where the SV delta can be small after
-        # just 1-2 warm-restart steps but the environment is not yet accurate).
+        # to spurious ghost fixed points.
         now_Cs = [
             (C21CD, C32EF, C13AB),
             (C21EB, C32AD, C13CF),
@@ -760,6 +748,7 @@ def _energy_3bonds_raw(a, b, c, d, e, f,
                        optimize=[(0, 1), (0, 1)], backend="torch"
                        ).reshape(chi * cDD, chi * cDD)
 
+
     # Pair products for norm — CRITICAL: pairs go (3→2), (5→4), (1→6)
     # matching the backward loop around the hexagonal CTMRG network.
     p32 = torch.mm(closed_3, closed_2)
@@ -768,6 +757,8 @@ def _energy_3bonds_raw(a, b, c, d, e, f,
 
     # Norm = Tr(p32 × p16 × p54)
     norm = oe.contract("xy,yz,zx->", p32, p16, p54, backend="torch")
+
+    # print("norm_orderedEnv: ", norm.item())
 
     # Energy = Tr(H_bond × other_two_pairs) for each bond
     E_32 = oe.contract("xy,yz,zx->", H_32, p16, p54, backend="torch")
@@ -861,24 +852,24 @@ def compute_total_energy(a, b, c, d, e, f, H, chi, D_bond, env1, env2, env3):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _run_ctmrg_robust(DL_tuple, chi, D_sq, max_steps, thr,
-                      warm_env=None, fallback_cold=True, min_steps=5):
-    """Run CTMRG, always falling back to a cold start if warm-start fails.
+                      fallback_cold=True, min_steps=5):
+    """Run CTMRG, always using cold-start initialization.
 
     Changes vs. v1:
-    * Cold fallback is ALWAYS attempted (not only when warm_env is given),
-      so a cold start that stalls also gets a second, longer cold attempt.
+        * Cold fallback is ALWAYS attempted, so a cold start that stalls also gets
+            a second, longer cold attempt.
     * Cold fallback budget is 5× (was 3×) for a more thorough convergence search.
     * min_steps is forwarded to ctmrg to prevent spurious early convergence.
 
     Returns (env1, env2, env3, ctm_steps, converged).
     """
     env1, env2, env3, steps = ctmrg(*DL_tuple, chi, D_sq, max_steps, thr,
-                                    min_steps=min_steps, warm_env=warm_env)
+                                    min_steps=min_steps)
     converged = steps < max_steps
     if not converged and fallback_cold:
-        # Warm-start (or first cold-start) failed — try a longer cold run.
+        # First cold-start failed — try a longer cold run.
         env1, env2, env3, steps = ctmrg(*DL_tuple, chi, D_sq, max_steps * 5, thr,
-                                        min_steps=min_steps, warm_env=None)
+                                        min_steps=min_steps)
         converged = steps < max_steps * 5
     return env1, env2, env3, steps, converged
 
@@ -891,7 +882,6 @@ def optimize_ipeps(H, chi, D_bond, d_phys=2,
                    opt_conv_thr=1e-8,
                    grad_clip_norm=1.0,
                    sym_reg=0.0,
-                   ghost_escape_noise=0.15,
                    init_abcdef=None, init_mode='random', neel_noise=0.1,
                    verbose=True):
     """Optimize iPEPS via alternating CTMRG + L-BFGS.
@@ -936,13 +926,8 @@ def optimize_ipeps(H, chi, D_bond, d_phys=2,
 
     prev_true_E = None
     history = []
-    warm_env      = None   # updated after each SUCCESSFUL post-step CTM
-    prev_warm_env = None   # checkpoint: warm_env at end of last good step
     prev_tensors  = None   # checkpoint: normalized tensors at end of last good step
     consecutive_ctm_failures = 0
-    last_good_tensors  = None   # last above-floor state
-    last_good_warm_env = None   # warm_env at last above-floor state
-    below_floor_count  = 0      # consecutive ghost-guard triggers
 
     for step in range(max_opt_steps):
         # ── 1. Normalize tensors at the top of every step ──────────────────
@@ -954,7 +939,7 @@ def optimize_ipeps(H, chi, D_bond, d_phys=2,
         with torch.no_grad():
             DL = abcdef_to_ABCDEF(a, b, c, dt, e, f, D_sq)
             env1, env2, env3, ctm_steps, ctm_ok = _run_ctmrg_robust(
-                DL, chi, D_sq, max_ctm_steps, ctm_conv_thr, warm_env=warm_env)
+                DL, chi, D_sq, max_ctm_steps, ctm_conv_thr)
 
         # ── 2b. CTM failure handling ────────────────────────────────────────
         # If the pre-step CTM did not converge, the environment is garbage.
@@ -967,7 +952,6 @@ def optimize_ipeps(H, chi, D_bond, d_phys=2,
                 with torch.no_grad():
                     for t, saved in zip((a, b, c, dt, e, f), prev_tensors):
                         t.data.copy_(saved)
-                warm_env = prev_warm_env
             if verbose:
                 print(f"  opt {step:4d}  CTM-pre FAILED "
                       f"({consecutive_ctm_failures}x) — restoring checkpoint, "
@@ -980,8 +964,6 @@ def optimize_ipeps(H, chi, D_bond, d_phys=2,
                 with torch.no_grad():
                     for t, tn in zip((a, b, c, dt, e, f), _new):
                         t.data.copy_(tn.data)
-                warm_env       = None
-                prev_warm_env  = None
                 prev_tensors   = None
                 consecutive_ctm_failures = 0
             continue
@@ -1048,26 +1030,13 @@ def optimize_ipeps(H, chi, D_bond, d_phys=2,
                 t.data = normalize_tensor(t.data)
 
         # ── 5. Re-converge CTMRG to get the true environment ───────────────
-        # Always use a COLD START here — warm-starting from the pre-step
-        # environment (which was computed for DIFFERENT tensors) causes the
-        # CTM to declare "converged" too early (1-2 steps) and return a stale
-        # environment that gives wildly wrong energies.  Cold start takes a
-        # few more iterations but guarantees the environment is correct.
+        # Always use a COLD START here.
         with torch.no_grad():
             DL_new = abcdef_to_ABCDEF(a, b, c, dt, e, f, D_sq)
             env1_new, env2_new, env3_new, ctm2, ctm2_ok = _run_ctmrg_robust(
-                DL_new, chi, D_sq, max_ctm_steps, ctm_conv_thr,
-                warm_env=None)   # cold start — ALWAYS correct
+                DL_new, chi, D_sq, max_ctm_steps, ctm_conv_thr)
             true_E = compute_total_energy(a, b, c, dt, e, f, H, chi, D_bond,
                                           env1_new, env2_new, env3_new).item()
-            # CRITICAL: only update warm_env when the post-step CTM converged.
-            # Using a non-converged environment as warm_env for the NEXT step's
-            # pre-CTM immediately causes that CTM to fail too — this was the
-            # root cause of the CTM-failure cascade seen in some seeds.
-            if ctm2_ok:
-                warm_env      = (env1_new, env2_new, env3_new)
-                prev_warm_env = warm_env
-            # else: keep warm_env / prev_warm_env from the last converged step.
 
         # Save post-step tensors as the new checkpoint for CTM failure recovery.
         with torch.no_grad():
@@ -1078,10 +1047,6 @@ def optimize_ipeps(H, chi, D_bond, d_phys=2,
             warn += " [CTM!warn-nokv]"
         if not ctm2_ok:
             warn += " [CTM2!warn-noconv]"
-
-        with torch.no_grad():
-            last_good_tensors  = tuple(t.data.clone() for t in (a, b, c, dt, e, f))
-        last_good_warm_env = warm_env
 
         history.append(true_E)
         delta = (true_E - prev_true_E) if prev_true_E is not None else float('inf')

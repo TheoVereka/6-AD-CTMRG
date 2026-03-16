@@ -186,29 +186,29 @@ def abcdef_to_ABCDEF(a,b,c,d,e,f, D_squared:int):
         pair per honeycomb leg), dtype ``torch.complex64``.
     """
 
-    A = oe.contract("uvwφ,xyzφ->uxvywz", a,a.conj(), optimize=[(0,1)], backend='torch')
-    # A = normalize_tensor(A)
+    A = oe.contract("uvwφ,xyzφ->uxvywz", a, a.conj(), optimize=[(0, 1)], backend='torch')
     A = A.reshape(D_squared, D_squared, D_squared)
+    A = normalize_tensor(A)
 
-    B = oe.contract("uvwφ,xyzφ->uxvywz", b,b.conj(), optimize=[(0,1)], backend='torch')
-    # B = normalize_tensor(B)
+    B = oe.contract("uvwφ,xyzφ->uxvywz", b, b.conj(), optimize=[(0, 1)], backend='torch')
     B = B.reshape(D_squared, D_squared, D_squared)
+    B = normalize_tensor(B)
 
-    C = oe.contract("uvwφ,xyzφ->uxvywz", c,c.conj(), optimize=[(0,1)], backend='torch')
-    # C = normalize_tensor(C)
+    C = oe.contract("uvwφ,xyzφ->uxvywz", c, c.conj(), optimize=[(0, 1)], backend='torch')
     C = C.reshape(D_squared, D_squared, D_squared)
+    C = normalize_tensor(C)
 
-    D = oe.contract("uvwφ,xyzφ->uxvywz", d,d.conj(), optimize=[(0,1)], backend='torch')
-    # D = normalize_tensor(D)
+    D = oe.contract("uvwφ,xyzφ->uxvywz", d, d.conj(), optimize=[(0, 1)], backend='torch')
     D = D.reshape(D_squared, D_squared, D_squared)
+    D = normalize_tensor(D)
 
-    E = oe.contract("uvwφ,xyzφ->uxvywz", e,e.conj(), optimize=[(0,1)], backend='torch')
-    # E = normalize_tensor(E)
+    E = oe.contract("uvwφ,xyzφ->uxvywz", e, e.conj(), optimize=[(0, 1)], backend='torch')
     E = E.reshape(D_squared, D_squared, D_squared)
+    E = normalize_tensor(E)
 
-    F = oe.contract("uvwφ,xyzφ->uxvywz", f,f.conj(), optimize=[(0,1)], backend='torch')
-    # F = normalize_tensor(F)
+    F = oe.contract("uvwφ,xyzφ->uxvywz", f, f.conj(), optimize=[(0, 1)], backend='torch')
     F = F.reshape(D_squared, D_squared, D_squared)
+    F = normalize_tensor(F)
 
     return A,B,C,D,E,F
 
@@ -216,7 +216,7 @@ def abcdef_to_ABCDEF(a,b,c,d,e,f, D_squared:int):
 
 
 def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared,
-                 *, check_sv_sums=None, sv_sums_rtol=5e-3, sv_sums_atol=1e-10):
+                 *, check_sv_sums=None, sv_sums_rtol=3e-3, sv_sums_atol=1e-10):
     """
     Compute truncated CTM projectors and renormalised corner matrices.
 
@@ -347,7 +347,7 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared,
 
 
 
-def initialize_environmentCTs_2(A,B,C,D,E,F, chi, D_squared):
+def initialize_environmentCTs_2(A,B,C,D,E,F, chi, D_squared, identity_init: bool = False):
     """
     Bootstrap the CTMRG environment from the double-layer site tensors.
 
@@ -377,6 +377,23 @@ def initialize_environmentCTs_2(A,B,C,D,E,F, chi, D_squared):
         ``(chi, D_squared, D_squared)`` or ``(chi, chi, D_squared)`` after
         the first renormalisation step).
     """
+    if identity_init:
+
+        C21CD = torch.eye(chi, dtype=CDTYPE)
+        C32EF = torch.eye(chi, dtype=CDTYPE)
+        C13AB = torch.eye(chi, dtype=CDTYPE)
+        # Initialize T1F, T2A, T2B, T3C, T3D, T1E as identity matrices on the first two chi indices,
+        # replicated D_squared times along the third index.
+        T1F = torch.stack([torch.eye(chi, dtype=CDTYPE) for _ in range(D_squared)], dim=0).permute(1, 2, 0)
+        T2A = torch.stack([torch.eye(chi, dtype=CDTYPE) for _ in range(D_squared)], dim=0).permute(1, 2, 0)
+        T2B = torch.stack([torch.eye(chi, dtype=CDTYPE) for _ in range(D_squared)], dim=0).permute(1, 2, 0)
+        T3C = torch.stack([torch.eye(chi, dtype=CDTYPE) for _ in range(D_squared)], dim=0).permute(1, 2, 0)
+        T3D = torch.stack([torch.eye(chi, dtype=CDTYPE) for _ in range(D_squared)], dim=0).permute(1, 2, 0)
+        T1E = torch.stack([torch.eye(chi, dtype=CDTYPE) for _ in range(D_squared)], dim=0).permute(1, 2, 0)
+
+        return C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
+    
+
 
     C21AF = oe.contract("oyg,xog->yx", A,F, optimize=[(0,1)], backend='torch')
     C32CB = oe.contract("aoz,ayo->zy", C,B, optimize=[(0,1)], backend='torch')
@@ -1289,7 +1306,8 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
                             chi: int,
                             D_squared: int,
                             a_third_max_iterations: int,
-                            env_conv_threshold: float) -> tuple:
+                            env_conv_threshold: float,
+                            identity_init: bool = False) -> tuple:
     """
     This function performs the CTMRG algorithm from the initial state to the stopping criterion.
 
@@ -1310,7 +1328,7 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
     lastC21EB, lastC32AD, lastC13CF, lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A = None, None, None, None, None, None, None, None, None
     lastC21AF, lastC32CB, lastC13ED, lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C = None, None, None, None, None, None, None, None, None
     nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E = None, None, None, None, None, None, None, None, None
-    nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A = initialize_environmentCTs_2(A,B,C,D,E,F, chi, D_squared)
+    nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A = initialize_environmentCTs_2(A,B,C,D,E,F, chi, D_squared, identity_init=identity_init)
     nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C = None, None, None, None, None, None, None, None, None
 
 
@@ -1532,7 +1550,19 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
     # print("norm_1st_env = ", norm_1st_env.real.item(),"+i*", norm_1st_env.imag.item())
 
 
-    energyNearestNeighbor_3_bonds = (E_unnormed_AD + E_unnormed_CF + E_unnormed_EB) / norm_1st_env
+    energyNearestNeighbor_3_bonds = torch.real((E_unnormed_AD + E_unnormed_CF + E_unnormed_EB) / norm_1st_env)
+    
+    
+    compare_energy = (torch.abs(E_unnormed_AD)+torch.abs(E_unnormed_CF)+torch.abs(E_unnormed_EB)) / torch.abs(norm_1st_env)
+    if 1.0 - energyNearestNeighbor_3_bonds.item()/compare_energy.item() > 1e-6:
+        print("WARNING: energy from 3 bonds is significantly smaller than the absolute value of the unnormalized contributions. This may indicate a numerical issue.")
+        print("E_unnormed_AD = ", E_unnormed_AD.real.item(),"+i*", E_unnormed_AD.imag.item())
+        print("E_unnormed_CF = ", E_unnormed_CF.real.item(),"+i*", E_unnormed_CF.imag.item())
+        print("E_unnormed_EB = ", E_unnormed_EB.real.item(),"+i*", E_unnormed_EB.imag.item())
+        print("norm_1st_env = ", norm_1st_env.real.item(),"+i*", norm_1st_env.imag.item())
+        print("energyNearestNeighbor_3_bonds = ", energyNearestNeighbor_3_bonds.item())
+        print("compare_energy = ", compare_energy.item())
+    
     return energyNearestNeighbor_3_bonds
 
 
@@ -1575,11 +1605,20 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,Haf,Hcb,Hed,
     E_unnormed_AF = oe.contract("xy,yz,zx->", H_AF, ED, CB, backend="torch")
 
     norm_2nd_env= oe.contract("xy,yz,zx->", CB, AF, ED, backend="torch")
-    energyNearestNeighbor_3_bonds = (E_unnormed_CB + E_unnormed_AF + E_unnormed_ED) / norm_2nd_env
+    energyNearestNeighbor_3_bonds = torch.real((E_unnormed_CB + E_unnormed_AF + E_unnormed_ED) / norm_2nd_env)
     
     # print("E_3bonds = ", energyNearestNeighbor_3_bonds.real.item(),"+i*", energyNearestNeighbor_3_bonds.imag.item())
     # print("norm_2nd_env = ", norm_2nd_env.real.item(),"+i*", norm_2nd_env.imag.item())
-    
+    compare_energy = (torch.abs(E_unnormed_CB)+torch.abs(E_unnormed_AF)+torch.abs(E_unnormed_ED)) / torch.abs(norm_2nd_env)
+    if 1.0 - energyNearestNeighbor_3_bonds.item()/compare_energy.item() > 1e-6:
+        print("WARNING: energy from 3 bonds is significantly smaller than the absolute value of the unnormalized contributions. This may indicate a numerical issue.")
+        print("E_unnormed_CB = ", E_unnormed_CB.real.item(),"+i*", E_unnormed_CB.imag.item())
+        print("E_unnormed_AF = ", E_unnormed_AF.real.item(),"+i*", E_unnormed_AF.imag.item())
+        print("E_unnormed_ED = ", E_unnormed_ED.real.item(),"+i*", E_unnormed_ED.imag.item())
+        print("norm_2nd_env = ", norm_2nd_env.real.item(),"+i*", norm_2nd_env.imag.item())
+        print("energyNearestNeighbor_3_bonds = ", energyNearestNeighbor_3_bonds.item())
+        print("compare_energy = ", compare_energy.item())
+
     return energyNearestNeighbor_3_bonds
 
 
@@ -1652,7 +1691,19 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
     E_unnormed_CD = oe.contract("xy,yz,zx->", H_CD, AB, EF, backend="torch")
 
     norm_3rd_env= oe.contract("xy,yz,zx->", EF, CD, AB, backend="torch")
-    energyNearestNeighbor_3_bonds = (E_unnormed_EF + E_unnormed_AB + E_unnormed_CD) / norm_3rd_env
+    energyNearestNeighbor_3_bonds = torch.real((E_unnormed_EF + E_unnormed_AB + E_unnormed_CD) / norm_3rd_env)
+
+    compare_energy = (torch.abs(E_unnormed_EF)+torch.abs(E_unnormed_AB)+torch.abs(E_unnormed_CD)) / torch.abs(norm_3rd_env)
+    if 1.0 - energyNearestNeighbor_3_bonds.item()/compare_energy.item() > 1e-6:
+        print("WARNING: energy from 3 bonds is significantly smaller than the absolute value of the unnormalized contributions. This may indicate a numerical issue.")
+        print("E_unnormed_EF = ", E_unnormed_EF.real.item(),"+i*", E_unnormed_EF.imag.item())
+        print("E_unnormed_AB = ", E_unnormed_AB.real.item(),"+i*", E_unnormed_AB.imag.item())
+        print("E_unnormed_CD = ", E_unnormed_CD.real.item(),"+i*", E_unnormed_CD.imag.item())
+        print("norm_3rd_env = ", norm_3rd_env.real.item(),"+i*", norm_3rd_env.imag.item())
+        print("energyNearestNeighbor_3_bonds = ", energyNearestNeighbor_3_bonds.item())
+        print("compare_energy = ", compare_energy.item())
+
+
     return energyNearestNeighbor_3_bonds
 
 
@@ -1671,7 +1722,8 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
                       lbfgs_history: int = 100,
                       opt_tolerance_grad: float = 1e-7,
                       opt_tolerance_change: float = 1e-8,
-                      init_abcdef=None):
+                      init_abcdef=None,
+                      identity_init=False):
     """
     Optimize the iPEPS tensors a,b,c,d,e,f using L-BFGS.
 
@@ -1737,13 +1789,13 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
         # 3a. Normalise a–f (scale redundancy; no-op on first step if init is
         #     already unit-norm, harmless otherwise).  Done via .data so that
         #     the computation graph and grad accumulators are untouched.
-        with torch.no_grad():
-            a.data = normalize_tensor(a.data)
-            b.data = normalize_tensor(b.data)
-            c.data = normalize_tensor(c.data)
-            d.data = normalize_tensor(d.data)
-            e.data = normalize_tensor(e.data)
-            f.data = normalize_tensor(f.data)
+        # with torch.no_grad():
+        #     a.data = normalize_tensor(a.data)
+        #     b.data = normalize_tensor(b.data)
+        #     c.data = normalize_tensor(c.data)
+        #     d.data = normalize_tensor(d.data)
+        #     e.data = normalize_tensor(e.data)
+        #     f.data = normalize_tensor(f.data)
 
         # 3b. Fresh L-BFGS for this outer step (environment will change, so old
         #     curvature history is irrelevant and would only mislead the solver).
@@ -1760,15 +1812,15 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
         # 3c. Rebuild double-layer tensors and converge the CTMRG environment.
         #     No gradients needed here — the environment is treated as a fixed
         #     external field during the L-BFGS line search.
-        with torch.no_grad():
-            A, B, C, D, E, F = abcdef_to_ABCDEF(a, b, c, d, e, f, D_squared)
-            
-            (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
-             C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
-             C21AF, C32CB, C13ED, T1B,  T2E,  T2D,  T3A,  T3F,  T1C,
-             _ctm_steps) = \
-            CTMRG_from_init_to_stop(A, B, C, D, E, F, chi, D_squared,
-                a_third_max_steps_CTMRG, CTM_env_conv_threshold)
+        # with torch.no_grad():
+        A, B, C, D, E, F = abcdef_to_ABCDEF(a, b, c, d, e, f, D_squared)
+        
+        (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
+            C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
+            C21AF, C32CB, C13ED, T1B,  T2E,  T2D,  T3A,  T3F,  T1C,
+            _ctm_steps) = \
+        CTMRG_from_init_to_stop(A, B, C, D, E, F, chi, D_squared,
+            a_third_max_steps_CTMRG, CTM_env_conv_threshold, identity_init=identity_init)
 
         # 3d. L-BFGS closure: energy evaluation + backward through a...f only.
         def closure():
@@ -1819,7 +1871,8 @@ def check_optimized_iPEPS(a,b,c,d,e,f, old_loss,
                           a_third_max_steps_CTMRG: int = 70, 
                           CTM_env_conv_threshold: float = 1e-7,
                         # ↓ SCALES with Hamiltonian!!!! ↓
-                          delta_loss_threshold: float = 1e-6):
+                          delta_loss_threshold: float = 1e-6,
+                          identity_init=False):
     
 
     D_squared = D_bond ** 2
@@ -1832,7 +1885,7 @@ def check_optimized_iPEPS(a,b,c,d,e,f, old_loss,
          C21AF, C32CB, C13ED, T1B,  T2E,  T2D,  T3A,  T3F,  T1C,
          _ctm_steps) = \
         CTMRG_from_init_to_stop(A, B, C, D, E, F, new_chi, D_squared,
-                a_third_max_steps_CTMRG, CTM_env_conv_threshold)
+                a_third_max_steps_CTMRG, CTM_env_conv_threshold, identity_init=identity_init)
         
         new_loss_under_new_chi = (
             energy_expectation_nearest_neighbor_3ebadcf_bonds(

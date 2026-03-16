@@ -107,6 +107,7 @@ from core_unrestricted import (
     initialize_abcdef,
     abcdef_to_ABCDEF,
     CTMRG_from_init_to_stop,
+    build_heisenberg_H,
     #energy_expectation_nearest_neighbor_6_bonds,
     energy_expectation_nearest_neighbor_3ebadcf_bonds,
     energy_expectation_nearest_neighbor_3afcbed_bonds,
@@ -280,6 +281,9 @@ ADAM_STEPS_PER_CTM = 5
 #   CTMRG "step" grows the environment by one unit-cell layer and then
 #   compresses via SVD truncation to keep the environment bond dim = chi.
 
+
+ENV_IDENTITY_INIT = False
+
 CTM_MAX_STEPS = 70
 #   Hard cap on CTMRG iterations per environment convergence call.
 #   With the singular-value convergence criterion and CTM_CONV_THR=1e-3,
@@ -394,7 +398,7 @@ def validate_chi(chi: int, D_bond: int, label: str = '') -> None:
             f"(D_bond={D_bond})."
         )
 
-
+"""
 def build_heisenberg_H(J: float = 1.0, d: int = 2) -> torch.Tensor:
     sx = torch.tensor([[0, 1], [1, 0]], dtype=CDTYPE) / 2
     sy = torch.tensor([[0, -1j], [1j, 0]], dtype=CDTYPE) / 2
@@ -403,6 +407,7 @@ def build_heisenberg_H(J: float = 1.0, d: int = 2) -> torch.Tensor:
            + oe.contract("ij,kl->ikjl", sy, sy)
            + oe.contract("ij,kl->ikjl", sz, sz))
     return J * SdotS
+"""
 
 
 def pad_tensor(t: torch.Tensor, old_D: int, new_D: int,
@@ -421,7 +426,7 @@ def evaluate_energy_clean(a, b, c, d, e, f,
     with torch.no_grad():
         A, B, C, Dt, E, F = abcdef_to_ABCDEF(a, b, c, d, e, f, D_sq)
         all27 = CTMRG_from_init_to_stop(
-                A, B, C, Dt, E, F, chi, D_sq, CTM_MAX_STEPS, CTM_CONV_THR)
+                A, B, C, Dt, E, F, chi, D_sq, CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT)
         #E6 = energy_expectation_nearest_neighbor_6_bonds(
         #    a, b, c, d, e, f,
         #    Hs[0], Hs[1], Hs[2], Hs[3], Hs[4], Hs[5],
@@ -510,46 +515,28 @@ def optimize_at_chi(
         if elapsed >= budget_seconds:
             break
 
-        # normalise (scale-redundancy fix, preserves requires_grad)
-        with torch.no_grad():
-            a.data = normalize_tensor(a.data)
-            b.data = normalize_tensor(b.data)
-            c.data = normalize_tensor(c.data)
-            d.data = normalize_tensor(d.data)
-            e.data = normalize_tensor(e.data)
-            f.data = normalize_tensor(f.data)
+        # # normalise (scale-redundancy fix, preserves requires_grad)
+        # with torch.no_grad():
+        #     a.data = normalize_tensor(a.data)
+        #     b.data = normalize_tensor(b.data)
+        #     c.data = normalize_tensor(c.data)
+        #     d.data = normalize_tensor(d.data)
+        #     e.data = normalize_tensor(e.data)
+        #     f.data = normalize_tensor(f.data)
 
         # converge environment (no grad); ctm_steps returned directly from core
-        with torch.no_grad():
-            A, B, C, D, E, F = abcdef_to_ABCDEF(a, b, c, d, e, f, D_sq)
-            (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
-             C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
-             C21AF, C32CB, C13ED, T1B,  T2E,  T2D,  T3A,  T3F,  T1C,
-             ctm_steps) = \
-                CTMRG_from_init_to_stop(
-                    A, B, C, D, E, F, chi, D_sq,
-                    CTM_MAX_STEPS, CTM_CONV_THR)
+        # with torch.no_grad():
+        A, B, C, D, E, F = abcdef_to_ABCDEF(a, b, c, d, e, f, D_sq)
+        
+        (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
+        C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
+        C21AF, C32CB, C13ED, T1B,  T2E,  T2D,  T3A,  T3F,  T1C,
+        ctm_steps) = \
+        CTMRG_from_init_to_stop(
+            A, B, C, D, E, F, chi, D_sq,
+            CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT)
 
-        def _energy():
-            return (
-            energy_expectation_nearest_neighbor_3ebadcf_bonds(
-                a,b,c,d,e,f, 
-                Hs[0],Hs[1],Hs[2],
-                chi, D_bond, # d_PHYS, 
-                C21CD,C32EF,C13AB,T1F,T2A,T2B,T3C,T3D,T1E)
-            +
-            energy_expectation_nearest_neighbor_3afcbed_bonds(
-                a,b,c,d,e,f, 
-                Hs[3],Hs[4],Hs[5], 
-                chi, D_bond, # d_PHYS, 
-                C21EB, C32AD,C13CF,T1D,T2C,T2F,T3E,T3B,T1A)
-            +
-            energy_expectation_nearest_neighbor_other_3_bonds(
-                    a, b, c, d, e, f,
-                    Hs[6], Hs[7], Hs[8],
-                    chi, D_bond,
-                    C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C)
-            ).real
+
 
         if OPTIMIZER == 'lbfgs':
             # fresh L-BFGS each outer step (resets curvature state)
@@ -564,7 +551,25 @@ def optimize_at_chi(
             )
             def closure():
                 _opt.zero_grad()
-                loss = _energy()
+                loss = (
+                    energy_expectation_nearest_neighbor_3ebadcf_bonds(
+                        a,b,c,d,e,f, 
+                        Hs[0],Hs[1],Hs[2],
+                        chi, D_bond, # d_PHYS, 
+                        C21CD,C32EF,C13AB,T1F,T2A,T2B,T3C,T3D,T1E)
+                    +
+                    energy_expectation_nearest_neighbor_3afcbed_bonds(
+                        a,b,c,d,e,f, 
+                        Hs[3],Hs[4],Hs[5], 
+                        chi, D_bond, # d_PHYS, 
+                        C21EB, C32AD,C13CF,T1D,T2C,T2F,T3E,T3B,T1A)
+                    +
+                    energy_expectation_nearest_neighbor_other_3_bonds(
+                            a, b, c, d, e, f,
+                            Hs[6], Hs[7], Hs[8],
+                            chi, D_bond,
+                            C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C)
+                )
                 loss.backward()
                 return loss
             loss_val  = _opt.step(closure)
