@@ -2102,9 +2102,9 @@ def build_heisenberg_H(J: float = 1.0, d: int = 2) -> torch.Tensor:
     sx = torch.tensor([[0, 1], [1, 0]], dtype=CDTYPE) / 2
     sy = torch.tensor([[0, -1j], [1j, 0]], dtype=CDTYPE) / 2
     sz = torch.tensor([[1, 0], [0, -1]], dtype=CDTYPE) / 2
-    SdotS = (oe.contract("ij,kl->ikjl", sx, sx)
-           + oe.contract("ij,kl->ikjl", sy, sy)
-           + oe.contract("ij,kl->ikjl", sz, sz))
+    SdotS = (oe.contract("ij,kl->ijkl", sx, sx)
+           + oe.contract("ij,kl->ijkl", sy, sy)
+           + oe.contract("ij,kl->ijkl", sz, sz))
     return J * SdotS
 
 
