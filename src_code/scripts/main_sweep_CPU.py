@@ -282,7 +282,17 @@ ADAM_STEPS_PER_CTM = 5
 #   compresses via SVD truncation to keep the environment bond dim = chi.
 
 
+
+
+
+
+
 ENV_IDENTITY_INIT = False
+
+
+
+
+
 
 CTM_MAX_STEPS = 70
 #   Hard cap on CTMRG iterations per environment convergence call.
@@ -510,6 +520,56 @@ def optimize_at_chi(
             lr=ADAM_LR, betas=ADAM_BETAS, eps=ADAM_EPS,
             weight_decay=ADAM_WEIGHT_DECAY)
 
+    def _loss_with_differentiable_ctmrg() -> tuple[torch.Tensor, int, dict[str, float]]:
+        """Compute loss with CTMRG inside the autograd graph.
+
+        LBFGS calls its closure multiple times per step; therefore this
+        function must be called fresh on every closure evaluation.
+        Never reuse environment tensors across calls.
+        """
+        A, B, C, Dt, E, F = abcdef_to_ABCDEF(a, b, c, d, e, f, D_sq)
+        all28 = CTMRG_from_init_to_stop(
+            A, B, C, Dt, E, F, chi, D_sq,
+            CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT)
+
+        (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
+         C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
+         C21AF, C32CB, C13ED, T1B,  T2E,  T2D,  T3A,  T3F,  T1C,
+         ctm_steps) = all28
+
+        loss = (
+            energy_expectation_nearest_neighbor_3ebadcf_bonds(
+                a, b, c, d, e, f,
+                Hs[0], Hs[1], Hs[2],
+                chi, D_bond,
+                C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E)
+            +
+            energy_expectation_nearest_neighbor_3afcbed_bonds(
+                a, b, c, d, e, f,
+                Hs[3], Hs[4], Hs[5],
+                chi, D_bond,
+                C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A)
+            +
+            energy_expectation_nearest_neighbor_other_3_bonds(
+                a, b, c, d, e, f,
+                Hs[6], Hs[7], Hs[8],
+                chi, D_bond,
+                C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C)
+        )
+
+        corner_norms = {
+            'C21CD': float(torch.linalg.norm(C21CD.detach()).item()),
+            'C32EF': float(torch.linalg.norm(C32EF.detach()).item()),
+            'C13AB': float(torch.linalg.norm(C13AB.detach()).item()),
+            'C21EB': float(torch.linalg.norm(C21EB.detach()).item()),
+            'C32AD': float(torch.linalg.norm(C32AD.detach()).item()),
+            'C13CF': float(torch.linalg.norm(C13CF.detach()).item()),
+            'C21AF': float(torch.linalg.norm(C21AF.detach()).item()),
+            'C32CB': float(torch.linalg.norm(C32CB.detach()).item()),
+            'C13ED': float(torch.linalg.norm(C13ED.detach()).item()),
+        }
+        return loss, int(ctm_steps), corner_norms
+
     while True:
         elapsed = time.perf_counter() - t_start
         if elapsed >= budget_seconds:
@@ -524,20 +584,11 @@ def optimize_at_chi(
         #     e.data = normalize_tensor(e.data)
         #     f.data = normalize_tensor(f.data)
 
-        # converge environment (no grad); ctm_steps returned directly from core
-        # with torch.no_grad():
-        A, B, C, D, E, F = abcdef_to_ABCDEF(a, b, c, d, e, f, D_sq)
-        
-        (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
-        C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
-        C21AF, C32CB, C13ED, T1B,  T2E,  T2D,  T3A,  T3F,  T1C,
-        ctm_steps) = \
-        CTMRG_from_init_to_stop(
-            A, B, C, D, E, F, chi, D_sq,
-            CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT)
-
-
-
+        # CTMRG is evaluated inside the optimizer objective.
+        # (LBFGS calls the closure multiple times; reusing env tensors would
+        #  both crash autograd and give incorrect gradients.)
+        ctm_steps = -1
+        cn: dict[str, float] = {}
         if OPTIMIZER == 'lbfgs':
             # fresh L-BFGS each outer step (resets curvature state)
             _opt = torch.optim.LBFGS(
@@ -549,35 +600,28 @@ def optimize_at_chi(
                 history_size=LBFGS_HISTORY,
                 line_search_fn='strong_wolfe',
             )
+            last_ctm_steps: int | None = None
+            last_cn: dict[str, float] | None = None
             def closure():
+                nonlocal last_ctm_steps, last_cn
                 _opt.zero_grad()
-                loss = (
-                    energy_expectation_nearest_neighbor_3ebadcf_bonds(
-                        a,b,c,d,e,f, 
-                        Hs[0],Hs[1],Hs[2],
-                        chi, D_bond, # d_PHYS, 
-                        C21CD,C32EF,C13AB,T1F,T2A,T2B,T3C,T3D,T1E)
-                    +
-                    energy_expectation_nearest_neighbor_3afcbed_bonds(
-                        a,b,c,d,e,f, 
-                        Hs[3],Hs[4],Hs[5], 
-                        chi, D_bond, # d_PHYS, 
-                        C21EB, C32AD,C13CF,T1D,T2C,T2F,T3E,T3B,T1A)
-                    +
-                    energy_expectation_nearest_neighbor_other_3_bonds(
-                            a, b, c, d, e, f,
-                            Hs[6], Hs[7], Hs[8],
-                            chi, D_bond,
-                            C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C)
-                )
+                loss, _ctm_steps, _cn = _loss_with_differentiable_ctmrg()
+                last_ctm_steps = _ctm_steps
+                last_cn = _cn
                 loss.backward()
                 return loss
             loss_val  = _opt.step(closure)
             loss_item = loss_val.item()
+            if last_ctm_steps is not None:
+                ctm_steps = last_ctm_steps
+            if last_cn is not None:
+                cn = last_cn
         else:  # adam — persistent state, ADAM_STEPS_PER_CTM micro-steps per env refresh
+            if _adam is None:
+                raise RuntimeError("Adam optimizer requested but was not initialized")
             for _s in range(ADAM_STEPS_PER_CTM):
                 _adam.zero_grad()
-                _loss = _energy()
+                _loss, ctm_steps, cn = _loss_with_differentiable_ctmrg()
                 _loss.backward()
                 _adam.step()
             loss_item = _loss.detach().item()
@@ -694,23 +738,12 @@ def optimize_at_chi(
             print(f"    step {step:5d}  ctm={ctm_steps:3d}  loss={loss_item:+.10f}"
                   f"  (per bond: {loss_per_bond:+.6f})"
                   f"  Δ={delta:+.3e}  {elapsed:.0f}/{budget_seconds:.0f}s")
-            # ── Corner / transfer tensor norm diagnostic ──────────────────────
-            with torch.no_grad():
-                cn = {
-                    'C21CD': torch.linalg.norm(C21CD).item(),
-                    'C32EF': torch.linalg.norm(C32EF).item(),
-                    'C13AB': torch.linalg.norm(C13AB).item(),
-                    'C21EB': torch.linalg.norm(C21EB).item(),
-                    'C32AD': torch.linalg.norm(C32AD).item(),
-                    'C13CF': torch.linalg.norm(C13CF).item(),
-                    'C21AF': torch.linalg.norm(C21AF).item(),
-                    'C32CB': torch.linalg.norm(C32CB).item(),
-                    'C13ED': torch.linalg.norm(C13ED).item(),
-                }
-            print(f"           corner norms │"
-                  f" C21CD={cn['C21CD']:.3e} C32EF={cn['C32EF']:.3e} C13AB={cn['C13AB']:.3e}"
-                  f" │ C21EB={cn['C21EB']:.3e} C32AD={cn['C32AD']:.3e} C13CF={cn['C13CF']:.3e}"
-                  f" │ C21AF={cn['C21AF']:.3e} C32CB={cn['C32CB']:.3e} C13ED={cn['C13ED']:.3e}")
+            # ── Corner norm diagnostic (from the last objective evaluation) ──
+            if cn:
+                print(f"           corner norms │"
+                      f" C21CD={cn['C21CD']:.3e} C32EF={cn['C32EF']:.3e} C13AB={cn['C13AB']:.3e}"
+                      f" │ C21EB={cn['C21EB']:.3e} C32AD={cn['C32AD']:.3e} C13CF={cn['C13CF']:.3e}"
+                      f" │ C21AF={cn['C21AF']:.3e} C32CB={cn['C32CB']:.3e} C13ED={cn['C13ED']:.3e}")
         else:
             print(f"    step {step:5d}  ctm={ctm_steps:3d}  loss={loss_item:+.10f}"
                   f"  Δ={delta:+.3e}  {elapsed:.0f}/{budget_seconds:.0f}s")

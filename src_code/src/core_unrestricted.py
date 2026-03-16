@@ -1554,14 +1554,12 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
     
     
     compare_energy = (torch.abs(E_unnormed_AD)+torch.abs(E_unnormed_CF)+torch.abs(E_unnormed_EB)) / torch.abs(norm_1st_env)
-    if 1.0 - energyNearestNeighbor_3_bonds.item()/compare_energy.item() > 1e-6:
-        print("WARNING: energy from 3 bonds is significantly smaller than the absolute value of the unnormalized contributions. This may indicate a numerical issue.")
-        print("E_unnormed_AD = ", E_unnormed_AD.real.item(),"+i*", E_unnormed_AD.imag.item())
-        print("E_unnormed_CF = ", E_unnormed_CF.real.item(),"+i*", E_unnormed_CF.imag.item())
-        print("E_unnormed_EB = ", E_unnormed_EB.real.item(),"+i*", E_unnormed_EB.imag.item())
-        print("norm_1st_env = ", norm_1st_env.real.item(),"+i*", norm_1st_env.imag.item())
-        print("energyNearestNeighbor_3_bonds = ", energyNearestNeighbor_3_bonds.item())
-        print("compare_energy = ", compare_energy.item())
+    print("E_unnormed_AD = ", E_unnormed_AD.real.item(),"+i*", E_unnormed_AD.imag.item())
+    print("E_unnormed_CF = ", E_unnormed_CF.real.item(),"+i*", E_unnormed_CF.imag.item())
+    print("E_unnormed_EB = ", E_unnormed_EB.real.item(),"+i*", E_unnormed_EB.imag.item())
+    print("norm_1st_env = ", norm_1st_env.real.item(),"+i*", norm_1st_env.imag.item())
+    print("energyNearestNeighbor_3_bonds = ", energyNearestNeighbor_3_bonds.item())
+    print("compare_energy = ", compare_energy.item())
     
     return energyNearestNeighbor_3_bonds
 
@@ -1610,14 +1608,12 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,Haf,Hcb,Hed,
     # print("E_3bonds = ", energyNearestNeighbor_3_bonds.real.item(),"+i*", energyNearestNeighbor_3_bonds.imag.item())
     # print("norm_2nd_env = ", norm_2nd_env.real.item(),"+i*", norm_2nd_env.imag.item())
     compare_energy = (torch.abs(E_unnormed_CB)+torch.abs(E_unnormed_AF)+torch.abs(E_unnormed_ED)) / torch.abs(norm_2nd_env)
-    if 1.0 - energyNearestNeighbor_3_bonds.item()/compare_energy.item() > 1e-6:
-        print("WARNING: energy from 3 bonds is significantly smaller than the absolute value of the unnormalized contributions. This may indicate a numerical issue.")
-        print("E_unnormed_CB = ", E_unnormed_CB.real.item(),"+i*", E_unnormed_CB.imag.item())
-        print("E_unnormed_AF = ", E_unnormed_AF.real.item(),"+i*", E_unnormed_AF.imag.item())
-        print("E_unnormed_ED = ", E_unnormed_ED.real.item(),"+i*", E_unnormed_ED.imag.item())
-        print("norm_2nd_env = ", norm_2nd_env.real.item(),"+i*", norm_2nd_env.imag.item())
-        print("energyNearestNeighbor_3_bonds = ", energyNearestNeighbor_3_bonds.item())
-        print("compare_energy = ", compare_energy.item())
+    print("E_unnormed_CB = ", E_unnormed_CB.real.item(),"+i*", E_unnormed_CB.imag.item())
+    print("E_unnormed_AF = ", E_unnormed_AF.real.item(),"+i*", E_unnormed_AF.imag.item())
+    print("E_unnormed_ED = ", E_unnormed_ED.real.item(),"+i*", E_unnormed_ED.imag.item())
+    print("norm_2nd_env = ", norm_2nd_env.real.item(),"+i*", norm_2nd_env.imag.item())
+    print("energyNearestNeighbor_3_bonds = ", energyNearestNeighbor_3_bonds.item())
+    print("compare_energy = ", compare_energy.item())
 
     return energyNearestNeighbor_3_bonds
 
@@ -1694,14 +1690,12 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
     energyNearestNeighbor_3_bonds = torch.real((E_unnormed_EF + E_unnormed_AB + E_unnormed_CD) / norm_3rd_env)
 
     compare_energy = (torch.abs(E_unnormed_EF)+torch.abs(E_unnormed_AB)+torch.abs(E_unnormed_CD)) / torch.abs(norm_3rd_env)
-    if 1.0 - energyNearestNeighbor_3_bonds.item()/compare_energy.item() > 1e-6:
-        print("WARNING: energy from 3 bonds is significantly smaller than the absolute value of the unnormalized contributions. This may indicate a numerical issue.")
-        print("E_unnormed_EF = ", E_unnormed_EF.real.item(),"+i*", E_unnormed_EF.imag.item())
-        print("E_unnormed_AB = ", E_unnormed_AB.real.item(),"+i*", E_unnormed_AB.imag.item())
-        print("E_unnormed_CD = ", E_unnormed_CD.real.item(),"+i*", E_unnormed_CD.imag.item())
-        print("norm_3rd_env = ", norm_3rd_env.real.item(),"+i*", norm_3rd_env.imag.item())
-        print("energyNearestNeighbor_3_bonds = ", energyNearestNeighbor_3_bonds.item())
-        print("compare_energy = ", compare_energy.item())
+    print("E_unnormed_EF = ", E_unnormed_EF.real.item(),"+i*", E_unnormed_EF.imag.item())
+    print("E_unnormed_AB = ", E_unnormed_AB.real.item(),"+i*", E_unnormed_AB.imag.item())
+    print("E_unnormed_CD = ", E_unnormed_CD.real.item(),"+i*", E_unnormed_CD.imag.item())
+    print("norm_3rd_env = ", norm_3rd_env.real.item(),"+i*", norm_3rd_env.imag.item())
+    print("energyNearestNeighbor_3_bonds = ", energyNearestNeighbor_3_bonds.item())
+    print("compare_energy = ", compare_energy.item())
 
 
     return energyNearestNeighbor_3_bonds
@@ -1809,22 +1803,19 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
             line_search_fn='strong_wolfe',
         )
 
-        # 3c. Rebuild double-layer tensors and converge the CTMRG environment.
-        #     No gradients needed here — the environment is treated as a fixed
-        #     external field during the L-BFGS line search.
-        # with torch.no_grad():
-        A, B, C, D, E, F = abcdef_to_ABCDEF(a, b, c, d, e, f, D_squared)
-        
-        (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
-            C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
-            C21AF, C32CB, C13ED, T1B,  T2E,  T2D,  T3A,  T3F,  T1C,
-            _ctm_steps) = \
-        CTMRG_from_init_to_stop(A, B, C, D, E, F, chi, D_squared,
-            a_third_max_steps_CTMRG, CTM_env_conv_threshold, identity_init=identity_init)
-
         # 3d. L-BFGS closure: energy evaluation + backward through a...f only.
         def closure():
             optimizer.zero_grad()
+        # with torch.no_grad():
+
+            A, B, C, D, E, F = abcdef_to_ABCDEF(a, b, c, d, e, f, D_squared)
+            
+            (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
+                C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
+                C21AF, C32CB, C13ED, T1B,  T2E,  T2D,  T3A,  T3F,  T1C,
+                _ctm_steps) = \
+            CTMRG_from_init_to_stop(A, B, C, D, E, F, chi, D_squared,
+                a_third_max_steps_CTMRG, CTM_env_conv_threshold, identity_init=identity_init)
 
             loss = (
             energy_expectation_nearest_neighbor_3ebadcf_bonds(
@@ -1840,10 +1831,11 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
                 C21EB, C32AD,C13CF,T1D,T2C,T2F,T3E,T3B,T1A)
             +
             energy_expectation_nearest_neighbor_other_3_bonds(
-                        a,b,c,d,e,f, 
-                        Hcd,Hef,Hab, 
-                        chi, D_bond, # d_PHYS, 
-                        C21AF,C32CB,C13ED,T1B,T2E,T2D,T3A,T3F,T1C)).real
+                a,b,c,d,e,f, 
+                Hcd,Hef,Hab, 
+                chi, D_bond, # d_PHYS, 
+                C21AF,C32CB,C13ED,T1B,T2E,T2D,T3A,T3F,T1C)
+            )
 
             loss.backward()
             return loss
@@ -1864,7 +1856,7 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
     return a, b, c, d, e, f, loss_item
 
 
-
+"""
 def check_optimized_iPEPS(a,b,c,d,e,f, old_loss, 
                           Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, d_PHYS, d_PHYS^*) matrices
                           new_chi, D_bond, d_PHYS,
@@ -1910,7 +1902,7 @@ def check_optimized_iPEPS(a,b,c,d,e,f, old_loss,
         delta_loss = new_loss_under_new_chi - old_loss
         print(f"  Check optimized iPEPS with chi={new_chi}: loss = {new_loss_under_new_chi:+.10f}  Δloss = {delta_loss:.3e}")
         return bool(abs(delta_loss) < delta_loss_threshold)
-
+"""
 
 
 
