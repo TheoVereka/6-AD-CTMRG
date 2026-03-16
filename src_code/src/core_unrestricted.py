@@ -1863,7 +1863,7 @@ def check_optimized_iPEPS(a,b,c,d,e,f, old_loss,
 
 
 
-
+# To avoid complex numbers Hamiltonian can be wriiten with S+ and S-
 def build_heisenberg_H(J: float = 1.0, d: int = 2) -> torch.Tensor:
     sx = torch.tensor([[0, 1], [1, 0]], dtype=CDTYPE) / 2
     sy = torch.tensor([[0, -1j], [1j, 0]], dtype=CDTYPE) / 2
