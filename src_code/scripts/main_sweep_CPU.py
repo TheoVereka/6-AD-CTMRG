@@ -95,6 +95,11 @@ import matplotlib.pyplot as plt
 import opt_einsum as oe
 import torch
 
+# Optional debugging aid: if set, PyTorch will print the forward op trace that
+# produced a backward error (e.g. complex SVD phase-gauge issues).
+if os.environ.get("CTMRG_ANOMALY", "0") == "1":
+    torch.autograd.set_detect_anomaly(True)
+
 # Tell PyTorch's own dispatcher to use all physical cores for intra-op
 # parallelism (matrix multiply, SVD, etc.) and only 1 thread for the
 # inter-op pool — our outer loop is serial, extra inter-op threads just
@@ -120,7 +125,7 @@ from core_unrestricted import (
 # Time Budget
 # ══════════════════════════════════════════════════════════════════════════════
 
-TOTAL_BUDGET_HOURS = 0.05
+TOTAL_BUDGET_HOURS = 0.15
 
 # Total wall-clock time for the entire sweep.  The sweep is designed to run
 # for a fixed time rather than a fixed number of steps, so that results at
@@ -142,7 +147,7 @@ CDTYPE: torch.dtype = torch.complex64
 
 # ── Precision ─────────────────────────────────────────────────────────────────
 
-USE_DOUBLE_PRECISION = True
+USE_DOUBLE_PRECISION = False
 #   False → complex64  / float32 (default): fastest on both CPU (Intel MKL)
 #            and CUDA (fp32 tensor cores give full throughput).
 #   True  → complex128 / float64: double precision.
@@ -169,7 +174,7 @@ USE_DOUBLE_PRECISION = True
 #             receive EQUAL time budget and IDENTICAL L-BFGS settings, making
 #             results at different chi directly comparable.
 
-DEFAULT_D_BUDGET_FRACS = {2: 0.15, 3: 0.35, 4: 0.5}
+DEFAULT_D_BUDGET_FRACS = {2: 0.1, 3: 0.3, 4: 0.6}
 #   Fraction of the total wall-clock budget allocated to each D_bond value.
 #   Normalised to sum=1 before use, so only the RATIOS matter.
 #   Rationale:
@@ -218,7 +223,7 @@ LBFGS_MAX_ITER = 30
 #   Applies UNIFORMLY to every (D, chi) level — no difference between small
 #   and large chi.
 
-LBFGS_LR = 0.01
+LBFGS_LR = 0.1
 #   Step-size seed for the strong-Wolfe line search.  The line search
 #   automatically scales the actual step, so lr=1.0 is the standard default
 #   and almost always correct.  Only change if you observe line-search
@@ -301,7 +306,7 @@ CTM_MAX_STEPS = 70
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
 #   ansatz ~4 steps, 6-tensor ~40 steps).  90 is a safe upper bound.
 
-CTM_CONV_THR = 1e-9
+CTM_CONV_THR = 1e-7
 #   CTMRG convergence threshold: stop iterating when the max change in
 #   normalised corner singular values between consecutive steps is below
 #   this value.  The convergence criterion compares the spectra of all 9
@@ -641,11 +646,36 @@ def optimize_at_chi(
             def closure():
                 nonlocal last_ctm_steps, last_cn
                 _opt.zero_grad()
-                loss, _ctm_steps, _cn = _loss_with_differentiable_ctmrg()
-                last_ctm_steps = _ctm_steps
-                last_cn = _cn
-                loss.backward()
-                return loss
+                try:
+                    loss, _ctm_steps, _cn = _loss_with_differentiable_ctmrg()
+                    # Guard against NaN/Inf losses which break strong-wolfe.
+                    if not torch.isfinite(loss):
+                        raise FloatingPointError(f"Non-finite loss: {loss}")
+                    last_ctm_steps = _ctm_steps
+                    last_cn = _cn
+                    loss.backward()
+                    # Guard against NaN/Inf gradients.
+                    for p in (a, b, c, d, e, f):
+                        if p.grad is not None:
+                            p.grad.data = torch.nan_to_num(p.grad.data, nan=0.0, posinf=0.0, neginf=0.0)
+                    return loss
+                except Exception as exc:
+                    # BRUTAL ENFORCEMENT: If CTMRG/SVD forward or backward is
+                    # ill-defined at this trial point (common during L-BFGS
+                    # line search), return a large penalty with zero gradient
+                    # so the line search rejects the step instead of aborting.
+                    last_ctm_steps = 0
+                    last_cn = {"closure_error": float('nan')}
+                    for p in (a, b, c, d, e, f):
+                        if p.grad is None:
+                            p.grad = torch.zeros_like(p)
+                        else:
+                            p.grad.detach_()
+                            p.grad.zero_()
+                    # Print a short one-line warning (kept minimal to avoid log spam).
+                    msg = str(exc).splitlines()[0][:200]
+                    print(f"[closure] Non-finite/ill-defined point -> penalty loss (reason: {msg})")
+                    return torch.tensor(1.0e6, dtype=a.real.dtype, device=a.device)
             loss_val  = _opt.step(closure)
             loss_item = loss_val.item()
             if last_ctm_steps is not None:

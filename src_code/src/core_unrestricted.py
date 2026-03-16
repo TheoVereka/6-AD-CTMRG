@@ -224,34 +224,47 @@ def _fix_svd_phases(U: torch.Tensor, Vh: torch.Tensor, *, eps: float = 1e-12) ->
 
 def svd_fixed(A: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """torch.linalg.svd with phase-fixing (forward) and phase-gauge-safe gradients (backward)."""
-    U, S, Vh = torch.linalg.svd(A)
-    if A.is_complex():
-        if SVD_PHASE_FIX:
-            U, Vh = _fix_svd_phases(U, Vh)
+    U_raw, S, Vh_raw = torch.linalg.svd(A)
 
-        # Ensure gradients passed into svd_backward are phase-gauge invariant.
-        # This prevents: RuntimeError: svd_backward ... depends on phase term.
+    if A.is_complex():
+        # IMPORTANT: PyTorch's svd_backward phase-gauge check is performed in the
+        # *raw* SVD gauge returned by torch.linalg.svd. Therefore any gradient
+        # projection that enforces phase-gauge invariance must be attached to
+        # (U_raw, Vh_raw) BEFORE we apply any deterministic forward phase fixing.
         if SVD_GRAD_PROJECT_PHASE and A.requires_grad:
-            def _hook_U(grad_U: torch.Tensor) -> torch.Tensor:
-                # Remove the imaginary diagonal of U^H grad_U (phase direction).
+            def _hook_U_raw(grad_U: torch.Tensor) -> torch.Tensor:
                 if grad_U is None:
                     return grad_U
-                diag = torch.diagonal(U.conj().transpose(-2, -1) @ grad_U)
-                phase = (1j * diag.imag).to(grad_U.dtype)
-                return grad_U - (U * phase.reshape(1, -1))
+                with torch.no_grad():
+                    # SVD backward can crash with a phase-gauge error if the
+                    # incoming gradient contains NaN/Inf (common in long CTMRG
+                    # sweeps when matrices become ill-conditioned). Sanitise
+                    # first so our phase projection is well-defined.
+                    grad_U = torch.nan_to_num(grad_U, nan=0.0, posinf=0.0, neginf=0.0)
+                    diag = torch.diagonal(U_raw.conj().transpose(-2, -1) @ grad_U)
+                    diag = torch.nan_to_num(diag, nan=0.0, posinf=0.0, neginf=0.0)
+                    phase = (1j * diag.imag).to(grad_U.dtype)
+                    return grad_U - (U_raw * phase.reshape(1, -1))
 
-            def _hook_Vh(grad_Vh: torch.Tensor) -> torch.Tensor:
-                # Remove the imaginary diagonal of grad_Vh Vh^H (phase direction).
+            def _hook_Vh_raw(grad_Vh: torch.Tensor) -> torch.Tensor:
                 if grad_Vh is None:
                     return grad_Vh
-                diag = torch.diagonal(grad_Vh @ Vh.conj().transpose(-2, -1))
-                phase = (1j * diag.imag).to(grad_Vh.dtype)
-                return grad_Vh - (phase.reshape(-1, 1) * Vh)
+                with torch.no_grad():
+                    grad_Vh = torch.nan_to_num(grad_Vh, nan=0.0, posinf=0.0, neginf=0.0)
+                    diag = torch.diagonal(grad_Vh @ Vh_raw.conj().transpose(-2, -1))
+                    diag = torch.nan_to_num(diag, nan=0.0, posinf=0.0, neginf=0.0)
+                    phase = (1j * diag.imag).to(grad_Vh.dtype)
+                    return grad_Vh - (phase.reshape(-1, 1) * Vh_raw)
 
-            U.register_hook(_hook_U)
-            Vh.register_hook(_hook_Vh)
+            U_raw.register_hook(_hook_U_raw)
+            Vh_raw.register_hook(_hook_Vh_raw)
 
-    return U, S, Vh
+        U, Vh = U_raw, Vh_raw
+        if SVD_PHASE_FIX:
+            U, Vh = _fix_svd_phases(U_raw, Vh_raw)
+        return U, S, Vh
+
+    return U_raw, S, Vh_raw
 
 
 
