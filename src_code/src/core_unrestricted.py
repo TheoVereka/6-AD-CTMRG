@@ -1742,13 +1742,13 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
     energyNearestNeighbor_3_bonds = torch.real((E_unnormed_AD + E_unnormed_CF + E_unnormed_EB) / norm_1st_env)
     
     
-    compare_energy = (torch.abs(E_unnormed_AD)+torch.abs(E_unnormed_CF)+torch.abs(E_unnormed_EB)) / torch.abs(norm_1st_env)
+    # compare_energy = (torch.abs(E_unnormed_AD)+torch.abs(E_unnormed_CF)+torch.abs(E_unnormed_EB)) / torch.abs(norm_1st_env)
     print("E_unnormed_AD = ", E_unnormed_AD.real.item(),"+i*", E_unnormed_AD.imag.item())
     print("E_unnormed_CF = ", E_unnormed_CF.real.item(),"+i*", E_unnormed_CF.imag.item())
     print("E_unnormed_EB = ", E_unnormed_EB.real.item(),"+i*", E_unnormed_EB.imag.item())
     print("norm_1st_env = ", norm_1st_env.real.item(),"+i*", norm_1st_env.imag.item())
-    print("energyNearestNeighbor_3_bonds = ", energyNearestNeighbor_3_bonds.item())
-    print("compare_energy = ", compare_energy.item())
+    # print("energyNearestNeighbor_3_bonds = ", energyNearestNeighbor_3_bonds.item())
+    # print("compare_energy = ", compare_energy.item())
     
     return energyNearestNeighbor_3_bonds
 
@@ -1796,13 +1796,13 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,Haf,Hcb,Hed,
     
     # print("E_3bonds = ", energyNearestNeighbor_3_bonds.real.item(),"+i*", energyNearestNeighbor_3_bonds.imag.item())
     # print("norm_2nd_env = ", norm_2nd_env.real.item(),"+i*", norm_2nd_env.imag.item())
-    compare_energy = (torch.abs(E_unnormed_CB)+torch.abs(E_unnormed_AF)+torch.abs(E_unnormed_ED)) / torch.abs(norm_2nd_env)
+    # compare_energy = (torch.abs(E_unnormed_CB)+torch.abs(E_unnormed_AF)+torch.abs(E_unnormed_ED)) / torch.abs(norm_2nd_env)
     print("E_unnormed_CB = ", E_unnormed_CB.real.item(),"+i*", E_unnormed_CB.imag.item())
     print("E_unnormed_AF = ", E_unnormed_AF.real.item(),"+i*", E_unnormed_AF.imag.item())
     print("E_unnormed_ED = ", E_unnormed_ED.real.item(),"+i*", E_unnormed_ED.imag.item())
     print("norm_2nd_env = ", norm_2nd_env.real.item(),"+i*", norm_2nd_env.imag.item())
-    print("energyNearestNeighbor_3_bonds = ", energyNearestNeighbor_3_bonds.item())
-    print("compare_energy = ", compare_energy.item())
+    # print("energyNearestNeighbor_3_bonds = ", energyNearestNeighbor_3_bonds.item())
+    # print("compare_energy = ", compare_energy.item())
 
     return energyNearestNeighbor_3_bonds
 
@@ -1878,13 +1878,13 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
     norm_3rd_env= oe.contract("xy,yz,zx->", EF, CD, AB, backend="torch")
     energyNearestNeighbor_3_bonds = torch.real((E_unnormed_EF + E_unnormed_AB + E_unnormed_CD) / norm_3rd_env)
 
-    compare_energy = (torch.abs(E_unnormed_EF)+torch.abs(E_unnormed_AB)+torch.abs(E_unnormed_CD)) / torch.abs(norm_3rd_env)
+    # compare_energy = (torch.abs(E_unnormed_EF)+torch.abs(E_unnormed_AB)+torch.abs(E_unnormed_CD)) / torch.abs(norm_3rd_env)
     print("E_unnormed_EF = ", E_unnormed_EF.real.item(),"+i*", E_unnormed_EF.imag.item())
     print("E_unnormed_AB = ", E_unnormed_AB.real.item(),"+i*", E_unnormed_AB.imag.item())
     print("E_unnormed_CD = ", E_unnormed_CD.real.item(),"+i*", E_unnormed_CD.imag.item())
     print("norm_3rd_env = ", norm_3rd_env.real.item(),"+i*", norm_3rd_env.imag.item())
-    print("energyNearestNeighbor_3_bonds = ", energyNearestNeighbor_3_bonds.item())
-    print("compare_energy = ", compare_energy.item())
+    # print("energyNearestNeighbor_3_bonds = ", energyNearestNeighbor_3_bonds.item())
+    # print("compare_energy = ", compare_energy.item())
 
 
     return energyNearestNeighbor_3_bonds

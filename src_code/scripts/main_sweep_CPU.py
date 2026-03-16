@@ -147,7 +147,7 @@ CDTYPE: torch.dtype = torch.complex64
 
 # ── Precision ─────────────────────────────────────────────────────────────────
 
-USE_DOUBLE_PRECISION = False
+USE_DOUBLE_PRECISION = True
 #   False → complex64  / float32 (default): fastest on both CPU (Intel MKL)
 #            and CUDA (fp32 tensor cores give full throughput).
 #   True  → complex128 / float64: double precision.
@@ -215,7 +215,7 @@ DEFAULT_CHI_SCHEDULES = {
 #     3. Repeat until time budget is exhausted or OPT_CONV_THRESHOLD hit.
 #   This is the "cheap-environment" AD-CTMRG gradient scheme.
 
-LBFGS_MAX_ITER = 30
+LBFGS_MAX_ITER = 20
 #   Maximum L-BFGS sub-iterations per outer step (= max closure evaluations
 #   inside a single optimizer.step() call).  Each sub-iteration does a
 #   forward + backward pass through the energy formula.  30 gives a thorough
@@ -223,7 +223,7 @@ LBFGS_MAX_ITER = 30
 #   Applies UNIFORMLY to every (D, chi) level — no difference between small
 #   and large chi.
 
-LBFGS_LR = 0.1
+LBFGS_LR = 1.0
 #   Step-size seed for the strong-Wolfe line search.  The line search
 #   automatically scales the actual step, so lr=1.0 is the standard default
 #   and almost always correct.  Only change if you observe line-search
