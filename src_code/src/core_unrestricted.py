@@ -1798,7 +1798,7 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
     rhoAD = oe.contract('IJxy,yz,zx->IJ', rho, EB, CF, backend="torch")
     print("rhoAD anti-hermiticity: ", torch.norm(rhoAD - rhoAD.conj().T).item()/2.0/torch.norm(rhoAD).item())
     rhoAD = (rhoAD + rhoAD.conj().T)/2.0
-    rhoAD = (rhoAD / torch.trace(rhoAD)).reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS)
+    rhoAD = (rhoAD / torch.trace(rhoAD)).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
     E_AD = oe.contract("ikjl,ijkl->", rhoAD, Had, backend="torch")
 
     
@@ -1806,7 +1806,7 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
     rhoCF = oe.contract('IJxy,yz,zx->IJ', rho, AD, EB, backend="torch")
     print("rhoCF anti-hermiticity: ", torch.norm(rhoCF - rhoCF.conj().T).item()/2.0/torch.norm(rhoCF).item())
     rhoCF = (rhoCF + rhoCF.conj().T)/2.0
-    rhoCF = (rhoCF / torch.trace(rhoCF)).reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS)
+    rhoCF = (rhoCF / torch.trace(rhoCF)).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
     E_CF = oe.contract("ikjl,ijkl->", rhoCF, Hcf, backend="torch")
 
 
@@ -1814,7 +1814,7 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
     rhoEB = oe.contract('IJxy,yz,zx->IJ', rho, CF, AD, backend="torch")
     print("rhoEB anti-hermiticity: ", torch.norm(rhoEB - rhoEB.conj().T).item()/2.0/torch.norm(rhoEB).item())
     rhoEB = (rhoEB + rhoEB.conj().T)/2.0
-    rhoEB = (rhoEB / torch.trace(rhoEB)).reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS)
+    rhoEB = (rhoEB / torch.trace(rhoEB)).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
     E_EB = oe.contract("ikjl,ijkl->", rhoEB, Heb, backend="torch")
 
 
@@ -1829,7 +1829,7 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
     # print("energyNearestNeighbor_3_bonds = ", energyNearestNeighbor_3_bonds.item())
     # print("compare_energy = ", compare_energy.item())
     
-    return E_AD + E_CF + E_EB
+    return torch.real(E_AD + E_CF + E_EB)
 
 
 def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,Haf,Hcb,Hed, 
@@ -1871,7 +1871,7 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,Haf,Hcb,Hed,
     rhoCB = oe.contract('IJxy,yz,zx->IJ', rho, AF, ED, backend="torch")
     print("rhoCB anti-hermiticity: ", torch.norm(rhoCB - rhoCB.conj().T).item()/2.0/torch.norm(rhoCB).item())
     rhoCB = (rhoCB + rhoCB.conj().T)/2.0
-    rhoCB = (rhoCB / torch.trace(rhoCB)).reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS)
+    rhoCB = (rhoCB / torch.trace(rhoCB)).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
     E_CB = oe.contract("ikjl,ijkl->", rhoCB, Hcb, backend="torch")
 
     
@@ -1879,7 +1879,7 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,Haf,Hcb,Hed,
     rhoAF = oe.contract('IJxy,yz,zx->IJ', rho, ED, CB, backend="torch")
     print("rhoAF anti-hermiticity: ", torch.norm(rhoAF - rhoAF.conj().T).item()/2.0/torch.norm(rhoAF).item())
     rhoAF = (rhoAF + rhoAF.conj().T)/2.0
-    rhoAF = (rhoAF / torch.trace(rhoAF)).reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS)
+    rhoAF = (rhoAF / torch.trace(rhoAF)).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
     E_AF = oe.contract("ikjl,ijkl->", rhoAF, Haf, backend="torch")
 
 
@@ -1887,12 +1887,12 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,Haf,Hcb,Hed,
     rhoED = oe.contract('IJxy,yz,zx->IJ', rho, CB, AF, backend="torch")
     print("rhoED anti-hermiticity: ", torch.norm(rhoED - rhoED.conj().T).item()/2.0/torch.norm(rhoED).item())
     rhoED = (rhoED + rhoED.conj().T)/2.0
-    rhoED = (rhoED / torch.trace(rhoED)).reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS)
+    rhoED = (rhoED / torch.trace(rhoED)).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
     E_ED = oe.contract("ikjl,ijkl->", rhoED, Hed, backend="torch")
 
 
     
-    return E_AF + E_CB + E_ED
+    return torch.real(E_AF + E_CB + E_ED)
 
 
 
@@ -1964,7 +1964,7 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
     rhoEF = oe.contract('IJxy,yz,zx->IJ', rho, CD, AB, backend="torch")
     print("rhoEF anti-hermiticity: ", torch.norm(rhoEF - rhoEF.conj().T).item()/2.0/torch.norm(rhoEF).item())
     rhoEF = (rhoEF + rhoEF.conj().T)/2.0
-    rhoEF = (rhoEF / torch.trace(rhoEF)).reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS)
+    rhoEF = (rhoEF / torch.trace(rhoEF)).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
     E_EF = oe.contract("ikjl,ijkl->", rhoEF, Hef, backend="torch")
 
     
@@ -1972,7 +1972,7 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
     rhoAB = oe.contract('IJxy,yz,zx->IJ', rho, EF, CD, backend="torch")
     print("rhoAB anti-hermiticity: ", torch.norm(rhoAB - rhoAB.conj().T).item()/2.0/torch.norm(rhoAB).item())
     rhoAB = (rhoAB + rhoAB.conj().T)/2.0
-    rhoAB = (rhoAB / torch.trace(rhoAB)).reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS)
+    rhoAB = (rhoAB / torch.trace(rhoAB)).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
     E_AB = oe.contract("ikjl,ijkl->", rhoAB, Hab, backend="torch")
 
 
@@ -1980,7 +1980,7 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
     rhoCD = oe.contract('IJxy,yz,zx->IJ', rho, AB, EF, backend="torch")
     print("rhoCD anti-hermiticity: ", torch.norm(rhoCD - rhoCD.conj().T).item()/2.0/torch.norm(rhoCD).item())
     rhoCD = (rhoCD + rhoCD.conj().T)/2.0
-    rhoCD = (rhoCD / torch.trace(rhoCD)).reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS)
+    rhoCD = (rhoCD / torch.trace(rhoCD)).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
     E_CD = oe.contract("ikjl,ijkl->", rhoCD, Hcd, backend="torch")
     
     
@@ -1995,7 +1995,7 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
     print("rho_CD anti-hermiticity: ", torch.norm(CD_to_check - CD_to_check.conj().T).item()/2/torch.norm(CD_to_check).item())
     # """
     
-    return E_EF + E_AB + E_CD
+    return torch.real(E_EF + E_AB + E_CD)
 
 
 

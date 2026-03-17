@@ -439,7 +439,7 @@ def pad_tensor(t: torch.Tensor, old_D: int, new_D: int,
 
 
 def evaluate_energy_clean(a, b, c, d, e, f,
-                          Hs, chi: int, D_bond: int) -> float:
+                          Hs, chi: int, D_bond: int, d_PHYS: int) -> float:
     """Re-converge environment from scratch and return total energy (float).
 
     IMPORTANT: CTMRG consumes *double-layer* site tensors which are normalised
@@ -466,18 +466,19 @@ def evaluate_energy_clean(a, b, c, d, e, f,
         E3ebadcf = energy_expectation_nearest_neighbor_3ebadcf_bonds(
             aN, bN, cN, dN, eN, fN,
                 Hs[0],Hs[1],Hs[2],
-                chi, D_bond, # d_PHYS, 
+                chi, D_bond, d_PHYS, 
                 *all27[:9])
         E3afcbed = energy_expectation_nearest_neighbor_3afcbed_bonds(
             aN, bN, cN, dN, eN, fN,
                 Hs[3],Hs[4],Hs[5], 
-                chi, D_bond, # d_PHYS, 
+                chi, D_bond, d_PHYS, 
                 *all27[9:18])
             
         E3 = energy_expectation_nearest_neighbor_other_3_bonds(
             aN, bN, cN, dN, eN, fN,
             Hs[6], Hs[7], Hs[8],
-            chi, D_bond, *all27[18:27])
+            chi, D_bond, d_PHYS, 
+            *all27[18:27])
         return (E3ebadcf + E3afcbed + E3).item()
 
 
@@ -642,19 +643,19 @@ def optimize_at_chi(
             energy_expectation_nearest_neighbor_3ebadcf_bonds(
                 aN, bN, cN, dN, eN, fN,
                 Hs[0], Hs[1], Hs[2],
-                chi, D_bond,
+                chi, D_bond, d_PHYS,
                 C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E)
             +
             energy_expectation_nearest_neighbor_3afcbed_bonds(
                 aN, bN, cN, dN, eN, fN,
                 Hs[3], Hs[4], Hs[5],
-                chi, D_bond,
+                chi, D_bond, d_PHYS,
                 C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A)
             +
             energy_expectation_nearest_neighbor_other_3_bonds(
                 aN, bN, cN, dN, eN, fN,
                 Hs[6], Hs[7], Hs[8],
-                chi, D_bond,
+                chi, D_bond, d_PHYS,
                 C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C)
         )
 
@@ -1218,7 +1219,7 @@ def main():
             # Clean energy evaluation
             print(f"  │  Evaluating energy at (D={D_bond}, chi={chi}) ...")
             energy = evaluate_energy_clean(
-                *cur_abcdef, Hs, chi, D_bond)
+                *cur_abcdef, Hs, chi, D_bond, d_PHYS)
             energy_per_bond = energy / N_BONDS
 
             # Save final checkpoint for this (D, chi)
