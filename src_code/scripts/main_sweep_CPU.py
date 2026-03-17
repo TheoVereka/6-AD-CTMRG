@@ -128,7 +128,7 @@ from core_unrestricted import (
 # Time Budget
 # ══════════════════════════════════════════════════════════════════════════════
 
-TOTAL_BUDGET_HOURS = 0.05
+TOTAL_BUDGET_HOURS = 0.1
 
 # Total wall-clock time for the entire sweep.  The sweep is designed to run
 # for a fixed time rather than a fixed number of steps, so that results at
@@ -303,13 +303,13 @@ ENV_IDENTITY_INIT = False
 
 
 
-CTM_MAX_STEPS = 30
+CTM_MAX_STEPS = 50
 #   Hard cap on CTMRG iterations per environment convergence call.
 #   With the singular-value convergence criterion and CTM_CONV_THR=1e-3,
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
 #   ansatz ~4 steps, 6-tensor ~40 steps).  90 is a safe upper bound.
 
-CTM_CONV_THR = 1e-6
+CTM_CONV_THR = 4e-7
 #   CTMRG convergence threshold: stop iterating when the max change in
 #   normalised corner singular values between consecutive steps is below
 #   this value.  The convergence criterion compares the spectra of all 9
@@ -1349,4 +1349,6 @@ def main():
 
 
 if __name__ == '__main__':
+
     main()
+
