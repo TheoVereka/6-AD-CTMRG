@@ -119,6 +119,9 @@ from core_unrestricted import (
     energy_expectation_nearest_neighbor_3afcbed_bonds,
     energy_expectation_nearest_neighbor_other_3_bonds,
     set_dtype,
+    set_check_truncation,
+    clear_trunc_diag_buffer,
+    get_trunc_diag_buffer,
 )
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -267,7 +270,7 @@ OPTIMIZER = 'lbfgs'
 
 # ── Adam hyperparameters (used only when OPTIMIZER='adam') ────────────────────
 
-ADAM_LR = 3e-4
+ADAM_LR = 3e-3
 #   Adam learning rate.  Typical range: 1e-4 – 1e-3.
 ADAM_BETAS = (0.9, 0.999)
 #   Exponential decay rates for 1st and 2nd moment estimates.
@@ -475,7 +478,74 @@ def evaluate_energy_clean(a, b, c, d, e, f,
             aN, bN, cN, dN, eN, fN,
             Hs[6], Hs[7], Hs[8],
             chi, D_bond, *all27[18:27])
-        return (E3ebadcf + E3afcbed + E3).real.item()
+        return (E3ebadcf + E3afcbed + E3).item()
+
+
+def _plot_truncation_diagnostics(
+        diag_buffer: list,
+        D_bond: int,
+        chi: int,
+        out_dir: str,
+) -> None:
+    """Generate and save truncation-diagnostics figure.
+
+    Two tracks:
+      1. Anti-Hermitian measure  ||ρ − ρ†||/2/||ρ||  for each of the three ρ
+         matrices, plotted vs. ``trunc_rhoCCC`` call index (semilogy).
+      2. Normalised SV spectra of the three ρ matrices from the *last* recorded
+         call, with a dashed vertical line at the χ truncation cutoff.
+    """
+    if not diag_buffer:
+        return
+    import numpy as np
+
+    calls = list(range(len(diag_buffer)))
+    ah32 = [d['anti_herm_rho32'] for d in diag_buffer]
+    ah13 = [d['anti_herm_rho13'] for d in diag_buffer]
+    ah21 = [d['anti_herm_rho21'] for d in diag_buffer]
+
+    last  = diag_buffer[-1]
+    chi_cut = last['chi']
+    sv32 = np.array(last['sv32'], dtype=float)
+    sv13 = np.array(last['sv13'], dtype=float)
+    sv21 = np.array(last['sv21'], dtype=float)
+
+    fig, axes = plt.subplots(2, 1, figsize=(10, 9), constrained_layout=True)
+
+    # ── Track 1: anti-Hermitian measures ─────────────────────────────────────
+    ax1 = axes[0]
+    ax1.semilogy(calls, ah32, lw=1.2, label=r'$\rho_{32}$ = C13·C32·C21')
+    ax1.semilogy(calls, ah13, lw=1.2, label=r'$\rho_{13}$ = C21·C13·C32')
+    ax1.semilogy(calls, ah21, lw=1.2, label=r'$\rho_{21}$ = C32·C21·C13')
+    ax1.set_xlabel('trunc_rhoCCC call index')
+    ax1.set_ylabel(r'$\|\rho - \rho^\dagger\|_F \;/\; 2 \|\rho\|_F$')
+    ax1.set_title(f'Anti-Hermitian measure of ρ  (D={D_bond}, χ={chi})')
+    ax1.legend(fontsize=9)
+    ax1.grid(True, alpha=0.3, which='both')
+
+    # ── Track 2: SV spectra at last call ─────────────────────────────────────
+    ax2 = axes[1]
+    def _norm(sv: np.ndarray) -> np.ndarray:
+        return sv / sv[0] if sv[0] != 0 else sv
+
+    idx = lambda sv: np.arange(1, len(sv) + 1)
+    ax2.semilogy(idx(sv32), _norm(sv32), lw=1.2, label=r'$\sigma(\rho_{32})$')
+    ax2.semilogy(idx(sv13), _norm(sv13), lw=1.2, label=r'$\sigma(\rho_{13})$')
+    ax2.semilogy(idx(sv21), _norm(sv21), lw=1.2, label=r'$\sigma(\rho_{21})$')
+    ax2.axvline(
+        chi_cut + 0.5, color='red', linestyle='--', linewidth=1.5,
+        label=f'χ cutoff  (χ={chi_cut})',
+    )
+    ax2.set_xlabel('singular-value index  k')
+    ax2.set_ylabel(r'$\sigma_k \;/\; \sigma_1$  (normalised)')
+    ax2.set_title(f'SV spectrum at last trunc call  (D={D_bond}, χ={chi})')
+    ax2.legend(fontsize=9)
+    ax2.grid(True, alpha=0.3, which='both')
+
+    out_path = os.path.join(out_dir, f'trunc_diagnostics_D{D_bond}_chi{chi}.pdf')
+    fig.savefig(out_path)
+    plt.close(fig)
+    print(f"  Truncation diagnostics → {out_path}")
 
 
 def save_checkpoint(path: str, abcdef: tuple, D_bond: int, chi: int,
@@ -504,6 +574,7 @@ def optimize_at_chi(
         best_path: str | None = None,
         latest_path: str | None = None,
         loss_log: list | None = None,
+        out_dir: str | None = None,
 ) -> tuple:
     """
     Outer L-BFGS loop at fixed (D_bond, chi) until budget_seconds elapsed
@@ -865,6 +936,12 @@ def optimize_at_chi(
                 print(f"     Step {step_ex}: {total_ex:+.6f}")
         print()
 
+    # ── Truncation diagnostics figure ────────────────────────────────────────
+    _trunc_buf = get_trunc_diag_buffer()
+    if _trunc_buf and out_dir:
+        _plot_truncation_diagnostics(_trunc_buf, D_bond, chi, out_dir)
+    clear_trunc_diag_buffer()
+
     return (*best_abcdef, best_loss, step)
 
 
@@ -911,12 +988,19 @@ def main():
         '--optimizer', choices=['lbfgs', 'adam'], default=OPTIMIZER,
         help="Optimiser: 'lbfgs' (default, fast on smooth landscapes) or "
              "'adam' (more robust on noisy landscapes, constant LR).")
+    parser.add_argument(
+        '--check-truncation', action='store_true', default=False,
+        help='Enable truncation diagnostics: buffer anti-Hermitian measures and '
+             'SV spectra of the ρ matrices on every trunc_rhoCCC call, and save '
+             'a two-panel figure (anti-Hermitian track + SV spectrum with χ cutoff) '
+             'at the end of each (D, χ) optimisation level.')
     args = parser.parse_args()
 
     # ── Precision + optimizer setup ───────────────────────────────────────────
     CDTYPE = torch.complex128 if args.double else torch.complex64
     set_dtype(args.double)
     OPTIMIZER = args.optimizer
+    set_check_truncation(args.check_truncation)
 
     # ── parse D_bond list ─────────────────────────────────────────────────────
     D_bond_list: list[int] = [int(x) for x in args.D_bonds.split(',')]
@@ -1124,6 +1208,7 @@ def main():
                 best_path=best_path,
                 latest_path=latest_path,
                 loss_log=loss_log,
+                out_dir=output_dir,
             )
             cur_abcdef = tuple(out[:6])  # warm-start for next chi
 

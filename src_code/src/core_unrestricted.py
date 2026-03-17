@@ -36,6 +36,41 @@ RDTYPE: torch.dtype = torch.float32     # real dtype (SVD singular values, norms
 # This is a physical consistency check; disable for production runs.
 DEBUG_CHECK_TRUNC_RHOCCC_SV_SUMS: bool = False
 
+# Set to True to enable truncation quality diagnostics: anti-Hermitian measures
+# of the three rho matrices and their full SV spectra are buffered on every
+# trunc_rhoCCC call and can be retrieved with get_trunc_diag_buffer().
+# Disable for production runs (adds minor overhead per truncation call).
+DEBUG_CHECK_TRUNCATION: bool = False
+
+# ── Truncation diagnostics buffer ────────────────────────────────────────────
+_trunc_diag_buffer: list[dict] = []
+
+
+def clear_trunc_diag_buffer() -> None:
+    """Clear the module-level truncation diagnostics buffer."""
+    global _trunc_diag_buffer
+    _trunc_diag_buffer.clear()
+
+
+def get_trunc_diag_buffer() -> list[dict]:
+    """Return a shallow copy of the truncation diagnostics buffer.
+
+    Each entry (one per trunc_rhoCCC call while DEBUG_CHECK_TRUNCATION is True)
+    is a dict with keys:
+        'anti_herm_rho32', 'anti_herm_rho13', 'anti_herm_rho21'  (float)
+            Anti-Hermitian measure  ||M - M†|| / 2 / ||M||.
+        'sv32', 'sv13', 'sv21'  (list[float])
+            Full singular-value spectrum for each rho (may be long for large chi).
+        'chi'  (int)  —  truncation cutoff index.
+    """
+    return list(_trunc_diag_buffer)
+
+
+def set_check_truncation(enabled: bool) -> None:
+    """Enable or disable truncation diagnostics buffering at runtime."""
+    global DEBUG_CHECK_TRUNCATION
+    DEBUG_CHECK_TRUNCATION = enabled
+
 
 def set_dtype(use_double: bool) -> None:
     """Switch all core computations between float32/complex64 and float64/complex128.
@@ -479,6 +514,27 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared,
                 f"(rtol={sv_sums_rtol}, atol={sv_sums_atol})"
             )
 
+    # ── Truncation diagnostics (buffered when DEBUG_CHECK_TRUNCATION is True) ──
+    if DEBUG_CHECK_TRUNCATION:
+        with torch.no_grad():
+            def _anti_herm(M: torch.Tensor) -> float:
+                """||M - M†|| / 2 / ||M||  (0 = perfectly Hermitian)."""
+                norm_M = torch.linalg.norm(M)
+                if not torch.isfinite(norm_M) or norm_M.item() == 0.0:
+                    return float('nan')
+                return (torch.linalg.norm((M - M.conj().T) / 2) / norm_M).real.item()
+
+            _trunc_diag_buffer.append({
+                'anti_herm_rho32': _anti_herm(rho32),
+                'anti_herm_rho13': _anti_herm(rho13),
+                'anti_herm_rho21': _anti_herm(rho21),
+                # Full SV spectra — detached so they don't keep the autograd graph alive.
+                'sv32': sv32.detach().cpu().tolist(),
+                'sv13': sv13.detach().cpu().tolist(),
+                'sv21': sv21.detach().cpu().tolist(),
+                'chi': chi,
+            })
+
     rho_trunc = C13 @ C32 @ C21
     tr_rho = torch.trace(rho_trunc)
     tr_abs = tr_rho.abs()
@@ -550,17 +606,17 @@ def initialize_environmentCTs_2(A,B,C,D,E,F, chi, D_squared, identity_init: bool
     """
     if identity_init:
 
-        C21CD = torch.eye(chi, dtype=CDTYPE)
-        C32EF = torch.eye(chi, dtype=CDTYPE)
-        C13AB = torch.eye(chi, dtype=CDTYPE)
+        C21CD = torch.eye(chi, dtype=CDTYPE) + 1e-3 * torch.randn(chi, chi, dtype=CDTYPE)
+        C32EF = torch.eye(chi, dtype=CDTYPE) + 1e-3 * torch.randn(chi, chi, dtype=CDTYPE)
+        C13AB = torch.eye(chi, dtype=CDTYPE) + 1e-3 * torch.randn(chi, chi, dtype=CDTYPE)
         # Initialize T1F, T2A, T2B, T3C, T3D, T1E as identity matrices on the first two chi indices,
         # replicated D_squared times along the third index.
-        T1F = torch.stack([torch.eye(chi, dtype=CDTYPE) for _ in range(D_squared)], dim=0).permute(1, 2, 0)
-        T2A = torch.stack([torch.eye(chi, dtype=CDTYPE) for _ in range(D_squared)], dim=0).permute(1, 2, 0)
-        T2B = torch.stack([torch.eye(chi, dtype=CDTYPE) for _ in range(D_squared)], dim=0).permute(1, 2, 0)
-        T3C = torch.stack([torch.eye(chi, dtype=CDTYPE) for _ in range(D_squared)], dim=0).permute(1, 2, 0)
-        T3D = torch.stack([torch.eye(chi, dtype=CDTYPE) for _ in range(D_squared)], dim=0).permute(1, 2, 0)
-        T1E = torch.stack([torch.eye(chi, dtype=CDTYPE) for _ in range(D_squared)], dim=0).permute(1, 2, 0)
+        T1F = torch.stack([torch.eye(chi, dtype=CDTYPE) + 1e-3 * torch.randn(chi, chi, dtype=CDTYPE) for _ in range(D_squared)], dim=0).permute(1, 2, 0)
+        T2A = torch.stack([torch.eye(chi, dtype=CDTYPE) + 1e-3 * torch.randn(chi, chi, dtype=CDTYPE) for _ in range(D_squared)], dim=0).permute(1, 2, 0)
+        T2B = torch.stack([torch.eye(chi, dtype=CDTYPE) + 1e-3 * torch.randn(chi, chi, dtype=CDTYPE) for _ in range(D_squared)], dim=0).permute(1, 2, 0)
+        T3C = torch.stack([torch.eye(chi, dtype=CDTYPE) + 1e-3 * torch.randn(chi, chi, dtype=CDTYPE) for _ in range(D_squared)], dim=0).permute(1, 2, 0)
+        T3D = torch.stack([torch.eye(chi, dtype=CDTYPE) + 1e-3 * torch.randn(chi, chi, dtype=CDTYPE) for _ in range(D_squared)], dim=0).permute(1, 2, 0)
+        T1E = torch.stack([torch.eye(chi, dtype=CDTYPE) + 1e-3 * torch.randn(chi, chi, dtype=CDTYPE) for _ in range(D_squared)], dim=0).permute(1, 2, 0)
 
         return C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
     
@@ -569,6 +625,11 @@ def initialize_environmentCTs_2(A,B,C,D,E,F, chi, D_squared, identity_init: bool
     C21AF = oe.contract("oyg,xog->yx", A,F, optimize=[(0,1)], backend='torch')
     C32CB = oe.contract("aoz,ayo->zy", C,B, optimize=[(0,1)], backend='torch')
     C13ED = oe.contract("xbo,obz->xz", E,D, optimize=[(0,1)], backend='torch')
+
+    #print(E)
+    #print(B)
+    #print(C)
+    #print(F)
 
     T2ET3F = oe.contract("ubi,jki,jlk,vlg->ubvg", E,B,C,F, optimize=[(1,2),(0,1),(0,1)], backend='torch')
     T3AT1B = oe.contract("iug,ijk,kjl,avl->ugva", A,D,E,B, optimize=[(1,2),(0,1),(0,1)], backend='torch')
@@ -1729,15 +1790,19 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
     E_unnormed_EB = oe.contract("xy,yz,zx->", H_EB, CF, AD, backend="torch")
 
 
-
-    # print("E_unnormed_AD = ", E_unnormed_AD.real.item(),"+i*", E_unnormed_AD.imag.item())
-
-
     norm_1st_env = oe.contract("xy,yz,zx->", AD, EB, CF, backend="torch")
     
-    
-    # print("norm_1st_env = ", norm_1st_env.real.item(),"+i*", norm_1st_env.imag.item())
-
+    """
+    rho_bond_to_check = oe.contract("NctYarij,YarMbskl->ikjlNctMbs", open_A, open_D, optimize=[(0,1)], backend="torch").reshape(D_bond*D_bond,D_bond*D_bond,chi*D_bond*D_bond,chi*D_bond*D_bond)
+    AD_to_check = oe.contract('IJxy,yz,zx->IJ', rho_bond_to_check, EB, CF, backend="torch")
+    print("rho_AD anti-hermiticity: ", torch.norm(AD_to_check - AD_to_check.conj().T).item()/torch.norm(AD_to_check).item())
+    rho_bond_to_check = oe.contract("LarZbsij,ZbsNctkl->ikjlLarNct", open_C, open_F, optimize=[(0,1)], backend="torch").reshape(D_bond*D_bond,D_bond*D_bond,chi*D_bond*D_bond,chi*D_bond*D_bond)
+    CF_to_check = oe.contract('IJxy,yz,zx->IJ', rho_bond_to_check, AD, EB, backend="torch")
+    print("rho_CF anti-hermiticity: ", torch.norm(CF_to_check - CF_to_check.conj().T).item()/torch.norm(CF_to_check).item())
+    rho_bond_to_check = oe.contract("MbsXctij,XctLarkl->ikjlMbsLar", open_E, open_B, optimize=[(0,1)], backend="torch").reshape(D_bond*D_bond,D_bond*D_bond,chi*D_bond*D_bond,chi*D_bond*D_bond)
+    EB_to_check = oe.contract('IJxy,yz,zx->IJ', rho_bond_to_check, CF, AD, backend="torch")
+    print("rho_EB anti-hermiticity: ", torch.norm(EB_to_check - EB_to_check.conj().T).item()/torch.norm(EB_to_check).item())
+    """
 
     energyNearestNeighbor_3_bonds = torch.real((E_unnormed_AD + E_unnormed_CF + E_unnormed_EB) / norm_1st_env)
     
@@ -1792,6 +1857,19 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,Haf,Hcb,Hed,
     E_unnormed_AF = oe.contract("xy,yz,zx->", H_AF, ED, CB, backend="torch")
 
     norm_2nd_env= oe.contract("xy,yz,zx->", CB, AF, ED, backend="torch")
+
+    """
+    rho_bond_to_check = oe.contract("LarZbsij,XctLarkl->ikjlXctZbs", open_C, open_B, optimize=[(0,1)], backend="torch").reshape(D_bond*D_bond,D_bond*D_bond,chi*D_bond*D_bond,chi*D_bond*D_bond)
+    BC_to_check = oe.contract('IJxy,yz,zx->IJ', rho_bond_to_check, AF, ED, backend="torch")
+    print("rho_CB anti-hermiticity: ", torch.norm(BC_to_check - BC_to_check.conj().T).item()/torch.norm(BC_to_check).item())
+    rho_bond_to_check = oe.contract("NctYarij,ZbsNctkl->ikjlZbsYar", open_A, open_F, optimize=[(0,1)], backend="torch").reshape(D_bond*D_bond,D_bond*D_bond,chi*D_bond*D_bond,chi*D_bond*D_bond)
+    FA_to_check = oe.contract('IJxy,yz,zx->IJ', rho_bond_to_check, ED, CB, backend="torch")
+    print("rho_AF anti-hermiticity: ", torch.norm(FA_to_check - FA_to_check.conj().T).item()/torch.norm(FA_to_check).item())
+    rho_bond_to_check = oe.contract("MbsXctij,YarMbskl->ikjlYarXct", open_E, open_D, optimize=[(0,1)], backend="torch").reshape(D_bond*D_bond,D_bond*D_bond,chi*D_bond*D_bond,chi*D_bond*D_bond)
+    DE_to_check = oe.contract('IJxy,yz,zx->IJ', rho_bond_to_check, CB, AF, backend="torch")
+    print("rho_ED anti-hermiticity: ", torch.norm(DE_to_check - DE_to_check.conj().T).item()/torch.norm(DE_to_check).item())
+    """
+
     energyNearestNeighbor_3_bonds = torch.real((E_unnormed_CB + E_unnormed_AF + E_unnormed_ED) / norm_2nd_env)
     
     # print("E_3bonds = ", energyNearestNeighbor_3_bonds.real.item(),"+i*", energyNearestNeighbor_3_bonds.imag.item())
@@ -1876,15 +1954,28 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
     E_unnormed_CD = oe.contract("xy,yz,zx->", H_CD, AB, EF, backend="torch")
 
     norm_3rd_env= oe.contract("xy,yz,zx->", EF, CD, AB, backend="torch")
+
+    """
+    rho_bond_to_check = oe.contract("LarZbsij,ZbsNctkl->ikjlLarNct", open_E, open_F, optimize=[(0,1)], backend="torch").reshape(D_bond*D_bond,D_bond*D_bond,chi*D_bond*D_bond,chi*D_bond*D_bond)
+    EF_to_check = oe.contract('IJxy,yz,zx->IJ', rho_bond_to_check, CD, AB, backend="torch")
+    print("rho_EF anti-hermiticity: ", torch.norm(EF_to_check - EF_to_check.conj().T).item()/torch.norm(EF_to_check).item())
+    rho_bond_to_check = oe.contract("MbsXctij,XctLarkl->ikjlMbsLar", open_A, open_B, optimize=[(0,1)], backend="torch").reshape(D_bond*D_bond,D_bond*D_bond,chi*D_bond*D_bond,chi*D_bond*D_bond)
+    AB_to_check = oe.contract('IJxy,yz,zx->IJ', rho_bond_to_check, EF, CD, backend="torch")
+    print("rho_AB anti-hermiticity: ", torch.norm(AB_to_check - AB_to_check.conj().T).item()/torch.norm(AB_to_check).item())
+    rho_bond_to_check = oe.contract("NctYarij,YarMbskl->ikjlNctMbs", open_C, open_D, optimize=[(0,1)], backend="torch").reshape(D_bond*D_bond,D_bond*D_bond,chi*D_bond*D_bond,chi*D_bond*D_bond)
+    CD_to_check = oe.contract('IJxy,yz,zx->IJ', rho_bond_to_check, AB, EF, backend="torch")
+    print("rho_CD anti-hermiticity: ", torch.norm(CD_to_check - CD_to_check.conj().T).item()/torch.norm(CD_to_check).item())
+    """
+    
     energyNearestNeighbor_3_bonds = torch.real((E_unnormed_EF + E_unnormed_AB + E_unnormed_CD) / norm_3rd_env)
 
-    # compare_energy = (torch.abs(E_unnormed_EF)+torch.abs(E_unnormed_AB)+torch.abs(E_unnormed_CD)) / torch.abs(norm_3rd_env)
+    #compare_energy = (torch.abs(E_unnormed_EF)+torch.abs(E_unnormed_AB)+torch.abs(E_unnormed_CD)) / torch.abs(norm_3rd_env)
     print("E_unnormed_EF = ", E_unnormed_EF.real.item(),"+i*", E_unnormed_EF.imag.item())
     print("E_unnormed_AB = ", E_unnormed_AB.real.item(),"+i*", E_unnormed_AB.imag.item())
     print("E_unnormed_CD = ", E_unnormed_CD.real.item(),"+i*", E_unnormed_CD.imag.item())
     print("norm_3rd_env = ", norm_3rd_env.real.item(),"+i*", norm_3rd_env.imag.item())
     # print("energyNearestNeighbor_3_bonds = ", energyNearestNeighbor_3_bonds.item())
-    # print("compare_energy = ", compare_energy.item())
+    #print("compare_energy = ", compare_energy.item())
 
 
     return energyNearestNeighbor_3_bonds
@@ -2102,8 +2193,8 @@ def build_heisenberg_H(J: float = 1.0, d: int = 2) -> torch.Tensor:
     sx = torch.tensor([[0, 1], [1, 0]], dtype=CDTYPE) / 2
     sy = torch.tensor([[0, -1j], [1j, 0]], dtype=CDTYPE) / 2
     sz = torch.tensor([[1, 0], [0, -1]], dtype=CDTYPE) / 2
-    SdotS = (oe.contract("ij,kl->ijkl", sx, sx)
-           + oe.contract("ij,kl->ijkl", sy, sy)
+    SdotS = (oe.contract("ij,kl->ijkl", sx, sx)*0.0
+           + oe.contract("ij,kl->ijkl", sy, sy)*0.0
            + oe.contract("ij,kl->ijkl", sz, sz))
     return J * SdotS
 
