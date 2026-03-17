@@ -128,7 +128,7 @@ from core_unrestricted import (
 # Time Budget
 # ══════════════════════════════════════════════════════════════════════════════
 
-TOTAL_BUDGET_HOURS = 0.15
+TOTAL_BUDGET_HOURS = 0.05
 
 # Total wall-clock time for the entire sweep.  The sweep is designed to run
 # for a fixed time rather than a fixed number of steps, so that results at
@@ -303,13 +303,13 @@ ENV_IDENTITY_INIT = False
 
 
 
-CTM_MAX_STEPS = 70
+CTM_MAX_STEPS = 30
 #   Hard cap on CTMRG iterations per environment convergence call.
 #   With the singular-value convergence criterion and CTM_CONV_THR=1e-3,
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
 #   ansatz ~4 steps, 6-tensor ~40 steps).  90 is a safe upper bound.
 
-CTM_CONV_THR = 1e-7
+CTM_CONV_THR = 1e-6
 #   CTMRG convergence threshold: stop iterating when the max change in
 #   normalised corner singular values between consecutive steps is below
 #   this value.  The convergence criterion compares the spectra of all 9
@@ -1000,7 +1000,10 @@ def main():
     CDTYPE = torch.complex128 if args.double else torch.complex64
     set_dtype(args.double)
     OPTIMIZER = args.optimizer
-    set_check_truncation(args.check_truncation)
+    # Only *enable* the flag from the CLI; never let the argparse default (False)
+    # override a True that was already set at module level in core_unrestricted.py.
+    if args.check_truncation:
+        set_check_truncation(True)
 
     # ── parse D_bond list ─────────────────────────────────────────────────────
     D_bond_list: list[int] = [int(x) for x in args.D_bonds.split(',')]
