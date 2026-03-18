@@ -128,7 +128,7 @@ from core_unrestricted import (
 # Time Budget
 # ══════════════════════════════════════════════════════════════════════════════
 
-TOTAL_BUDGET_HOURS = 0.1
+TOTAL_BUDGET_HOURS = 0.15
 
 # Total wall-clock time for the entire sweep.  The sweep is designed to run
 # for a fixed time rather than a fixed number of steps, so that results at
@@ -260,7 +260,7 @@ OPT_CONV_THRESHOLD = 1e-8
 
 # ── Optimizer choice ──────────────────────────────────────────────────────────
 
-OPTIMIZER = 'lbfgs'
+OPTIMIZER = 'adam'
 #   'lbfgs' : L-BFGS with strong-Wolfe line search (default).
 #             Converges fast on smooth landscapes; may oscillate on noisy ones.
 #   'adam'  : Adam (adaptive moment estimation).
@@ -872,7 +872,7 @@ def optimize_at_chi(
             }, os.path.join(diag_dir, f"tensors_step_{step}.pt"))
         
         # Print periodic progress summary with more detail  
-        if step % 10 == 0 or is_suspicious:
+        if is_suspicious: # or step % 10 == 0:
             print(f"    step {step:5d}  ctm={ctm_steps:3d}  loss={loss_item:+.10f}"
                   f"  (per bond: {loss_per_bond:+.6f})"
                   f"  Δ={delta:+.3e}  {elapsed:.0f}/{budget_seconds:.0f}s")
