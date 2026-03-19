@@ -201,25 +201,48 @@ def normalize_single_layer_tensor_for_double_layer(
     return tensor / torch.sqrt(dl_norm)
 
 
-# ── Differentiable complex SVD helper ────────────────────────────────────────
+# ── Differentiable complex SVD with Lorentzian-regularized backward ──────────
 #
-# PyTorch's backward for complex SVD is only well-defined when the loss is
-# invariant under the per-column phase freedom of singular vectors.
-# CTMRG truncation uses singular vectors as projectors, and small numerical
-# gauge choices can otherwise trigger:
-#   RuntimeError: svd_backward: ... depends on this phase term ... ill-defined.
+# Root cause of the chi > D² NaN crash:
+#   PyTorch's native SVD backward computes F_ij = 1/(σ_i² − σ_j²).
+#   When chi > effective_rank(rho), the extra singular values are numerical
+#   zeros (or near-identical noise-floor values). Equal σ_i ≈ σ_j gives
+#   F_ij = 0/0 = NaN, which then propagates to all gradients.
 #
-# We fix a deterministic phase convention (without backpropagating through the
-# phase choice) so that optimisation runs do not crash.
-SVD_PHASE_FIX: bool = True
-# If True, project gradients flowing *into* (U, Vh) onto the subspace that is
-# invariant under the per-singular-vector phase gauge U→U·D, Vh→D^H·Vh.
+# Physical principle (the user is correct):
+#   Small singular values are LESS important, so their gradient contribution
+#   should be SUPPRESSED, not amplified. The Lorentzian regularization:
 #
-# This does not modify the forward pass at all; it only removes the component
-# of (∂L/∂U, ∂L/∂Vh) that corresponds to changing the arbitrary phases of the
-# singular vectors — exactly the component that makes complex SVD backward
-# ill-defined in PyTorch.
-SVD_GRAD_PROJECT_PHASE: bool = True
+#       F_ij^reg = (σ_i² − σ_j²) / ((σ_i² − σ_j²)² + ε²)
+#
+#   achieves this:
+#     • σ_i = σ_j = 0  →  F = 0/ε² = 0          (no NaN, no gradient)
+#     • σ_i ≈ σ_j ≈ 0  →  F ≈ Δ(σ²)/ε²  ≈ 0    (suppressed)
+#     • σ_i, σ_j large, well-separated →  F ≈ 1/Δ(σ²)   (standard formula)
+#
+# Why noise×noise block never contaminates physical gradients:
+#   Only U[:,:chi] and Vh[:chi,:] are used downstream → dU[:,k≥chi] = 0.
+#   Therefore P[k1,k2] = (J−J†+K−K†)[k1,k2] = 0 for k1,k2 ≥ chi.
+#   PyTorch's native backward crashes because it evaluates F=∞ BEFORE
+#   multiplying by P=0, hitting NaN×0=NaN in IEEE 754.
+#   _RegSVD evaluates F^reg first → F=0 for degenerate pairs → 0×0=0. Safe.
+#
+# ε choice: adaptive  ε = SVD_REG_EPS × σ_max²
+#   This scales naturally with the problem. For float64 with σ_max ~ 1e-6:
+#     ε ≈ 1e-8 × 1e-12 = 1e-20
+#   Noise pairs (Δ(σ²) ~ 1e-48): F ≈ 1e-48/1e-40 = 1e-8 ← suppressed ✓
+#   Physical pairs (Δ(σ²) ~ 1e-12): F ≈ 1e-12/1e-24 = standard ✓
+#   Exact zeros: F = 0/ε² = 0 ← no NaN ✓
+
+SVD_PHASE_FIX: bool = True   # fix forward phase convention (deterministic)
+
+# Dimensionless ratio: ε_abs = SVD_REG_EPS × σ_max²
+# The Lorentzian F-matrix transition from "suppressed" to "standard" happens
+# at |σ_i² − σ_j²| ≈ ε_abs.  With SVD_REG_EPS=1e-8 this sits well below
+# any physical SV gap and well above the noise-floor squared differences.
+SVD_REG_EPS: float = 1e-8   # for float64 (complex128)
+# For float32 (complex64) the noise floor is higher; we automatically use
+# a larger factor inside _RegSVD when the dtype is single-precision.
 
 
 def _fix_svd_phases(U: torch.Tensor, Vh: torch.Tensor, *, eps: float = 1e-12) -> tuple[torch.Tensor, torch.Tensor]:
@@ -243,63 +266,150 @@ def _fix_svd_phases(U: torch.Tensor, Vh: torch.Tensor, *, eps: float = 1e-12) ->
     col = torch.arange(n, device=device)
 
     with torch.no_grad():
-        # Pivot index per column: argmax_i |U[i, k]|
         pivot = torch.argmax(torch.abs(U), dim=0)
         piv_vals = U[pivot, col]
         denom = torch.clamp(torch.abs(piv_vals), min=eps)
-        phase = piv_vals / denom  # unit-modulus (or 0 if piv_vals==0)
-        # If a whole column is exactly zero (shouldn't happen), fall back to 1.
+        phase = piv_vals / denom
         phase = torch.where(denom > eps, phase, torch.ones_like(phase))
 
-    # Apply: U[:,k] *= conj(phase_k),  Vh[k,:] *= phase_k
     U_fixed = U * phase.conj().reshape(1, n)
     Vh_fixed = phase.reshape(n, 1) * Vh
     return U_fixed, Vh_fixed
 
 
-def svd_fixed(A: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """torch.linalg.svd with phase-fixing (forward) and phase-gauge-safe gradients (backward)."""
-    U_raw, S, Vh_raw = torch.linalg.svd(A)
+class _RegSVD(torch.autograd.Function):
+    """SVD with Lorentzian-regularized F-matrix backward.
 
-    if A.is_complex():
-        # IMPORTANT: PyTorch's svd_backward phase-gauge check is performed in the
-        # *raw* SVD gauge returned by torch.linalg.svd. Therefore any gradient
-        # projection that enforces phase-gauge invariance must be attached to
-        # (U_raw, Vh_raw) BEFORE we apply any deterministic forward phase fixing.
-        if SVD_GRAD_PROJECT_PHASE and A.requires_grad:
-            def _hook_U_raw(grad_U: torch.Tensor) -> torch.Tensor:
-                if grad_U is None:
-                    return grad_U
-                with torch.no_grad():
-                    # SVD backward can crash with a phase-gauge error if the
-                    # incoming gradient contains NaN/Inf (common in long CTMRG
-                    # sweeps when matrices become ill-conditioned). Sanitise
-                    # first so our phase projection is well-defined.
-                    grad_U = torch.nan_to_num(grad_U, nan=0.0, posinf=0.0, neginf=0.0)
-                    diag = torch.diagonal(U_raw.conj().transpose(-2, -1) @ grad_U)
-                    diag = torch.nan_to_num(diag, nan=0.0, posinf=0.0, neginf=0.0)
-                    phase = (1j * diag.imag).to(grad_U.dtype)
-                    return grad_U - (U_raw * phase.reshape(1, -1))
+    Replaces PyTorch's native F_ij = 1/(σ_i²−σ_j²) — which gives 0/0=NaN
+    for degenerate or zero singular values — with the Lorentzian form:
 
-            def _hook_Vh_raw(grad_Vh: torch.Tensor) -> torch.Tensor:
-                if grad_Vh is None:
-                    return grad_Vh
-                with torch.no_grad():
-                    grad_Vh = torch.nan_to_num(grad_Vh, nan=0.0, posinf=0.0, neginf=0.0)
-                    diag = torch.diagonal(grad_Vh @ Vh_raw.conj().transpose(-2, -1))
-                    diag = torch.nan_to_num(diag, nan=0.0, posinf=0.0, neginf=0.0)
-                    phase = (1j * diag.imag).to(grad_Vh.dtype)
-                    return grad_Vh - (phase.reshape(-1, 1) * Vh_raw)
+        F_ij^reg = (σ_i²−σ_j²) / ((σ_i²−σ_j²)² + ε²)
 
-            U_raw.register_hook(_hook_U_raw)
-            Vh_raw.register_hook(_hook_Vh_raw)
+    Properties:
+      • σ_i = σ_j (exact degeneracy): F^reg = 0  (vs NaN in standard)
+      • |σ_i²−σ_j²| ≫ ε:             F^reg ≈ 1/(σ_i²−σ_j²)  (standard)
+      • |σ_i²−σ_j²| ≪ ε:             F^reg → 0  (suppressed, physically correct)
 
-        U, Vh = U_raw, Vh_raw
-        if SVD_PHASE_FIX:
-            U, Vh = _fix_svd_phases(U_raw, Vh_raw)
+    The backward also performs the anti-Hermitian projection
+    (J−J†) + (K−K†) on the incoming gradient, which makes the gradient
+    invariant under unit-phase gauge rotations of the singular vectors.
+    This replaces the hook-based workaround and handles both the phase-gauge
+    issue and the degenerate-SV issue in a single clean formula.
+    """
+
+    @staticmethod
+    def forward(ctx, A: torch.Tensor, eps_factor: float):  # type: ignore[override]
+        U, S, Vh = torch.linalg.svd(A, full_matrices=True)
+        # Adaptive ε: scales with the square of the leading singular value.
+        # finfo.tiny prevents ε=0 when all singular values are exactly zero.
+        sv_max_sq = float(S[0].item() ** 2) if S.numel() > 0 else 1.0
+        finfo = torch.finfo(S.dtype)
+        eps = float(eps_factor) * sv_max_sq + finfo.tiny
+        ctx.save_for_backward(U, S, Vh)
+        ctx.eps = eps
+        ctx.A_rows = A.shape[0]
+        ctx.A_cols = A.shape[1]
         return U, S, Vh
 
-    return U_raw, S, Vh_raw
+    @staticmethod
+    def backward(ctx, dU, dS, dVh):  # type: ignore[override]
+        U, S, Vh = ctx.saved_tensors
+        eps: float = ctx.eps
+        m: int = ctx.A_rows
+        n: int = ctx.A_cols
+        k: int = S.shape[0]          # = min(m, n)
+
+        # Sanitise incoming gradients (prevents cascaded NaN from e.g. energy
+        # contractions that had a divide-by-near-zero in a different branch).
+        if dU  is None: dU  = torch.zeros_like(U)
+        if dS  is None: dS  = torch.zeros_like(S)
+        if dVh is None: dVh = torch.zeros_like(Vh)
+        dU  = torch.nan_to_num(dU,  nan=0.0, posinf=0.0, neginf=0.0)
+        dS  = torch.nan_to_num(dS,  nan=0.0, posinf=0.0, neginf=0.0)
+        dVh = torch.nan_to_num(dVh, nan=0.0, posinf=0.0, neginf=0.0)
+
+        # ── Lorentzian F-matrix ───────────────────────────────────────────
+        # F[i,j] = (S[i]²−S[j]²) / ((S[i]²−S[j]²)² + ε²)
+        # Diagonal is zero because numerator = 0 and denominator = ε² > 0.
+        S2  = S * S                                   # (k,)
+        Dij = S2.unsqueeze(-1) - S2.unsqueeze(-2)     # (k,k): Dij[i,j]=si²−sj²
+        F   = Dij / (Dij * Dij + eps * eps)           # (k,k), no NaN, F_ii=0
+
+        # ── Anti-Hermitian projection of incoming gradient ────────────────
+        # Removes the phase-gauge degree of freedom and gives the physically
+        # correct gradient formula for complex SVD:
+        #   grad_A = U [diag(dS) + (1/2) F ⊙ ((J−J†) + (K−K†))] Vh
+        # where J = U[:,:k]† dU[:,:k]  ,  K = dVh[:k,:] Vh[:k,:]†
+        #
+        # Note: only the first k columns/rows of U/Vh carry the thin SVD;
+        # we explicitly slice to k to handle full_matrices=True correctly.
+        Uk  = U[:, :k]                                # (m, k)
+        Vhk = Vh[:k, :]                               # (k, n)
+
+        is_cplx = U.is_complex()
+        dUk  = dU[:, :k]                              # (m, k)
+        dVhk = dVh[:k, :]                             # (k, n)
+
+        if is_cplx:
+            J = Uk.conj().T @ dUk                     # (k, k)
+            K = dVhk @ Vhk.conj().T                   # (k, k)
+            AH = (J - J.conj().T) + (K - K.conj().T) # anti-Hermitian, (k,k)
+        else:
+            J = Uk.T @ dUk                            # (k, k)
+            K = dVhk @ Vhk.T                          # (k, k)
+            AH = (J - J.T) + (K - K.T)               # antisymmetric,  (k,k)
+
+        inner = torch.diag(dS.to(dtype=Uk.dtype)) + 0.5 * F * AH
+        grad_A = Uk @ inner @ Vhk
+
+        # ── Out-of-column-space term (rectangular case, m > k) ───────────
+        # Contribution from dU in the orthogonal complement of Uk's columns.
+        # Uses regularized 1/S to avoid division by zero for noise SVs.
+        if m > k:
+            S_inv = S / (S * S + eps)                 # regularised 1/S
+            if is_cplx:
+                dU_perp = dUk - Uk @ (Uk.conj().T @ dUk)
+            else:
+                dU_perp = dUk - Uk @ (Uk.T @ dUk)
+            grad_A = grad_A + (dU_perp * S_inv.unsqueeze(0).to(dtype=dU_perp.dtype)) @ Vhk
+
+        if n > k:
+            S_inv = S / (S * S + eps)
+            if is_cplx:
+                dVh_perp = dVhk - (dVhk @ Vhk.conj().T) @ Vhk
+            else:
+                dVh_perp = dVhk - (dVhk @ Vhk.T) @ Vhk
+            grad_A = grad_A + Uk @ (S_inv.unsqueeze(-1).to(dtype=dVh_perp.dtype) * dVh_perp)
+
+        return grad_A, None   # None for eps_factor (not a Tensor)
+
+
+def svd_fixed(A: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """SVD with Lorentzian-regularized backward (safe for chi > rank(A)).
+
+    Uses _RegSVD to replace PyTorch's native F_ij=1/(σi²−σj²) backward with
+    F_ij^reg = (σi²−σj²)/((σi²−σj²)²+ε²), preventing NaN when singular values
+    are degenerate or zero (which always happens when chi > D²).
+
+    ε is set adaptively as SVD_REG_EPS × σ_max², scaling with the problem.
+    For float32 (complex64), a larger factor (1e-3) is used automatically.
+    """
+    # Choose eps_factor based on floating-point precision.
+    # float32 has higher noise floor → needs larger Lorentzian ε.
+    if A.dtype in (torch.float32, torch.complex64):
+        eps_factor = max(SVD_REG_EPS, 1e-3)
+    else:
+        eps_factor = SVD_REG_EPS
+
+    U, S, Vh = _RegSVD.apply(A, eps_factor)
+
+    # Deterministic forward phase fix (optional but keeps the forward pass
+    # consistent across calls; does not affect the backward since phase is
+    # computed inside no_grad and acts as a constant multiplier).
+    if A.is_complex() and SVD_PHASE_FIX:
+        U, Vh = _fix_svd_phases(U, Vh)
+
+    return U, S, Vh
 
 
 
