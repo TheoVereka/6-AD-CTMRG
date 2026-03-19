@@ -119,6 +119,7 @@ from core_unrestricted import (
     energy_expectation_nearest_neighbor_3afcbed_bonds,
     energy_expectation_nearest_neighbor_other_3_bonds,
     set_dtype,
+    set_svd_regularization,
     set_check_truncation,
     clear_trunc_diag_buffer,
     get_trunc_diag_buffer,
@@ -128,7 +129,7 @@ from core_unrestricted import (
 # Time Budget
 # ══════════════════════════════════════════════════════════════════════════════
 
-TOTAL_BUDGET_HOURS = 0.05
+TOTAL_BUDGET_HOURS = 0.1
 
 # Total wall-clock time for the entire sweep.  The sweep is designed to run
 # for a fixed time rather than a fixed number of steps, so that results at
@@ -298,9 +299,23 @@ ADAM_STEPS_PER_CTM = 5
 
 ENV_IDENTITY_INIT = False
 
+USE_SVD_REGULARIZATION = True
+#   True  (default): chi-truncated Lorentzian-regularised SVD backward (_RegSVD).
+#   NaN-safe and phi-phase-free for ALL chi values, including chi > D².
+#   Gradient norms are physically reasonable (~0.4–1.3 at convergence for D=2).
+#   Required for complex128 (Heisenberg model) — standard backward always raises
+#   a phi-phase error for complex tensors with near-degenerate singular values.
+#
+#   False: standard PyTorch SVD backward.  Works ONLY for real tensors at chi=D²
+#   (no degenerate SVs).  Crashes with phi-phase error for complex128.
 
-
-
+CHI_INIT_ENV_NOISE = 1e-3
+#   Relative noise injected into the three rho matrices at CTMRG initialisation
+#   (once per chi level, inside initialize_envCTs_1).  Noise amplitude is
+#   CHI_INIT_ENV_NOISE × ‖rho‖_F per matrix, added outside the autograd graph.
+#   Breaks exact SV degeneracy for chi > rank(rho) ≈ D², preventing the
+#   standard SVD backward from hitting 0/0 = NaN during the initial step.
+#   Set 0.0 to disable.
 
 
 CTM_MAX_STEPS = 50
@@ -458,7 +473,8 @@ def evaluate_energy_clean(a, b, c, d, e, f,
 
         A, B, C, Dt, E, F = abcdef_to_ABCDEF(aN, bN, cN, dN, eN, fN, D_sq)
         all27 = CTMRG_from_init_to_stop(
-                A, B, C, Dt, E, F, chi, D_sq, CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT)
+                A, B, C, Dt, E, F, chi, D_sq, CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT,
+                env_init_noise=CHI_INIT_ENV_NOISE)
         #E6 = energy_expectation_nearest_neighbor_6_bonds(
         #    a, b, c, d, e, f,
         #    Hs[0], Hs[1], Hs[2], Hs[3], Hs[4], Hs[5],
@@ -632,7 +648,8 @@ def optimize_at_chi(
         A, B, C, Dt, E, F = abcdef_to_ABCDEF(aN, bN, cN, dN, eN, fN, D_sq)
         all28 = CTMRG_from_init_to_stop(
             A, B, C, Dt, E, F, chi, D_sq,
-            CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT)
+            CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT,
+            env_init_noise=CHI_INIT_ENV_NOISE)
 
         (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
          C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
@@ -1001,6 +1018,7 @@ def main():
     # ── Precision + optimizer setup ───────────────────────────────────────────
     CDTYPE = torch.complex128 if args.double else torch.complex64
     set_dtype(args.double)
+    set_svd_regularization(USE_SVD_REGULARIZATION)
     OPTIMIZER = args.optimizer
     # Only *enable* the flag from the CLI; never let the argparse default (False)
     # override a True that was already set at module level in core_unrestricted.py.

@@ -244,6 +244,22 @@ SVD_REG_EPS: float = 1e-8   # for float64 (complex128)
 # For float32 (complex64) the noise floor is higher; we automatically use
 # a larger factor inside _RegSVD when the dtype is single-precision.
 
+# ── Main-script toggle ────────────────────────────────────────────────────────
+# When False (default) svd_fixed uses PyTorch's standard linalg.svd backward.
+# When True  svd_fixed routes through _RegSVD (Lorentzian-regularised backward).
+# Set from the main script via set_svd_regularization() before any CTMRG call.
+SVD_USE_REGULARIZATION: bool = False
+
+
+def set_svd_regularization(use_reg: bool) -> None:
+    """Enable (True) or disable (False) Lorentzian SVD regularisation globally.
+
+    Call once at startup in the main script.  The flag is read by
+    :func:`svd_fixed` on every call, so the change takes effect immediately.
+    """
+    global SVD_USE_REGULARIZATION
+    SVD_USE_REGULARIZATION = use_reg
+
 
 def _fix_svd_phases(U: torch.Tensor, Vh: torch.Tensor, *, eps: float = 1e-12) -> tuple[torch.Tensor, torch.Tensor]:
     """Fix per-column complex phases of SVD outputs (U, Vh) deterministically.
@@ -298,29 +314,27 @@ class _RegSVD(torch.autograd.Function):
     """
 
     @staticmethod
-    def forward(ctx, A: torch.Tensor, eps_factor: float):  # type: ignore[override]
+    def forward(ctx, A: torch.Tensor, eps_factor: float, chi: int):  # type: ignore[override]
         U, S, Vh = torch.linalg.svd(A, full_matrices=True)
-        # Adaptive ε: scales with the square of the leading singular value.
-        # finfo.tiny prevents ε=0 when all singular values are exactly zero.
         sv_max_sq = float(S[0].item() ** 2) if S.numel() > 0 else 1.0
         finfo = torch.finfo(S.dtype)
         eps = float(eps_factor) * sv_max_sq + finfo.tiny
         ctx.save_for_backward(U, S, Vh)
-        ctx.eps = eps
+        ctx.eps    = eps
         ctx.A_rows = A.shape[0]
         ctx.A_cols = A.shape[1]
+        ctx.chi    = chi   # downstream truncation rank
         return U, S, Vh
 
     @staticmethod
     def backward(ctx, dU, dS, dVh):  # type: ignore[override]
         U, S, Vh = ctx.saved_tensors
-        eps: float = ctx.eps
-        m: int = ctx.A_rows
-        n: int = ctx.A_cols
-        k: int = S.shape[0]          # = min(m, n)
+        eps:    float = ctx.eps
+        m:      int   = ctx.A_rows
+        n:      int   = ctx.A_cols
+        k_full: int   = S.shape[0]             # = min(m, n)
+        chi:    int   = min(ctx.chi, k_full)   # downstream truncation rank
 
-        # Sanitise incoming gradients (prevents cascaded NaN from e.g. energy
-        # contractions that had a divide-by-near-zero in a different branch).
         if dU  is None: dU  = torch.zeros_like(U)
         if dS  is None: dS  = torch.zeros_like(S)
         if dVh is None: dVh = torch.zeros_like(Vh)
@@ -328,80 +342,93 @@ class _RegSVD(torch.autograd.Function):
         dS  = torch.nan_to_num(dS,  nan=0.0, posinf=0.0, neginf=0.0)
         dVh = torch.nan_to_num(dVh, nan=0.0, posinf=0.0, neginf=0.0)
 
-        # ── Lorentzian F-matrix ───────────────────────────────────────────
-        # F[i,j] = (S[i]²−S[j]²) / ((S[i]²−S[j]²)² + ε²)
-        # Diagonal is zero because numerator = 0 and denominator = ε² > 0.
-        S2  = S * S                                   # (k,)
-        Dij = S2.unsqueeze(-1) - S2.unsqueeze(-2)     # (k,k): Dij[i,j]=si²−sj²
-        F   = Dij / (Dij * Dij + eps * eps)           # (k,k), no NaN, F_ii=0
+        # ── Work ONLY in the chi-dimensional subspace ─────────────────────
+        # Restricting to the top-chi singular values eliminates two sources
+        # of gradient inflation vs. the full-k backward:
+        #   (a) F[i<chi, j>=chi]  -- physical×noise cross-block: O(1/σ²_phys)
+        #       times large AH contributions from discarded U/Vh columns.
+        #   (b) F[i>=chi, j>=chi] -- noise×noise block: NaN or phi-phase error.
+        # Both disappear because we never form F or AH outside [0, chi).
+        Uk   = U[:, :chi]                               # (m, chi)
+        Vhk  = Vh[:chi, :]                              # (chi, n)
+        S_c  = S[:chi]                                  # (chi,)
+        dUk  = dU[:, :chi]                              # (m, chi)
+        dVhk = dVh[:chi, :]                             # (chi, n)
+        dS_c = dS[:chi]                                 # (chi,)
+
+        # ── Lorentzian F-matrix (chi × chi only) ─────────────────────────
+        S2  = S_c * S_c                                 # (chi,)
+        Dij = S2.unsqueeze(-1) - S2.unsqueeze(-2)       # (chi, chi)
+        F   = Dij / (Dij * Dij + eps * eps)             # (chi, chi), no NaN
 
         # ── Anti-Hermitian projection of incoming gradient ────────────────
-        # Removes the phase-gauge degree of freedom and gives the physically
-        # correct gradient formula for complex SVD:
-        #   grad_A = U [diag(dS) + (1/2) F ⊙ ((J−J†) + (K−K†))] Vh
-        # where J = U[:,:k]† dU[:,:k]  ,  K = dVh[:k,:] Vh[:k,:]†
-        #
-        # Note: only the first k columns/rows of U/Vh carry the thin SVD;
-        # we explicitly slice to k to handle full_matrices=True correctly.
-        Uk  = U[:, :k]                                # (m, k)
-        Vhk = Vh[:k, :]                               # (k, n)
-
         is_cplx = U.is_complex()
-        dUk  = dU[:, :k]                              # (m, k)
-        dVhk = dVh[:k, :]                             # (k, n)
-
         if is_cplx:
-            J = Uk.conj().T @ dUk                     # (k, k)
-            K = dVhk @ Vhk.conj().T                   # (k, k)
-            AH = (J - J.conj().T) + (K - K.conj().T) # anti-Hermitian, (k,k)
+            J  = Uk.conj().T @ dUk                      # (chi, chi)
+            K  = dVhk @ Vhk.conj().T                    # (chi, chi)
+            AH = (J - J.conj().T) + (K - K.conj().T)   # anti-Hermitian
         else:
-            J = Uk.T @ dUk                            # (k, k)
-            K = dVhk @ Vhk.T                          # (k, k)
-            AH = (J - J.T) + (K - K.T)               # antisymmetric,  (k,k)
+            J  = Uk.T @ dUk                             # (chi, chi)
+            K  = dVhk @ Vhk.T                           # (chi, chi)
+            AH = (J - J.T) + (K - K.T)                 # antisymmetric
 
-        inner = torch.diag(dS.to(dtype=Uk.dtype)) + 0.5 * F * AH
-        grad_A = Uk @ inner @ Vhk
+        inner  = torch.diag(dS_c.to(dtype=Uk.dtype)) + 0.5 * F * AH
+        grad_A = Uk @ inner @ Vhk                       # (m, n)
 
-        # ── Out-of-column-space term (rectangular case, m > k) ───────────
-        # Contribution from dU in the orthogonal complement of Uk's columns.
-        # Uses regularized 1/S to avoid division by zero for noise SVs.
-        if m > k:
-            S_inv = S / (S * S + eps)                 # regularised 1/S
+        # Out-of-column-space terms only apply to GENUINELY RECTANGULAR matrices
+        # (where the physical matrix has fewer rows or columns than singular values).
+        # For the chi-truncated case the rho matrices are square; unused columns of U
+        # have zero incoming gradient (dU[:,chi:]=0) so those terms vanish naturally.
+        # Adding them would introduce 1/S_noise amplification via S_inv[chi-1:].
+        if m > k_full:
+            S_inv = S_c / (S_c * S_c + eps)
             if is_cplx:
                 dU_perp = dUk - Uk @ (Uk.conj().T @ dUk)
             else:
                 dU_perp = dUk - Uk @ (Uk.T @ dUk)
             grad_A = grad_A + (dU_perp * S_inv.unsqueeze(0).to(dtype=dU_perp.dtype)) @ Vhk
 
-        if n > k:
-            S_inv = S / (S * S + eps)
+        if n > k_full:
+            S_inv = S_c / (S_c * S_c + eps)
             if is_cplx:
                 dVh_perp = dVhk - (dVhk @ Vhk.conj().T) @ Vhk
             else:
                 dVh_perp = dVhk - (dVhk @ Vhk.T) @ Vhk
             grad_A = grad_A + Uk @ (S_inv.unsqueeze(-1).to(dtype=dVh_perp.dtype) * dVh_perp)
 
-        return grad_A, None   # None for eps_factor (not a Tensor)
+        return grad_A, None, None   # None: eps_factor, chi (not Tensors)
 
 
-def svd_fixed(A: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """SVD with Lorentzian-regularized backward (safe for chi > rank(A)).
+def svd_fixed(A: torch.Tensor, chi: int | None = None) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Differentiable SVD wrapper; backward policy controlled by SVD_USE_REGULARIZATION.
 
-    Uses _RegSVD to replace PyTorch's native F_ij=1/(σi²−σj²) backward with
-    F_ij^reg = (σi²−σj²)/((σi²−σj²)²+ε²), preventing NaN when singular values
-    are degenerate or zero (which always happens when chi > D²).
+    Args:
+        A:   Input matrix.
+        chi: Number of singular vectors kept downstream.  When
+             SVD_USE_REGULARIZATION=True this is forwarded to _RegSVD so the
+             backward operates only on the top-chi subspace, preventing gradient
+             blow-up from noise-floor singular values.  Defaults to min(A.shape).
 
-    ε is set adaptively as SVD_REG_EPS × σ_max², scaling with the problem.
-    For float32 (complex64), a larger factor (1e-3) is used automatically.
+    SVD_USE_REGULARIZATION = False (default)
+        Standard PyTorch ``torch.linalg.svd`` backward.  Fast and exact when
+        all used singular values are well-separated.  Will NaN or raise a
+        phi-phase error for chi > rank(A) (degenerate noise SVs).
+
+    SVD_USE_REGULARIZATION = True
+        Chi-truncated Lorentzian backward (_RegSVD).  Only the top-chi SVs
+        enter the F-matrix → gradient norm is independent of chi, no NaN, no
+        phi-phase error.  Toggle via :func:`set_svd_regularization`.
     """
-    # Choose eps_factor based on floating-point precision.
-    # float32 has higher noise floor → needs larger Lorentzian ε.
-    if A.dtype in (torch.float32, torch.complex64):
+    if SVD_USE_REGULARIZATION:
+        # Use a floor of 1e-3 for all dtypes so near-degenerate (noise) SVs are
+        # regularized consistently regardless of precision.  Without this floor,
+        # complex128 / float64 tensors get eps ≈ 1e-8 × σ_max² which is too small
+        # to suppress F[physical, noise] cross-block amplification.
         eps_factor = max(SVD_REG_EPS, 1e-3)
+        chi_trunc = chi if chi is not None else min(A.shape[0], A.shape[1])
+        U, S, Vh = _RegSVD.apply(A, eps_factor, chi_trunc)
     else:
-        eps_factor = SVD_REG_EPS
-
-    U, S, Vh = _RegSVD.apply(A, eps_factor)
+        U, S, Vh = torch.linalg.svd(A, full_matrices=True)
 
     # Deterministic forward phase fix (optional but keeps the forward pass
     # consistent across calls; does not affect the backward since phase is
@@ -561,7 +588,7 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared,
                                optimize=[(0,1),(0,1)],
                                backend='torch')
     
-    U3, sv32, V2 = svd_fixed(rho32)
+    U3, sv32, V2 = svd_fixed(rho32, chi)
 
     U3 = U3[:,:chi].conj()
     V2 = V2[:chi,:].conj()
@@ -571,7 +598,7 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared,
                                optimize=[(0,1),(0,1)],
                                backend='torch')
     
-    U1, sv13, V3 = svd_fixed(rho13)
+    U1, sv13, V3 = svd_fixed(rho13, chi)
 
     U1 = U1[:,:chi].conj() #conjugate transpose
     V3 = V3[:chi,:].conj()
@@ -582,7 +609,7 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared,
                                optimize=[(0,1),(0,1)],
                                backend='torch')
     
-    U2, sv21, V1 = svd_fixed(rho21)
+    U2, sv21, V1 = svd_fixed(rho21, chi)
     
     U2 = U2[:,:chi].conj()
     V1 = V1[:chi,:].conj()
@@ -685,7 +712,7 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared,
 
 
 
-def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
+def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False, env_init_noise: float = 0.0):
     """
     Initialise the 9 CTMRG corner matrices for the first CTMRG cycle.
 
@@ -816,7 +843,10 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
                                 C13AB,C32EF,C21CD,
                                 optimize=[(0,1),(0,1)],
                                 backend='torch')
-        U3F, sv32, V2E = svd_fixed(rho32)
+        if env_init_noise > 0.0:
+            _s = float(rho32.detach().norm().item()) * env_init_noise
+            rho32 = rho32 + _s * torch.randn_like(rho32.detach())
+        U3F, sv32, V2E = svd_fixed(rho32, chi)
         U3F = U3F[:,:chi].conj()
         V2E = V2E[:chi,:].conj()
         
@@ -824,15 +854,21 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
                                 C21CD,C13AB,C32EF,
                                 optimize=[(0,1),(0,1)],
                                 backend='torch')
-        U1B, sv13, V3A = svd_fixed(rho13)
-        U1B = U1B[:,:chi].conj() 
+        if env_init_noise > 0.0:
+            _s = float(rho13.detach().norm().item()) * env_init_noise
+            rho13 = rho13 + _s * torch.randn_like(rho13.detach())
+        U1B, sv13, V3A = svd_fixed(rho13, chi)
+        U1B = U1B[:,:chi].conj()
         V3A = V3A[:chi,:].conj()
         
         rho21 = oe.contract("UY,YX,XV->UV",
                                 C32EF,C21CD,C13AB,
                                 optimize=[(0,1),(0,1)],
                                 backend='torch')
-        U2D, sv21, V1C = svd_fixed(rho21)
+        if env_init_noise > 0.0:
+            _s = float(rho21.detach().norm().item()) * env_init_noise
+            rho21 = rho21 + _s * torch.randn_like(rho21.detach())
+        U2D, sv21, V1C = svd_fixed(rho21, chi)
         U2D = U2D[:,:chi].conj()
         V1C = V1C[:chi,:].conj()
 
@@ -888,9 +924,9 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         out2Ain3D = torch.mm(T2A.T, T3D)
         out3Cin1F = torch.mm(T3C.T, T1F)
         out1Ein2B = torch.mm(T1E.T, T2B)
-        T2A, svL, T3D = svd_fixed(out2Ain3D)
-        T3C, svM, T1F = svd_fixed(out3Cin1F)
-        T1E, svN, T2B = svd_fixed(out1Ein2B)
+        T2A, svL, T3D = svd_fixed(out2Ain3D, chi)
+        T3C, svM, T1F = svd_fixed(out3Cin1F, chi)
+        T1E, svN, T2B = svd_fixed(out1Ein2B, chi)
 
         sqrt_svL = torch.sqrt(svL[:chi])
         sqrt_svM = torch.sqrt(svM[:chi])
@@ -1599,7 +1635,8 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
                             D_squared: int,
                             a_third_max_iterations: int,
                             env_conv_threshold: float,
-                            identity_init: bool = False) -> tuple:
+                            identity_init: bool = False,
+                            env_init_noise: float = 0.0) -> tuple:
     """
     This function performs the CTMRG algorithm from the initial state to the stopping criterion.
 
@@ -1619,7 +1656,7 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
     lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E = None, None, None, None, None, None, None, None, None
     lastC21EB, lastC32AD, lastC13CF, lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A = None, None, None, None, None, None, None, None, None
     lastC21AF, lastC32CB, lastC13ED, lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C = None, None, None, None, None, None, None, None, None
-    nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E = initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=identity_init)
+    nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E = initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=identity_init, env_init_noise=env_init_noise)
     nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A = None, None, None, None, None, None, None, None, None
     nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C = None, None, None, None, None, None, None, None, None
 
