@@ -635,9 +635,9 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         # brutal contract env from 8*3 + 5*4*3 + 6 = 90 local tensors
 
         # enlarged C*3
-        BC2323 = oe.contract
-        DE3131 = oe.contract
-        FA1212 = oe.contract
+        BC2323 = oe.contract("iBG,ibg->BGbg",B,C, optimize=[(0,1)], backend='torch')
+        DE3131 = oe.contract("AiG,aig->GAga",D,E, optimize=[(0,1)], backend='torch')
+        FA1212 = oe.contract("ABi,abi->ABab",F,A, optimize=[(0,1)], backend='torch')
 
         A23 = A.reshape(D_bond,D_bond,D_squared,D_squared).diagonal(dim1=0, dim2=1).sum(-1)
         F31 = F.permute(1,2,0).reshape(D_bond,D_bond,D_squared,D_squared).diagonal(dim1=0, dim2=1).sum(-1)
@@ -766,12 +766,12 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
 
         # Uh,V project on one side(XYZ) of Ts
 
-        T1F = oe.contract("MYa,yY->Mya",T1F,V3A,backend='torch').reshape(D_squared*D_squared,chi*D_squared)
-        T2A = oe.contract("LXb,Xx->Lxb",T2A,U3F,backend='torch').reshape(D_squared*D_squared,chi*D_squared)
-        T2B = oe.contract("NZa,zZ->Nza",T2B,V1C,backend='torch').reshape(D_squared*D_squared,chi*D_squared)
-        T3C = oe.contract("MYg,Yy->Myg",T3C,U1B,backend='torch').reshape(D_squared*D_squared,chi*D_squared)
-        T3D = oe.contract("LXg,xX->Lxg",T3D,V2E,backend='torch').reshape(D_squared*D_squared,chi*D_squared)
-        T1E = oe.contract("NZa,Zz->Nza",T1E,U2D,backend='torch').reshape(D_squared*D_squared,chi*D_squared)  
+        T1F = oe.contract("MYa,yY->Mya",T1F,V3A,optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)
+        T2A = oe.contract("LXb,Xx->Lxb",T2A,U3F,optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)
+        T2B = oe.contract("NZa,zZ->Nza",T2B,V1C,optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)
+        T3C = oe.contract("MYg,Yy->Myg",T3C,U1B,optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)
+        T3D = oe.contract("LXg,xX->Lxg",T3D,V2E,optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)
+        T1E = oe.contract("NZa,Zz->Nza",T1E,U2D,optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)  
 
         
         #the other side(LMN) projection of Ts

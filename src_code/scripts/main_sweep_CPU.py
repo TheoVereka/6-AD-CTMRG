@@ -128,7 +128,7 @@ from core_unrestricted import (
 # Time Budget
 # ══════════════════════════════════════════════════════════════════════════════
 
-TOTAL_BUDGET_HOURS = 0.15
+TOTAL_BUDGET_HOURS = 0.05
 
 # Total wall-clock time for the entire sweep.  The sweep is designed to run
 # for a fixed time rather than a fixed number of steps, so that results at
@@ -195,7 +195,7 @@ DEFAULT_CHI_MAX = {2: 16, 3: 81, 4: 80}
 #   Increase if you have more memory; decrease if you hit OOM.
 
 DEFAULT_CHI_SCHEDULES = {
-    2: [5, 8, 14],
+    2: [5, 9, 14],
     3: [10, 17, 29],       # , 57, 81],  ← append to extend the schedule
     4: [17, 29],           # , 40, 62, 80] ← append to extend the schedule
 }
@@ -760,6 +760,7 @@ def optimize_at_chi(
             for _s in range(ADAM_STEPS_PER_CTM):
                 _adam.zero_grad()
                 _loss, ctm_steps, cn = _loss_with_differentiable_ctmrg()
+                # print(_loss.item(), ctm_steps, cn)
                 _loss.backward()
                 _adam.step()
             loss_item = _loss.detach().item()
