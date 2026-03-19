@@ -129,7 +129,7 @@ from core_unrestricted import (
 # Time Budget
 # ══════════════════════════════════════════════════════════════════════════════
 
-TOTAL_BUDGET_HOURS = 0.1
+TOTAL_BUDGET_HOURS = 0.15
 
 # Total wall-clock time for the entire sweep.  The sweep is designed to run
 # for a fixed time rather than a fixed number of steps, so that results at
@@ -271,17 +271,22 @@ OPTIMIZER = 'adam'
 
 # ── Adam hyperparameters (used only when OPTIMIZER='adam') ────────────────────
 
-ADAM_LR = 3e-3
+ADAM_LR = 1e-3
 #   Adam learning rate.  Typical range: 1e-4 – 1e-3.
+#   3e-3 caused systematic uphill movement near chi-level minima; 1e-3 is safer.
 ADAM_BETAS = (0.9, 0.999)
 #   Exponential decay rates for 1st and 2nd moment estimates.
 ADAM_EPS = 1e-8
 #   Denominator epsilon for numerical stability.
 ADAM_WEIGHT_DECAY = 0.0
 #   L2 regularisation strength.  0.0 = no regularisation (recommended).
-ADAM_STEPS_PER_CTM = 5
+ADAM_STEPS_PER_CTM = 1
 #   Number of Adam gradient steps between consecutive CTMRG environment
 #   refreshes.  Higher = cheaper; lower = more accurate environment.
+#   With env_init_noise=0.0, multiple steps per CTM ARE deterministic, but
+#   using stale gradients from a fixed environment (as intended for "cheap env")
+#   requires architectural refactoring.  For now use 1: one fresh CTM per step,
+#   one gradient update — correct and stable.
 
 # ── CTMRG algorithm ──────────────────────────────────────────────────────────
 #
@@ -649,7 +654,11 @@ def optimize_at_chi(
         all28 = CTMRG_from_init_to_stop(
             A, B, C, Dt, E, F, chi, D_sq,
             CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT,
-            env_init_noise=CHI_INIT_ENV_NOISE)
+            env_init_noise=0.0)   # MUST be 0 during optimisation: noise makes
+            # the gradient stochastic (cos_sim≈0.6) and activates large
+            # physical×noise cross-terms in the Lorentzian F-matrix, causing
+            # systematic gradient ascent near chi-level minima.
+            # CHI_INIT_ENV_NOISE is only used in evaluate_energy_clean().
 
         (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
          C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
@@ -771,14 +780,23 @@ def optimize_at_chi(
                 ctm_steps = last_ctm_steps
             if last_cn is not None:
                 cn = last_cn
-        else:  # adam — persistent state, ADAM_STEPS_PER_CTM micro-steps per env refresh
+        else:  # adam — ADAM_STEPS_PER_CTM gradient steps per outer iteration
             if _adam is None:
                 raise RuntimeError("Adam optimizer requested but was not initialized")
             for _s in range(ADAM_STEPS_PER_CTM):
                 _adam.zero_grad()
                 _loss, ctm_steps, cn = _loss_with_differentiable_ctmrg()
-                # print(_loss.item(), ctm_steps, cn)
                 _loss.backward()
+                # Sanitize gradients (NaN/Inf → 0) before the norm-clip so that
+                # a single bad backward call cannot permanently corrupt Adam state.
+                for p in (a, b, c, d, e, f):
+                    if p.grad is not None:
+                        p.grad.data = torch.nan_to_num(
+                            p.grad.data, nan=0.0, posinf=0.0, neginf=0.0)
+                # Clip total gradient norm to prevent catastrophic steps at D
+                # transitions (e.g. D=2→3 padding causes transient large grads).
+                torch.nn.utils.clip_grad_norm_(
+                    [a, b, c, d, e, f], max_norm=1.0)
                 _adam.step()
             loss_item = _loss.detach().item()
         delta     = (loss_item - prev_loss) if prev_loss is not None else float('inf')
