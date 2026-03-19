@@ -574,349 +574,294 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared,
 
 
 
-def initialize_environmentCTs_2(A,B,C,D,E,F, chi, D_squared, identity_init: bool = False):
+
+def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
     """
-    Bootstrap the CTMRG environment from the double-layer site tensors.
+    Initialise the 9 CTMRG corner matrices for the first CTMRG cycle.
 
-    Because there is no pre-existing environment, an initial one is constructed
-    by contracting pairs of site tensors to form seed corner matrices and seed
-    transfer tensors.  Each pair of adjacent site tensors yields a small corner
-    matrix and a rectangular transfer tensor:
-
-    Corners (shape ``(D_squared, D_squared)``):
-        ``C21AF``, ``C32CB``, ``C13ED``
-
-    Transfer tensors — obtained by SVD-splitting the rank-2 products of two
-    site tensors — are then paired and the full ``update_environmentCTs_3to1``
-    step is run once to produce the canonical "type-1" environment tuple
-    ``(C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E)``.
+    The first cycle is a special case because we have no previous environment to
+    truncate from.  We therefore build each corner by contracting together the
+    three double-layer site tensors that meet at that corner, then optionally
+    add a small identity component to ensure full rank before truncation.
 
     Args:
-        A, B, C, D, E, F (torch.Tensor): Double-layer site tensors, each of
-            shape ``(D_squared, D_squared)``.
-        chi (int): Desired nominal bond dimension of the environment.
+        A, B, C, D, E, F (torch.Tensor): Double-layer site tensors of shape
+            ``(D_squared, D_squared, D_squared)``.
+        chi (int): Target bond dimension for the initial corners (before truncation).
         D_squared (int): ``D_bond ** 2``.
+        identity_init (bool): If True, add a small identity component to each
+            corner to ensure full rank before truncation.  This can help avoid
+            numerical issues in the first truncation step when the raw corners are
+            very low-rank.
 
     Returns:
-        Tuple of 9 torch.Tensor: ``(C21CD, C32EF, C13AB, T1F, T2A, T2B,
-        T3C, T3D, T1E)`` — the type-1 environment corner matrices (shape
-        ``(chi, chi)``) and edge transfer tensors (shape
-        ``(chi, D_squared, D_squared)`` or ``(chi, chi, D_squared)`` after
-        the first renormalisation step).
+        Tuple[torch.Tensor, ...]: The 9 initial corner matrices, each of shape
+        ``(chi, chi)`` for C21CD, C32EF, C13AB, and shape ``(chi, chi, D_squared)``
+        for the transfer tensors T1F, T2A, T2B, T3C, T3D, T1E.
     """
+    D_bond = round(D_squared ** 0.5)
+
     if identity_init:
+        # Add a small identity component to each corner to ensure full rank.
+        # The scale is arbitrary but should be small enough not to dominate the
+        # physical corner contribution; 1e-3 is a reasonable starting point.
+        id_noise_scale = 1e-2
 
-        C21CD = torch.eye(chi, dtype=CDTYPE) + 1e-3 * torch.randn(chi, chi, dtype=CDTYPE)
-        C32EF = torch.eye(chi, dtype=CDTYPE) + 1e-3 * torch.randn(chi, chi, dtype=CDTYPE)
-        C13AB = torch.eye(chi, dtype=CDTYPE) + 1e-3 * torch.randn(chi, chi, dtype=CDTYPE)
-        # Initialize T1F, T2A, T2B, T3C, T3D, T1E as identity matrices on the first two chi indices,
-        # replicated D_squared times along the third index.
-        T1F = torch.stack([torch.eye(chi, dtype=CDTYPE) + 1e-3 * torch.randn(chi, chi, dtype=CDTYPE) for _ in range(D_squared)], dim=0).permute(1, 2, 0)
-        T2A = torch.stack([torch.eye(chi, dtype=CDTYPE) + 1e-3 * torch.randn(chi, chi, dtype=CDTYPE) for _ in range(D_squared)], dim=0).permute(1, 2, 0)
-        T2B = torch.stack([torch.eye(chi, dtype=CDTYPE) + 1e-3 * torch.randn(chi, chi, dtype=CDTYPE) for _ in range(D_squared)], dim=0).permute(1, 2, 0)
-        T3C = torch.stack([torch.eye(chi, dtype=CDTYPE) + 1e-3 * torch.randn(chi, chi, dtype=CDTYPE) for _ in range(D_squared)], dim=0).permute(1, 2, 0)
-        T3D = torch.stack([torch.eye(chi, dtype=CDTYPE) + 1e-3 * torch.randn(chi, chi, dtype=CDTYPE) for _ in range(D_squared)], dim=0).permute(1, 2, 0)
-        T1E = torch.stack([torch.eye(chi, dtype=CDTYPE) + 1e-3 * torch.randn(chi, chi, dtype=CDTYPE) for _ in range(D_squared)], dim=0).permute(1, 2, 0)
+        identityC = torch.eye(chi, dtype=A.dtype, device=A.device)
+        C21CD = identityC + id_noise_scale * torch.randn_like(identityC)
+        C32EF = identityC + id_noise_scale * torch.randn_like(identityC)
+        C13AB = identityC + id_noise_scale * torch.randn_like(identityC)
 
-        return C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
-    
+        identityT = torch.eye(chi*D_bond, dtype=A.dtype, device=A.device)
+        identityT = identityT.reshape(chi, D_bond, chi, D_bond).permute(0, 2, 1, 3).reshape(chi, chi, D_squared)
+        T1F = identityT + id_noise_scale * torch.randn_like(identityT)
+        T2A = identityT + id_noise_scale * torch.randn_like(identityT)
+        T2B = identityT + id_noise_scale * torch.randn_like(identityT)
+        T3C = identityT + id_noise_scale * torch.randn_like(identityT)
+        T3D = identityT + id_noise_scale * torch.randn_like(identityT)
+        T1E = identityT + id_noise_scale * torch.randn_like(identityT)
 
+        C21CD = normalize_tensor(C21CD)
+        C32EF = normalize_tensor(C32EF)
+        C13AB = normalize_tensor(C13AB)
+        T1F = normalize_tensor(T1F)
+        T2A = normalize_tensor(T2A)
+        T2B = normalize_tensor(T2B)
+        T3C = normalize_tensor(T3C)
+        T3D = normalize_tensor(T3D)
+        T1E = normalize_tensor(T1E)
 
-    C21AF = oe.contract("oyg,xog->yx", A,F, optimize=[(0,1)], backend='torch')
-    C32CB = oe.contract("aoz,ayo->zy", C,B, optimize=[(0,1)], backend='torch')
-    C13ED = oe.contract("xbo,obz->xz", E,D, optimize=[(0,1)], backend='torch')
+    else: 
+        # brutal contract env from 8*3 + 5*4*3 + 6 = 90 local tensors
 
-    #print(E)
-    print(B.detach().numpy())
-    #print(C)
-    #print(F)
+        # enlarged C*3
+        BC2323 = oe.contract
+        DE3131 = oe.contract
+        FA1212 = oe.contract
 
-    T2ET3F = oe.contract("ubi,jki,jlk,vlg->ubvg", E,B,C,F, optimize=[(1,2),(0,1),(0,1)], backend='torch')
-    T3AT1B = oe.contract("iug,ijk,kjl,avl->ugva", A,D,E,B, optimize=[(1,2),(0,1),(0,1)], backend='torch')
-    T1CT2D = oe.contract("aiu,kij,lkj,lbv->uavb", C,F,A,D, optimize=[(1,2),(0,1),(0,1)], backend='torch')
+        A23 = A.reshape(D_bond,D_bond,D_squared,D_squared).diagonal(dim1=0, dim2=1).sum(-1)
+        F31 = F.permute(1,2,0).reshape(D_bond,D_bond,D_squared,D_squared).diagonal(dim1=0, dim2=1).sum(-1)
+        C31 = C.permute(1,2,0).reshape(D_bond,D_bond,D_squared,D_squared).diagonal(dim1=0, dim2=1).sum(-1)
+        B12 = B.permute(2,0,1).reshape(D_bond,D_bond,D_squared,D_squared).diagonal(dim1=0, dim2=1).sum(-1)
+        E12 = E.permute(2,0,1).reshape(D_bond,D_bond,D_squared,D_squared).diagonal(dim1=0, dim2=1).sum(-1)
+        D23 = D.reshape(D_bond,D_bond,D_squared,D_squared).diagonal(dim1=0, dim2=1).sum(-1)
 
-    T2ET3F = T2ET3F.reshape(D_squared*D_squared, D_squared*D_squared)
-    T3AT1B = T3AT1B.reshape(D_squared*D_squared, D_squared*D_squared)
-    T1CT2D = T1CT2D.reshape(D_squared*D_squared, D_squared*D_squared)
+        E23 = E.reshape(D_bond,D_bond,D_squared,D_squared).diagonal(dim1=0, dim2=1).sum(-1)
+        B31 = B.permute(1,2,0).reshape(D_bond,D_bond,D_squared,D_squared).diagonal(dim1=0, dim2=1).sum(-1)
+        A31 = A.permute(1,2,0).reshape(D_bond,D_bond,D_squared,D_squared).diagonal(dim1=0, dim2=1).sum(-1)
+        D12 = D.permute(2,0,1).reshape(D_bond,D_bond,D_squared,D_squared).diagonal(dim1=0, dim2=1).sum(-1)
+        C12 = C.permute(2,0,1).reshape(D_bond,D_bond,D_squared,D_squared).diagonal(dim1=0, dim2=1).sum(-1)
+        F23 = F.reshape(D_bond,D_bond,D_squared,D_squared).diagonal(dim1=0, dim2=1).sum(-1)
+        
+        C21CD = oe.contract("yj,ijYk,in,nm,kXlm,lx->YyXx",
+                            E23,BC2323,A23,F31,DE3131,B31,
+                            optimize=[(0,1),(0,1),(0,1),(0,1),(0,1)],
+                            backend='torch').reshape(D_squared*D_squared,D_squared*D_squared)
+        C32EF = oe.contract("zj,ijZk,in,nm,kYlm,ly->ZzYy",
+                            A31,DE3131,C31,B12,FA1212,D12,
+                            optimize=[(0,1),(0,1),(0,1),(0,1),(0,1)],
+                            backend='torch').reshape(D_squared*D_squared,D_squared*D_squared)
+        C13AB = oe.contract("xj,ijXk,in,nm,kZlm,lz->XxZz",
+                            C12,FA1212,E12,D23,BC2323,F23,
+                            optimize=[(0,1),(0,1),(0,1),(0,1),(0,1)],
+                            backend='torch').reshape(D_squared*D_squared,D_squared*D_squared)
+        
 
-    U2E, sv23, Vdag3F = svd_fixed(T2ET3F)
-    U3A, sv31, Vdag1B = svd_fixed(T3AT1B)
-    U1C, sv12, Vdag2D = svd_fixed(T1CT2D)
+        # enlarged T*6
+        A12 = A.permute(2,0,1).reshape(D_bond,D_bond,D_squared,D_squared).diagonal(dim1=0, dim2=1).sum(-1)
+        B23 = B.reshape(D_bond,D_bond,D_squared,D_squared).diagonal(dim1=0, dim2=1).sum(-1)
+        C23 = C.reshape(D_bond,D_bond,D_squared,D_squared).diagonal(dim1=0, dim2=1).sum(-1)
+        D31 = D.permute(1,2,0).reshape(D_bond,D_bond,D_squared,D_squared).diagonal(dim1=0, dim2=1).sum(-1)
+        E31 = E.permute(1,2,0).reshape(D_bond,D_bond,D_squared,D_squared).diagonal(dim1=0, dim2=1).sum(-1)
+        F12 = F.permute(2,0,1).reshape(D_bond,D_bond,D_squared,D_squared).diagonal(dim1=0, dim2=1).sum(-1)
 
-    # adding clip to prevent sqrt of negative numbers due to numerical issues
-    # Cast to CDTYPE: singular values are real but U/V matrices are complex;
-    # dtypes must match for the diag matmul below.
-    sqrt_sv23 = torch.sqrt(torch.clamp(sv23[:chi], min=1e-9)).to(CDTYPE)
-    sqrt_sv31 = torch.sqrt(torch.clamp(sv31[:chi], min=1e-9)).to(CDTYPE)
-    sqrt_sv12 = torch.sqrt(torch.clamp(sv12[:chi], min=1e-9)).to(CDTYPE)
-
-    T2E = U2E[:,:chi] @ torch.diag(sqrt_sv23)
-    T3A = U3A[:,:chi] @ torch.diag(sqrt_sv31)
-    T1C = U1C[:,:chi] @ torch.diag(sqrt_sv12)
-    T3F = torch.diag(sqrt_sv23) @ Vdag3F[:chi,:]
-    T1B = torch.diag(sqrt_sv31) @ Vdag1B[:chi,:]
-    T2D = torch.diag(sqrt_sv12) @ Vdag2D[:chi,:]
-
-    T2E = T2E.reshape(D_squared, D_squared, chi)
-    T3A = T3A.reshape(D_squared, D_squared, chi)
-    T1C = T1C.reshape(D_squared, D_squared, chi)
-    T3F = T3F.reshape(chi, D_squared, D_squared)
-    T1B = T1B.reshape(chi, D_squared, D_squared)
-    T2D = T2D.reshape(chi, D_squared, D_squared)
-    T2E = T2E.permute(2,0,1)
-    T3A = T3A.permute(2,0,1)
-    T1C = T1C.permute(2,0,1)
-    
-
-
-
-##################################################################
-
-
-
-    matC21CD = oe.contract("YX,MYa,LXβ,amg,lbg->MmLl",
-                           C21AF,T1B,T2E,C,D,
-                           optimize=[(0,2),(0,3),(1,2),(0,1)],
-                           backend='torch')
-    
-    matC21 = matC21CD.reshape(chi*D_squared,chi*D_squared)
-    
-    matC32EF = oe.contract("ZY,NZβ,MYg,abn,amg->NnMm",
-                           C32CB,T2D,T3A,E,F,
-                           optimize=[(0,2),(0,3),(1,2),(0,1)],
-                           backend='torch')
-    
-    matC32 = matC32EF.reshape(chi*D_squared,chi*D_squared)
-    
-    matC13AB = oe.contract("XZ,LXg,NZa,lbg,abn->LlNn",
-                           C13ED,T3F,T1C,A,B,
-                           optimize=[(0,2),(0,3),(1,2),(0,1)],
-                           backend='torch')
-    
-    matC13 = matC13AB.reshape(chi*D_squared,chi*D_squared)
-
-    rho32 = oe.contract("UZ,ZY,YV->UV",
-                               matC13,matC32,matC21,
-                               optimize=[(0,1),(0,1)],
-                               backend='torch')
-    
-    U3, sv32, V2 = svd_fixed(rho32)
-
-    U3 = U3[:,:chi].conj()
-    V2 = V2[:chi,:].conj()
-    
-    rho13 = oe.contract("UX,XZ,ZV->UV",
-                               matC21,matC13,matC32,
-                               optimize=[(0,1),(0,1)],
-                               backend='torch')
-    
-    U1, sv13, V3 = svd_fixed(rho13)
-
-    U1 = U1[:,:chi].conj() #conjugate transpose
-    V3 = V3[:chi,:].conj()
-    
-
-    rho21 = oe.contract("UY,YX,XV->UV",
-                               matC32,matC21,matC13,
-                               optimize=[(0,1),(0,1)],
-                               backend='torch')
-    
-    U2, sv21, V1 = svd_fixed(rho21)
-    
-    U2 = U2[:,:chi].conj()
-    V1 = V1[:chi,:].conj()
-
-    C21 = oe.contract("Yy,YX,xX->yx",
-                               U1,matC21,V2,
-                               optimize=[(0,1),(0,1)],
-                               backend='torch')
-
-    C32 = oe.contract("Zz,ZY,yY->zy",
-                               U2,matC32,V3,
-                               optimize=[(0,1),(0,1)],
-                               backend='torch')
-
-    C13 = oe.contract("Xx,XZ,zZ->xz",
-                               U3,matC13,V1,
-                               optimize=[(0,1),(0,1)],
-                               backend='torch')
-    
-    C21CD = normalize_tensor(C21)
-    C32EF = normalize_tensor(C32)
-    C13AB = normalize_tensor(C13)
-
-    U1B = U1.reshape(chi,D_squared, chi)
-    U2D = U2.reshape(chi,D_squared, chi)
-    U3F = U3.reshape(chi,D_squared, chi)
-
-    V1C = V1.reshape(chi, chi,D_squared)
-    V2E = V2.reshape(chi, chi,D_squared)
-    V3A = V3.reshape(chi, chi,D_squared)
+        T1F = oe.contract("mi,jyi,aYjM->MmYya",
+                          C23,D,FA1212,
+                          optimize=[(0,1),(0,1)],
+                          backend='torch').reshape(D_squared*D_squared,D_squared*D_squared,D_squared)
+        T2A = oe.contract("il,xji,LjXb->LlXxb",
+                          D31,C,FA1212,
+                          optimize=[(0,1),(0,1)],
+                          backend='torch').reshape(D_squared*D_squared,D_squared*D_squared,D_squared)   
+        T2B = oe.contract("ni,ijz,bZjN->NnZzb",
+                          E31,F,BC2323,
+                          optimize=[(0,1),(0,1)],
+                          backend='torch').reshape(D_squared*D_squared,D_squared*D_squared,D_squared)   
+        T3C = oe.contract("im,iyj,MjYg->MmYyg",
+                          F12,E,BC2323,
+                          optimize=[(0,1),(0,1)],
+                          backend='torch').reshape(D_squared*D_squared,D_squared*D_squared,D_squared)   
+        T3D = oe.contract("li,xij,gXjL->LlXxg",
+                          A12,B,DE3131,
+                          optimize=[(0,1),(0,1)],
+                          backend='torch').reshape(D_squared*D_squared,D_squared*D_squared,D_squared)   
+        T1E = oe.contract("in,jiz,NjZa->NnZza",
+                          B23,A,DE3131,
+                          optimize=[(0,1),(0,1)],
+                          backend='torch').reshape(D_squared*D_squared,D_squared*D_squared,D_squared)   
 
 
-    T3C = normalize_tensor(oe.contract("OYa,abg,ObM->YMg",
-                        T1B,C,U1B,
-                        optimize=[(0,1),(0,1)],
-                        backend='torch'))
+        # truncate CCC
+        rho32 = oe.contract("UZ,ZY,YV->UV",
+                                C13AB,C32EF,C21CD,
+                                optimize=[(0,1),(0,1)],
+                                backend='torch')
+        U3F, sv32, V2E = svd_fixed(rho32)
+        U3F = U3F[:,:chi].conj()
+        V2E = V2E[:chi,:].conj()
+        
+        rho13 = oe.contract("UX,XZ,ZV->UV",
+                                C21CD,C13AB,C32EF,
+                                optimize=[(0,1),(0,1)],
+                                backend='torch')
+        U1B, sv13, V3A = svd_fixed(rho13)
+        U1B = U1B[:,:chi].conj() 
+        V3A = V3A[:chi,:].conj()
+        
+        rho21 = oe.contract("UY,YX,XV->UV",
+                                C32EF,C21CD,C13AB,
+                                optimize=[(0,1),(0,1)],
+                                backend='torch')
+        U2D, sv21, V1C = svd_fixed(rho21)
+        U2D = U2D[:,:chi].conj()
+        V1C = V1C[:chi,:].conj()
 
-    T3D = normalize_tensor(oe.contract("OXb,abg,LOa->XLg",
-                        T2E,D,V2E,
-                        optimize=[(0,1),(0,1)],
-                        backend='torch'))
-    
-    T1E = normalize_tensor(oe.contract("OZb,abg,OgN->ZNa",
-                        T2D,E,U2D,
-                        optimize=[(0,1),(0,1)],
-                        backend='torch'))
-    
-    T1F = normalize_tensor(oe.contract("OYg,abg,MOb->YMa",
-                        T3A,F,V3A,
-                        optimize=[(0,1),(0,1)],
-                        backend='torch'))
-    
-    T2A = normalize_tensor(oe.contract("OXg,abg,OaL->XLb",
-                        T3F,A,U3F,
-                        optimize=[(0,1),(0,1)],
-                        backend='torch'))
-    
-    T2B = normalize_tensor(oe.contract("OZa,abg,NOg->ZNa",
-                        T1C,B,V1C,
-                        optimize=[(0,1),(0,1)],
-                        backend='torch'))
-
-
-
-
-#########################################################################
-    
-
-
-
-    matC21EB = oe.contract("YX,MYa,LXβ,amg,lbg->MmLl",
-                           C21CD,T1F,T2A,E,B,
-                           optimize=[(0,2),(0,3),(1,2),(0,1)],
-                           backend='torch')
-    
-    matC21EB = matC21EB.reshape(D_squared*D_squared,D_squared*D_squared)
-    
-    matC32AD = oe.contract("ZY,NZβ,MYg,abn,amg->NnMm",
-                           C32EF,T2B,T3C,A,D,
-                           optimize=[(0,2),(0,3),(1,2),(0,1)],
-                           backend='torch')
-    
-    matC32AD = matC32AD.reshape(D_squared*D_squared,D_squared*D_squared)
-    
-    matC13CF = oe.contract("XZ,LXg,NZa,lbg,abn->LlNn",
-                           C13AB,T3D,T1E,C,F,
-                           optimize=[(0,2),(0,3),(1,2),(0,1)],
-                           backend='torch')
-    
-    matC13CF = matC13CF.reshape(D_squared*D_squared,D_squared*D_squared)
+        C21CD = oe.contract("Yy,YX,xX->yx",
+                                U1B,C21CD,V2E,
+                                optimize=[(0,1),(0,1)],
+                                backend='torch')
+        C32EF = oe.contract("Zz,ZY,yY->zy",
+                                U2D,C32EF,V3A,
+                                optimize=[(0,1),(0,1)],
+                                backend='torch')
+        C13AB = oe.contract("Xx,XZ,zZ->xz",
+                                U3F,C13AB,V1C,
+                                optimize=[(0,1),(0,1)],
+                                backend='torch')
 
 
+        # normalize C*3
+        pseudo_rho_trunc = C13AB @ C32EF @ C21CD
+        tr_rho = torch.trace(pseudo_rho_trunc)
+        tr_abs = tr_rho.abs()
+        if torch.isfinite(tr_abs).item() and (tr_abs > torch.finfo(tr_abs.dtype).tiny).item():
+            phase = tr_rho / tr_abs
+            C21CD = C21CD / phase
+            scaleC = tr_abs.pow(1.0 / 3.0)
+            if torch.isfinite(scaleC).item() and (scaleC > torch.finfo(scaleC.dtype).tiny).item():
+                C21CD = C21CD / scaleC
+                C32EF = C32EF / scaleC
+                C13AB = C13AB / scaleC
+
+        n21 = torch.linalg.norm(C21CD).real
+        n32 = torch.linalg.norm(C32EF).real
+        n13 = torch.linalg.norm(C13AB).real
+        nC_prod = n21 * n32 * n13
+        if torch.isfinite(nC_prod).item() and (nC_prod > torch.finfo(n21.dtype).tiny).item():
+            nC_geo = nC_prod.pow(1.0 / 3.0)
+            C21CD = C21CD * (nC_geo / n21)
+            C32EF = C32EF * (nC_geo / n32)
+            C13AB = C13AB * (nC_geo / n13)
 
 
+        # Uh,V project on one side(XYZ) of Ts
+
+        T1F = oe.contract("MYa,yY->Mya",T1F,V3A,backend='torch').reshape(D_squared*D_squared,chi*D_squared)
+        T2A = oe.contract("LXb,Xx->Lxb",T2A,U3F,backend='torch').reshape(D_squared*D_squared,chi*D_squared)
+        T2B = oe.contract("NZa,zZ->Nza",T2B,V1C,backend='torch').reshape(D_squared*D_squared,chi*D_squared)
+        T3C = oe.contract("MYg,Yy->Myg",T3C,U1B,backend='torch').reshape(D_squared*D_squared,chi*D_squared)
+        T3D = oe.contract("LXg,xX->Lxg",T3D,V2E,backend='torch').reshape(D_squared*D_squared,chi*D_squared)
+        T1E = oe.contract("NZa,Zz->Nza",T1E,U2D,backend='torch').reshape(D_squared*D_squared,chi*D_squared)  
+
+        
+        #the other side(LMN) projection of Ts
+        out2Ain3D = torch.mm(T2A.T, T3D)
+        out3Cin1F = torch.mm(T3C.T, T1F)
+        out1Ein2B = torch.mm(T1E.T, T2B)
+        T2A, svL, T3D = svd_fixed(out2Ain3D)
+        T3C, svM, T1F = svd_fixed(out3Cin1F)
+        T1E, svN, T2B = svd_fixed(out1Ein2B)
+
+        sqrt_svL = torch.sqrt(svL[:chi])
+        sqrt_svM = torch.sqrt(svM[:chi])
+        sqrt_svN = torch.sqrt(svN[:chi])
+        T2A = T2A[:, :chi].T * sqrt_svL.unsqueeze(1)
+        T3D = T3D[:chi, :] * sqrt_svL.unsqueeze(1)
+        T3C = T3C[:, :chi].T * sqrt_svM.unsqueeze(1)
+        T1F = T1F[:chi, :] * sqrt_svM.unsqueeze(1)
+        T1E = T1E[:, :chi].T * sqrt_svN.unsqueeze(1)
+        T2B = T2B[:chi, :] * sqrt_svN.unsqueeze(1)
+
+        T1F = T1F.reshape(chi, chi, D_squared)
+        T2A = T2A.reshape(chi, chi, D_squared)
+        T2B = T2B.reshape(chi, chi, D_squared)
+        T3C = T3C.reshape(chi, chi, D_squared)
+        T3D = T3D.reshape(chi, chi, D_squared)
+        T1E = T1E.reshape(chi, chi, D_squared)
 
 
+        # normalization of T*6
+        closed_E = oe.contract("YX,MYa,abg->MbXg",
+                                C21CD, T1F, E,
+                                optimize=[(0,1),(0,1)], backend='torch'
+                                ).reshape(chi*D_squared, chi*D_squared)
+        closed_D = oe.contract("MYg,abg->YaMb",
+                                T3C, D,
+                                optimize=[(0,1)], backend='torch'
+                                ).reshape(chi*D_squared, chi*D_squared)
+        closed_A = oe.contract("ZY,NZb,abg->NgYa",
+                                C32EF, T2B, A,
+                                optimize=[(0,1),(0,1)], backend='torch'
+                                ).reshape(chi*D_squared, chi*D_squared)
+        closed_F = oe.contract("NZa,abg->ZbNg",
+                                T1E, F,
+                                optimize=[(0,1)], backend='torch'
+                                ).reshape(chi*D_squared, chi*D_squared)
+        closed_C = oe.contract("XZ,LXg,abg->LaZb",
+                                C13AB, T3D, C,
+                                optimize=[(0,1),(0,1)], backend='torch'
+                                ).reshape(chi*D_squared, chi*D_squared)
+        closed_B = oe.contract("LXb,abg->XgLa",
+                                T2A, B,
+                                optimize=[(0,1)], backend='torch'
+                                ).reshape(chi*D_squared, chi*D_squared)
+        
+        AD = torch.mm(closed_A, closed_D)
+        CF = torch.mm(closed_C, closed_F)
+        EB = torch.mm(closed_E, closed_B)
+        norm_val  = oe.contract("xy,yz,zx->", AD, EB, CF, backend='torch')
 
-    #V2A, C21EB, U1F, V3C, C32AD, U2B, V1E, C13CF, U3D = trunc_rhoCCC(
-    #                    matC21EB, matC32AD, matC13CF, chi, D_squared)
+        norm_abs = norm_val.abs()
+        if torch.isfinite(norm_abs).item() and (norm_abs > torch.finfo(norm_abs.dtype).tiny).item():
+            phase = norm_val / norm_abs
+            T3C = T3C / phase
+            scaleT = norm_abs.pow(1.0 / 6.0)
+            if torch.isfinite(scaleT).item() and (scaleT > torch.finfo(scaleT.dtype).tiny).item():
+                T3C = T3C / scaleT
+                T3D = T3D / scaleT
+                T1E = T1E / scaleT
+                T1F = T1F / scaleT
+                T2A = T2A / scaleT
+                T2B = T2B / scaleT
 
+        nT3C = torch.linalg.norm(T3C).real
+        nT3D = torch.linalg.norm(T3D).real
+        nT1E = torch.linalg.norm(T1E).real
+        nT1F = torch.linalg.norm(T1F).real
+        nT2A = torch.linalg.norm(T2A).real
+        nT2B = torch.linalg.norm(T2B).real
+        nT_prod = nT3C * nT3D * nT1E * nT1F * nT2A * nT2B
+        if torch.isfinite(nT_prod).item() and (nT_prod > torch.finfo(nT3C.dtype).tiny).item():
+            nT_geo = nT_prod.pow(1.0 / 6.0)
+            T3C = T3C * (nT_geo / nT3C)
+            T3D = T3D * (nT_geo / nT3D)
+            T1E = T1E * (nT_geo / nT1E)
+            T1F = T1F * (nT_geo / nT1F)
+            T2A = T2A * (nT_geo / nT2A)
+            T2B = T2B * (nT_geo / nT2B)
+        
 
-    rho32 = oe.contract("UZ,ZY,YV->UV",
-                               matC13CF,matC32AD,matC21EB,
-                               optimize=[(0,1),(0,1)],
-                               backend='torch')
-    
-    U3, sv32, V2 = svd_fixed(rho32)
-
-    U3 = U3[:,:chi].conj()
-    V2 = V2[:chi,:].conj()
-    
-    rho13 = oe.contract("UX,XZ,ZV->UV",
-                               matC21EB,matC13CF,matC32AD,
-                               optimize=[(0,1),(0,1)],
-                               backend='torch')
-    
-    U1, sv13, V3 = svd_fixed(rho13)
-
-    U1 = U1[:,:chi].conj() #conjugate transpose
-    V3 = V3[:chi,:].conj()
-    
-
-    rho21 = oe.contract("UY,YX,XV->UV",
-                               matC32AD,matC21EB,matC13CF,
-                               optimize=[(0,1),(0,1)],
-                               backend='torch')
-    
-    U2, sv21, V1 = svd_fixed(rho21)
-    
-    U2 = U2[:,:chi].conj()
-    V1 = V1[:chi,:].conj()
-
-    C21 = oe.contract("Yy,YX,xX->yx",
-                               U1,matC21EB,V2,
-                               optimize=[(0,1),(0,1)],
-                               backend='torch')
-
-    C32 = oe.contract("Zz,ZY,yY->zy",
-                               U2,matC32AD,V3,
-                               optimize=[(0,1),(0,1)],
-                               backend='torch')
-
-    C13 = oe.contract("Xx,XZ,zZ->xz",
-                               U3,matC13CF,V1,
-                               optimize=[(0,1),(0,1)],
-                               backend='torch')
-    
-    C21EB = normalize_tensor(C21)
-    C32AD = normalize_tensor(C32)
-    C13CF = normalize_tensor(C13)
-
-    U1F = U1.reshape(D_squared,D_squared, chi)
-    U2B = U2.reshape(D_squared,D_squared, chi)
-    U3D = U3.reshape(D_squared,D_squared, chi)
-
-    V1E = V1.reshape(chi, D_squared,D_squared)
-    V2A = V2.reshape(chi, D_squared,D_squared)
-    V3C = V3.reshape(chi, D_squared,D_squared)
-
-
-
-
-
-
-    T3E = normalize_tensor(oe.contract("OYa,abg,ObM->YMg",
-                        T1F,E,U1F,
-                        optimize=[(0,1),(0,1)],
-                        backend='torch'))
-
-    T3B = normalize_tensor(oe.contract("OXb,abg,LOa->XLg",
-                        T2A,B,V2A,
-                        optimize=[(0,1),(0,1)],
-                        backend='torch'))
-    
-    T1A = normalize_tensor(oe.contract("OZb,abg,OgN->ZNa",
-                        T2B,A,U2B,
-                        optimize=[(0,1),(0,1)],
-                        backend='torch'))
-    
-    T1D = normalize_tensor(oe.contract("OYg,abg,MOb->YMa",
-                        T3C,D,V3C,
-                        optimize=[(0,1),(0,1)],
-                        backend='torch'))
-    
-    T2C = normalize_tensor(oe.contract("OXg,abg,OaL->XLb",
-                        T3D,C,U3D,
-                        optimize=[(0,1),(0,1)],
-                        backend='torch'))
-    
-    T2F = normalize_tensor(oe.contract("OZa,abg,NOg->ZNa",
-                        T1E,F,V1E,
-                        optimize=[(0,1),(0,1)],
-                        backend='torch'))
-
-    return C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A
+    return C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
 
 
 
@@ -1468,49 +1413,36 @@ def update_environmentCTs_3to1(C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C
                         backend='torch')
 
     # ── End-of-update transfer normalization (mirrors norm_env_1) ────────────
-    D_bond = int(round(D_squared ** 0.5))
-    A6 = A.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
-    B6 = B.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
-    C6 = C.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
-    D6 = D.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
-    E6 = E.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
-    F6 = F.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
-    T1F4 = T1F.reshape(chi, chi, D_bond, D_bond)
-    T2A4 = T2A.reshape(chi, chi, D_bond, D_bond)
-    T2B4 = T2B.reshape(chi, chi, D_bond, D_bond)
-    T3C4 = T3C.reshape(chi, chi, D_bond, D_bond)
-    T3D4 = T3D.reshape(chi, chi, D_bond, D_bond)
-    T1E4 = T1E.reshape(chi, chi, D_bond, D_bond)
     # norm_env_1: open_E= "YX,MYar,abci,rstj->MbsXctij" → "YX,MYar,arbsct->MbsXct"
-    closed_E = oe.contract("YX,MYar,arbsct->MbsXct",
-                            C21CD, T1F4, E6,
+    closed_E = oe.contract("YX,MYa,abg->MbXg",
+                            C21CD, T1F, E,
                             optimize=[(0,1),(0,1)], backend='torch'
-                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
+                            ).reshape(chi*D_squared, chi*D_squared)
     # open_D= "MYct,abci,rstj->YarMbsij" → "MYct,arbsct->YarMbs"
-    closed_D = oe.contract("MYct,arbsct->YarMbs",
-                            T3C4, D6,
+    closed_D = oe.contract("MYg,abg->YaMb",
+                            T3C, D,
                             optimize=[(0,1)], backend='torch'
-                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
+                            ).reshape(chi*D_squared, chi*D_squared)
     # open_A= "ZY,NZbs,abci,rstj->NctYarij" → "ZY,NZbs,arbsct->NctYar"
-    closed_A = oe.contract("ZY,NZbs,arbsct->NctYar",
-                            C32EF, T2B4, A6,
+    closed_A = oe.contract("ZY,NZb,abg->NgYa",
+                            C32EF, T2B, A,
                             optimize=[(0,1),(0,1)], backend='torch'
-                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
+                            ).reshape(chi*D_squared, chi*D_squared)
     # open_F= "NZar,abci,rstj->ZbsNctij" → "NZar,arbsct->ZbsNct"
-    closed_F = oe.contract("NZar,arbsct->ZbsNct",
-                            T1E4, F6,
+    closed_F = oe.contract("NZa,abg->ZbNg",
+                            T1E, F,
                             optimize=[(0,1)], backend='torch'
-                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
+                            ).reshape(chi*D_squared, chi*D_squared)
     # open_C= "XZ,LXct,abci,rstj->LarZbsij" → "XZ,LXct,arbsct->LarZbs"
-    closed_C = oe.contract("XZ,LXct,arbsct->LarZbs",
-                            C13AB, T3D4, C6,
+    closed_C = oe.contract("XZ,LXg,abg->LaZb",
+                            C13AB, T3D, C,
                             optimize=[(0,1),(0,1)], backend='torch'
-                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
+                            ).reshape(chi*D_squared, chi*D_squared)
     # open_B= "LXbs,abci,rstj->XctLarij" → "LXbs,arbsct->XctLar"
-    closed_B = oe.contract("LXbs,arbsct->XctLar",
-                            T2A4, B6,
+    closed_B = oe.contract("LXb,abg->XgLa",
+                            T2A, B,
                             optimize=[(0,1)], backend='torch'
-                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
+                            ).reshape(chi*D_squared, chi*D_squared)
     AD = torch.mm(closed_A, closed_D)
     CF = torch.mm(closed_C, closed_F)
     EB = torch.mm(closed_E, closed_B)
@@ -1577,32 +1509,9 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
     lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E = None, None, None, None, None, None, None, None, None
     lastC21EB, lastC32AD, lastC13CF, lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A = None, None, None, None, None, None, None, None, None
     lastC21AF, lastC32CB, lastC13ED, lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C = None, None, None, None, None, None, None, None, None
-    nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E = None, None, None, None, None, None, None, None, None
-    nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A = initialize_environmentCTs_2(A,B,C,D,E,F, chi, D_squared, identity_init=identity_init)
+    nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E = initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=identity_init)
+    nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A = None, None, None, None, None, None, None, None, None
     nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C = None, None, None, None, None, None, None, None, None
-
-
-
-
-
-    # FUCK MY LIFE WITH THIS, THIS WORKS SO SHUT UP AND CALCULATE!!!
-
-
-    #     case 1 : 
-    lastC21AF, lastC32CB, lastC13ED, lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C = \
-    nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C
-
-    nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C = update_environmentCTs_2to3(
-    nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A, A,B,C,D,E,F, chi, D_squared)
-        
-    #     case 2 : 
-    lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E = \
-    nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E
-    
-    nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E = update_environmentCTs_3to1(
-    nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C, A,B,C,D,E,F, chi, D_squared)
-
-
 
 
 
@@ -2223,59 +2132,8 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
     return a, b, c, d, e, f, loss_item
 
 
-"""
-def check_optimized_iPEPS(a,b,c,d,e,f, old_loss, 
-                          Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, d_PHYS, d_PHYS^*) matrices
-                          new_chi, D_bond, d_PHYS,
-                          a_third_max_steps_CTMRG: int = 70, 
-                          CTM_env_conv_threshold: float = 1e-7,
-                        # ↓ SCALES with Hamiltonian!!!! ↓
-                          delta_loss_threshold: float = 1e-6,
-                          identity_init=False):
-    
-
-    D_squared = D_bond ** 2
-
-    with torch.no_grad():
-        A, B, C, D, E, F = abcdef_to_ABCDEF(a, b, c, d, e, f, D_squared)
-        
-        (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
-         C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
-         C21AF, C32CB, C13ED, T1B,  T2E,  T2D,  T3A,  T3F,  T1C,
-         _ctm_steps) = \
-        CTMRG_from_init_to_stop(A, B, C, D, E, F, new_chi, D_squared,
-                a_third_max_steps_CTMRG, CTM_env_conv_threshold, identity_init=identity_init)
-        
-        new_loss_under_new_chi = (
-            energy_expectation_nearest_neighbor_3ebadcf_bonds(
-                a,b,c,d,e,f, 
-                Heb,Had,Hcf,
-                new_chi, D_bond, # d_PHYS, 
-                C21CD,C32EF,C13AB,T1F,T2A,T2B,T3C,T3D,T1E)
-            +
-            energy_expectation_nearest_neighbor_3afcbed_bonds(
-                a,b,c,d,e,f, 
-                Haf,Hcb,Hed, 
-                new_chi, D_bond, # d_PHYS, 
-                C21EB, C32AD,C13CF,T1D,T2C,T2F,T3E,T3B,T1A)
-            +
-            energy_expectation_nearest_neighbor_other_3_bonds(
-                a,b,c,d,e,f, 
-                Hcd,Hef,Hab, 
-                new_chi, D_bond, # d_PHYS, 
-                C21AF,C32CB,C13ED,T1B,T2E,T2D,T3A,T3F,T1C)
-        ).item()
-        
-        delta_loss = new_loss_under_new_chi - old_loss
-        print(f"  Check optimized iPEPS with chi={new_chi}: loss = {new_loss_under_new_chi:+.10f}  Δloss = {delta_loss:.3e}")
-        return bool(abs(delta_loss) < delta_loss_threshold)
-"""
-
-
-
-
-
 # PG: To avoid complex numbers Hamiltonian can be wriiten with S+ and S-
+
 def build_heisenberg_H(J: float = 1.0, d: int = 2) -> torch.Tensor:
     # use spin s=(d-1)/2 to build spin-s operators sx, sy, sz:
     spin = (d - 1) / 2
@@ -2289,7 +2147,7 @@ def build_heisenberg_H(J: float = 1.0, d: int = 2) -> torch.Tensor:
 
         if i < d - 1:
             # coefficient for the transition m -> m-1
-            coeff = 0.5 * (spin * (spin + 1) - m * (m - 1)) ** 0.5  # real scalar
+            coeff = 0.5 * (spin * (spin + 1) - m * (m - 1)) ** 0.5  # real CS-coeff/2
 
             # Sx: symmetric real off-diagonals
             Sx[i, i + 1] = coeff
