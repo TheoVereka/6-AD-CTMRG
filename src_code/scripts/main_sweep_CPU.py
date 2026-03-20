@@ -129,7 +129,7 @@ from core_unrestricted import (
 # Time Budget
 # ══════════════════════════════════════════════════════════════════════════════
 
-TOTAL_BUDGET_HOURS = 0.15
+TOTAL_BUDGET_HOURS = 0.35
 
 # Total wall-clock time for the entire sweep.  The sweep is designed to run
 # for a fixed time rather than a fixed number of steps, so that results at
@@ -261,7 +261,7 @@ OPT_CONV_THRESHOLD = 1e-8
 
 # ── Optimizer choice ──────────────────────────────────────────────────────────
 
-OPTIMIZER = 'adam'
+OPTIMIZER = 'lbfgs'
 #   'lbfgs' : L-BFGS with strong-Wolfe line search (default).
 #             Converges fast on smooth landscapes; may oscillate on noisy ones.
 #   'adam'  : Adam (adaptive moment estimation).
@@ -626,11 +626,16 @@ def optimize_at_chi(
 
     # ── pre-create Adam optimizer (state persists across outer steps) ─────────
     _adam: torch.optim.Optimizer | None = None
+    _scheduler: torch.optim.lr_scheduler.ReduceLROnPlateau | None = None
     if OPTIMIZER == 'adam':
         _adam = torch.optim.Adam(
             [a, b, c, d, e, f],
             lr=ADAM_LR, betas=ADAM_BETAS, eps=ADAM_EPS,
             weight_decay=ADAM_WEIGHT_DECAY)
+        # Reduce LR when loss stops improving to prevent overshooting near
+        # chi-level minima. factor=0.5 halves LR after patience=4 uphill steps.
+        _scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            _adam, mode='min', factor=0.5, patience=4, min_lr=1e-5)
 
     def _loss_with_differentiable_ctmrg() -> tuple[torch.Tensor, int, dict[str, float]]:
         """Compute loss with CTMRG inside the autograd graph.
@@ -799,6 +804,8 @@ def optimize_at_chi(
                     [a, b, c, d, e, f], max_norm=1.0)
                 _adam.step()
             loss_item = _loss.detach().item()
+            if _scheduler is not None:
+                _scheduler.step(loss_item)
         delta     = (loss_item - prev_loss) if prev_loss is not None else float('inf')
         elapsed   = time.perf_counter() - t_start
 
