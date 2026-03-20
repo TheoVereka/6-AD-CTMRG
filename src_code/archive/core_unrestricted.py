@@ -34,7 +34,7 @@ RDTYPE: torch.dtype = torch.float32     # real dtype (SVD singular values, norms
 # Set to True to enable a runtime check inside trunc_rhoCCC that the three
 # SV sums (sum(sv32[:chi]), sum(sv13[:chi]), sum(sv21[:chi])) are nearly equal.
 # This is a physical consistency check; disable for production runs.
-DEBUG_CHECK_TRUNC_RHOCCC_SV_SUMS: bool = False
+DEBUG_CHECK_TRUNC_RHOCCC_SV_SUMS: bol = False
 
 # Set to True to enable truncation quality diagnostics: anti-Hermitian measures
 # of the three rho matrices and their full SV spectra are buffered on every
@@ -1030,14 +1030,14 @@ def update_environmentCTs_1to2(C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
         transfer tensors (shape ``(chi, D_squared, D_squared)``).
     """
 
-    matC21EB = oe.contract("YX,MYa,LXβ,amg,lbg->MmLl",
+    matC21EB = oe.contract("YX,MYa,LXb,amg,lbg->MmLl",
                            C21CD,T1F,T2A,E,B,
                            optimize=[(0,2),(0,3),(1,2),(0,1)],
                            backend='torch')
     
     matC21EB = matC21EB.reshape(chi*D_squared,chi*D_squared)
     
-    matC32AD = oe.contract("ZY,NZβ,MYg,abn,amg->NnMm",
+    matC32AD = oe.contract("ZY,NZb,MYg,abn,amg->NnMm",
                            C32EF,T2B,T3C,A,D,
                            optimize=[(0,2),(0,3),(1,2),(0,1)],
                            backend='torch')
@@ -1196,14 +1196,14 @@ def update_environmentCTs_2to3(C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A
         T3A, T3F, T1C)`` — the type-3 corners and transfer tensors.
     """
 
-    matC21AF = oe.contract("YX,MYa,LXβ,amg,lbg->MmLl",
+    matC21AF = oe.contract("YX,MYa,LXb,amg,lbg->MmLl",
                            C21EB,T1D,T2C,A,F,
                            optimize=[(0,2),(0,3),(1,2),(0,1)],
                            backend='torch')
     
     matC21AF = matC21AF.reshape(chi*D_squared,chi*D_squared)
     
-    matC32CB = oe.contract("ZY,NZβ,MYg,abn,amg->NnMm",
+    matC32CB = oe.contract("ZY,NZb,MYg,abn,amg->NnMm",
                            C32AD,T2F,T3E,C,B,
                            optimize=[(0,2),(0,3),(1,2),(0,1)],
                            backend='torch')
@@ -1358,14 +1358,14 @@ def update_environmentCTs_3to1(C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C
         T3C, T3D, T1E)`` — the renewed type-1 corners and transfer tensors.
     """
 
-    matC21CD = oe.contract("YX,MYa,LXβ,amg,lbg->MmLl",
+    matC21CD = oe.contract("YX,MYa,LXb,amg,lbg->MmLl",
                            C21AF,T1B,T2E,C,D,
                            optimize=[(0,2),(0,3),(1,2),(0,1)],
                            backend='torch')
     
     matC21CD = matC21CD.reshape(chi*D_squared,chi*D_squared)
     
-    matC32EF = oe.contract("ZY,NZβ,MYg,abn,amg->NnMm",
+    matC32EF = oe.contract("ZY,NZb,MYg,abn,amg->NnMm",
                            C32CB,T2D,T3A,E,F,
                            optimize=[(0,2),(0,3),(1,2),(0,1)],
                            backend='torch')
