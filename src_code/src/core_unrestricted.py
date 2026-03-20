@@ -34,7 +34,7 @@ RDTYPE: torch.dtype = torch.float32     # real dtype (SVD singular values, norms
 # Set to True to enable a runtime check inside trunc_rhoCCC that the three
 # SV sums (sum(sv32[:chi]), sum(sv13[:chi]), sum(sv21[:chi])) are nearly equal.
 # This is a physical consistency check; disable for production runs.
-DEBUG_CHECK_TRUNC_RHOCCC_SV_SUMS: bol = False
+DEBUG_CHECK_TRUNC_RHOCCC_SV_SUMS: bool = False
 
 # Set to True to enable truncation quality diagnostics: anti-Hermitian measures
 # of the three rho matrices and their full SV spectra are buffered on every
@@ -411,7 +411,7 @@ def abcdef_to_ABCDEF(a,b,c,d,e,f, D_squared:int):
 
 
 
-def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared,
+def trunc_rhoCCC_old_DEPRECATED(matC21, matC32, matC13, chi, D_squared,
                  *, check_sv_sums=None, sv_sums_rtol=3e-3, sv_sums_atol=1e-10):
     """
     Compute truncated CTM projectors and renormalised corner matrices.
@@ -571,8 +571,88 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared,
     return V2, C21, U1, V3, C32, U2, V1, C13, U3#, diagnostic_trunc
 
 
+def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
+
+    Q1, R1 = torch.linalg.qr(matC21.T)
+    Q2, R2 = torch.linalg.qr(torch.mm(matC13,matC32))
+    U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
+
+    truncUh = U[:,:chi].conj().T
+    truncV = Vh[:chi,:].conj().T
+    sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
+
+    P21My = torch.mm( R2.T ,torch.mm( truncV , sqrtInvTruncS ))
+    P32yM = torch.mm(torch.mm( sqrtInvTruncS , truncUh ), R1 )
 
 
+
+
+    Q1, R1 = torch.linalg.qr(matC32.T)
+    Q2, R2 = torch.linalg.qr(torch.mm(matC21,matC13))
+    U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
+
+    truncUh = U[:,:chi].conj().T
+    truncV = Vh[:chi,:].conj().T
+    sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
+
+    P32Nz = torch.mm( R2.T ,torch.mm( truncV , sqrtInvTruncS ))
+    P13zN = torch.mm(torch.mm( sqrtInvTruncS , truncUh ), R1 )
+
+
+
+
+    Q1, R1 = torch.linalg.qr(matC13.T)
+    Q2, R2 = torch.linalg.qr(torch.mm(matC32,matC21))
+    U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
+
+    truncUh = U[:,:chi].conj().T
+    truncV = Vh[:chi,:].conj().T
+    sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
+
+    P13Lx = torch.mm( R2.T ,torch.mm( truncV , sqrtInvTruncS ))
+    P21xL = torch.mm(torch.mm( sqrtInvTruncS , truncUh ), R1 )
+
+
+
+    C21 = torch.mm(P21My.T, torch.mm(matC21, P21xL.T))
+    C32 = torch.mm(P32Nz.T, torch.mm(matC32, P32yM.T))
+    C13 = torch.mm(P13Lx.T, torch.mm(matC13, P13zN.T))
+    
+    
+    rho_trunc = C13 @ C32 @ C21
+    tr_rho = torch.trace(rho_trunc)
+    tr_abs = tr_rho.abs()
+    if torch.isfinite(tr_abs).item() and (tr_abs > torch.finfo(tr_abs.dtype).tiny).item():
+        phase = tr_rho / tr_abs
+        C21 = C21 / phase
+
+        scaleC = tr_abs.pow(1.0 / 3.0)
+        if torch.isfinite(scaleC).item() and (scaleC > torch.finfo(scaleC.dtype).tiny).item():
+            C21 = C21 / scaleC
+            C32 = C32 / scaleC
+            C13 = C13 / scaleC
+
+    # ── Individual equalization: preserve Tr(rho)=1 while balancing magnitudes ──
+    # Scale factors multiply to 1  ⟹  Tr(rho) = Tr(C13·C32·C21) unchanged.
+    n21 = torch.linalg.norm(C21).real
+    n32 = torch.linalg.norm(C32).real
+    n13 = torch.linalg.norm(C13).real
+    nC_prod = n21 * n32 * n13
+    if torch.isfinite(nC_prod).item() and (nC_prod > torch.finfo(n21.dtype).tiny).item():
+        nC_geo = nC_prod.pow(1.0 / 3.0)
+        C21 = C21 * (nC_geo / n21)
+        C32 = C32 * (nC_geo / n32)
+        C13 = C13 * (nC_geo / n13)
+
+    U1dag = P21My.reshape(chi,D_squared, chi)
+    U2dag = P32Nz.reshape(chi,D_squared, chi)
+    U3dag = P13Lx.reshape(chi,D_squared, chi)
+
+    V1 = P13zN.reshape(chi, chi,D_squared)
+    V2 = P21xL.reshape(chi, chi,D_squared)
+    V3 = P32yM.reshape(chi, chi,D_squared)
+
+    return V2, C21, U1dag, V3, C32, U2dag, V1, C13, U3dag
 
 
 def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
@@ -700,68 +780,88 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
                           optimize=[(0,1),(0,1)],
                           backend='torch').reshape(D_squared*D_squared,D_squared*D_squared,D_squared)   
 
+        matC21 = C21CD
+        matC32 = C32EF
+        matC13 = C13AB
 
-        # truncate CCC
-        rho32 = oe.contract("UZ,ZY,YV->UV",
-                                C13AB,C32EF,C21CD,
-                                optimize=[(0,1),(0,1)],
-                                backend='torch')
-        U3F, sv32, V2E = svd_fixed(rho32)
-        U3F = U3F[:,:chi].conj()
-        V2E = V2E[:chi,:].conj()
+        Q1, R1 = torch.linalg.qr(matC21.T)
+        Q2, R2 = torch.linalg.qr(torch.mm(matC13,matC32))
+        U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
+
+        truncUh = U[:,:chi].conj().T
+        truncV = Vh[:chi,:].conj().T
+        sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
+
+        P21My = torch.mm( R2.T ,torch.mm( truncV , sqrtInvTruncS ))
+        P32yM = torch.mm(torch.mm( sqrtInvTruncS , truncUh ), R1 )
+
+
+
+
+        Q1, R1 = torch.linalg.qr(matC32.T)
+        Q2, R2 = torch.linalg.qr(torch.mm(matC21,matC13))
+        U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
+
+        truncUh = U[:,:chi].conj().T
+        truncV = Vh[:chi,:].conj().T
+        sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
+
+        P32Nz = torch.mm( R2.T ,torch.mm( truncV , sqrtInvTruncS ))
+        P13zN = torch.mm(torch.mm( sqrtInvTruncS , truncUh ), R1 )
+
+
+
+
+        Q1, R1 = torch.linalg.qr(matC13.T)
+        Q2, R2 = torch.linalg.qr(torch.mm(matC32,matC21))
+        U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
+
+        truncUh = U[:,:chi].conj().T
+        truncV = Vh[:chi,:].conj().T
+        sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
+
+        P13Lx = torch.mm( R2.T ,torch.mm( truncV , sqrtInvTruncS ))
+        P21xL = torch.mm(torch.mm( sqrtInvTruncS , truncUh ), R1 )
+
+
+
+        C21 = torch.mm(P21My.T, torch.mm(matC21, P21xL.T))
+        C32 = torch.mm(P32Nz.T, torch.mm(matC32, P32yM.T))
+        C13 = torch.mm(P13Lx.T, torch.mm(matC13, P13zN.T))
         
-        rho13 = oe.contract("UX,XZ,ZV->UV",
-                                C21CD,C13AB,C32EF,
-                                optimize=[(0,1),(0,1)],
-                                backend='torch')
-        U1B, sv13, V3A = svd_fixed(rho13)
-        U1B = U1B[:,:chi].conj() 
-        V3A = V3A[:chi,:].conj()
         
-        rho21 = oe.contract("UY,YX,XV->UV",
-                                C32EF,C21CD,C13AB,
-                                optimize=[(0,1),(0,1)],
-                                backend='torch')
-        U2D, sv21, V1C = svd_fixed(rho21)
-        U2D = U2D[:,:chi].conj()
-        V1C = V1C[:chi,:].conj()
-
-        C21CD = oe.contract("Yy,YX,xX->yx",
-                                U1B,C21CD,V2E,
-                                optimize=[(0,1),(0,1)],
-                                backend='torch')
-        C32EF = oe.contract("Zz,ZY,yY->zy",
-                                U2D,C32EF,V3A,
-                                optimize=[(0,1),(0,1)],
-                                backend='torch')
-        C13AB = oe.contract("Xx,XZ,zZ->xz",
-                                U3F,C13AB,V1C,
-                                optimize=[(0,1),(0,1)],
-                                backend='torch')
-
-
-        # normalize C*3
-        pseudo_rho_trunc = C13AB @ C32EF @ C21CD
-        tr_rho = torch.trace(pseudo_rho_trunc)
+        rho_trunc = C13 @ C32 @ C21
+        tr_rho = torch.trace(rho_trunc)
         tr_abs = tr_rho.abs()
         if torch.isfinite(tr_abs).item() and (tr_abs > torch.finfo(tr_abs.dtype).tiny).item():
             phase = tr_rho / tr_abs
-            C21CD = C21CD / phase
+            C21 = C21 / phase
+
             scaleC = tr_abs.pow(1.0 / 3.0)
             if torch.isfinite(scaleC).item() and (scaleC > torch.finfo(scaleC.dtype).tiny).item():
-                C21CD = C21CD / scaleC
-                C32EF = C32EF / scaleC
-                C13AB = C13AB / scaleC
+                C21 = C21 / scaleC
+                C32 = C32 / scaleC
+                C13 = C13 / scaleC
 
-        n21 = torch.linalg.norm(C21CD).real
-        n32 = torch.linalg.norm(C32EF).real
-        n13 = torch.linalg.norm(C13AB).real
+        # ── Individual equalization: preserve Tr(rho)=1 while balancing magnitudes ──
+        # Scale factors multiply to 1  ⟹  Tr(rho) = Tr(C13·C32·C21) unchanged.
+        n21 = torch.linalg.norm(C21).real
+        n32 = torch.linalg.norm(C32).real
+        n13 = torch.linalg.norm(C13).real
         nC_prod = n21 * n32 * n13
         if torch.isfinite(nC_prod).item() and (nC_prod > torch.finfo(n21.dtype).tiny).item():
             nC_geo = nC_prod.pow(1.0 / 3.0)
-            C21CD = C21CD * (nC_geo / n21)
-            C32EF = C32EF * (nC_geo / n32)
-            C13AB = C13AB * (nC_geo / n13)
+            C21CD = C21 * (nC_geo / n21)
+            C32EF = C32 * (nC_geo / n32)
+            C13AB = C13 * (nC_geo / n13)
+
+        U1B = P21My.reshape(D_squared*D_squared, chi)
+        U2D = P32Nz.reshape(D_squared*D_squared, chi)
+        U3F = P13Lx.reshape(D_squared*D_squared, chi)
+
+        V1C = P13zN.reshape(chi, D_squared*D_squared)
+        V2E = P21xL.reshape(chi, D_squared*D_squared)
+        V3A = P32yM.reshape(chi, D_squared*D_squared)
 
 
         # Uh,V project on one side(XYZ) of Ts
@@ -773,14 +873,16 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         T3D = oe.contract("LXg,xX->Lxg",T3D,V2E,optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)
         T1E = oe.contract("NZa,Zz->Nza",T1E,U2D,optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)  
 
+
+
         
         #the other side(LMN) projection of Ts
         out2Ain3D = torch.mm(T2A.T, T3D)
         out3Cin1F = torch.mm(T3C.T, T1F)
         out1Ein2B = torch.mm(T1E.T, T2B)
-        T2A, svL, T3D = svd_fixed(out2Ain3D)
-        T3C, svM, T1F = svd_fixed(out3Cin1F)
-        T1E, svN, T2B = svd_fixed(out1Ein2B)
+        T2A, svL, T3D = torch.linalg.svd(out2Ain3D)
+        T3C, svM, T1F = torch.linalg.svd(out3Cin1F)
+        T1E, svN, T2B = torch.linalg.svd(out1Ein2B)
 
         sqrt_svL = torch.sqrt(svL[:chi])
         sqrt_svM = torch.sqrt(svM[:chi])
@@ -792,6 +894,8 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         T1E = T1E[:, :chi].T * sqrt_svN.unsqueeze(1)
         T2B = T2B[:chi, :] * sqrt_svN.unsqueeze(1)
 
+
+
         T1F = T1F.reshape(chi, chi, D_squared)
         T2A = T2A.reshape(chi, chi, D_squared)
         T2B = T2B.reshape(chi, chi, D_squared)
@@ -800,11 +904,13 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         T1E = T1E.reshape(chi, chi, D_squared)
 
 
+
         # normalization of T*6
         closed_E = oe.contract("YX,MYa,abg->MbXg",
                                 C21CD, T1F, E,
                                 optimize=[(0,1),(0,1)], backend='torch'
                                 ).reshape(chi*D_squared, chi*D_squared)
+
         closed_D = oe.contract("MYg,abg->YaMb",
                                 T3C, D,
                                 optimize=[(0,1)], backend='torch'
@@ -2164,8 +2270,8 @@ def build_heisenberg_H(J: float = 1.0, d: int = 2) -> torch.Tensor:
     #sz = torch.tensor([[1, 0], [0, -1]], dtype=CDTYPE) / 2
 
     SdotS = (oe.contract("ij,kl->ijkl", Sx, Sx)
-           + oe.contract("ij,kl->ijkl", Sy, Sy)
-           + oe.contract("ij,kl->ijkl", Sz, Sz))
+           + oe.contract("ij,kl->ijkl", Sy, Sy)*0.0
+           + oe.contract("ij,kl->ijkl", Sz, Sz)*0.0)
     return J * SdotS
 
 

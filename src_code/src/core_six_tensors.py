@@ -206,6 +206,11 @@ def get_2_projectors_from_2_matrices():
 
 def get_6_projectors_from_3_Corners(, 
                                     CprojCCanticlockwise=True):
+    """
+    Don't use Juraj convention, he forgot to QR decomposition! 
+    thus the invertibility of R is not guaranteed, 
+    and the projectors may not be well-defined. 
+    """
     pass
 
 
