@@ -22,6 +22,13 @@ import os, sys
 import torch
 
 
+#################################
+# TODO: USE gesvd! -- Fisherman: https://journals.aps.org/prb/pdf/10.1103/PhysRevB.98.235148
+#################################
+
+
+
+
 # ── Precision control ─────────────────────────────────────────────────────────
 # Default: float32 / complex64 — fastest on both CPU (MKL) and CUDA.
 # Call  set_dtype(True)  BEFORE allocating any tensor to switch to
@@ -683,9 +690,17 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     C13 = C13/torch.linalg.norm(C13)
     
 
-    """
+    
     rho_trunc = C13 @ C32 @ C21
     tr_rho = torch.trace(rho_trunc)
+    #print(f"Tr(rho_trunc) before normalization: {tr_rho.item():.6e}")
+    toBeDivided = torch.pow(tr_rho, 1.0/3.0)
+    C21 = C21 / toBeDivided
+    C32 = C32 / toBeDivided
+    C13 = C13 / toBeDivided
+
+
+    """
     tr_abs = tr_rho.abs()
 
     if torch.isfinite(tr_abs).item() and (tr_abs > torch.finfo(tr_abs.dtype).tiny).item():
@@ -755,19 +770,37 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         # physical corner contribution; 1e-3 is a reasonable starting point.
         id_noise_scale = 1e-2
 
-        identityC = torch.eye(chi, dtype=A.dtype, device=A.device)
-        C21CD = identityC + id_noise_scale * torch.randn_like(identityC)
-        C32EF = identityC + id_noise_scale * torch.randn_like(identityC)
-        C13AB = identityC + id_noise_scale * torch.randn_like(identityC)
+        if False: 
 
-        identityT = torch.eye(chi*D_bond, dtype=A.dtype, device=A.device)
-        identityT = identityT.reshape(chi, D_bond, chi, D_bond).permute(0, 2, 1, 3).reshape(chi, chi, D_squared)
-        T1F = identityT + id_noise_scale * torch.randn_like(identityT)
-        T2A = identityT + id_noise_scale * torch.randn_like(identityT)
-        T2B = identityT + id_noise_scale * torch.randn_like(identityT)
-        T3C = identityT + id_noise_scale * torch.randn_like(identityT)
-        T3D = identityT + id_noise_scale * torch.randn_like(identityT)
-        T1E = identityT + id_noise_scale * torch.randn_like(identityT)
+            identityC = torch.eye(chi, dtype=A.dtype, device=A.device)
+            C21CD = identityC + id_noise_scale * torch.randn_like(identityC)
+            C32EF = identityC + id_noise_scale * torch.randn_like(identityC)
+            C13AB = identityC + id_noise_scale * torch.randn_like(identityC)
+
+            identityT = torch.eye(chi*D_bond, dtype=A.dtype, device=A.device)
+            identityT = identityT.reshape(chi, D_bond, chi, D_bond).permute(0, 2, 1, 3).reshape(chi, chi, D_squared)
+            T1F = identityT + id_noise_scale * torch.randn_like(identityT)
+            T2A = identityT + id_noise_scale * torch.randn_like(identityT)
+            T2B = identityT + id_noise_scale * torch.randn_like(identityT)
+            T3C = identityT + id_noise_scale * torch.randn_like(identityT)
+            T3D = identityT + id_noise_scale * torch.randn_like(identityT)
+            T1E = identityT + id_noise_scale * torch.randn_like(identityT)
+
+        else:
+
+            allOnesC = torch.ones((chi, chi), dtype=A.dtype, device=A.device)
+            C21CD = allOnesC + id_noise_scale * torch.randn_like(allOnesC)
+            C32EF = allOnesC + id_noise_scale * torch.randn_like(allOnesC)
+            C13AB = allOnesC + id_noise_scale * torch.randn_like(allOnesC)
+
+            allOnesT = torch.ones((chi, chi, D_squared), dtype=A.dtype, device=A.device)
+            T1F = allOnesT + id_noise_scale * torch.randn_like(allOnesT)
+            T2A = allOnesT + id_noise_scale * torch.randn_like(allOnesT)
+            T2B = allOnesT + id_noise_scale * torch.randn_like(allOnesT)
+            T3C = allOnesT + id_noise_scale * torch.randn_like(allOnesT)
+            T3D = allOnesT + id_noise_scale * torch.randn_like(allOnesT)
+            T1E = allOnesT + id_noise_scale * torch.randn_like(allOnesT)
+
 
         C21CD = normalize_tensor(C21CD)
         C32EF = normalize_tensor(C32EF)
@@ -778,6 +811,8 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         T3C = normalize_tensor(T3C)
         T3D = normalize_tensor(T3D)
         T1E = normalize_tensor(T1E)
+
+
 
     else: 
         # brutal contract env from 8*3 + 5*4*3 + 6 = 90 local tensors
@@ -848,12 +883,11 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
                           optimize=[(0,1),(0,1)],
                           backend='torch').reshape(D_squared*D_squared,D_squared*D_squared,D_squared)   
 
-        matC21 = C21CD
-        matC32 = C32EF
-        matC13 = C13AB
+        R1 = C21CD.T
+        R2 = torch.mm(C13AB,C32EF)
 
-        Q1, R1 = torch.linalg.qr(matC21.T)
-        Q2, R2 = torch.linalg.qr(torch.mm(matC13,matC32))
+        #Q1, R1 = torch.linalg.qr(matC21.T)
+        #Q2, R2 = torch.linalg.qr(torch.mm(matC13,matC32))
         U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
 
         truncUh = U[:,:chi].conj().T
@@ -864,10 +898,11 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         P32yM = torch.mm(torch.mm( sqrtInvTruncS , truncUh ), R1 )
 
 
+        R1 = C32EF.T
+        R2 = torch.mm(C21CD,C13AB)
 
-
-        Q1, R1 = torch.linalg.qr(matC32.T)
-        Q2, R2 = torch.linalg.qr(torch.mm(matC21,matC13))
+        #Q1, R1 = torch.linalg.qr(matC32.T)
+        #Q2, R2 = torch.linalg.qr(torch.mm(matC21,matC13))
         U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
 
         truncUh = U[:,:chi].conj().T
@@ -878,10 +913,11 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         P13zN = torch.mm(torch.mm( sqrtInvTruncS , truncUh ), R1 )
 
 
+        R1 = C13AB.T
+        R2 = torch.mm(C32EF,C21CD)
 
-
-        Q1, R1 = torch.linalg.qr(matC13.T)
-        Q2, R2 = torch.linalg.qr(torch.mm(matC32,matC21))
+        #Q1, R1 = torch.linalg.qr(matC13.T)
+        #Q2, R2 = torch.linalg.qr(torch.mm(matC32,matC21))
         U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
 
         truncUh = U[:,:chi].conj().T
@@ -893,13 +929,23 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
 
 
 
-        C21 = torch.mm(P21My.T, torch.mm(matC21, P21xL.T))
-        C32 = torch.mm(P32Nz.T, torch.mm(matC32, P32yM.T))
-        C13 = torch.mm(P13Lx.T, torch.mm(matC13, P13zN.T))
+        C21 = torch.mm(P21My.T, torch.mm(C21CD, P21xL.T))
+        C32 = torch.mm(P32Nz.T, torch.mm(C32EF, P32yM.T))
+        C13 = torch.mm(P13Lx.T, torch.mm(C13AB, P13zN.T))
         
+        C21 = C21/torch.linalg.norm(C21)
+        C32 = C32/torch.linalg.norm(C32)
+        C13 = C13/torch.linalg.norm(C13)
         
         rho_trunc = C13 @ C32 @ C21
         tr_rho = torch.trace(rho_trunc)
+        #print(f"Tr(rho_trunc) before normalization: {tr_rho.item():.6e}")
+        toBeDivided = torch.pow(tr_rho, 1.0/3.0)
+        C21CD = C21 / toBeDivided
+        C32EF = C32 / toBeDivided
+        C13AB = C13 / toBeDivided
+
+        """
         tr_abs = tr_rho.abs()
         if torch.isfinite(tr_abs).item() and (tr_abs > torch.finfo(tr_abs.dtype).tiny).item():
             phase = tr_rho / tr_abs
@@ -922,6 +968,7 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
             C21CD = C21 * (nC_geo / n21)
             C32EF = C32 * (nC_geo / n32)
             C13AB = C13 * (nC_geo / n13)
+        """
 
         U1B = P21My.reshape(D_squared*D_squared, chi)
         U2D = P32Nz.reshape(D_squared*D_squared, chi)
@@ -940,6 +987,8 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         T3C = oe.contract("MYg,Yy->Myg",T3C,U1B,optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)
         T3D = oe.contract("LXg,xX->Lxg",T3D,V2E,optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)
         T1E = oe.contract("NZa,Zz->Nza",T1E,U2D,optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)  
+
+
 
 
 
@@ -964,12 +1013,21 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
 
 
 
+
+
         T1F = T1F.reshape(chi, chi, D_squared)
         T2A = T2A.reshape(chi, chi, D_squared)
         T2B = T2B.reshape(chi, chi, D_squared)
         T3C = T3C.reshape(chi, chi, D_squared)
         T3D = T3D.reshape(chi, chi, D_squared)
         T1E = T1E.reshape(chi, chi, D_squared)
+
+        T1F = T1F / torch.linalg.norm(T1F)
+        T2A = T2A / torch.linalg.norm(T2A)
+        T2B = T2B / torch.linalg.norm(T2B)
+        T3C = T3C / torch.linalg.norm(T3C)
+        T3D = T3D / torch.linalg.norm(T3D)
+        T1E = T1E / torch.linalg.norm(T1E)
 
 
 
@@ -1003,8 +1061,18 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         AD = torch.mm(closed_A, closed_D)
         CF = torch.mm(closed_C, closed_F)
         EB = torch.mm(closed_E, closed_B)
-        norm_val  = oe.contract("xy,yz,zx->", AD, EB, CF, backend='torch')
+        TrRho_val  = oe.contract("xy,yz,zx->", AD, EB, CF, backend='torch')
+        print(f"Tr(Rho) for T normalization check: {TrRho_val.item():.6e}")
 
+        toBeDivided = torch.pow(TrRho_val, 1.0/6.0)
+        T1F = T1F / toBeDivided
+        T2A = T2A / toBeDivided
+        T2B = T2B / toBeDivided
+        T3C = T3C / toBeDivided
+        T3D = T3D / toBeDivided
+        T1E = T1E / toBeDivided
+
+        """
         norm_abs = norm_val.abs()
         if torch.isfinite(norm_abs).item() and (norm_abs > torch.finfo(norm_abs.dtype).tiny).item():
             phase = norm_val / norm_abs
@@ -1033,6 +1101,7 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
             T1F = T1F * (nT_geo / nT1F)
             T2A = T2A * (nT_geo / nT2A)
             T2B = T2B * (nT_geo / nT2B)
+    """
         
 
     return C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
@@ -1345,6 +1414,26 @@ def update_environmentCTs_1to2(C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
     # Expand double-layer (D²,D²,D²) → rank-6 (D,D,D,D,D,D) so the contraction
     # strings are structurally identical to norm_env_2; then divide all 6 Ts
     # by <iPEPS|iPEPS>^(1/6).
+
+
+
+
+
+
+
+    T3E = T3E/torch.linalg.norm(T3E)
+    T3B = T3B/torch.linalg.norm(T3B)
+    T1A = T1A/torch.linalg.norm(T1A)
+    T1D = T1D/torch.linalg.norm(T1D)
+    T2C = T2C/torch.linalg.norm(T2C)
+    T2F = T2F/torch.linalg.norm(T2F)
+
+
+
+
+
+
+
     D_bond = int(round(D_squared ** 0.5))
     A6 = A.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)  # indices: (a,r,b,s,c,t)
     B6 = B.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
@@ -1391,7 +1480,19 @@ def update_environmentCTs_1to2(C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
     CB = torch.mm(closed_C, closed_B)
     ED = torch.mm(closed_E, closed_D)
     AF = torch.mm(closed_A, closed_F)
-    norm_val  = oe.contract("xy,yz,zx->", CB, AF, ED, backend='torch')
+    TrRho_val  = oe.contract("xy,yz,zx->", CB, AF, ED, backend='torch')
+    #print("TrRhoFor6Ts_val", TrRho_val.item())
+
+    toBeDivided = torch.pow(TrRho_val.abs(), 1.0/6.0)
+    T3E = T3E / toBeDivided
+    T3B = T3B / toBeDivided
+    T1A = T1A / toBeDivided
+    T1D = T1D / toBeDivided
+    T2C = T2C / toBeDivided
+    T2F = T2F / toBeDivided
+
+    """
+
     # Fix both magnitude and complex phase so <iPEPS|iPEPS> ≈ 1 (real).
     norm_abs = norm_val.abs()
     if torch.isfinite(norm_abs).item() and (norm_abs > torch.finfo(norm_abs.dtype).tiny).item():
@@ -1424,6 +1525,8 @@ def update_environmentCTs_1to2(C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
         T1D = T1D * (nT_geo / nT1D)
         T2C = T2C * (nT_geo / nT2C)
         T2F = T2F * (nT_geo / nT2F)
+    
+    """
 
     return C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A
 
@@ -1506,6 +1609,30 @@ def update_environmentCTs_2to3(C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A
                         T1A,D,V1A,
                         optimize=[(0,1),(0,1)],
                         backend='torch')
+    
+
+
+
+
+
+
+
+
+
+    T3A = T3A/torch.linalg.norm(T3A)
+    T3F = T3F/torch.linalg.norm(T3F)
+    T1C = T1C/torch.linalg.norm(T1C)
+    T1B = T1B/torch.linalg.norm(T1B)
+    T2E = T2E/torch.linalg.norm(T2E)
+    T2D = T2D/torch.linalg.norm(T2D)
+
+
+
+
+
+
+
+
 
     # ── End-of-update transfer normalization (mirrors norm_env_3) ────────────
     D_bond = int(round(D_squared ** 0.5))
@@ -1554,7 +1681,17 @@ def update_environmentCTs_2to3(C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A
     EF = torch.mm(closed_E, closed_F)
     AB = torch.mm(closed_A, closed_B)
     CD = torch.mm(closed_C, closed_D)
-    norm_val  = oe.contract("xy,yz,zx->", EF, CD, AB, backend='torch')
+    TrRho_val  = oe.contract("xy,yz,zx->", EF, CD, AB, backend='torch')
+
+    toBeDivided = torch.pow(TrRho_val.abs(), 1.0/6.0)
+    T3A = T3A / toBeDivided
+    T3F = T3F / toBeDivided
+    T1C = T1C / toBeDivided
+    T1B = T1B / toBeDivided
+    T2E = T2E / toBeDivided
+    T2D = T2D / toBeDivided
+
+    """
     # Fix both magnitude and complex phase so <iPEPS|iPEPS> ≈ 1 (real).
     norm_abs = norm_val.abs()
     if torch.isfinite(norm_abs).item() and (norm_abs > torch.finfo(norm_abs.dtype).tiny).item():
@@ -1586,6 +1723,7 @@ def update_environmentCTs_2to3(C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A
         T1B = T1B * (nT_geo / nT1B)
         T2E = T2E * (nT_geo / nT2E)
         T2D = T2D * (nT_geo / nT2D)
+    """
 
     return C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C
 
@@ -1671,6 +1809,30 @@ def update_environmentCTs_3to1(C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C
                         T1C,B,V1C,
                         optimize=[(0,1),(0,1)],
                         backend='torch')
+    
+
+
+
+
+
+
+
+
+
+    T3C = T3C/torch.linalg.norm(T3C)
+    T3D = T3D/torch.linalg.norm(T3D)
+    T1E = T1E/torch.linalg.norm(T1E)
+    T1F = T1F/torch.linalg.norm(T1F)
+    T2A = T2A/torch.linalg.norm(T2A)
+    T2B = T2B/torch.linalg.norm(T2B)
+
+
+
+
+
+
+
+
 
     # ── End-of-update transfer normalization (mirrors norm_env_1) ────────────
     # norm_env_1: open_E= "YX,MYar,abci,rstj->MbsXctij" → "YX,MYar,arbsct->MbsXct"
@@ -1706,7 +1868,18 @@ def update_environmentCTs_3to1(C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C
     AD = torch.mm(closed_A, closed_D)
     CF = torch.mm(closed_C, closed_F)
     EB = torch.mm(closed_E, closed_B)
-    norm_val  = oe.contract("xy,yz,zx->", AD, EB, CF, backend='torch')
+    TrRho_val  = oe.contract("xy,yz,zx->", AD, EB, CF, backend='torch')
+
+    toBeDivided = torch.pow(TrRho_val.abs(), 1.0/6.0)
+    T3C = T3C / toBeDivided
+    T3D = T3D / toBeDivided
+    T1E = T1E / toBeDivided
+    T1F = T1F / toBeDivided
+    T2A = T2A / toBeDivided
+    T2B = T2B / toBeDivided
+
+    """
+    
     # Fix both magnitude and complex phase so <iPEPS|iPEPS> ≈ 1 (real).
     norm_abs = norm_val.abs()
     if torch.isfinite(norm_abs).item() and (norm_abs > torch.finfo(norm_abs.dtype).tiny).item():
@@ -1738,6 +1911,8 @@ def update_environmentCTs_3to1(C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C
         T1F = T1F * (nT_geo / nT1F)
         T2A = T2A * (nT_geo / nT2A)
         T2B = T2B * (nT_geo / nT2B)
+
+    """
 
     return C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
 
