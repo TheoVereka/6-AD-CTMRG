@@ -382,29 +382,29 @@ def abcdef_to_ABCDEF(a,b,c,d,e,f, D_squared:int):
         pair per honeycomb leg), dtype ``torch.complex64``.
     """
 
-    A = oe.contract("uvwφ,xyzφ->uxvywz", a, a.conj(), optimize=[(0, 1)], backend='torch')
+    A = oe.contract("uvwp,xyzp->uxvywz", a, a.conj(), optimize=[(0, 1)], backend='torch')
     A = A.reshape(D_squared, D_squared, D_squared)
-    A = normalize_tensor(A)
+    # A = normalize_tensor(A)
 
-    B = oe.contract("uvwφ,xyzφ->uxvywz", b, b.conj(), optimize=[(0, 1)], backend='torch')
+    B = oe.contract("uvwp,xyzp->uxvywz", b, b.conj(), optimize=[(0, 1)], backend='torch')
     B = B.reshape(D_squared, D_squared, D_squared)
-    B = normalize_tensor(B)
+    # B = normalize_tensor(B)
 
-    C = oe.contract("uvwφ,xyzφ->uxvywz", c, c.conj(), optimize=[(0, 1)], backend='torch')
+    C = oe.contract("uvwp,xyzp->uxvywz", c, c.conj(), optimize=[(0, 1)], backend='torch')
     C = C.reshape(D_squared, D_squared, D_squared)
-    C = normalize_tensor(C)
+    # C = normalize_tensor(C)
 
-    D = oe.contract("uvwφ,xyzφ->uxvywz", d, d.conj(), optimize=[(0, 1)], backend='torch')
+    D = oe.contract("uvwp,xyzp->uxvywz", d, d.conj(), optimize=[(0, 1)], backend='torch')
     D = D.reshape(D_squared, D_squared, D_squared)
-    D = normalize_tensor(D)
+    # D = normalize_tensor(D)
 
-    E = oe.contract("uvwφ,xyzφ->uxvywz", e, e.conj(), optimize=[(0, 1)], backend='torch')
+    E = oe.contract("uvwp,xyzp->uxvywz", e, e.conj(), optimize=[(0, 1)], backend='torch')
     E = E.reshape(D_squared, D_squared, D_squared)
-    E = normalize_tensor(E)
+    # E = normalize_tensor(E)
 
-    F = oe.contract("uvwφ,xyzφ->uxvywz", f, f.conj(), optimize=[(0, 1)], backend='torch')
+    F = oe.contract("uvwp,xyzp->uxvywz", f, f.conj(), optimize=[(0, 1)], backend='torch')
     F = F.reshape(D_squared, D_squared, D_squared)
-    F = normalize_tensor(F)
+    # F = normalize_tensor(F)
 
     return A,B,C,D,E,F
 
@@ -584,6 +584,10 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     P21My = torch.mm( R2.T ,torch.mm( truncV , sqrtInvTruncS ))
     P32yM = torch.mm(torch.mm( sqrtInvTruncS , truncUh ), R1 )
 
+    almost_identity = torch.mm(P21My,P32yM)
+    corresponding_identity = torch.eye(almost_identity.shape[0], device=almost_identity.device, dtype=almost_identity.dtype)
+    identity_error = torch.linalg.norm(almost_identity - corresponding_identity) / torch.linalg.norm(corresponding_identity)
+    print(f"trunc_rhoCCC: P21My @ P32yM ≈ I check: relative error = {identity_error:.2e}")
 
 
 
@@ -619,9 +623,16 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     C13 = torch.mm(P13Lx.T, torch.mm(matC13, P13zN.T))
     
     
+    C21 = C21/torch.linalg.norm(C21)
+    C32 = C32/torch.linalg.norm(C32)
+    C13 = C13/torch.linalg.norm(C13)
+    
+
+    """
     rho_trunc = C13 @ C32 @ C21
     tr_rho = torch.trace(rho_trunc)
     tr_abs = tr_rho.abs()
+
     if torch.isfinite(tr_abs).item() and (tr_abs > torch.finfo(tr_abs.dtype).tiny).item():
         phase = tr_rho / tr_abs
         C21 = C21 / phase
@@ -632,8 +643,8 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
             C32 = C32 / scaleC
             C13 = C13 / scaleC
 
-    # ── Individual equalization: preserve Tr(rho)=1 while balancing magnitudes ──
-    # Scale factors multiply to 1  ⟹  Tr(rho) = Tr(C13·C32·C21) unchanged.
+    # ── Individual equalization: preserve |Tr(rho)|=1 while balancing magnitudes ──
+    # Scale factors multiply to 1  ⟹  |Tr(rho)| = |Tr(C13·C32·C21)| unchanged.
     n21 = torch.linalg.norm(C21).real
     n32 = torch.linalg.norm(C32).real
     n13 = torch.linalg.norm(C13).real
@@ -643,6 +654,8 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
         C21 = C21 * (nC_geo / n21)
         C32 = C32 * (nC_geo / n32)
         C13 = C13 * (nC_geo / n13)
+    """
+
 
     U1dag = P21My.reshape(chi,D_squared, chi)
     U2dag = P32Nz.reshape(chi,D_squared, chi)
@@ -868,7 +881,7 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
 
         T1F = oe.contract("MYa,yY->Mya",T1F,V3A,optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)
         T2A = oe.contract("LXb,Xx->Lxb",T2A,U3F,optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)
-        T2B = oe.contract("NZa,zZ->Nza",T2B,V1C,optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)
+        T2B = oe.contract("NZb,zZ->Nzb",T2B,V1C,optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)
         T3C = oe.contract("MYg,Yy->Myg",T3C,U1B,optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)
         T3D = oe.contract("LXg,xX->Lxg",T3D,V2E,optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)
         T1E = oe.contract("NZa,Zz->Nza",T1E,U2D,optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)  
@@ -974,7 +987,7 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
 
 
 
-def check_env_convergence(lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E, 
+def check_env_convergence_DEPRECATED(lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E, 
                           nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, 
                           lastC21EB, lastC32AD, lastC13CF, lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A, 
                           nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A, 
@@ -1060,39 +1073,121 @@ def check_env_CV_using_3rho(lastC21CD, lastC32EF, lastC13AB,
     if lastC21CD is None or lastC21EB is None or lastC21AF is None:
         return False
 
+    max_delta = 0.0
     # The rhos defined by 1-1 cut: 13 @ 32 @ 21
-    last_rhoABEFCD = oe.contract("UZ,ZY,YV->UV",
+    last_rho1 = oe.contract("UZ,ZY,YV->UV",
                                 lastC13AB,lastC32EF,lastC21CD,
                                 optimize=[(0,1),(0,1)],
                                 backend='torch')
-    now_rhoABEFCD = oe.contract("UZ,ZY,YV->UV",
+    now_rho1 = oe.contract("UZ,ZY,YV->UV",
                                 nowC13AB,nowC32EF,nowC21CD,
                                 optimize=[(0,1),(0,1)],
                                 backend='torch')
-    last_rhoCFADEB = oe.contract("UZ,ZY,YV->UV",
+    last_rho2 = oe.contract("UZ,ZY,YV->UV",
                                 lastC13CF,lastC32AD,lastC21EB,
                                 optimize=[(0,1),(0,1)],
                                 backend='torch')
-    now_rhoCFADEB = oe.contract("UZ,ZY,YV->UV",
+    now_rho2 = oe.contract("UZ,ZY,YV->UV",
                                 nowC13CF,nowC32AD,nowC21EB,
                                 optimize=[(0,1),(0,1)],
                                 backend='torch')
-    last_rhoEDCBAF = oe.contract("UZ,ZY,YV->UV",
+    last_rho3 = oe.contract("UZ,ZY,YV->UV",
                                 lastC13ED,lastC32CB,lastC21AF,
                                 optimize=[(0,1),(0,1)],
                                 backend='torch')
-    now_rhoEDCBAF = oe.contract("UZ,ZY,YV->UV",
+    now_rho3 = oe.contract("UZ,ZY,YV->UV",
                                 nowC13ED,nowC32CB,nowC21AF, 
                                 optimize=[(0,1),(0,1)],
                                 backend='torch')
 
     rho_pairs = [
-        (last_rhoABEFCD, now_rhoABEFCD),
-        (last_rhoCFADEB, now_rhoCFADEB),
-        (last_rhoEDCBAF, now_rhoEDCBAF),
+        (last_rho1, now_rho1),
+        (last_rho2, now_rho2),
+        (last_rho3, now_rho3),
     ]
 
-    max_delta = 0.0
+    for last_c, now_c in rho_pairs:
+        sv_last = torch.linalg.svdvals(last_c).real
+        sv_now  = torch.linalg.svdvals(now_c ).real
+        # Normalise so that the largest singular value is 1 (scale-invariant).
+        sv_last = sv_last / (sv_last[0] + 1e-30)
+        sv_now  = sv_now  / (sv_now [0] + 1e-30)
+        delta = (sv_now - sv_last).abs().max().item()
+        if delta > max_delta:
+            max_delta = delta
+
+    last_rho1 = oe.contract("UY,YX,XV->UV",
+                                lastC32EF,lastC21CD,lastC13AB,
+                                optimize=[(0,1),(0,1)],
+                                backend='torch')
+    now_rho1 = oe.contract("UY,YX,XV->UV",
+                                nowC32EF,nowC21CD,nowC13AB,
+                                optimize=[(0,1),(0,1)],
+                                backend='torch')
+    last_rho2 = oe.contract("UY,YX,XV->UV",
+                                lastC32AD,lastC21EB,lastC13CF,
+                                optimize=[(0,1),(0,1)],
+                                backend='torch')
+    now_rho2 = oe.contract("UY,YX,XV->UV",
+                                nowC32AD,nowC21EB,nowC13CF,
+                                optimize=[(0,1),(0,1)],
+                                backend='torch')
+    last_rho3 = oe.contract("UY,YX,XV->UV",
+                                lastC32CB,lastC21AF,lastC13ED,
+                                optimize=[(0,1),(0,1)],
+                                backend='torch')
+    now_rho3 = oe.contract("UY,YX,XV->UV",
+                                nowC32CB,nowC21AF,nowC13ED, 
+                                optimize=[(0,1),(0,1)],
+                                backend='torch')
+
+    rho_pairs = [
+        (last_rho1, now_rho1),
+        (last_rho2, now_rho2),
+        (last_rho3, now_rho3),
+    ]
+
+    for last_c, now_c in rho_pairs:
+        sv_last = torch.linalg.svdvals(last_c).real
+        sv_now  = torch.linalg.svdvals(now_c ).real
+        # Normalise so that the largest singular value is 1 (scale-invariant).
+        sv_last = sv_last / (sv_last[0] + 1e-30)
+        sv_now  = sv_now  / (sv_now [0] + 1e-30)
+        delta = (sv_now - sv_last).abs().max().item()
+        if delta > max_delta:
+            max_delta = delta
+
+    last_rho1 = oe.contract("UX,XZ,ZV->UV",
+                                lastC21CD,lastC13AB,lastC32EF,
+                                optimize=[(0,1),(0,1)],
+                                backend='torch')
+    now_rho1 = oe.contract("UX,XZ,ZV->UV",
+                                nowC21CD,nowC13AB,nowC32EF,
+                                optimize=[(0,1),(0,1)],
+                                backend='torch')
+    last_rho2 = oe.contract("UX,XZ,ZV->UV",
+                                lastC21EB,lastC13CF,lastC32AD,
+                                optimize=[(0,1),(0,1)],
+                                backend='torch')
+    now_rho2 = oe.contract("UX,XZ,ZV->UV",
+                                nowC21EB,nowC13CF,nowC32AD,
+                                optimize=[(0,1),(0,1)],
+                                backend='torch')
+    last_rho3 = oe.contract("UX,XZ,ZV->UV",
+                                lastC21AF,lastC13ED,lastC32CB,
+                                optimize=[(0,1),(0,1)],
+                                backend='torch')
+    now_rho3 = oe.contract("UX,XZ,ZV->UV",
+                                nowC21AF,nowC13ED,nowC32CB, 
+                                optimize=[(0,1),(0,1)],
+                                backend='torch')
+
+    rho_pairs = [
+        (last_rho1, now_rho1),
+        (last_rho2, now_rho2),
+        (last_rho3, now_rho3),
+    ]
+
     for last_c, now_c in rho_pairs:
         sv_last = torch.linalg.svdvals(last_c).real
         sv_now  = torch.linalg.svdvals(now_c ).real
@@ -1160,6 +1255,7 @@ def update_environmentCTs_1to2(C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
     V2A, C21EB, U1F, V3C, C32AD, U2B, V1E, C13CF, U3D = trunc_rhoCCC(
                         matC21EB, matC32AD, matC13CF, chi, D_squared)
 
+
     T3E = oe.contract("OYa,abg,ObM->YMg",
                         T1F,E,U1F,
                         optimize=[(0,1),(0,1)],
@@ -1185,7 +1281,7 @@ def update_environmentCTs_1to2(C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
                         optimize=[(0,1),(0,1)],
                         backend='torch')
 
-    T2F = oe.contract("OZa,abg,NOg->ZNa",
+    T2F = oe.contract("OZa,abg,NOg->ZNb",
                         T1E,F,V1E,
                         optimize=[(0,1),(0,1)],
                         backend='torch')
@@ -1351,7 +1447,7 @@ def update_environmentCTs_2to3(C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A
                         optimize=[(0,1),(0,1)],
                         backend='torch')
 
-    T2D = oe.contract("OZa,abg,NOg->ZNa",
+    T2D = oe.contract("OZa,abg,NOg->ZNb",
                         T1A,D,V1A,
                         optimize=[(0,1),(0,1)],
                         backend='torch')
@@ -1488,6 +1584,9 @@ def update_environmentCTs_3to1(C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C
     V2E, C21CD, U1B, V3A, C32EF, U2D, V1C, C13AB, U3F = trunc_rhoCCC(
                         matC21CD, matC32EF, matC13AB, chi, D_squared)
 
+
+
+
     T3C = oe.contract("OYa,abg,ObM->YMg",
                         T1B,C,U1B,
                         optimize=[(0,1),(0,1)],
@@ -1513,7 +1612,7 @@ def update_environmentCTs_3to1(C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C
                         optimize=[(0,1),(0,1)],
                         backend='torch')
 
-    T2B = oe.contract("OZa,abg,NOg->ZNa",
+    T2B = oe.contract("OZa,abg,NOg->ZNb",
                         T1C,B,V1C,
                         optimize=[(0,1),(0,1)],
                         backend='torch')
@@ -2101,6 +2200,13 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
                       init_abcdef=None,
                       identity_init=False):
     """
+
+
+    [UNUSED!!!! 
+      MANY OF ITS COMPONENTS ARE NOW OUTDATED AND IN NEED OF REWORKING;
+      STILL RETAINED AS A REFERENCE FOR THE OPTIMISATION STRATEGY]
+
+
     Optimize the iPEPS tensors a,b,c,d,e,f using L-BFGS.
 
     Strategy (standard for AD-CTMRG):
