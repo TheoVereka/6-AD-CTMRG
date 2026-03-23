@@ -573,26 +573,79 @@ def trunc_rhoCCC_old_DEPRECATED(matC21, matC32, matC13, chi, D_squared,
 
 def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
 
-    Q1, R1 = torch.linalg.qr(matC21.T)
-    Q2, R2 = torch.linalg.qr(torch.mm(matC13,matC32))
+    #Q1, R1 = torch.linalg.qr(matC21.T)
+    #Q2, R2 = torch.linalg.qr(torch.mm(matC13,matC32))
+    R1 = matC21.T
+    R2 = torch.mm(matC13,matC32)
     U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
+
+    #approx_product =  U[:,:chi] @ torch.diag(S[:chi]).to(CDTYPE) @ Vh[:chi,:]
+    #exact_product = R1 @ R2.T
+    #product_error = torch.linalg.norm(approx_product - exact_product) / torch.linalg.norm(exact_product)
+    #VERIFIED print(f"R1 @ R2.T vs truncated U @ diag(S) @ Vh check: relative error = {product_error:.2e}")
 
     truncUh = U[:,:chi].conj().T
     truncV = Vh[:chi,:].conj().T
     sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
+    #VERIFIED print((S[chi]/S[0]).item())
+    #VERIFIED print(torch.diag(sqrtInvTruncS @ sqrtInvTruncS @ torch.diag(S[:chi]).to(CDTYPE)).detach().cpu().numpy())
+
+    #product_inverse = Vh.conj().T @ torch.diag(1.0 / torch.sqrt(S).to(CDTYPE)) @ torch.diag(1.0 / torch.sqrt(S).to(CDTYPE)) @ U.conj().T
+    #exact_inverse = torch.linalg.inv(R1 @ R2.T)
+    #inverse_error = torch.linalg.norm(product_inverse - exact_inverse) / torch.linalg.norm(exact_inverse)
+    #VERIFIED print(f"(R1 @ R2.T)^-1 vs Vh @ diag(1/sqrt(S)) @ diag(1/sqrt(S)) @ U check: relative error = {inverse_error:.2e}")
+
+    #U_inv = torch.linalg.inv(U)
+    #U_dag = U.conj().T
+    #Vh_inv = torch.linalg.inv(Vh)
+    #Vh_dag = Vh.conj().T
+    #print_error_U = torch.linalg.norm(U_inv - U_dag) / torch.linalg.norm(U_dag)
+    #print_error_Vh = torch.linalg.norm(Vh_inv - Vh_dag) / torch.linalg.norm(Vh_dag)
+    #VERIFIED print(f"U-1 vs U† check: relative error = {print_error_U:.4e}")
+    #VERIFIED print(f"V†-1 vs V check: relative error = {print_error_Vh:.4e}")
+
+    # print(torch.norm(approx_product @ truncV @ sqrtInvTruncS @ sqrtInvTruncS @ truncUh * 2 - torch.eye(chi*D_squared, device=approx_product.device, dtype=approx_product.dtype)).item())
+    # print((approx_product @ truncV @ sqrtInvTruncS @ sqrtInvTruncS @ truncUh).detach().cpu().numpy())
+
+    #approx_produc_inverse = truncV @ sqrtInvTruncS @ sqrtInvTruncS @ truncUh 
+    #produc_inverse = torch.linalg.inv(R1 @ R2.T)
+
+########################################
+    # TODO: BECAUSE THE C is normalized s.t. the determinant can be very small!
+########################################
+
+    #print("detR1=", torch.linalg.det(R1).item(), "   detR2=", torch.linalg.det(R2).item())
+    #inverse_error = torch.linalg.norm(approx_produc_inverse - produc_inverse) #/ torch.linalg.norm(produc_inverse)
+    #print(f"approx_produc_inverse vs exact inverse check: relative error = {inverse_error:.4e}")
+################################
+    # TODO: But still, the error for R2 V 1/S Uh R1 is much larger than V 1/S Uh R1 R2
+    # TODO: QR (SVD-1)R1R2 >~= no-QR (SVD-1)R1R2 > QR R2(SVD-1)R1 ~= no-QR R2(SVD-1)R1
+###############################
+
 
     P21My = torch.mm( R2.T ,torch.mm( truncV , sqrtInvTruncS ))
     P32yM = torch.mm(torch.mm( sqrtInvTruncS , truncUh ), R1 )
 
-    almost_identity = torch.mm(P21My,P32yM)
-    corresponding_identity = torch.eye(almost_identity.shape[0], device=almost_identity.device, dtype=almost_identity.dtype)
-    identity_error = torch.linalg.norm(almost_identity - corresponding_identity) / torch.linalg.norm(corresponding_identity)
-    print(f"trunc_rhoCCC: P21My @ P32yM ≈ I check: relative error = {identity_error:.2e}")
+    #almost_identity = torch.mm(P21My,P32yM)
+    #average_diag = torch.diag(almost_identity).mean().item()
+    #standard_error_diag = torch.sqrt(torch.var(torch.diag(almost_identity))).item()
+    #print(f"P21My @ P32yM ≈ I check: average diag = {average_diag:.4e}, standard error diag = {standard_error_diag:.4e}")
+    
+    #corresponding_identity = torch.eye(chi*D_squared, device=almost_identity.device, dtype=almost_identity.dtype)
+    #projected_difference =  truncUh @ (almost_identity - corresponding_identity) @ truncV
+    #identity_error = torch.linalg.norm(projected_difference)/torch.linalg.norm(corresponding_identity[:chi,:chi])
+    # print(f"P21My @ P32yM ≈ I check: relative error = {identity_error:.4e}")
+
+    #almost_identity_2 = truncV @ sqrtInvTruncS @ sqrtInvTruncS @ truncUh @ R1 @ R2.T
+    #only_display_1_digit_almost_identity_2 = torch.round(torch.real(almost_identity_2) * 10) / 10 + 1j * torch.round(torch.imag(almost_identity_2) * 10) / 10
+    #print(only_display_1_digit_almost_identity_2.detach().cpu().numpy())
 
 
 
-    Q1, R1 = torch.linalg.qr(matC32.T)
-    Q2, R2 = torch.linalg.qr(torch.mm(matC21,matC13))
+    #Q1, R1 = torch.linalg.qr(matC32.T)
+    #Q2, R2 = torch.linalg.qr(torch.mm(matC21,matC13))
+    R1 = matC32.T
+    R2 = torch.mm(matC21,matC13)
     U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
 
     truncUh = U[:,:chi].conj().T
@@ -605,8 +658,10 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
 
 
 
-    Q1, R1 = torch.linalg.qr(matC13.T)
-    Q2, R2 = torch.linalg.qr(torch.mm(matC32,matC21))
+    #Q1, R1 = torch.linalg.qr(matC13.T)
+    #Q2, R2 = torch.linalg.qr(torch.mm(matC32,matC21))
+    R1 = matC13.T
+    R2 = torch.mm(matC32,matC21)
     U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
 
     truncUh = U[:,:chi].conj().T
