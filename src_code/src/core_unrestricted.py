@@ -471,9 +471,7 @@ class SVD_PROPACK(torch.autograd.Function):
             sigma_term = torch.zeros(m,n,dtype=u.dtype,device=u.device)
         # in case that there are no gu and gv, we can avoid the series of kernel
         # calls below
-        if (gv is None) and (gv is None):
-            if not (diagnostics is None):
-                print(f"{diagnostics} {dA.abs().max()} {S.max()}")
+        if (gu is None) and (gv is None):
             return sigma_term, None, None
 
         sigma_inv= safe_inverse_2(sigma.clone(), sigma_scale*eps)
@@ -529,8 +527,8 @@ class SVD_PROPACK(torch.autograd.Function):
 
 
 def truncated_svd_propack(M, chi, chi_extra, rel_cutoff, v0=None,
-    abs_tol=1.0e-14, rel_tol=None, keep_multiplets=False, \
-    eps_multiplet=1.0e-12, verbosity=0):
+    abs_tol=1.0e-14,  keep_multiplets=False, \
+    eps_multiplet=1.0e-12, ):
     r"""
     :param M: square matrix of dimensions :math:`N \times N`
     :param chi: desired maximal rank :math:`\chi`
@@ -561,8 +559,7 @@ def truncated_svd_propack(M, chi, chi_extra, rel_cutoff, v0=None,
     .. note::
         This function does not support autograd.
     """
-    U, S, V = SVD_PROPACK.apply(M, chi, max(chi_extra,1), \
-        torch.as_tensor([rel_cutoff],dtype=M.dtype, device=M.device), v0)
+    U, S, V = SVD_PROPACK.apply(M, chi, max(chi_extra,1),torch.as_tensor([rel_cutoff],dtype=M.dtype, device=M.device), v0)
 
     # estimate the chi_new 
     if keep_multiplets and chi<S.shape[0]:
@@ -570,19 +567,22 @@ def truncated_svd_propack(M, chi, chi_extra, rel_cutoff, v0=None,
 
     St = S[:min(chi,S.shape[0])]
     Ut = U[:, :St.shape[0]]
-    Vt = V[:, :St.shape[0]]
+    Vtdag = V[:, :St.shape[0]].conj().T
 
-    return U, S, V
+    return Ut, St, Vtdag
 
+"""
+use of truncate_svd_propack:
 
-truncated_svd_propack(M, chi,\
-                int(chi*ctm_args.projector_propack_extra_states), ctm_args.projector_svd_reltol,\
-                v0=None,\
-                keep_multiplets=True, \
-                abs_tol=ctm_args.projector_multiplet_abstol, eps_multiplet=ctm_args.projector_eps_multiplet, \
-                verbosity=ctm_args.verbosity_projectors)
- # returns U, S, V of M= USV^\dag
+truncated_svd_propack(M, chi,
+                    chi_extra=1,
+                    rel_cutoff=1e-12,
+                    v0=None,
+                    keep_multiplets=False,
+                    abs_tol=1e-14,
+                    eps_multiplet=1e-12)  # returns U, S, Vdag of M= USV^\dag
 
+"""
 
 
 
@@ -1274,7 +1274,7 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
 
 
 
-
+# DO THE FULL CONTRACTION AND SVD PRJECTORS APPROACH!
         
         #the other side(LMN) projection of Ts
         out2Ain3D = torch.mm(T2A.T, T3D)
