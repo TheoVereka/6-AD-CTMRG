@@ -224,108 +224,6 @@ def normalize_single_layer_tensor_for_double_layer(
     return tensor / torch.sqrt(dl_norm)
 
 
-# ── Differentiable complex SVD helper ────────────────────────────────────────
-#
-# PyTorch's backward for complex SVD is only well-defined when the loss is
-# invariant under the per-column phase freedom of singular vectors.
-# CTMRG truncation uses singular vectors as projectors, and small numerical
-# gauge choices can otherwise trigger:
-#   RuntimeError: svd_backward: ... depends on this phase term ... ill-defined.
-#
-# We fix a deterministic phase convention (without backpropagating through the
-# phase choice) so that optimisation runs do not crash.
-SVD_PHASE_FIX: bool = True
-# If True, project gradients flowing *into* (U, Vh) onto the subspace that is
-# invariant under the per-singular-vector phase gauge U→U·D, Vh→D^H·Vh.
-#
-# This does not modify the forward pass at all; it only removes the component
-# of (∂L/∂U, ∂L/∂Vh) that corresponds to changing the arbitrary phases of the
-# singular vectors — exactly the component that makes complex SVD backward
-# ill-defined in PyTorch.
-SVD_GRAD_PROJECT_PHASE: bool = True
-
-
-def _fix_svd_phases(U: torch.Tensor, Vh: torch.Tensor, *, eps: float = 1e-12) -> tuple[torch.Tensor, torch.Tensor]:
-    """Fix per-column complex phases of SVD outputs (U, Vh) deterministically.
-
-    Chooses, for each column k of U, a pivot entry with maximal magnitude and
-    rotates that column by a unit-modulus phase so the pivot becomes real
-    positive. Applies the compensating phase to the corresponding row of Vh so
-    that U @ diag(S) @ Vh is unchanged.
-
-    The phase is computed under ``no_grad`` so it does not introduce non-smooth
-    control flow into the autograd graph.
-    """
-    if not U.is_complex():
-        return U, Vh
-    if U.numel() == 0:
-        return U, Vh
-
-    m, n = U.shape
-    device = U.device
-    col = torch.arange(n, device=device)
-
-    with torch.no_grad():
-        # Pivot index per column: argmax_i |U[i, k]|
-        pivot = torch.argmax(torch.abs(U), dim=0)
-        piv_vals = U[pivot, col]
-        denom = torch.clamp(torch.abs(piv_vals), min=eps)
-        phase = piv_vals / denom  # unit-modulus (or 0 if piv_vals==0)
-        # If a whole column is exactly zero (shouldn't happen), fall back to 1.
-        phase = torch.where(denom > eps, phase, torch.ones_like(phase))
-
-    # Apply: U[:,k] *= conj(phase_k),  Vh[k,:] *= phase_k
-    U_fixed = U * phase.conj().reshape(1, n)
-    Vh_fixed = phase.reshape(n, 1) * Vh
-    return U_fixed, Vh_fixed
-
-
-def svd_fixed(A: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """torch.linalg.svd with phase-fixing (forward) and phase-gauge-safe gradients (backward)."""
-    U_raw, S, Vh_raw = torch.linalg.svd(A)
-
-    if A.is_complex():
-        # IMPORTANT: PyTorch's svd_backward phase-gauge check is performed in the
-        # *raw* SVD gauge returned by torch.linalg.svd. Therefore any gradient
-        # projection that enforces phase-gauge invariance must be attached to
-        # (U_raw, Vh_raw) BEFORE we apply any deterministic forward phase fixing.
-        if SVD_GRAD_PROJECT_PHASE and A.requires_grad:
-            def _hook_U_raw(grad_U: torch.Tensor) -> torch.Tensor:
-                if grad_U is None:
-                    return grad_U
-                with torch.no_grad():
-                    # SVD backward can crash with a phase-gauge error if the
-                    # incoming gradient contains NaN/Inf (common in long CTMRG
-                    # sweeps when matrices become ill-conditioned). Sanitise
-                    # first so our phase projection is well-defined.
-                    grad_U = torch.nan_to_num(grad_U, nan=0.0, posinf=0.0, neginf=0.0)
-                    diag = torch.diagonal(U_raw.conj().transpose(-2, -1) @ grad_U)
-                    diag = torch.nan_to_num(diag, nan=0.0, posinf=0.0, neginf=0.0)
-                    phase = (1j * diag.imag).to(grad_U.dtype)
-                    return grad_U - (U_raw * phase.reshape(1, -1))
-
-            def _hook_Vh_raw(grad_Vh: torch.Tensor) -> torch.Tensor:
-                if grad_Vh is None:
-                    return grad_Vh
-                with torch.no_grad():
-                    grad_Vh = torch.nan_to_num(grad_Vh, nan=0.0, posinf=0.0, neginf=0.0)
-                    diag = torch.diagonal(grad_Vh @ Vh_raw.conj().transpose(-2, -1))
-                    diag = torch.nan_to_num(diag, nan=0.0, posinf=0.0, neginf=0.0)
-                    phase = (1j * diag.imag).to(grad_Vh.dtype)
-                    return grad_Vh - (phase.reshape(-1, 1) * Vh_raw)
-
-            U_raw.register_hook(_hook_U_raw)
-            Vh_raw.register_hook(_hook_Vh_raw)
-
-        U, Vh = U_raw, Vh_raw
-        if SVD_PHASE_FIX:
-            U, Vh = _fix_svd_phases(U_raw, Vh_raw)
-        return U, S, Vh
-
-    return U_raw, S, Vh_raw
-
-
-
 
 
 
@@ -380,87 +278,44 @@ class SVD_PROPACK(torch.autograd.Function):
         Return leading k-singular triples of a matrix M, by computing 
         the partial SVD decomposition using SciPy's PROPACK wrapper up to rank k.
         """
-        # input validation is provided by the scipy.sparse.linalg.eigsh / 
-        # scipy.sparse.linalg.svds
-        
-        # reorder the eigenpairs by the largest magnitude of eigenvalues
-        # S,p= torch.sort(torch.abs(D),descending=True)
-        # S= torch.sqrt(S)
-        # U= U[:,p]
-        
-        # Use double-precision numpy arrays for all iterative SVD solvers.
-        # scipy.sparse.linalg.svds (ARPACK) is the primary solver; it is
-        # numerically robust for ill-conditioned matrices produced by optimised
-        # iPEPS tensors and does NOT use LAPACK's ZLASCL scaling routine, so it
-        # never prints "parameter 4 had an illegal value" warnings.
-        # PROPACK is intentionally NOT used here: its Fortran ZLASCL call
-        # fails (printing Fortran-buffered stdout warnings) and returns
-        # silently wrong (but finite) singular vectors for nearly-rank-deficient
-        # matrices, causing downstream NaN in torch.linalg.svd.
-        # Results are cast back to M.dtype by the torch.as_tensor calls below.
+        # Dense LAPACK SVD via numpy — identical numerical backend to the
+        # original torch.linalg.svd calls this replaced.
+        # ARPACK and PROPACK are NOT used: ARPACK silently falls back to
+        # scipy.linalg.eig (wrong algorithm) when k >= N-1, and PROPACK's
+        # Fortran ZLASCL routine crashes on ill-conditioned matrices.
+        # The CTMRG matrices are at most ~100×100; dense SVD is fast.
         _np_dtype = np.complex128 if M.is_complex() else np.float64
+        _rdtype = torch.float64 if M.dtype in (torch.complex128, torch.float64) else torch.float32
 
-        def mv(v):
-            B= torch.as_tensor(v,dtype=M.dtype,device=M.device)
-            B= torch.mv(M,B)
-            return B.detach().cpu().numpy().astype(_np_dtype, copy=False)
-        def vm(v):
-            B= torch.as_tensor(v,dtype=M.dtype,device=M.device)
-            B= torch.einsum('i,ij->j',B.conj(),M).conj().resolve_conj()
-            return B.detach().cpu().numpy().astype(_np_dtype, copy=False)
-        lop_M= LinearOperator(M.size(), matvec=mv, rmatvec=vm)
-
-        # Cap k+k_extra: scipy.svds requires k < min(m, n)
         m_dim, n_dim = M.shape
-        k_total = min(k + k_extra, min(m_dim, n_dim) - 1)
+        k_total = min(k + k_extra, min(m_dim, n_dim))
         k_total = max(k_total, 1)
-
-        # v0: convert tensor → numpy (double precision) so scipy doesn't choke
-        v0_np = v0.detach().cpu().numpy() if isinstance(v0, torch.Tensor) else v0
-        if v0_np is not None:
-            v0_np = v0_np.astype(_np_dtype, copy=False)
 
         # M.detach() so .numpy() works even when M.requires_grad=True
         M_np = M.detach().cpu().numpy().astype(_np_dtype, copy=False)
 
-        # Primary solver: ARPACK (scipy default, robust for ill-conditioned matrices)
-        _U, _S, _Vh = None, None, None
-        try:
-            _U, _S, _Vh = scipy.sparse.linalg.svds(
-                lop_M if M.is_cuda else M_np,
-                k=k_total, v0=v0_np, solver='arpack')
-        except Exception:
-            _U, _S, _Vh = None, None, None
+        # Full thin SVD; np.linalg.svd always returns S in descending order.
+        # We compute the FULL thin SVD (all min(m,n) singular triples) even
+        # though we only return k_total of them.  The backward uses ALL singular
+        # triples for the F,G cross-coupling matrices; using only k_total would
+        # drop the interaction terms between kept and discarded singular values,
+        # causing ~38% gradient error for typical CTMRG projector losses.
+        _Uf, _Sf, _Vhf = np.linalg.svd(M_np, full_matrices=False)
+        k_full = min(m_dim, n_dim)  # = _Sf.shape[0]
 
-        # Validate ARPACK result; fall back to dense SVD if needed
-        _arpack_ok = (_U is not None
-                      and np.isfinite(_S).all()
-                      and np.isfinite(_U).all()
-                      and np.isfinite(_Vh).all())
-        if not _arpack_ok:
-            # Last resort: dense full SVD then slice (always numerically stable)
-            _Uf, _Sf, _Vhf = np.linalg.svd(M_np, full_matrices=False)
-            _U  = _Uf[:,  :k_total]
-            _S  = _Sf[    :k_total]
-            _Vh = _Vhf[   :k_total, :]
+        # Convert FULL SVD to tensors for backward
+        S_full=  torch.as_tensor(_Sf.copy(),        dtype=_rdtype,  device=M.device)
+        U_full=  torch.as_tensor(_Uf.copy(),        dtype=M.dtype,  device=M.device)
+        V_full=  torch.as_tensor(_Vhf.copy(),       dtype=M.dtype,  device=M.device).transpose(-2,-1).conj()
 
-        U, S, Vh = _U, _S, _Vh
+        # Save full-rank tensors so backward has all cross-coupling information
+        self.save_for_backward(U_full, S_full, V_full, rel_cutoff)
+        self.k_return = k_total   # how many singular triples were returned
 
-        # scipy svds (ARPACK) may return singular values in ascending or
-        # descending order depending on version/matrix; sort explicitly so that
-        # index 0 is always the LARGEST singular value.
-        _rdtype = torch.float64 if M.dtype in (torch.complex128, torch.float64) else torch.float32
-        _sort_idx = np.argsort(S)[::-1]          # descending index permutation
-        S_sorted   = S[_sort_idx]
-        U_sorted   = U[:, _sort_idx]
-        Vh_sorted  = Vh[_sort_idx, :]
-        S= torch.as_tensor(S_sorted.copy(),   dtype=_rdtype,  device=M.device)
-        U= torch.as_tensor(U_sorted.copy(),   dtype=M.dtype, device=M.device)
-        Vh= torch.as_tensor(Vh_sorted.copy(), dtype=M.dtype, device=M.device)
-        V= Vh.transpose(-2,-1).conj()
-
-        self.save_for_backward(U, S, V, rel_cutoff)
-        #print("saved svd done")
+        # Return only the top k_total singular triples
+        U  = U_full[:,  :k_total]
+        S  = S_full[    :k_total]
+        V  = V_full[:,  :k_total]
         return U, S, V
 
     @staticmethod
@@ -505,10 +360,26 @@ class SVD_PROPACK(torch.autograd.Function):
         u, sigma, v, eps = self.saved_tensors
         m= u.size(0) # first dim of original tensor A = u sigma v^\dag 
         n= v.size(0) # second dim of A
-        k= sigma.size(0)
+        k= sigma.size(0)   # = min(m, n) — FULL rank (saved in forward)
         sigma_scale= sigma[0]
 
-        # ? some
+        # Forward returned only k_return singular triples; gu and gv have width
+        # k_return ≤ k.  Pad them with zeros so the F,G cross-coupling between
+        # kept and discarded singular values is captured correctly.
+        k_return = getattr(self, 'k_return', k)  # fallback to k for safety
+        if k_return < k:
+            _z = lambda g, cols: torch.cat(
+                [g, g.new_zeros(*g.shape[:-1], cols)], dim=-1)
+            if gu is not None:
+                gu = _z(gu, k - k_return)
+            if gv is not None:
+                gv = _z(gv, k - k_return)
+            if gsigma is not None:
+                gsigma = torch.cat(
+                    [gsigma, gsigma.new_zeros(k - k_return)], dim=-1)
+
+        # u, sigma, v are now full-rank (min(m,n) columns) so the
+        # "free subspace" narrowing below will normally be a no-op.
         if (u.size(-2)!=u.size(-1)) or (v.size(-2)!=v.size(-1)):
             # We ignore the free subspace here because possible base vectors cancel
             # each other, e.g., both -v and +v are valid base for a dimension.
