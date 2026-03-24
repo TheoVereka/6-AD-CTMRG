@@ -59,7 +59,7 @@ _trunc_diag_buffer: list[dict] = []
 
 
 def safe_inverse(x, epsilon=1E-12):
-    return x/(x**2 + epsilon**2)
+    return x/(x**2 + epsilon)
     
 def safe_inverse_2(x, epsilon):
     x[abs(x)<epsilon]=float('inf')
@@ -300,13 +300,7 @@ class SVD_PROPACK(torch.autograd.Function):
         # triples for the F,G cross-coupling matrices; using only k_total would
         # drop the interaction terms between kept and discarded singular values,
         # causing ~38% gradient error for typical CTMRG projector losses.
-        _Uf, _Sf, _Vhf = np.linalg.svd(M_np, full_matrices=False) 
-        
-        ###############################################
-        # TODO: WHAT IS THIS PACK FOR SVD????? (Probably gesdd)
-        ###############################################
-
-
+        _Uf, _Sf, _Vhf = np.linalg.svd(M_np, full_matrices=False)
         k_full = min(m_dim, n_dim)  # = _Sf.shape[0]
 
         # Convert FULL SVD to tensors for backward
@@ -316,9 +310,13 @@ class SVD_PROPACK(torch.autograd.Function):
 
         # Save full-rank tensors so backward has all cross-coupling information
         self.save_for_backward(U_full, S_full, V_full, rel_cutoff)
-        self.k_return = k_full   # how many singular triples were returned
+        self.k_return = k_total   # how many singular triples were returned
 
-        return U_full, S_full, V_full
+        # Return only the top k_total singular triples
+        U  = U_full[:,  :k_total]
+        S  = S_full[    :k_total]
+        V  = V_full[:,  :k_total]
+        return U, S, V
 
     @staticmethod
     def backward(self, gu, gsigma, gv):
@@ -504,9 +502,9 @@ def truncated_svd_propack(M, chi, chi_extra, rel_cutoff, v0=None,
 
     St = S[:min(chi,S.shape[0])]
     Ut = U[:, :St.shape[0]]
-    Vt = V[:, :St.shape[0]]
+    Vtdag = V[:, :St.shape[0]].conj().T
 
-    return Ut, St, Vt
+    return Ut, St, Vtdag
 
 """
 use of truncate_svd_propack:
@@ -517,7 +515,7 @@ truncated_svd_propack(M, chi,
                     v0=None,
                     keep_multiplets=False,
                     abs_tol=1e-14,
-                    eps_multiplet=1e-12)  # returns U, S, V of M= USV^\dag
+                    eps_multiplet=1e-12)  # returns U, S, Vdag of M= USV^\dag
 
 """
 
@@ -638,13 +636,164 @@ def abcdef_to_ABCDEF(a,b,c,d,e,f, D_squared:int):
 
 
 
-# All the deprecated function are not used at all!!!!!!!! 
-# No svd_fixed! No trunc_rhoCCC_deprecated!!!!! 
-# Stops trying to call these tested-to-be-even-more-unstable
-# functions than the bare torch.linalg.svd
+def trunc_rhoCCC_old_DEPRECATED(matC21, matC32, matC13, chi, D_squared,
+                 *, check_sv_sums=None, sv_sums_rtol=3e-3, sv_sums_atol=1e-10):
+    """
+    Compute truncated CTM projectors and renormalised corner matrices.
 
+    Given the three environment corner transfer matrices (CTMs) ``matC21``,
+    ``matC32``, ``matC13`` (each of shape ``(chi*D_squared, chi*D_squared)``),
+    this function builds three density-matrix-like objects ``rho32``,
+    ``rho13``, ``rho21`` by cyclically multiplying the three corners, then
+    decomposes each via a full exact SVD.  The leading ``chi`` singular vectors
+    form the isometric projectors ``U1/U2/U3`` (left) and ``V1/V2/V3``
+    (right).  These projectors are used to project the *original* corner
+    matrices down to their ``(chi, chi)`` truncated versions.
 
+    The truncation is exact (no approximation) when ``chi >= chi_env * D_squared``
+    (the full environment rank); otherwise it is the optimal rank-``chi``
+    approximation in the Frobenius sense.
 
+    Args:
+        matC21 (torch.Tensor): Corner matrix C21, shape ``(chi*D_squared, chi*D_squared)``.
+        matC32 (torch.Tensor): Corner matrix C32, shape ``(chi*D_squared, chi*D_squared)``.
+        matC13 (torch.Tensor): Corner matrix C13, shape ``(chi*D_squared, chi*D_squared)``.
+        chi (int): Target bond dimension after truncation.
+        D_squared (int): ``D_bond ** 2``.
+
+    Returns:
+        Tuple of 9 tensors ``(V2, C21, U1, V3, C32, U2, V1, C13, U3)``:
+            - ``C21``, ``C32``, ``C13``: Truncated, normalised corner matrices
+              of shape ``(chi, chi)``.
+            - ``U1``, ``U2``, ``U3``: Left isometric projectors, each reshaped
+              to ``(chi, D_squared, chi)``.
+            - ``V1``, ``V2``, ``V3``: Right isometric projectors, each reshaped
+              to ``(chi, chi, D_squared)``.
+    """
+
+    rho32 = oe.contract("UZ,ZY,YV->UV",
+                               matC13,matC32,matC21,
+                               optimize=[(0,1),(0,1)],
+                               backend='torch')
+    
+    U3, sv32, V2 = svd_fixed(rho32)
+
+    U3 = U3[:,:chi].conj()
+    V2 = V2[:chi,:].conj()
+    
+    rho13 = oe.contract("UX,XZ,ZV->UV",
+                               matC21,matC13,matC32,
+                               optimize=[(0,1),(0,1)],
+                               backend='torch')
+    
+    U1, sv13, V3 = svd_fixed(rho13)
+
+    U1 = U1[:,:chi].conj() #conjugate transpose
+    V3 = V3[:chi,:].conj()
+    
+
+    rho21 = oe.contract("UY,YX,XV->UV",
+                               matC32,matC21,matC13,
+                               optimize=[(0,1),(0,1)],
+                               backend='torch')
+    
+    U2, sv21, V1 = svd_fixed(rho21)
+    
+    U2 = U2[:,:chi].conj()
+    V1 = V1[:chi,:].conj()
+
+    C21 = oe.contract("Yy,YX,xX->yx",
+                               U1,matC21,V2,
+                               optimize=[(0,1),(0,1)],
+                               backend='torch')
+
+    C32 = oe.contract("Zz,ZY,yY->zy",
+                               U2,matC32,V3,
+                               optimize=[(0,1),(0,1)],
+                               backend='torch')
+
+    C13 = oe.contract("Xx,XZ,zZ->xz",
+                               U3,matC13,V1,
+                               optimize=[(0,1),(0,1)],
+                               backend='torch')
+
+    # ── Physical corner normalization ───────────────────────────────────────
+    # Target: Tr(C13·C32·C21) = 1 (real, positive).
+    # NOTE: Tr(rho) is not generally equal to sum(singular values) unless rho
+    # is Hermitian PSD; using sum(sv) can therefore fail to remove complex
+    # phase drift.
+    sum_sv32 = sv32[:chi].sum()
+    sum_sv13 = sv13[:chi].sum()
+    sum_sv21 = sv21[:chi].sum()
+
+    # Optional consistency check: the three SV sums should be nearly equal
+    # (physical requirement of a well-converged CTMRG environment).
+    _do_check = check_sv_sums if check_sv_sums is not None else DEBUG_CHECK_TRUNC_RHOCCC_SV_SUMS
+    if _do_check:
+        if not (torch.allclose(sum_sv32, sum_sv13, rtol=sv_sums_rtol, atol=sv_sums_atol)
+                and torch.allclose(sum_sv32, sum_sv21, rtol=sv_sums_rtol, atol=sv_sums_atol)):
+            raise RuntimeError(
+                f"trunc_rhoCCC: sum(sv[:chi]) mismatch — "
+                f"sv32={sum_sv32.item():.6e}, sv13={sum_sv13.item():.6e}, "
+                f"sv21={sum_sv21.item():.6e} "
+                f"(rtol={sv_sums_rtol}, atol={sv_sums_atol})"
+            )
+
+    # ── Truncation diagnostics (buffered when DEBUG_CHECK_TRUNCATION is True) ──
+    if DEBUG_CHECK_TRUNCATION:
+        with torch.no_grad():
+            def _anti_herm(M: torch.Tensor) -> float:
+                """||M - M†|| / 2 / ||M||  (0 = perfectly Hermitian)."""
+                norm_M = torch.linalg.norm(M)
+                if not torch.isfinite(norm_M) or norm_M.item() == 0.0:
+                    return float('nan')
+                return (torch.linalg.norm((M - M.conj().T) / 2) / norm_M).real.item()
+
+            _trunc_diag_buffer.append({
+                'anti_herm_rho32': _anti_herm(rho32),
+                'anti_herm_rho13': _anti_herm(rho13),
+                'anti_herm_rho21': _anti_herm(rho21),
+                # Full SV spectra — detached so they don't keep the autograd graph alive.
+                'sv32': sv32.detach().cpu().tolist(),
+                'sv13': sv13.detach().cpu().tolist(),
+                'sv21': sv21.detach().cpu().tolist(),
+                'chi': chi,
+            })
+
+    rho_trunc = C13 @ C32 @ C21
+    tr_rho = torch.trace(rho_trunc)
+    tr_abs = tr_rho.abs()
+    if torch.isfinite(tr_abs).item() and (tr_abs > torch.finfo(tr_abs.dtype).tiny).item():
+        phase = tr_rho / tr_abs
+        C21 = C21 / phase
+
+        scaleC = tr_abs.pow(1.0 / 3.0)
+        if torch.isfinite(scaleC).item() and (scaleC > torch.finfo(scaleC.dtype).tiny).item():
+            C21 = C21 / scaleC
+            C32 = C32 / scaleC
+            C13 = C13 / scaleC
+
+    # ── Individual equalization: preserve Tr(rho)=1 while balancing magnitudes ──
+    # Scale factors multiply to 1  ⟹  Tr(rho) = Tr(C13·C32·C21) unchanged.
+    n21 = torch.linalg.norm(C21).real
+    n32 = torch.linalg.norm(C32).real
+    n13 = torch.linalg.norm(C13).real
+    nC_prod = n21 * n32 * n13
+    if torch.isfinite(nC_prod).item() and (nC_prod > torch.finfo(n21.dtype).tiny).item():
+        nC_geo = nC_prod.pow(1.0 / 3.0)
+        C21 = C21 * (nC_geo / n21)
+        C32 = C32 * (nC_geo / n32)
+        C13 = C13 * (nC_geo / n13)
+
+    U1 = U1.reshape(chi,D_squared, chi)
+    U2 = U2.reshape(chi,D_squared, chi)
+    U3 = U3.reshape(chi,D_squared, chi)
+
+    V1 = V1.reshape(chi, chi,D_squared)
+    V2 = V2.reshape(chi, chi,D_squared)
+    V3 = V3.reshape(chi, chi,D_squared)
+
+    return V2, C21, U1, V3, C32, U2, V1, C13, U3#, diagnostic_trunc
 
 
 def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
@@ -654,22 +803,11 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     R1 = matC21.T
     R2 = torch.mm(matC13,matC32)
     
-    #U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
-    #truncUh = U[:,:chi].conj().T
-    #truncV = Vh[:chi,:].conj().T
+    U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
+    truncUh = U[:,:chi].conj().T
+    truncV = Vh[:chi,:].conj().T
 
 
-
-    U,S,V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
-                        chi_extra=1,
-                        rel_cutoff=1e-12,
-                        v0=None,
-                        keep_multiplets=False,
-                        abs_tol=1e-14,
-                        eps_multiplet=1e-12)
-    
-    truncV = V
-    truncUh = U.conj().T
 
     
 
@@ -738,20 +876,11 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     #Q2, R2 = torch.linalg.qr(torch.mm(matC21,matC13))
     R1 = matC32.T
     R2 = torch.mm(matC21,matC13)
-    #U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
-    U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
-                    chi_extra=1,
-                    rel_cutoff=1e-12,
-                    v0=None,
-                    keep_multiplets=False,
-                    abs_tol=1e-14,
-                    eps_multiplet=1e-12)
-    
-    truncUh = U.conj().T
-    truncV = V
+    U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
 
-    #truncUh = U[:,:chi].conj().T
-    #truncV = Vh[:chi,:].conj().T
+
+    truncUh = U[:,:chi].conj().T
+    truncV = Vh[:chi,:].conj().T
     sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
 
     P32Nz = torch.mm( R2.T ,torch.mm( truncV , sqrtInvTruncS ))
@@ -764,21 +893,13 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     #Q2, R2 = torch.linalg.qr(torch.mm(matC32,matC21))
     R1 = matC13.T
     R2 = torch.mm(matC32,matC21)
-    #U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
-    U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
-                    chi_extra=1,
-                    rel_cutoff=1e-12,
-                    v0=None,
-                    keep_multiplets=False,
-                    abs_tol=1e-14,
-                    eps_multiplet=1e-12)
+    U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
+    
     #print("1st 'QR'-cut done")
 
-    truncUh = U.conj().T
-    truncV = V
 
-    #truncUh = U[:,:chi].conj().T
-    #truncV = Vh[:chi,:].conj().T
+    truncUh = U[:,:chi].conj().T
+    truncV = Vh[:chi,:].conj().T
     sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
 
     P13Lx = torch.mm( R2.T ,torch.mm( truncV , sqrtInvTruncS ))
@@ -994,16 +1115,10 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
 
         #Q1, R1 = torch.linalg.qr(matC21.T)
         #Q2, R2 = torch.linalg.qr(torch.mm(matC13,matC32))
-        U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
-                    chi_extra=1,
-                    rel_cutoff=1e-12,
-                    v0=None,
-                    keep_multiplets=False,
-                    abs_tol=1e-14,
-                    eps_multiplet=1e-12)
-
-        truncUh = U.conj().T
-        truncV = V
+        
+        U,S,Vh=torch.linalg.svd(torch.mm(R1,R2.T))
+        truncUh = U[:,:chi].conj().T
+        truncV = Vh[:chi,:].conj().T
         sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
 
         P21My = torch.mm( R2.T ,torch.mm( truncV , sqrtInvTruncS ))
@@ -1015,16 +1130,10 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
 
         #Q1, R1 = torch.linalg.qr(matC32.T)
         #Q2, R2 = torch.linalg.qr(torch.mm(matC21,matC13))
-        U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
-                    chi_extra=1,
-                    rel_cutoff=1e-12,
-                    v0=None,
-                    keep_multiplets=False,
-                    abs_tol=1e-14,
-                    eps_multiplet=1e-12)
 
-        truncUh = U.conj().T
-        truncV = V
+        U,S,Vh=torch.linalg.svd(torch.mm(R1,R2.T))
+        truncUh = U[:,:chi].conj().T
+        truncV = Vh[:chi,:].conj().T
         sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
 
         P32Nz = torch.mm( R2.T ,torch.mm( truncV , sqrtInvTruncS ))
@@ -1036,16 +1145,10 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
 
         #Q1, R1 = torch.linalg.qr(matC13.T)
         #Q2, R2 = torch.linalg.qr(torch.mm(matC32,matC21))
-        U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
-                    chi_extra=1,
-                    rel_cutoff=1e-12,
-                    v0=None,
-                    keep_multiplets=False,
-                    abs_tol=1e-14,
-                    eps_multiplet=1e-12)
 
-        truncUh = U.conj().T
-        truncV = V
+        U,S,Vh=torch.linalg.svd(torch.mm(R1,R2.T))
+        truncUh = U[:,:chi].conj().T
+        truncV = Vh[:chi,:].conj().T
         sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
 
         P13Lx = torch.mm( R2.T ,torch.mm( truncV , sqrtInvTruncS ))
@@ -1121,37 +1224,19 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         out2Ain3D = torch.mm(T2A.T, T3D)
         out3Cin1F = torch.mm(T3C.T, T1F)
         out1Ein2B = torch.mm(T1E.T, T2B)
-        T2A, svL, T3D = truncated_svd_propack(out2Ain3D, chi,
-                    chi_extra=1,
-                    rel_cutoff=1e-12,
-                    v0=None,
-                    keep_multiplets=False,
-                    abs_tol=1e-14,
-                    eps_multiplet=1e-12)
-        T3C, svM, T1F = truncated_svd_propack(out3Cin1F, chi,
-                    chi_extra=1,
-                    rel_cutoff=1e-12,
-                    v0=None,
-                    keep_multiplets=False,
-                    abs_tol=1e-14,
-                    eps_multiplet=1e-12)
-        T1E, svN, T2B = truncated_svd_propack(out1Ein2B, chi,
-                    chi_extra=1,
-                    rel_cutoff=1e-12,
-                    v0=None,
-                    keep_multiplets=False,
-                    abs_tol=1e-14,
-                    eps_multiplet=1e-12)
+        T2A, svL, T3D = torch.linalg.svd(out2Ain3D)
+        T3C, svM, T1F = torch.linalg.svd(out3Cin1F)
+        T1E, svN, T2B = torch.linalg.svd(out1Ein2B)
 
-        sqrt_svL = torch.sqrt(svL)
-        sqrt_svM = torch.sqrt(svM)
-        sqrt_svN = torch.sqrt(svN)
-        T2A = T2A.T * sqrt_svL.unsqueeze(1)
-        T3D = T3D.conj().T * sqrt_svL.unsqueeze(1)
-        T3C = T3C.T * sqrt_svM.unsqueeze(1)
-        T1F = T1F.conj().T * sqrt_svM.unsqueeze(1)
-        T1E = T1E.T * sqrt_svN.unsqueeze(1)
-        T2B = T2B.conj().T * sqrt_svN.unsqueeze(1)
+        sqrt_svL = torch.sqrt(svL[:chi])
+        sqrt_svM = torch.sqrt(svM[:chi])
+        sqrt_svN = torch.sqrt(svN[:chi])
+        T2A = T2A[:,:chi].T * sqrt_svL.unsqueeze(1)
+        T3D = T3D[:chi,:] * sqrt_svL.unsqueeze(1)
+        T3C = T3C[:,:chi].T * sqrt_svM.unsqueeze(1)
+        T1F = T1F[:chi,:] * sqrt_svM.unsqueeze(1)
+        T1E = T1E[:,:chi].T * sqrt_svN.unsqueeze(1)
+        T2B = T2B[:chi,:] * sqrt_svN.unsqueeze(1)
 
 
 

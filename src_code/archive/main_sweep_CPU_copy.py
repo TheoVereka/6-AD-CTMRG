@@ -107,7 +107,7 @@ if os.environ.get("CTMRG_ANOMALY", "0") == "1":
 torch.set_num_threads(_N_PHYSICAL_CORES)
 torch.set_num_interop_threads(1)
 
-from core_unrestricted import (
+from core_unrestricted_copy import (
     normalize_tensor,
     normalize_single_layer_tensor_for_double_layer,
     initialize_abcdef,
@@ -260,7 +260,7 @@ OPT_CONV_THRESHOLD = 1e-8
 
 # ── Optimizer choice ──────────────────────────────────────────────────────────
 
-OPTIMIZER = 'lbfgs'
+OPTIMIZER = 'adam'
 #   'lbfgs' : L-BFGS with strong-Wolfe line search (default).
 #             Converges fast on smooth landscapes; may oscillate on noisy ones.
 #   'adam'  : Adam (adaptive moment estimation).
