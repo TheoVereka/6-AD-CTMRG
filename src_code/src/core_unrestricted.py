@@ -22,7 +22,6 @@ import os, sys
 import torch
 import scipy.sparse.linalg
 from scipy.sparse.linalg import LinearOperator
-from linalg.svd_gesdd import safe_inverse, safe_inverse_2
 
 
 #################################
@@ -54,6 +53,20 @@ DEBUG_CHECK_TRUNCATION: bool = False
 
 # ── Truncation diagnostics buffer ────────────────────────────────────────────
 _trunc_diag_buffer: list[dict] = []
+
+
+
+
+
+def safe_inverse(x, epsilon=1E-12):
+    return x/(x**2 + epsilon)
+    
+def safe_inverse_2(x, epsilon):
+    x[abs(x)<epsilon]=float('inf')
+    return x.pow(-1)
+
+
+
 
 
 def clear_trunc_diag_buffer() -> None:
