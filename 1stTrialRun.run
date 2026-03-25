@@ -1,0 +1,28 @@
+#!/bin/bash
+#SBATCH -q academic
+#SBATCH --partition academic
+#SBATCH -e ./job-%N-%j.error
+#SBATCH -o ./job-%N-%j.out
+#SBATCH --ntasks 1
+#SBATCH --cpus-per-task 16
+#SBATCH --time 5-00:06:00
+#SBATCH --mem 100G
+
+export SOU=/home/chye/1stTrial/
+
+echo "***** START OF JOB ***** "
+
+module purge
+module load gcc
+#module load julia/1.12
+
+echo STARTING AT `date`
+
+source /home/chye/venvs/6adctmrg/bin/activate
+python /home/chye/1stTrial/main_sweep_CPU_1stTrial.py
+
+echo FINISHED at `date`
+
+echo " ***** END OF JOB ***** "
+
+cp -r ../1stTrialRun  /home/chye/1stTrial/
