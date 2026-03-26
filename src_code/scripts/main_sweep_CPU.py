@@ -128,7 +128,7 @@ from core_unrestricted import (
 # Time Budget
 # ══════════════════════════════════════════════════════════════════════════════
 
-TOTAL_BUDGET_HOURS = 1.45
+TOTAL_BUDGET_HOURS = 0.45
 
 # Total wall-clock time for the entire sweep.  The sweep is designed to run
 # for a fixed time rather than a fixed number of steps, so that results at
@@ -195,7 +195,7 @@ DEFAULT_CHI_MAX = {2: 16, 3: 81, 4: 80}
 #   Increase if you have more memory; decrease if you hit OOM.
 
 DEFAULT_CHI_SCHEDULES = {
-    2: [5, 9, 14],
+    2: [14],
     3: [10, 17, 29],       # , 57, 81],  ← append to extend the schedule
     4: [17, 29],           # , 40, 62, 80] ← append to extend the schedule
 }
@@ -403,6 +403,64 @@ def free_ram_gb() -> float:
     return float('inf')
 
 
+def mem_mb() -> float:
+    """Return current process Resident Set Size (RSS) in MB.
+
+    Uses psutil when available; falls back to /proc/self/status (Linux).
+    Returns NaN when neither is available.
+    """
+    try:
+        import psutil
+        return psutil.Process().memory_info().rss / 1e6
+    except ImportError:
+        pass
+    try:
+        with open("/proc/self/status") as _fh:
+            for _line in _fh:
+                if _line.startswith("VmRSS:"):
+                    return int(_line.split()[1]) / 1e3
+    except OSError:
+        pass
+    return float('nan')
+
+
+def tensor_mb(t: torch.Tensor) -> float:
+    """Return the allocated memory of a single tensor in MB."""
+    return t.element_size() * t.nelement() / 1e6
+
+
+def env_mem_report(env28: tuple, chi: int, D_bond: int) -> str:
+    """One-line summary of the 27 CTMRG environment tensor sizes.
+
+    env28 is the 28-tuple from CTMRG_from_init_to_stop (27 tensors + ctm_steps).
+    """
+    _names = [
+        'C21CD', 'C32EF', 'C13AB', 'T1F',  'T2A',  'T2B',  'T3C',  'T3D',  'T1E',
+        'C21EB', 'C32AD', 'C13CF', 'T1D',  'T2C',  'T2F',  'T3E',  'T3B',  'T1A',
+        'C21AF', 'C32CB', 'C13ED', 'T1B',  'T2E',  'T2D',  'T3A',  'T3F',  'T1C',
+    ]
+    _tns = env28[:27]
+    _total   = sum(tensor_mb(t) for t in _tns)
+    _corners = sum(tensor_mb(t) for n, t in zip(_names, _tns) if n.startswith('C'))
+    _trans   = sum(tensor_mb(t) for n, t in zip(_names, _tns) if n.startswith('T'))
+    _c_shape = tuple(_tns[0].shape)   # C21CD
+    _t_shape = tuple(_tns[3].shape)   # T1F
+    return (
+        f"env chi={chi} D={D_bond}: total={_total:.1f}MB "
+        f"(corners={_corners:.1f}MB transfer={_trans:.1f}MB) "
+        f"C-shape={_c_shape} T-shape={_t_shape}"
+    )
+
+
+def abcdef_mem_report(tensors: tuple, D_bond: int) -> str:
+    """One-line summary of the 6 site tensors (a..f)."""
+    _total = sum(tensor_mb(t) for t in tensors)
+    return (
+        f"site D={D_bond}: total={_total:.4f}MB "
+        f"shape={tuple(tensors[0].shape)} dtype={tensors[0].dtype}"
+    )
+
+
 def peak_ram_gb(chi: int, D_sq: int) -> float:
     """Estimate peak RAM for one CTMRG step in GB."""
     n = chi * D_sq
@@ -597,6 +655,14 @@ def optimize_at_chi(
     for t in (a, b, c, d, e, f):
         t.requires_grad_(True)
 
+    # ── MEM-A: site-tensor footprint before any CTMRG allocation ─────────────
+    # BREAKPOINT-A  ← set breakpoint on the print line below.
+    # Debug Console queries when paused here:
+    #   tensor_mb(a)                           → MB for one site tensor
+    #   abcdef_mem_report((a,b,c,d,e,f), D_bond)  → one-liner summary
+    #   mem_mb()                               → total process RSS
+    print(f"[MEM-A] RSS={mem_mb():.1f}MB, {abcdef_mem_report((a, b, c, d, e, f), D_bond)}")
+
     best_loss     = float('inf')
     best_abcdef   = tuple(t.detach().clone() for t in (a, b, c, d, e, f))
     prev_loss     = None
@@ -633,6 +699,17 @@ def optimize_at_chi(
         all28 = CTMRG_from_init_to_stop(
             A, B, C, Dt, E, F, chi, D_sq,
             CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT)
+
+        # ── MEM-B: env tensors allocated by CTMRG forward pass ───────────────
+        # BREAKPOINT-B  ← set breakpoint on the print line below.
+        # This is the PEAK env allocation point (27 tensors live + autograd graph).
+        # Debug Console queries when paused here:
+        #   env_mem_report(all28, chi, D_bond)     → detailed per-category sizes
+        #   mem_mb()                               → total RSS (includes graph)
+        #   tensor_mb(all28[3])                    → size of T1F (transfer tensor)
+        #   all28[0].shape                         → C21CD corner shape
+        #   sum(t.element_size()*t.nelement() for t in all28[:27]) / 1e6
+        print(f"[MEM-B] RSS={mem_mb():.1f}MB, {env_mem_report(all28, chi, D_bond)}")
 
         (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
          C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
@@ -688,6 +765,16 @@ def optimize_at_chi(
         if elapsed >= budget_seconds:
             break
 
+        # ── MEM-C: RSS at the start of each outer optimization step ──────────
+        # BREAKPOINT-C  ← set breakpoint on the print line below.
+        # Watch for monotonic RSS growth → indicates graph/tensor leak.
+        # Debug Console queries when paused here:
+        #   mem_mb()           → current RSS
+        #   free_ram_gb()      → free system RAM (cluster OOM risk if < 1 GB)
+        #   step               → current step number
+        if step % 1 == 0:
+            print(f"[MEM-C] RSS={mem_mb():.1f}MB, step={step} free={free_ram_gb()*1e3:.0f}MB")
+
         # # normalise (scale-redundancy fix, preserves requires_grad)
         # with torch.no_grad():
         #     a.data = normalize_tensor(a.data)
@@ -726,6 +813,15 @@ def optimize_at_chi(
                     last_ctm_steps = _ctm_steps
                     last_cn = _cn
                     loss.backward()
+                    # ── MEM-D: RSS after backward (peak: forward graph + grad graph) ──
+                    # BREAKPOINT-D  ← set breakpoint on the print line below.
+                    # After this point the autograd graph is released when `loss`
+                    # goes out of scope.  The delta MEM-D minus MEM-B tells you
+                    # how large the backward computation graph was.
+                    # Debug Console queries when paused here:
+                    #   mem_mb()                       → RSS at backward peak
+                    #   a.grad.shape, tensor_mb(a.grad) → gradient tensor sizes
+                    print(f"[MEM-D] RSS={mem_mb():.1f}MB after backward")
                     # Guard against NaN/Inf gradients.
                     for p in (a, b, c, d, e, f):
                         if p.grad is not None:

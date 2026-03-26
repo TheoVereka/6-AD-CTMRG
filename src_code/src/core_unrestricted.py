@@ -57,6 +57,29 @@ _trunc_diag_buffer: list[dict] = []
 
 
 
+def mem_mb() -> float:
+    """Return current process Resident Set Size (RSS) in MB.
+
+    Uses psutil when available; falls back to /proc/self/status (Linux).
+    Returns NaN when neither is available.
+    """
+    try:
+        import psutil
+        return psutil.Process().memory_info().rss / 1e6
+    except ImportError:
+        pass
+    try:
+        with open("/proc/self/status") as _fh:
+            for _line in _fh:
+                if _line.startswith("VmRSS:"):
+                    return int(_line.split()[1]) / 1e3
+    except OSError:
+        pass
+    return float('nan')
+
+
+
+
 
 def safe_inverse(x, epsilon=1E-12):
     return x/(x**2 + epsilon**2)
@@ -2145,6 +2168,44 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
     # Perform the CTMRG iterations until convergence
     ctm_steps = a_third_max_iterations  # will be overwritten on early convergence
     for iteration in range(a_third_max_iterations):
+
+        # ── MEM-E: per-iteration env tensor footprint (first 3 iterations only) ──
+        # BREAKPOINT-E  ← set breakpoint on the print line below.
+        # Shows how many tensors are live and their combined size as the env grows.
+        # Only fires for iterations 0–2 to avoid log spam; remove the guard to log all.
+        # Debug Console queries when paused here:
+        #   iteration                                   → current iteration index
+        #   nowC21CD.shape if nowC21CD is not None else None  → corner shape
+        #   nowT1F.shape   if nowT1F   is not None else None  → transfer shape
+        #   sum(t.element_size()*t.nelement() for t in
+        #       [t for t in [nowC21CD,nowC32EF,nowC13AB,nowT1F,nowT2A,nowT2B,
+        #                    nowT3C,nowT3D,nowT1E,nowC21EB,nowC32AD,nowC13CF,
+        #                    nowT1D,nowT2C,nowT2F,nowT3E,nowT3B,nowT1A,
+        #                    nowC21AF,nowC32CB,nowC13ED,nowT1B,nowT2E,nowT2D,
+        #                    nowT3A,nowT3F,nowT1C] if t is not None]) / 1e6
+        if True:
+            _all_now = [t for t in [
+                nowC21CD, nowC32EF, nowC13AB, nowT1F,  nowT2A,  nowT2B,
+                nowT3C,   nowT3D,   nowT1E,   nowC21EB, nowC32AD, nowC13CF,
+                nowT1D,   nowT2C,   nowT2F,   nowT3E,   nowT3B,   nowT1A,
+                nowC21AF, nowC32CB, nowC13ED,  nowT1B,  nowT2E,   nowT2D,
+                nowT3A,   nowT3F,   nowT1C,
+            ] if t is not None]
+            _all_last = [t for t in [
+                lastC21CD, lastC32EF, lastC13AB, lastT1F,  lastT2A,  lastT2B,
+                lastT3C,   lastT3D,   lastT1E,   lastC21EB, lastC32AD, lastC13CF,
+                lastT1D,   lastT2C,   lastT2F,   lastT3E,   lastT3B,   lastT1A,
+                lastC21AF, lastC32CB, lastC13ED,  lastT1B,  lastT2E,   lastT2D,
+                lastT3A,   lastT3F,   lastT1C,
+            ] if t is not None]
+            _now_mb  = sum(t.element_size() * t.nelement() / 1e6 for t in _all_now)
+            _last_mb = sum(t.element_size() * t.nelement() / 1e6 for t in _all_last)
+            _c_sh = tuple(nowC21CD.shape) if nowC21CD is not None else None
+            _t_sh = tuple(nowT1F.shape)   if nowT1F   is not None else None
+            print(f"[MEM-E] RSS={mem_mb():.1f}MB CTMRG iter={iteration}  "
+                  f"now={len(_all_now)}tensors/{_now_mb:.1f}MB  "
+                  f"last={len(_all_last)}tensors/{_last_mb:.1f}MB  "
+                  f" T-shape={_t_sh}")
 
         if check_env_CV_using_3rho(lastC21CD, lastC32EF, lastC13AB, #lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E, 
                                  nowC21CD, nowC32EF, nowC13AB, #nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, 
