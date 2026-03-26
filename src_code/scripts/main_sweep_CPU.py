@@ -218,7 +218,7 @@ DEFAULT_CHI_SCHEDULES = {
 #     3. Repeat until time budget is exhausted or OPT_CONV_THRESHOLD hit.
 #   This is the "cheap-environment" AD-CTMRG gradient scheme.
 
-LBFGS_MAX_ITER = 20
+LBFGS_MAX_ITER = 11
 #   Maximum L-BFGS sub-iterations per outer step (= max closure evaluations
 #   inside a single optimizer.step() call).  Each sub-iteration does a
 #   forward + backward pass through the energy formula.  30 gives a thorough
@@ -247,12 +247,12 @@ OPT_TOL_GRAD = 1e-7
 #   the sub-iteration loop exits early if  ||∇loss||_∞ < OPT_TOL_GRAD.
 #   This is an inner stopping rule inside a single optimizer.step() call.
 
-OPT_TOL_CHANGE = 1e-9
+OPT_TOL_CHANGE = 1e-8
 #   L-BFGS inner convergence criterion on consecutive loss change:
 #   sub-iteration exits if  |L_{k+1} – L_k| < OPT_TOL_CHANGE.
 #   Set tighter than OPT_TOL_GRAD to catch near-flat regions.
 
-OPT_CONV_THRESHOLD = 1e-8
+OPT_CONV_THRESHOLD = 5e-8
 #   Outer-loop early-stop criterion: if |loss(step k) – loss(step k–1)|
 #   < OPT_CONV_THRESHOLD, the outer while-loop exits and we move to the
 #   next (D, chi) level.  Set to 0 to disable early stopping and always

@@ -68,7 +68,7 @@ import time
 #
 # Use os.environ.setdefault so a user can still override from the shell:
 #   OMP_NUM_THREADS=2 python scripts/main_sweep_CPU.py   ← respected
-_N_PHYSICAL_CORES = 16
+_N_PHYSICAL_CORES = 30
 os.environ.setdefault("OMP_NUM_THREADS", str(_N_PHYSICAL_CORES))
 os.environ.setdefault("MKL_NUM_THREADS", str(_N_PHYSICAL_CORES))
 # Prevent MKL from silently reducing thread count when it detects nested
@@ -225,11 +225,16 @@ DEFAULT_CHI_SCHEDULES = {
 #     3. Repeat until time budget is exhausted or OPT_CONV_THRESHOLD hit.
 #   This is the "cheap-environment" AD-CTMRG gradient scheme.
 
-LBFGS_MAX_ITER = 15
+LBFGS_MAX_ITER = 11
 #   Maximum L-BFGS sub-iterations per outer step (= max closure evaluations
 #   inside a single optimizer.step() call).  Each sub-iteration does a
-#   forward + backward pass through the energy formula.  30 gives a thorough
-#   line search and good curvature estimation without being excessively slow.
+#   forward + backward pass through the energy formula.
+#
+#   Rule: set to CTM_time / sub_iter_time (break-even ratio where extra
+#   sub-iters cost as much as one full CTMRG re-convergence):
+#     D=2–3: sub-iter ~1.5 s, warm CTM ~48 s → ratio ~32; use 25.
+#     D=4–5: sub-iter ~4   s, warm CTM ~80 s → ratio ~20; use 25.
+#     D≥6  : sub-iter grows faster than CTM → do NOT exceed 25.
 #   Applies UNIFORMLY to every (D, chi) level — no difference between small
 #   and large chi.
 
@@ -254,12 +259,12 @@ OPT_TOL_GRAD = 1e-7
 #   the sub-iteration loop exits early if  ||∇loss||_∞ < OPT_TOL_GRAD.
 #   This is an inner stopping rule inside a single optimizer.step() call.
 
-OPT_TOL_CHANGE = 1e-9
+OPT_TOL_CHANGE = 1e-8
 #   L-BFGS inner convergence criterion on consecutive loss change:
 #   sub-iteration exits if  |L_{k+1} – L_k| < OPT_TOL_CHANGE.
 #   Set tighter than OPT_TOL_GRAD to catch near-flat regions.
 
-OPT_CONV_THRESHOLD = 1e-8
+OPT_CONV_THRESHOLD = 5e-8
 #   Outer-loop early-stop criterion: if |loss(step k) – loss(step k–1)|
 #   < OPT_CONV_THRESHOLD, the outer while-loop exits and we move to the
 #   next (D, chi) level.  Set to 0 to disable early stopping and always
