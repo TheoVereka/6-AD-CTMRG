@@ -15,13 +15,8 @@ pytorch==2.5.1
 import numpy as np
 import scipy
 import opt_einsum as oe
-import matplotlib.pyplot as plt
-from tqdm import tqdm
-import h5py
-import os, sys
 import torch
-import scipy.sparse.linalg
-from scipy.sparse.linalg import LinearOperator
+from scipy.sparse.linalg import aslinearoperator, svds
 
 
 #################################
@@ -314,34 +309,49 @@ class SVD_PROPACK(torch.autograd.Function):
         k_total = min(k + k_extra, min(m_dim, n_dim))
         k_total = max(k_total, 1)
 
-        # M.detach() so .numpy() works even when M.requires_grad=True
-        M_np = M.detach().cpu().numpy().astype(_np_dtype, copy=False)
+        # print(f"Performing SVD with k={k}, k_extra={k_extra}, rel_cutoff={rel_cutoff.item()}, m_dim={m_dim}, n_dim={n_dim}, k_total={k_total}")
 
-        # Full thin SVD; np.linalg.svd always returns S in descending order.
-        # We compute the FULL thin SVD (all min(m,n) singular triples) even
-        # though we only return k_total of them.  The backward uses ALL singular
-        # triples for the F,G cross-coupling matrices; using only k_total would
-        # drop the interaction terms between kept and discarded singular values,
-        # causing ~38% gradient error for typical CTMRG projector losses.
-        _Uf, _Sf, _Vhf = np.linalg.svd(M_np, full_matrices=False) 
+
+        if True:
+            # M.detach() so .numpy() works even when M.requires_grad=True
+            M_np = M.detach().cpu().numpy().astype(_np_dtype, copy=False)
+
+            # Full thin SVD via LAPACK (numpy uses gesdd by default).
+            # np.linalg.svd always returns S in descending order.
+            # We compute ALL min(m,n) singular triples here even though we
+            # only RETURN k_total of them.  The backward uses ALL singular
+            # triples for the F,G cross-coupling matrices; using only k_total
+            # would drop the interaction terms between kept and discarded
+            # singular values, causing ~38% gradient error for typical CTMRG
+            # projector losses (equivalent to the "5th term" correction of
+            # arXiv:2311.11894v3 — verified by test_svd_trunc_term5.py).
+            _Uf, _Sf, _Vhf = np.linalg.svd(M_np, full_matrices=False)
+
+            k_full = min(m_dim, n_dim)  # = _Sf.shape[0]
+
+            # Convert FULL SVD to tensors for backward
+            S_full = torch.as_tensor(_Sf.copy(),  dtype=_rdtype, device=M.device)
+            U_full = torch.as_tensor(_Uf.copy(),  dtype=M.dtype,  device=M.device)
+            V_full = torch.as_tensor(_Vhf.copy(), dtype=M.dtype,  device=M.device).transpose(-2,-1).conj()
+
+            # Save full-rank tensors so backward has all cross-coupling information
+            self.save_for_backward(U_full, S_full, V_full, rel_cutoff)
+            self.k_return = k_total   # only k_total triples are returned; backward pads gu/gv/gs
+
+            # Return only the TOP k_total singular triples to the caller.
+            # The backward already handles the zero-padding of upstream grads.
+            return U_full[:, :k_total], S_full[:k_total], V_full[:, :k_total]
         
-        ###############################################
-        # TODO: WHAT IS THIS PACK FOR SVD????? (Probably gesdd)
-        ###############################################
+        else:
+            _uPartial, _sPartial, _vhPartial = svds(aslinearoperator(M.detach().cpu().numpy()), k=k_total, tol=0, which='LM', v0=v0.cpu().numpy() if v0 is not None else None, solver='arpack')
+            S_partial = torch.as_tensor(_sPartial.copy(), dtype=_rdtype, device=M.device)
+            U_partial = torch.as_tensor(_uPartial.copy(), dtype=M.dtype, device=M.device)
+            V_partial = torch.as_tensor(_vhPartial.copy(), dtype=M.dtype, device=M.device).transpose(-2,-1).conj()
 
+            self.save_for_backward(U_partial, S_partial, V_partial, rel_cutoff)
+            self.k_return = k_total   # how many singular triples were returned
 
-        k_full = min(m_dim, n_dim)  # = _Sf.shape[0]
-
-        # Convert FULL SVD to tensors for backward
-        S_full=  torch.as_tensor(_Sf.copy(),        dtype=_rdtype,  device=M.device)
-        U_full=  torch.as_tensor(_Uf.copy(),        dtype=M.dtype,  device=M.device)
-        V_full=  torch.as_tensor(_Vhf.copy(),       dtype=M.dtype,  device=M.device).transpose(-2,-1).conj()
-
-        # Save full-rank tensors so backward has all cross-coupling information
-        self.save_for_backward(U_full, S_full, V_full, rel_cutoff)
-        self.k_return = k_full   # how many singular triples were returned
-
-        return U_full, S_full, V_full
+            return U_partial, S_partial, V_partial
 
     @staticmethod
     def backward(self, gu, gsigma, gv):
@@ -2202,10 +2212,10 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
             _last_mb = sum(t.element_size() * t.nelement() / 1e6 for t in _all_last)
             _c_sh = tuple(nowC21CD.shape) if nowC21CD is not None else None
             _t_sh = tuple(nowT1F.shape)   if nowT1F   is not None else None
-            print(f"[MEM-E] RSS={mem_mb():.1f}MB CTMRG iter={iteration}  "
-                  f"now={len(_all_now)}tensors/{_now_mb:.1f}MB  "
-                  f"last={len(_all_last)}tensors/{_last_mb:.1f}MB  "
-                  f" T-shape={_t_sh}")
+            #print(f"[MEM-E] RSS={mem_mb():.1f}MB CTMRG iter={iteration}  "
+            #      f"now={len(_all_now)}tensors/{_now_mb:.1f}MB  "
+            #      f"last={len(_all_last)}tensors/{_last_mb:.1f}MB  "
+            #      f" T-shape={_t_sh}")
 
         if check_env_CV_using_3rho(lastC21CD, lastC32EF, lastC13AB, #lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E, 
                                  nowC21CD, nowC32EF, nowC13AB, #nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, 

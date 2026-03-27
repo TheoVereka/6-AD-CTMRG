@@ -81,3 +81,16 @@ echo ""
 echo "To verify GPU on a compute node:"
 echo "  srun --partition=gpu --gres=gpu:1 --pty bash -c \\"
 echo "    'module load gcc/11.3.0 &&module load cuda/11.8.0 python/3.10.4 && source ~/venvs/6adctmrg_Izar/bin/activate && python -c \"import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))\"'"
+
+
+
+# 'module load gcc/11.3.0 cuda/11.8.0 python/3.10.4 &&
+# source ~/venvs/6adctmrg_Izar/bin/activate &&
+# python -c \"import torch; 
+# print(torch.cuda.is_available(), 
+# torch.cuda.get_device_name(0))\"'"
+#
+# srun: job 2816805 queued and waiting for resources
+# srun: job 2816805 has been allocated resources
+# True Tesla V100-PCIE-32GB
+
