@@ -247,12 +247,12 @@ OPT_TOL_GRAD = 1e-7
 #   the sub-iteration loop exits early if  ||∇loss||_∞ < OPT_TOL_GRAD.
 #   This is an inner stopping rule inside a single optimizer.step() call.
 
-OPT_TOL_CHANGE = 1e-8
+OPT_TOL_CHANGE = 3e-9
 #   L-BFGS inner convergence criterion on consecutive loss change:
 #   sub-iteration exits if  |L_{k+1} – L_k| < OPT_TOL_CHANGE.
 #   Set tighter than OPT_TOL_GRAD to catch near-flat regions.
 
-OPT_CONV_THRESHOLD = 3e-8
+OPT_CONV_THRESHOLD = 1e-8
 #   Outer-loop early-stop criterion: if |loss(step k) – loss(step k–1)|
 #   < OPT_CONV_THRESHOLD, the outer while-loop exits and we move to the
 #   next (D, chi) level.  Set to 0 to disable early stopping and always
