@@ -252,7 +252,7 @@ OPT_TOL_CHANGE = 1e-8
 #   sub-iteration exits if  |L_{k+1} – L_k| < OPT_TOL_CHANGE.
 #   Set tighter than OPT_TOL_GRAD to catch near-flat regions.
 
-OPT_CONV_THRESHOLD = 5e-8
+OPT_CONV_THRESHOLD = 5e-9
 #   Outer-loop early-stop criterion: if |loss(step k) – loss(step k–1)|
 #   < OPT_CONV_THRESHOLD, the outer while-loop exits and we move to the
 #   next (D, chi) level.  Set to 0 to disable early stopping and always
@@ -303,13 +303,13 @@ ENV_IDENTITY_INIT = False
 
 
 
-CTM_MAX_STEPS = 50
+CTM_MAX_STEPS = 30
 #   Hard cap on CTMRG iterations per environment convergence call.
 #   With the singular-value convergence criterion and CTM_CONV_THR=1e-3,
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
 #   ansatz ~4 steps, 6-tensor ~40 steps).  90 is a safe upper bound.
 
-CTM_CONV_THR = 4e-7
+CTM_CONV_THR = 2e-7
 #   CTMRG convergence threshold: stop iterating when the max change in
 #   normalised corner singular values between consecutive steps is below
 #   this value.  The convergence criterion compares the spectra of all 9
@@ -661,7 +661,7 @@ def optimize_at_chi(
     #   tensor_mb(a)                           → MB for one site tensor
     #   abcdef_mem_report((a,b,c,d,e,f), D_bond)  → one-liner summary
     #   mem_mb()                               → total process RSS
-    print(f"[MEM-A] RSS={mem_mb():.1f}MB, {abcdef_mem_report((a, b, c, d, e, f), D_bond)}")
+    # print(f"[MEM-A] RSS={mem_mb():.1f}MB, {abcdef_mem_report((a, b, c, d, e, f), D_bond)}")
 
     best_loss     = float('inf')
     best_abcdef   = tuple(t.detach().clone() for t in (a, b, c, d, e, f))
@@ -709,7 +709,7 @@ def optimize_at_chi(
         #   tensor_mb(all28[3])                    → size of T1F (transfer tensor)
         #   all28[0].shape                         → C21CD corner shape
         #   sum(t.element_size()*t.nelement() for t in all28[:27]) / 1e6
-        print(f"[MEM-B] RSS={mem_mb():.1f}MB, {env_mem_report(all28, chi, D_bond)}")
+        # print(f"[MEM-B] RSS={mem_mb():.1f}MB, {env_mem_report(all28, chi, D_bond)}")
 
         (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
          C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
@@ -772,8 +772,7 @@ def optimize_at_chi(
         #   mem_mb()           → current RSS
         #   free_ram_gb()      → free system RAM (cluster OOM risk if < 1 GB)
         #   step               → current step number
-        if step % 1 == 0:
-            print(f"[MEM-C] RSS={mem_mb():.1f}MB, step={step} free={free_ram_gb()*1e3:.0f}MB")
+        # print(f"[MEM-C] RSS={mem_mb():.1f}MB, step={step} free={free_ram_gb()*1e3:.0f}MB")
 
         # # normalise (scale-redundancy fix, preserves requires_grad)
         # with torch.no_grad():
@@ -821,7 +820,7 @@ def optimize_at_chi(
                     # Debug Console queries when paused here:
                     #   mem_mb()                       → RSS at backward peak
                     #   a.grad.shape, tensor_mb(a.grad) → gradient tensor sizes
-                    print(f"[MEM-D] RSS={mem_mb():.1f}MB after backward")
+                    # print(f"[MEM-D] RSS={mem_mb():.1f}MB after backward")
                     # Guard against NaN/Inf gradients.
                     for p in (a, b, c, d, e, f):
                         if p.grad is not None:
