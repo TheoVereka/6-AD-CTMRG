@@ -3,9 +3,9 @@ import torch
 import opt_einsum as oe
 
 
-CDTYPE: torch.dtype = torch.complex64   # complex dtype for all tensors
-RDTYPE: torch.dtype = torch.float32     # real dtype (SVD singular values, norms)
-TENSORDTYPE: torch.dtype = torch.float32  # tensor dtype (default)
+CDTYPE: torch.dtype = torch.complex128   # complex dtype for all tensors
+RDTYPE: torch.dtype = torch.float64    # real dtype (SVD singular values, norms)
+TENSORDTYPE: torch.dtype = torch.float64  # tensor dtype (default)
 
 
 
@@ -96,7 +96,22 @@ def normalize_single_layer_tensor_for_double_layer(
 
 
 
-def initialize_abcdef(initialize_way:str, D_bond:int, d_PHYS:int, noise_scale:float):
+def warm_padding_init_abcdef(a,b,c,d,e,f, D_bond:int, d_PHYS:int, noise_scale:float):
+    """
+    pad from smaller old_D_bond of abcdef, to now D_bond, adding small noise.
+    """
+
+    pass
+
+
+
+def initialize_abcdef(initialize_way:str, D_bond:int, d_PHYS:int, noise_scale:float, 
+                      a:torch.Tensor|None=None,
+                      b:torch.Tensor|None=None,
+                      c:torch.Tensor|None=None,
+                      d:torch.Tensor|None=None,
+                      e:torch.Tensor|None=None,
+                      f:torch.Tensor|None=None) -> tuple[torch.Tensor, ...]:
     """
     Initialise the six single-layer iPEPS site tensors a, b, c, d, e, f.
 
@@ -131,6 +146,11 @@ def initialize_abcdef(initialize_way:str, D_bond:int, d_PHYS:int, noise_scale:fl
         d = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=TENSORDTYPE)
         e = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=TENSORDTYPE)
         f = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=TENSORDTYPE)
+
+    elif initialize_way == 'warm' : # padding old_D_bond to now D_bond with small noise
+        if a is None or b is None or c is None or d is None or e is None or f is None:
+            raise ValueError("All old tensors must be provided for 'warm' initialization")
+        a, b, c, d, e, f = warm_padding_init_abcdef(a, b, c, d, e, f, D_bond, d_PHYS, noise_scale)
 
     elif initialize_way == 'product' : # product state but always with small noise
 
@@ -345,7 +365,9 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
 
 def evaluate_Left_Down_Right_neighbor_3_energies():
     """
+    only testing, not used on cluster
     SHOULD USE /_\because it captures best the corner-edge entanglement
+    NOTE: the Hamiltonian is 'ikjl' now!!!
     """
     pass
 
@@ -353,14 +375,29 @@ def evaluate_Left_Down_Right_neighbor_3_energies():
 
 def evaluate_9_nearest_neighbor_energies_in_3_envs():
     """
-    SHOULD USE /_\because it captures best the corner-edge entanglement
+    only testing, not used on cluster
     """
+
+    pass
+
+
+
+def evaluate_LDR_3nn_and_6secondnn_energies():
+    """
+    NOTE: the Hamiltonian is 'ikjl' now!!!
+    """
+
+    pass
+
+def evaluate_9nn_and_18secondnn_energies_in_3_envs():
+
     pass
 
 
 def Adam_optimize_iPEPS(
                         ):
     """
+    [only for testing, not used on cluster]
     Optimize the iPEPS tensors using Adam, with the CTMRG environment updated at every step.
 
     This is an alternative optimization loop that uses the Adam optimizer instead of L-BFGS. It may be more robust to local minima and can handle noisy gradients, but may require more iterations to converge.
@@ -387,9 +424,9 @@ def build_heisenberg_H_ikjl(J: float = 1.0, d: int = 2) -> torch.Tensor:
     # use spin s=(d-1)/2 to build spin-s operators sx, sy, sz:
     spin = (d - 1) / 2
     spin = torch.tensor(spin, dtype=RDTYPE)
-    Splus = torch.zeros((d, d), dtype=TENSORDTYPE)
-    Sminus = torch.zeros((d, d), dtype=TENSORDTYPE)
-    Sz = torch.zeros((d, d), dtype=TENSORDTYPE)
+    Splus = torch.zeros((d, d), dtype=RDTYPE)
+    Sminus = torch.zeros((d, d), dtype=RDTYPE)
+    Sz = torch.zeros((d, d), dtype=RDTYPE)
     for i in range(d):
         m = float(spin - i)                   # numeric m-value (float)
         Sz[i, i] = m                          # diagonal Sz
@@ -402,9 +439,9 @@ def build_heisenberg_H_ikjl(J: float = 1.0, d: int = 2) -> torch.Tensor:
 
     print(Splus,Sminus,Sz)
 
-    SdotS = (oe.contract("ij,kl->ikjl", Splus, Sminus) * 0.5
-           + oe.contract("ij,kl->ikjl", Sminus, Splus) * 0.5
-           + oe.contract("ij,kl->ikjl", Sz, Sz))
+    SdotS = torch.tensor(oe.contract("ij,kl->ikjl", Splus, Sminus) * 0.5
+                        +oe.contract("ij,kl->ikjl", Sminus, Splus) * 0.5
+                        +oe.contract("ij,kl->ikjl", Sz, Sz), dtype=TENSORDTYPE)
     return J * SdotS
 
 

@@ -339,7 +339,7 @@ J_COUPLING = 1.0
 #   (AFM), ground state is a singlet.  The Hamiltonian is
 #   H = J Σ_{<i,j>} S_i · S_j  summed over all nearest-neighbour pairs on the
 #   honeycomb.  For the AFM sign convention the optimal iPEPS energy is
-#   E/bond ≈ −0.3646 J in the D→∞ limit (QMC reference).
+#   E/bond ≈ −0.3630 J in the D→∞ limit (QMC reference).
 
 D_PHYS = 2
 #   Physical Hilbert-space dimension per lattice site.
@@ -1360,7 +1360,7 @@ def main():
     best_overall = min(energy_table, key=lambda r: r['energy_per_bond'])
     print(f"  Best E/bond = {best_overall['energy_per_bond']:+.10f}  "
           f"(D={best_overall['D_bond']}, chi={best_overall['chi']})")
-    print(f"  QMC reference (D→∞): E/bond ≈ −0.3646")
+    print(f"  QMC reference (D→∞): E/bond ≈ −0.3630")
     print(f"  Total wall time: {total_elapsed/3600:.2f} h ({total_elapsed:.0f} s)")
     print(f"  Finished: {timestamp()}")
     print("=" * 76)
@@ -1392,7 +1392,7 @@ def main():
         y = [r['energy_per_bond'] for r in rows]
         ax.plot(x, y, 'o-', label=f'D={D}', markerfacecolor='white',
                 markersize=7)
-    ax.axhline(-0.3646, color='grey', ls='--', lw=1, label='QMC (D→∞) ≈ −0.3646')
+    ax.axhline(-0.3630, color='grey', ls='--', lw=1, label='QMC (D→∞) ≈ −0.3630')
     ax.set_xlabel(r'Environment bond dimension $\chi$', fontsize=12)
     ax.set_ylabel(r'Energy per bond $E/J$', fontsize=12)
     ax.set_title('iPEPS ground-state energy — AFM Heisenberg (honeycomb)', fontsize=12)
@@ -1413,7 +1413,7 @@ def main():
         fig2, ax2 = plt.subplots(figsize=(6, 4))
         ax2.plot(D_vals, E_best, 's-', color='tab:red', markersize=9,
                  markerfacecolor='white')
-        ax2.axhline(-0.3646, color='grey', ls='--', lw=1, label='QMC')
+        ax2.axhline(-0.3630, color='grey', ls='--', lw=1, label='QMC')
         ax2.set_xlabel(r'Bond dimension $D$', fontsize=12)
         ax2.set_ylabel(r'Best $E/\text{bond}$', fontsize=12)
         ax2.set_title('iPEPS convergence in D')
