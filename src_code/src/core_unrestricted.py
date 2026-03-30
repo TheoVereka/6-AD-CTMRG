@@ -341,6 +341,7 @@ class SVD_PROPACK(torch.autograd.Function):
             # Return only the TOP k_total singular triples to the caller.
             # The backward already handles the zero-padding of upstream grads.
             return U_full[:, :k_total], S_full[:k_total], V_full[:, :k_total]
+            # return U_full, S_full, V_full
         
         else:
             _uPartial, _sPartial, _vhPartial = svds(aslinearoperator(M.detach().cpu().numpy()), k=k_total, tol=0, which='LM', v0=v0.cpu().numpy() if v0 is not None else None, solver='arpack')
