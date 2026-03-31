@@ -76,7 +76,7 @@ def mem_mb() -> float:
 
 
 
-def safe_inverse(x, epsilon=1e-12):
+def safe_inverse(x, epsilon=1e-8):
     return x/(x**2 + epsilon**2)
     
 def safe_inverse_2(x, epsilon):
@@ -224,7 +224,7 @@ def normalize_tensor(tensor, *, rtol: float | None = None, atol: float | None = 
 
     # Choose dtype-appropriate default tolerances.
     # For complex64 (norm is float32), norms around 1 typically fluctuate at ~1e-7,
-    # so a strict 1e-12 check would *keep renormalizing* and introduce drift.
+    # so a strict 1e-8 check would *keep renormalizing* and introduce drift.
     if rtol is None or atol is None:
         if norm.dtype == torch.float32:
             default_rtol = 4e-7
@@ -349,9 +349,11 @@ def _keep_multiplets(U,S,V,chi,eps_multiplet,abs_tol):
     
 
 
+from torch import _linalg_utils as _utils, Tensor
+
 class SVD_PROPACK(torch.autograd.Function):
     @staticmethod
-    def forward(self, M, k, k_extra, rel_cutoff, v0):
+    def forward(self, A, k, k_extra, rel_cutoff, v0):
         r"""
         :param M: square matrix :math:`N \times N`
         :param k: desired rank (must be smaller than :math:`N`)
@@ -372,34 +374,52 @@ class SVD_PROPACK(torch.autograd.Function):
         # scipy.linalg.eig (wrong algorithm) when k >= N-1, and PROPACK's
         # Fortran ZLASCL routine crashes on ill-conditioned matrices.
         # The CTMRG matrices are at most ~100×100; dense SVD is fast.
-        _np_dtype = np.complex128 if M.is_complex() else np.float64
-        _rdtype = torch.float64 if M.dtype in (torch.complex128, torch.float64) else torch.float32
+        _np_dtype = np.complex128 if A.is_complex() else np.float64
+        _rdtype = torch.float64 if A.dtype in (torch.complex128, torch.float64) else torch.float32
 
-        m_dim, n_dim = M.shape
+        m_dim, n_dim = A.shape
         k_total = min(k + k_extra, min(m_dim, n_dim))
-        k_total = max(k_total, 1)
+        q = max(k_total, 1)
 
         # print(f"Performing SVD with k={k}, k_extra={k_extra}, rel_cutoff={rel_cutoff.item()}, m_dim={m_dim}, n_dim={n_dim}, k_total={k_total}")
 
 
         if True:
-            # Dense LAPACK full-thin SVD (numpy gesdd — always descending order).
-            # We compute ALL min(m,n) triples so that B = A − U_k S_k V_k† = 0;
-            # with B = 0 the 5th-term Sylvester system reduces exactly to the
-            # out-of-subspace projector term, so no information is lost even
-            # though the backward formula is the same as the partial-SVD case.
-            M_np = M.detach().cpu().numpy().astype(_np_dtype, copy=False)
-            _Uf, _Sf, _Vhf = np.linalg.svd(M_np, full_matrices=False)
+            matmul = _utils.matmul
 
-            S_k = torch.as_tensor(_Sf[:k_total].copy(), dtype=_rdtype,  device=M.device)
-            U_k = torch.as_tensor(_Uf[:, :k_total].copy(), dtype=M.dtype, device=M.device)
-            V_k = torch.as_tensor(_Vhf[:k_total, :].copy(), dtype=M.dtype, device=M.device).transpose(-2,-1).conj()
 
-            # Save the TOP-k triples AND the original matrix A.
-            # The 5th-term backward only needs A, U_k, S_k, V_k — no full SVD stored.
-            self.save_for_backward(U_k, S_k, V_k, M.detach(), rel_cutoff)
+            niter = 2 
 
-            return U_k, S_k, V_k
+            dtype = _utils.get_floating_dtype(A) if not A.is_complex() else A.dtype
+            matmul = _utils.matmul
+
+            R = torch.randn(A.shape[-1], q, dtype=dtype, device=A.device)
+
+            # The following code could be made faster using torch.geqrf + torch.ormqr
+            # but geqrf is not differentiable
+
+            X = matmul(A, R)
+            Q = torch.linalg.qr(X).Q
+            for _ in range(niter):
+                X = matmul(A.mH, Q)
+                Q = torch.linalg.qr(X).Q
+                X = matmul(A, Q)
+                Q = torch.linalg.qr(X).Q
+
+            B = matmul(Q.mH, A)
+            
+            U, S, Vh = torch.linalg.svd(B, full_matrices=False)
+            V = Vh.mH
+            U = Q.matmul(U)
+            
+            #S = torch.as_tensor(S.copy(),  dtype=_rdtype,  device=A.device)
+            #U = torch.as_tensor(U.copy(),  dtype=A.dtype,  device=A.device)
+            #V = torch.as_tensor(V.copy(), dtype=A.dtype,  device=A.device)
+
+            self.save_for_backward(U,S,V, A.detach(), rel_cutoff)
+
+
+            return U, S, V
 
         else:
             # Partial SVD via ARPACK — only k_total singular triples computed.
@@ -537,9 +557,10 @@ class SVD_PROPACK(torch.autograd.Function):
 
 
 
+
 def truncated_svd_propack(M, chi, chi_extra, rel_cutoff, v0=None,
     abs_tol=1.0e-14,  keep_multiplets=False, \
-    eps_multiplet=1e-12, ):
+    eps_multiplet=1e-8, ):
     r"""
     :param M: square matrix of dimensions :math:`N \times N`
     :param chi: desired maximal rank :math:`\chi`
@@ -576,6 +597,11 @@ def truncated_svd_propack(M, chi, chi_extra, rel_cutoff, v0=None,
     _rdtype = torch.float64 if M.dtype in (torch.complex128, torch.float64) else torch.float32
     U, S, V = SVD_PROPACK.apply(M, chi, max(chi_extra,1),torch.as_tensor([rel_cutoff],dtype=_rdtype, device=M.device), v0)
 
+
+    # TODO: dynamically change the chi and rel-cutoff to save for backward
+    # TODO: Run duplicate of one outer-step if detected the gradient norm too large and loss change too small!
+
+
     # estimate the chi_new 
     if keep_multiplets and chi<S.shape[0]:
         return _keep_multiplets(U,S,V,chi,eps_multiplet,abs_tol)
@@ -591,11 +617,11 @@ use of truncate_svd_propack:
 
 truncated_svd_propack(M, chi,
                     chi_extra=1,
-                    rel_cutoff=1e-12,
+                    rel_cutoff=1e-8,
                     v0=None,
                     keep_multiplets=False,
                     abs_tol=1e-14,
-                    eps_multiplet=1e-12)  # returns U, S, V of M= USV^\dag
+                    eps_multiplet=1e-8)  # returns U, S, V of M= USV^\dag
 
 """
 
@@ -740,11 +766,11 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
 
     U,S,V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
                         chi_extra=1,
-                        rel_cutoff=1e-12,
+                        rel_cutoff=1e-8,
                         v0=None,
                         keep_multiplets=False,
                         abs_tol=1e-14,
-                        eps_multiplet=1e-12)
+                        eps_multiplet=1e-8)
     
     truncV = V
     truncUh = U.conj().T
@@ -819,11 +845,11 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     #U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
     U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
                     chi_extra=1,
-                    rel_cutoff=1e-12,
+                    rel_cutoff=1e-8,
                     v0=None,
                     keep_multiplets=False,
                     abs_tol=1e-14,
-                    eps_multiplet=1e-12)
+                    eps_multiplet=1e-8)
     
     truncUh = U.conj().T
     truncV = V
@@ -845,11 +871,11 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     #U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
     U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
                     chi_extra=1,
-                    rel_cutoff=1e-12,
+                    rel_cutoff=1e-8,
                     v0=None,
                     keep_multiplets=False,
                     abs_tol=1e-14,
-                    eps_multiplet=1e-12)
+                    eps_multiplet=1e-8)
     #print("1st 'QR'-cut done")
 
     truncUh = U.conj().T
@@ -1074,11 +1100,11 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         #Q2, R2 = torch.linalg.qr(torch.mm(matC13,matC32))
         U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
                     chi_extra=1,
-                    rel_cutoff=1e-12,
+                    rel_cutoff=1e-8,
                     v0=None,
                     keep_multiplets=False,
                     abs_tol=1e-14,
-                    eps_multiplet=1e-12)
+                    eps_multiplet=1e-8)
 
         truncUh = U.conj().T
         truncV = V
@@ -1095,11 +1121,11 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         #Q2, R2 = torch.linalg.qr(torch.mm(matC21,matC13))
         U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
                     chi_extra=1,
-                    rel_cutoff=1e-12,
+                    rel_cutoff=1e-8,
                     v0=None,
                     keep_multiplets=False,
                     abs_tol=1e-14,
-                    eps_multiplet=1e-12)
+                    eps_multiplet=1e-8)
 
         truncUh = U.conj().T
         truncV = V
@@ -1116,11 +1142,11 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         #Q2, R2 = torch.linalg.qr(torch.mm(matC32,matC21))
         U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
                     chi_extra=1,
-                    rel_cutoff=1e-12,
+                    rel_cutoff=1e-8,
                     v0=None,
                     keep_multiplets=False,
                     abs_tol=1e-14,
-                    eps_multiplet=1e-12)
+                    eps_multiplet=1e-8)
 
         truncUh = U.conj().T
         truncV = V
@@ -1202,25 +1228,25 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
             out1Ein2B = torch.mm(T1E.T, T2B)
             T2A, svL, T3D = truncated_svd_propack(out2Ain3D, chi,
                         chi_extra=1,
-                        rel_cutoff=1e-12,
+                        rel_cutoff=1e-8,
                         v0=None,
                         keep_multiplets=False,
                         abs_tol=1e-14,
-                        eps_multiplet=1e-12)
+                        eps_multiplet=1e-8)
             T3C, svM, T1F = truncated_svd_propack(out3Cin1F, chi,
                         chi_extra=1,
-                        rel_cutoff=1e-12,
+                        rel_cutoff=1e-8,
                         v0=None,
                         keep_multiplets=False,
                         abs_tol=1e-14,
-                        eps_multiplet=1e-12)
+                        eps_multiplet=1e-8)
             T1E, svN, T2B = truncated_svd_propack(out1Ein2B, chi,
                         chi_extra=1,
-                        rel_cutoff=1e-12,
+                        rel_cutoff=1e-8,
                         v0=None,
                         keep_multiplets=False,
                         abs_tol=1e-14,
-                        eps_multiplet=1e-12)
+                        eps_multiplet=1e-8)
 
             sqrt_svL = torch.sqrt(svL)
             sqrt_svM = torch.sqrt(svM)
@@ -1235,11 +1261,11 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         else: 
             U, S, V = truncated_svd_propack(torch.mm(T1F.T,T3C), chi,
                         chi_extra=1,
-                        rel_cutoff=1e-12,
+                        rel_cutoff=1e-8,
                         v0=None,
                         keep_multiplets=False,
                         abs_tol=1e-14,
-                        eps_multiplet=1e-12)
+                        eps_multiplet=1e-8)
             truncUh = U.conj().T
             truncV = V
             sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
@@ -1250,11 +1276,11 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
 
             U, S, V = truncated_svd_propack(torch.mm(T3D.T,T2A), chi,
                         chi_extra=1,
-                        rel_cutoff=1e-12,
+                        rel_cutoff=1e-8,
                         v0=None,
                         keep_multiplets=False,
                         abs_tol=1e-14,
-                        eps_multiplet=1e-12)
+                        eps_multiplet=1e-8)
             truncUh = U.conj().T
             truncV = V
             sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
@@ -1265,11 +1291,11 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
 
             U, S, V = truncated_svd_propack(torch.mm(T2B.T,T1E), chi,
                         chi_extra=1,
-                        rel_cutoff=1e-12,
+                        rel_cutoff=1e-8,
                         v0=None,
                         keep_multiplets=False,
                         abs_tol=1e-14,
-                        eps_multiplet=1e-12)
+                        eps_multiplet=1e-8)
             truncUh = U.conj().T
             truncV = V
             sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))

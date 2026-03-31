@@ -51,6 +51,7 @@ Outputs (all in log/)
 import argparse
 import collections
 import datetime
+import gc
 import json
 import os
 import sys
@@ -179,13 +180,13 @@ USE_DOUBLE_PRECISION = True
 
 # ── Sweep control ─────────────────────────────────────────────────────────────
 
-D_BOND_LIST = [2,3, 4]
+D_BOND_LIST = [2, 3, 4]
 #   Ordered list of iPEPS virtual bond dimensions to sweep (outer loop).
 #   Each D is warm-started from the best tensors found at the previous D
 #   (zero-padded to the new size + PAD_NOISE Gaussian noise).
 
 
-DEFAULT_D_BUDGET_FRACS = {2:0.2, 3:0.2, 4: 0.6}
+DEFAULT_D_BUDGET_FRACS = {2:0.2, 3:0.6, 4:0.2}
 #   Fraction of the total wall-clock budget allocated to each D_bond value.
 #   Normalised to sum=1 before use, so only the RATIOS matter.
 #   Rationale:
@@ -490,6 +491,22 @@ def build_heisenberg_H(J: float = 1.0, d: int = 2) -> torch.Tensor:
 """
 
 
+def _new_tensors_from_data(tensors: tuple) -> tuple:
+    """Create brand-new tensors from raw numerical data.
+
+    Each returned tensor is a *fresh* ``torch.empty`` + ``copy_``, sharing
+    zero autograd lineage, zero storage, zero Python identity with the
+    originals.  After calling this, ``del tensors`` truly frees everything
+    from the old optimisation run (optimizer state, CTMRG envs, closures).
+    """
+    out = []
+    for t in tensors:
+        new = torch.empty(t.shape, dtype=CDTYPE, device=t.device)
+        new.copy_(t.detach())
+        out.append(new)
+    return tuple(out)
+
+
 def pad_tensor(t: torch.Tensor, old_D: int, new_D: int,
                d_PHYS: int, noise: float) -> torch.Tensor:
     
@@ -651,10 +668,9 @@ def optimize_at_chi(
     D_sq = D_bond ** 2
     t_start = time.perf_counter()
 
-    # initialise tensors
+    # initialise tensors — ALWAYS brand-new objects, no shared lineage
     if init_abcdef is not None:
-        a, b, c, d, e, f = [t.detach().clone().to(CDTYPE)
-                             for t in init_abcdef]
+        a, b, c, d, e, f = _new_tensors_from_data(init_abcdef)
     else:
         a, b, c, d, e, f = initialize_abcdef('random', D_bond, d_PHYS, INIT_NOISE)
     for t in (a, b, c, d, e, f):
@@ -795,6 +811,10 @@ def optimize_at_chi(
         cn: dict[str, float] = {}
         if OPTIMIZER == 'lbfgs':
             # fresh L-BFGS each outer step (resets curvature state)
+
+            # TODO: find out whether L_BFGS could do less inner-iter if it know the history (curvature)
+            # TODO: why I refresh the optimizer at the first place????(find it out)
+
             _opt = torch.optim.LBFGS(
                 [a, b, c, d, e, f],
                 lr=LBFGS_LR,
@@ -1230,13 +1250,16 @@ def main():
         ckpt = torch.load(args.resume, map_location='cpu')
         resume_D   = ckpt.get('D_bond')
         resume_chi = ckpt.get('chi')
-        best_abcdef_by_D[resume_D] = (
+        ckpt_step  = ckpt.get('step', 0) + 1
+        ckpt_loss  = ckpt.get('loss', float('nan'))
+        best_abcdef_by_D[resume_D] = _new_tensors_from_data((
             ckpt['a'], ckpt['b'], ckpt['c'],
-            ckpt['d'], ckpt['e'], ckpt['f'])
-        global_step = ckpt.get('step', 0) + 1
+            ckpt['d'], ckpt['e'], ckpt['f']))
+        del ckpt; gc.collect()
+        global_step = ckpt_step
         print(f"  Resumed from {args.resume}  "
               f"(D={resume_D}, chi={resume_chi}, "
-              f"loss={ckpt.get('loss', float('nan')):.6f})\n")
+              f"loss={ckpt_loss:.6f})\n")
 
     # ══════════════════════════════════════════════════════════════════════════
     # Outer loop: D_bond
@@ -1263,9 +1286,11 @@ def main():
             print(f"  Warm-starting from D={prev_D} tensors "
                   f"(padding {prev_D}→{D_bond}, noise={args.noise})")
             prev_tensors = best_abcdef_by_D[prev_D]
-            best_abcdef_by_D[D_bond] = tuple(
+            padded = tuple(
                 pad_tensor(t, prev_D, D_bond, d_PHYS, args.noise)
                 for t in prev_tensors)
+            best_abcdef_by_D[D_bond] = _new_tensors_from_data(padded)
+            del padded
 
         # current best tensors at this D (None = random init at first chi)
         cur_abcdef = best_abcdef_by_D.get(D_bond)
@@ -1318,7 +1343,10 @@ def main():
                 loss_log=loss_log,
                 out_dir=output_dir,
             )
-            cur_abcdef = tuple(out[:6])  # warm-start for next chi
+            # ── Brand-new tensors from raw data; kill the old run entirely ──
+            cur_abcdef = _new_tensors_from_data(tuple(out[:6]))
+            del out
+            gc.collect()  # free old optimizer state + CTMRG envs + graph
 
             # Clean energy evaluation
             print(f"  │  Evaluating energy at (D={D_bond}, chi={chi}) ...")
@@ -1344,7 +1372,12 @@ def main():
                   f"  wall={wall/3600:.2f}h")
 
         # Store best tensors at this D for warm-starting next D
-        best_abcdef_by_D[D_bond] = cur_abcdef
+        # (brand-new objects — old D's entire graph is released)
+        best_abcdef_by_D[D_bond] = (
+            _new_tensors_from_data(cur_abcdef) if cur_abcdef is not None
+            else None)
+        del cur_abcdef
+        gc.collect()
 
         D_elapsed = time.perf_counter() - D_start_time
         print(f"\n  D={D_bond} complete in {D_elapsed/3600:.2f} h")
