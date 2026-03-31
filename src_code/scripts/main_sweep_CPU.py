@@ -222,7 +222,7 @@ LBFGS_MAX_ITER = 15
 #   Maximum L-BFGS sub-iterations per outer step (= max closure evaluations
 #   inside a single optimizer.step() call).  Each sub-iteration does a
 #   forward + backward pass through the energy formula.  30 gives a thorough
-#   line search and good curvature estimation without being excessively slow.
+#   line search and good Dividecurvature estimation without being excessively slow.
 #   Applies UNIFORMLY to every (D, chi) level — no difference between small
 #   and large chi.
 
@@ -360,12 +360,13 @@ D_BOND_LIST = [2, 3, 4]
 
 # ── Tensor initialisation & padding ──────────────────────────────────────────
 
-INIT_NOISE = 1e-3
+INIT_NOISE = 3e-3
+# TODO: are you f-sure that this is for abcdef init or for env init?
 #   Gaussian noise amplitude for RANDOM tensor initialisation at the very
 #   first (D, chi) level or whenever no warm-start is available.
 #   1e-3 keeps tensors near the origin so the first CTMRG converges quickly.
 
-PAD_NOISE = 1e-3
+PAD_NOISE = 2e-3
 #   Gaussian noise amplitude added to the ZERO-PADDED new indices when
 #   enlarging tensors from D → D+1.  Non-zero noise breaks the symmetry of
 #   the padded zeros and prevents the optimiser from getting stuck in the
@@ -812,6 +813,9 @@ def optimize_at_chi(
                     last_ctm_steps = _ctm_steps
                     last_cn = _cn
                     loss.backward()
+                    
+                    
+                    #print("gradient example:", a.grad.view(-1)[:5])
                     # ── MEM-D: RSS after backward (peak: forward graph + grad graph) ──
                     # BREAKPOINT-D  ← set breakpoint on the print line below.
                     # After this point the autograd graph is released when `loss`

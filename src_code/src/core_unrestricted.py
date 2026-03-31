@@ -489,8 +489,328 @@ class SVD_PROPACK(torch.autograd.Function):
                 dA= dA + imag_term
 
         return dA, None, None, None, None
+    
 
 
+
+# NOTE: TRIAL FOR Dr. Hasik's code, pun intended.
+
+
+class SVDGESDD(torch.autograd.Function):
+    @staticmethod
+    def forward(self, A, cutoff, diagnostics):
+        r"""
+        :param A: rank-2 tensor
+        :type A: torch.Tensor
+        :param cutoff: cutoff for backward function
+        :type cutoff: torch.Tensor
+        :param diagnostics: optional dictionary for debugging purposes
+        :type diagnostics: dict
+        :return: U, S, V
+        :rtype: torch.Tensor, torch.Tensor, torch.Tensor
+
+        Computes SVD decompostion of matrix :math:`A = USV^\dagger`.
+        """
+        U, S, V = torch.svd(A)
+        self.diagnostics= diagnostics
+        self.save_for_backward(U, S, V, cutoff)
+        return U, S, V
+
+    @staticmethod
+    def backward(self, gu, gsigma, gv):
+        r"""
+        :param gu: gradient on U
+        :type gu: torch.Tensor
+        :param gsigma: gradient on S
+        :type gsigma: torch.Tensor
+        :param gv: gradient on V
+        :type gv: torch.Tensor
+        :return: gradient
+        :rtype: torch.Tensor
+
+        Computes backward gradient for SVD, adopted from 
+        https://github.com/pytorch/pytorch/blob/v1.10.2/torch/csrc/autograd/FunctionsManual.cpp
+        
+        For complex-valued input there is an additional term, see
+
+            * https://giggleliu.github.io/2019/04/02/einsumbp.html
+            * https://arxiv.org/abs/1909.02659
+
+        The backward is regularized following
+        
+            * https://github.com/wangleiphy/tensorgrad/blob/master/tensornets/adlib/svd.py
+            * https://arxiv.org/abs/1903.09650
+
+        using 
+
+        .. math:: 
+            S_i/(S^2_i-S^2_j) = (F_{ij}+G_{ij})/2\ \ \textrm{and}\ \ S_j/(S^2_i-S^2_j) = (F_{ij}-G_{ij})/2
+        
+        where 
+        
+        .. math:: 
+            F_{ij}=1/(S_i-S_j),\ G_{ij}=1/(S_i+S_j)
+        """
+        # 
+        # TORCH_CHECK(compute_uv,
+        #    "svd_backward: Setting compute_uv to false in torch.svd doesn't compute singular matrices, ",
+        #    "and hence we cannot compute backward. Please use torch.svd(compute_uv=True)");
+
+        diagnostics= self.diagnostics
+        u, sigma, v, eps = self.saved_tensors
+        m= u.size(0) # first dim of original tensor A = u sigma v^\dag 
+        n= v.size(0) # second dim of A
+        k= sigma.size(0)
+        sigma_scale= sigma[0]
+
+
+        # ? some
+        if (u.size(-2)!=u.size(-1)) or (v.size(-2)!=v.size(-1)):
+            # We ignore the free subspace here because possible base vectors cancel
+            # each other, e.g., both -v and +v are valid base for a dimension.
+            # Don't assume behavior of any particular implementation of svd.
+            u = u.narrow(-1, 0, k)
+            v = v.narrow(-1, 0, k)
+            if not (gu is None): gu = gu.narrow(-1, 0, k)
+            if not (gv is None): gv = gv.narrow(-1, 0, k)
+        vh= v.conj().transpose(-2,-1)
+
+        if not (gsigma is None):
+            # computes u @ diag(gsigma) @ vh
+            sigma_term = u * gsigma.unsqueeze(-2) @ vh
+        else:
+            sigma_term = torch.zeros(m,n,dtype=u.dtype,device=u.device)
+        # in case that there are no gu and gv, we can avoid the series of kernel
+        # calls below
+        if (gv is None) and (gv is None):
+            if not (diagnostics is None):
+                print(f"{diagnostics} {dA.abs().max()} {sigma.max()}")
+            return sigma_term, None, None
+
+        sigma_inv= safe_inverse_2(sigma.clone(), sigma_scale*eps)
+
+        F = sigma.unsqueeze(-2) - sigma.unsqueeze(-1)
+        F = safe_inverse(F, sigma_scale*eps)
+        F.diagonal(0,-2,-1).fill_(0)
+
+        G = sigma.unsqueeze(-2) + sigma.unsqueeze(-1)
+        G = safe_inverse(G, sigma_scale*eps)
+        G.diagonal(0,-2,-1).fill_(0)
+
+        uh= u.conj().transpose(-2,-1)
+        if not (gu is None):
+            guh = gu.conj().transpose(-2, -1);
+            u_term = u @ ( (F+G).mul( uh @ gu - guh @ u) ) * 0.5
+            if m > k:
+                # projection operator onto subspace orthogonal to span(U) defined as I - UU^H
+                proj_on_ortho_u = -u @ uh
+                proj_on_ortho_u.diagonal(0, -2, -1).add_(1);
+                u_term = u_term + proj_on_ortho_u @ (gu * sigma_inv.unsqueeze(-2)) 
+            u_term = u_term @ vh
+        else:
+            u_term = torch.zeros(m,n,dtype=u.dtype,device=u.device)
+        
+        if not (gv is None):
+            gvh = gv.conj().transpose(-2, -1);
+            v_term = ( (F-G).mul(vh @ gv - gvh @ v) ) @ vh * 0.5
+            if n > k:
+                # projection operator onto subspace orthogonal to span(V) defined as I - VV^H
+                proj_on_v_ortho =  -v @ vh
+                proj_on_v_ortho.diagonal(0, -2, -1).add_(1);
+                v_term = v_term + sigma_inv.unsqueeze(-1) * (gvh @ proj_on_v_ortho)
+            v_term = u @ v_term
+        else:
+            v_term = torch.zeros(m,n,dtype=u.dtype,device=u.device)
+        
+
+        # // for complex-valued input there is an additional term
+        # // https://giggleliu.github.io/2019/04/02/einsumbp.html
+        # // https://arxiv.org/abs/1909.02659
+        dA= u_term + sigma_term + v_term
+        if u.is_complex() or v.is_complex():
+            L= (uh @ gu).diagonal(0,-2,-1)
+            L.real.zero_()
+            L.imag.mul_(sigma_inv)
+            imag_term= (u * L.unsqueeze(-2)) @ vh
+            dA= dA + imag_term
+
+        if not (diagnostics is None):
+            print(f"{diagnostics} {dA.abs().max()} {sigma.max()}")
+
+
+
+        return dA, None, None
+
+
+
+def rsvd(M, k, p = 20, q = 2, s = 1, vnum = 1, **kwargs):
+    r"""
+    :param M: real matrix
+    :param k: desired rank
+    :param p: oversampling rank. Total rank sampled ``k+p``
+    :param q: number of matrix-vector multiplications for power scheme
+    :param s: re-orthogonalization 
+    :type M: torch.Tensor 
+    :type k: int
+    :type p: int
+    :type q: int
+    :type s: int
+    :return: approximate leading k left singular vectors U, singular values S, 
+                and right singular vectors V
+    :rtype: torch.Tensor, torch.Tensor, torch.Tensor
+
+    Performs approximate truncated SVD of real matrix M using randomized sampling 
+    as :math:`M=USV^T`. Based on the implementation in https://arxiv.org/abs/1502.05366
+    """
+
+    def QR_check(A):
+        Q,R= torch.linalg.qr(A)
+        #if R.requires_grad and any(R.diag().abs() < 1.0e-10):
+        #    print("Warning: reduced QR factorization is not full rank")
+        return Q,R
+
+    # get dims - torch.size() -> [rows, columns]
+    m = list(M.size())[0] 
+    n = list(M.size())[1] 
+    r = min(m,n)
+
+    # setup mats
+    l = k + p
+    U = torch.zeros((m,l), dtype=M.dtype, device=M.device)
+    S = torch.zeros(l, dtype=M.dtype, device=M.device)
+    V = torch.zeros((n,l), dtype=M.dtype, device=M.device)
+
+    # build random matrix - with entries drawn from normal distribution
+    RN = torch.randn((n, l), dtype=M.dtype, device=M.device)
+
+    # multiply RN by M to get matrix of random samples Y
+    Y = torch.mm(M, RN)
+
+    # now build up (M M^T)^q R
+    Z = torch.zeros((n,l), dtype=M.dtype, device=M.device)
+    Yorth = torch.zeros((m,l), dtype=M.dtype, device=M.device)
+    Zorth = torch.zeros((n,l), dtype=M.dtype, device=M.device)
+
+    for j in range(1,q):
+        # printf("M M^T mult j=%d of %d\n", j, q-1);
+
+        if (2*j-2) % s == 0:
+            # printf("orthogonalize Y..\n");
+            Yorth, r = QR_check(Y)
+            # printf("Z = M'*Yorth..\n");
+            Z = torch.mm(M.transpose(0,1).conj(),Yorth)
+        else:
+            # printf("Z = M'*Y..\n");
+            Z = torch.mm(M.transpose(0,1).conj(),Y)
+
+    
+        if (2*j-1) % s == 0:
+            # printf("orthogonalize Z..\n");
+            Zorth, r = QR_check(Z)
+            # printf("Y = M*Zorth..\n");
+            Y = torch.mm(M,Zorth)
+        else:
+            # printf("Y = M*Z..\n");
+            Y = torch.mm(M,Z)
+
+    # orthogonalize on exit from loop to get Q = m x l
+    Q, r = QR_check(Y)
+
+    # either QR of B^T method, or eigendecompose BB^T method
+    if (vnum == 1 or vnum > 2):
+        # printf("using QR of B^T method\n");
+        
+        # form Bt = Mt*Q : nxm * mxl = nxl
+        # printf("form Bt..\n");
+        Bt = torch.mm(M.transpose(0,1).conj(),Q)
+
+        # compute QR factorization of Bt    
+        # M is mxn ; Q is mxn ; R is min(m,n) x min(m,n) */ 
+        # printf("doing QR..\n");
+        ### compact_QR_factorization(Bt,Qhat,Rhat);
+        Qhat, Rhat = QR_check(Bt)
+
+        # compute SVD of Rhat (lxl)
+        # printf("doing SVD..\n");
+        # torch.svd M -> U, S, V such that M = U S V^T
+        # Uhat, S, Vhat_trans = torch.linalg.svd(Rhat)
+        
+        Uhat, S, Vhat_trans= SVD_PROPACK.apply(Rhat, Rhat.shape[0], 0, torch.as_tensor([1.0e-12]), None)
+        Vhat_trans = Vhat_trans.transpose(0,1).conj() # since SVDGESDD returns V
+
+        # U = Q*Vhat_trans
+        # printf("form U..\n");
+        U = torch.mm(Q,Vhat_trans.transpose(0,1).conj())
+
+        # V = Qhat*Uhat
+        # printf("form V..\n");
+        V = torch.mm(Qhat,Uhat)
+
+        # resize matrices to rank k from beginning
+        # printf("resize mats\n");
+        # U m x l -> m x k
+        U = U[:, :k]
+        # V m x l -> n x k
+        V = V[:, :k]
+        # S l x l -> k x k
+        S = S[:k]
+
+
+    return U, S, V
+
+
+
+from torch import _linalg_utils as _utils, Tensor
+from torch.overrides import handle_torch_function, has_torch_function
+
+def my_rsvd(
+    A: Tensor,
+    q: int | None = 6,
+    niter: int | None = 2,
+) -> tuple[Tensor, Tensor, Tensor]:
+    if not torch.jit.is_scripting():
+        tensor_ops = (A)
+        if not set(map(type, tensor_ops)).issubset(
+            (torch.Tensor, type(None))
+        ) and has_torch_function(tensor_ops):
+            return handle_torch_function(
+                my_rsvd, tensor_ops, A, q=q, niter=niter
+            )
+    # Algorithm 5.1 in Halko et al., 2009
+
+    q = 6 if q is None else q
+    m, n = A.shape[-2:]
+    matmul = _utils.matmul
+
+    # Assume that A is tall
+    if m < n:
+        A = A.mH
+
+    niter = 2 if niter is None else niter
+    dtype = _utils.get_floating_dtype(A) if not A.is_complex() else A.dtype
+    matmul = _utils.matmul
+
+    R = torch.randn(A.shape[-1], q, dtype=dtype, device=A.device)
+
+    # The following code could be made faster using torch.geqrf + torch.ormqr
+    # but geqrf is not differentiable
+
+    X = matmul(A, R)
+    Q = torch.linalg.qr(X).Q
+    for _ in range(niter):
+        X = matmul(A.mH, Q)
+        Q = torch.linalg.qr(X).Q
+        X = matmul(A, Q)
+        Q = torch.linalg.qr(X).Q
+
+
+    B = matmul(Q.mH, A)
+    U, S, V = SVD_PROPACK.apply(B, B.shape[0], 0, torch.as_tensor([1.0e-12]), None)
+    U = Q.matmul(U)
+    if m < n:
+        U, V = V, U
+
+    return U, S, V
 
 
 def truncated_svd_propack(M, chi, chi_extra, rel_cutoff, v0=None,
@@ -530,8 +850,8 @@ def truncated_svd_propack(M, chi, chi_extra, rel_cutoff, v0=None,
     # safe_inverse / safe_inverse_2 use < comparisons that are undefined for
     # complex tensors (raises "lt_cpu not implemented for 'ComplexDouble'").
     _rdtype = torch.float64 if M.dtype in (torch.complex128, torch.float64) else torch.float32
-    U, S, V = SVD_PROPACK.apply(M, chi, max(chi_extra,1),torch.as_tensor([rel_cutoff],dtype=_rdtype, device=M.device), v0)
-
+    #U, S, V = SVD_PROPACK.apply(M, chi, max(chi_extra,1),torch.as_tensor([rel_cutoff],dtype=_rdtype, device=M.device), v0)
+    U, S, V = my_rsvd(M, q=round(chi+2*np.sqrt(chi)), niter=2)
     # estimate the chi_new 
     if keep_multiplets and chi<S.shape[0]:
         return _keep_multiplets(U,S,V,chi,eps_multiplet,abs_tol)
@@ -539,7 +859,6 @@ def truncated_svd_propack(M, chi, chi_extra, rel_cutoff, v0=None,
     St = S[:min(chi,S.shape[0])]
     Ut = U[:, :St.shape[0]]
     Vt = V[:, :St.shape[0]]
-
     return Ut, St, Vt
 
 """
@@ -551,7 +870,7 @@ truncated_svd_propack(M, chi,
                     v0=None,
                     keep_multiplets=False,
                     abs_tol=1e-14,
-                    eps_multiplet=1e-12)  # returns U, S, V of M= USV^\dag
+                    eps_multiplet=1e-12)  # returns U, S, V of M= USV^dag
 
 """
 
@@ -1036,6 +1355,8 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
                     abs_tol=1e-14,
                     eps_multiplet=1e-12)
 
+                    
+
         truncUh = U.conj().T
         truncV = V
         sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
@@ -1203,6 +1524,7 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
             projFor2nd = torch.mm( torch.mm(sqrtInvTruncS, truncUh), T1F.T)
             T1F = torch.mm(projFor1st.T, T1F)
             T3C = torch.mm(projFor2nd, T3C)
+
 
             U, S, V = truncated_svd_propack(torch.mm(T3D.T,T2A), chi,
                         chi_extra=1,
@@ -2194,30 +2516,7 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
         #                    nowT1D,nowT2C,nowT2F,nowT3E,nowT3B,nowT1A,
         #                    nowC21AF,nowC32CB,nowC13ED,nowT1B,nowT2E,nowT2D,
         #                    nowT3A,nowT3F,nowT1C] if t is not None]) / 1e6
-        if True:
-            _all_now = [t for t in [
-                nowC21CD, nowC32EF, nowC13AB, nowT1F,  nowT2A,  nowT2B,
-                nowT3C,   nowT3D,   nowT1E,   nowC21EB, nowC32AD, nowC13CF,
-                nowT1D,   nowT2C,   nowT2F,   nowT3E,   nowT3B,   nowT1A,
-                nowC21AF, nowC32CB, nowC13ED,  nowT1B,  nowT2E,   nowT2D,
-                nowT3A,   nowT3F,   nowT1C,
-            ] if t is not None]
-            _all_last = [t for t in [
-                lastC21CD, lastC32EF, lastC13AB, lastT1F,  lastT2A,  lastT2B,
-                lastT3C,   lastT3D,   lastT1E,   lastC21EB, lastC32AD, lastC13CF,
-                lastT1D,   lastT2C,   lastT2F,   lastT3E,   lastT3B,   lastT1A,
-                lastC21AF, lastC32CB, lastC13ED,  lastT1B,  lastT2E,   lastT2D,
-                lastT3A,   lastT3F,   lastT1C,
-            ] if t is not None]
-            _now_mb  = sum(t.element_size() * t.nelement() / 1e6 for t in _all_now)
-            _last_mb = sum(t.element_size() * t.nelement() / 1e6 for t in _all_last)
-            _c_sh = tuple(nowC21CD.shape) if nowC21CD is not None else None
-            _t_sh = tuple(nowT1F.shape)   if nowT1F   is not None else None
-            #print(f"[MEM-E] RSS={mem_mb():.1f}MB CTMRG iter={iteration}  "
-            #      f"now={len(_all_now)}tensors/{_now_mb:.1f}MB  "
-            #      f"last={len(_all_last)}tensors/{_last_mb:.1f}MB  "
-            #      f" T-shape={_t_sh}")
-
+        
         if check_env_CV_using_3rho(lastC21CD, lastC32EF, lastC13AB, #lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E, 
                                  nowC21CD, nowC32EF, nowC13AB, #nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, 
                                  lastC21EB, lastC32AD, lastC13CF, #lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A, 
@@ -2227,7 +2526,6 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
                                  env_conv_threshold):
             ctm_steps = iteration + 1
             break
-
         # Update the environment corner and edge transfer tensors
         # match iteration % 3 :
         #     case 0 : 

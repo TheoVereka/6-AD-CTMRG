@@ -212,6 +212,9 @@ def abcdef_to_ABCDEF(a,b,c,d,e,f, D_squared:int):
 
 
 def truncate_SVD(M,chi, ...!!! ):
+    """
+    TODO: let TrRho re-normalization of C be a bool option, default False
+    """
     pass
 
 
@@ -241,6 +244,8 @@ def update_envCTs():
     contract enlargded C*3,
         passing to get_6_projectors_from_3_Corners
     directly contract "smallT, localtensor, projector"
+
+    TODO: let TrRho re-normalization of T be a bool option, default False
     """
     pass
 
