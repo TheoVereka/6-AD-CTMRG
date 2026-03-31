@@ -66,9 +66,9 @@ from core_unrestricted import (
 # Fixed parameters for this test
 # ══════════════════════════════════════════════════════════════════════════════
 
-D_BOND = 3
+D_BOND = 2
 D_SQ   = D_BOND ** 2
-CHI    = 10
+CHI    = 5
 D_PHYS = 2
 J      = 1.0
 N_BONDS = 9

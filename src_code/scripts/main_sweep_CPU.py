@@ -180,13 +180,13 @@ USE_DOUBLE_PRECISION = True
 
 # ── Sweep control ─────────────────────────────────────────────────────────────
 
-D_BOND_LIST = [2, 3, 4]
+D_BOND_LIST = [3, 4]
 #   Ordered list of iPEPS virtual bond dimensions to sweep (outer loop).
 #   Each D is warm-started from the best tensors found at the previous D
 #   (zero-padded to the new size + PAD_NOISE Gaussian noise).
 
 
-DEFAULT_D_BUDGET_FRACS = {2:0.2, 3:0.6, 4:0.2}
+DEFAULT_D_BUDGET_FRACS = {3:0.6, 4:0.2}
 #   Fraction of the total wall-clock budget allocated to each D_bond value.
 #   Normalised to sum=1 before use, so only the RATIOS matter.
 #   Rationale:
@@ -197,14 +197,14 @@ DEFAULT_D_BUDGET_FRACS = {2:0.2, 3:0.6, 4:0.2}
 #   values have genuinely different computational costs and scientific weight.
 #   Within each D, every chi level gets equal time (see below).
 
-DEFAULT_CHI_MAX = {2:16, 3:81, 4: 80}
+DEFAULT_CHI_MAX = { 3:81, 4: 80}
 #   Largest chi to attempt for each D_bond.  Hard upper bound is D⁴
 #   (gives 16, 81, 256 for D=2,3,4).  We cap D=4 at 80 because chi >> 80
 #   requires too much RAM on a typical workstation and adds negligible accuracy.
 #   Increase if you have more memory; decrease if you hit OOM.
 
 DEFAULT_CHI_SCHEDULES = {
-    2: [5, 9, 13],       # , 20, 25] ← append to extend the schedule
+    #2: [5, 8, 12],       # , 20, 25] ← append to extend the schedule
     3: [10, 17, 29],       # , 57, 81],  ← append to extend the schedule
     4: [17, 29],           # , 40, 62, 80] ← append to extend the schedule
 }

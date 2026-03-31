@@ -765,7 +765,7 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
 
 
     U,S,V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
-                        chi_extra=1,
+                        chi_extra=round(2*np.sqrt(D_squared)),  # extra singular values to compute for better truncation decisions
                         rel_cutoff=1e-8,
                         v0=None,
                         keep_multiplets=False,
@@ -844,7 +844,7 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     R2 = torch.mm(matC21,matC13)
     #U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
     U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
-                    chi_extra=1,
+                    chi_extra=round(2*np.sqrt(D_squared)),
                     rel_cutoff=1e-8,
                     v0=None,
                     keep_multiplets=False,
@@ -870,7 +870,7 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     R2 = torch.mm(matC32,matC21)
     #U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
     U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
-                    chi_extra=1,
+                    chi_extra=round(2*np.sqrt(D_squared)),
                     rel_cutoff=1e-8,
                     v0=None,
                     keep_multiplets=False,
@@ -1099,7 +1099,7 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         #Q1, R1 = torch.linalg.qr(matC21.T)
         #Q2, R2 = torch.linalg.qr(torch.mm(matC13,matC32))
         U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
-                    chi_extra=1,
+                    chi_extra=round(2*np.sqrt(D_squared)),
                     rel_cutoff=1e-8,
                     v0=None,
                     keep_multiplets=False,
@@ -1120,7 +1120,7 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         #Q1, R1 = torch.linalg.qr(matC32.T)
         #Q2, R2 = torch.linalg.qr(torch.mm(matC21,matC13))
         U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
-                    chi_extra=1,
+                    chi_extra=round(2*np.sqrt(D_squared)),
                     rel_cutoff=1e-8,
                     v0=None,
                     keep_multiplets=False,
@@ -1141,7 +1141,7 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         #Q1, R1 = torch.linalg.qr(matC13.T)
         #Q2, R2 = torch.linalg.qr(torch.mm(matC32,matC21))
         U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
-                    chi_extra=1,
+                    chi_extra=round(2*np.sqrt(D_squared)),
                     rel_cutoff=1e-8,
                     v0=None,
                     keep_multiplets=False,
@@ -1260,7 +1260,7 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         
         else: 
             U, S, V = truncated_svd_propack(torch.mm(T1F.T,T3C), chi,
-                        chi_extra=1,
+                        chi_extra=round(2*np.sqrt(D_squared)),
                         rel_cutoff=1e-8,
                         v0=None,
                         keep_multiplets=False,
@@ -1275,7 +1275,7 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
             T3C = torch.mm(projFor2nd, T3C)
 
             U, S, V = truncated_svd_propack(torch.mm(T3D.T,T2A), chi,
-                        chi_extra=1,
+                        chi_extra=round(2*np.sqrt(D_squared)),
                         rel_cutoff=1e-8,
                         v0=None,
                         keep_multiplets=False,
@@ -1290,7 +1290,7 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
             T2A = torch.mm(projFor2nd, T2A)
 
             U, S, V = truncated_svd_propack(torch.mm(T2B.T,T1E), chi,
-                        chi_extra=1,
+                        chi_extra=round(2*np.sqrt(D_squared)),
                         rel_cutoff=1e-8,
                         v0=None,
                         keep_multiplets=False,
