@@ -177,7 +177,15 @@ USE_DOUBLE_PRECISION = True
 #             receive EQUAL time budget and IDENTICAL L-BFGS settings, making
 #             results at different chi directly comparable.
 
-DEFAULT_D_BUDGET_FRACS = {2: 0.1, 3: 0.3, 4: 0.6}
+# ── Sweep control ─────────────────────────────────────────────────────────────
+
+D_BOND_LIST = [2,3, 4]
+#   Ordered list of iPEPS virtual bond dimensions to sweep (outer loop).
+#   Each D is warm-started from the best tensors found at the previous D
+#   (zero-padded to the new size + PAD_NOISE Gaussian noise).
+
+
+DEFAULT_D_BUDGET_FRACS = {2:0.2, 3:0.2, 4: 0.6}
 #   Fraction of the total wall-clock budget allocated to each D_bond value.
 #   Normalised to sum=1 before use, so only the RATIOS matter.
 #   Rationale:
@@ -188,14 +196,14 @@ DEFAULT_D_BUDGET_FRACS = {2: 0.1, 3: 0.3, 4: 0.6}
 #   values have genuinely different computational costs and scientific weight.
 #   Within each D, every chi level gets equal time (see below).
 
-DEFAULT_CHI_MAX = {2: 16, 3: 81, 4: 80}
+DEFAULT_CHI_MAX = {2:16, 3:81, 4: 80}
 #   Largest chi to attempt for each D_bond.  Hard upper bound is D⁴
 #   (gives 16, 81, 256 for D=2,3,4).  We cap D=4 at 80 because chi >> 80
 #   requires too much RAM on a typical workstation and adds negligible accuracy.
 #   Increase if you have more memory; decrease if you hit OOM.
 
 DEFAULT_CHI_SCHEDULES = {
-    2: [5, 8, 13],
+    2: [5, 9, 13],       # , 20, 25] ← append to extend the schedule
     3: [10, 17, 29],       # , 57, 81],  ← append to extend the schedule
     4: [17, 29],           # , 40, 62, 80] ← append to extend the schedule
 }
@@ -351,12 +359,6 @@ N_BONDS = 9
 #   cyclically) + 3 bonds of the secondary type = 9 total.
 #   Used only to compute the reported E/bond = E_total / N_BONDS.
 
-# ── Sweep control ─────────────────────────────────────────────────────────────
-
-D_BOND_LIST = [2, 3, 4]
-#   Ordered list of iPEPS virtual bond dimensions to sweep (outer loop).
-#   Each D is warm-started from the best tensors found at the previous D
-#   (zero-padded to the new size + PAD_NOISE Gaussian noise).
 
 # ── Tensor initialisation & padding ──────────────────────────────────────────
 
@@ -366,7 +368,7 @@ INIT_NOISE = 3e-3
 #   first (D, chi) level or whenever no warm-start is available.
 #   1e-3 keeps tensors near the origin so the first CTMRG converges quickly.
 
-PAD_NOISE = 2e-3
+PAD_NOISE = 2e-2
 #   Gaussian noise amplitude added to the ZERO-PADDED new indices when
 #   enlarging tensors from D → D+1.  Non-zero noise breaks the symmetry of
 #   the padded zeros and prevents the optimiser from getting stuck in the
@@ -490,11 +492,13 @@ def build_heisenberg_H(J: float = 1.0, d: int = 2) -> torch.Tensor:
 
 def pad_tensor(t: torch.Tensor, old_D: int, new_D: int,
                d_PHYS: int, noise: float) -> torch.Tensor:
+    
+    noise = noise / (d_PHYS * new_D**3)  # scale noise to keep total variance per tensor constant
     out = noise * torch.randn(new_D, new_D, new_D, d_PHYS,
                               dtype=CDTYPE)
     s = old_D
-    out[:s, :s, :s, :] = t[:s, :s, :s, :]
-    return normalize_tensor(out)
+    out[:s, :s, :s, :] += normalize_tensor(t.detach())  
+    return out
 
 
 def evaluate_energy_clean(a, b, c, d, e, f,
