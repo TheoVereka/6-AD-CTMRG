@@ -49,7 +49,16 @@ DEBUG_CHECK_TRUNCATION: bool = False
 # ── Truncation diagnostics buffer ────────────────────────────────────────────
 _trunc_diag_buffer: list[dict] = []
 
+# ── SVD full/partial control & gradient blowup detection ─────────────────────
+# When True, SVD_PROPACK uses full deterministic SVD (np.linalg.svd).
+# Set directly from the optimizer driver; cleared after one L-BFGS step.
+_USE_FULL_SVD: bool = True
 
+# Set to True by SVD_PROPACK.backward when max|dA| > _SVD_GRAD_BLOWUP_THRESHOLD.
+# Read and reset by the optimizer driver at the end of each outer step.
+_SVD_GRAD_BLOWUP_DETECTED: bool = False
+_SVD_GRAD_BLOWUP_MAX_VALUE: float = 0.0
+_SVD_GRAD_BLOWUP_THRESHOLD: float = 1e8
 
 
 def mem_mb() -> float:
@@ -350,12 +359,15 @@ from torch import _linalg_utils as _utils, Tensor
 
 class SVD_PROPACK(torch.autograd.Function):
     @staticmethod
-    def forward(self, A, k, k_extra, rel_cutoff, v0):
+    def forward(self, A, k, k_extra, rel_cutoff, v0, use_full_svd):
         r"""
         :param M: square matrix :math:`N \times N`
         :param k: desired rank (must be smaller than :math:`N`)
+        :param use_full_svd: if True, use full deterministic SVD (np.linalg.svd)
+                             instead of the randomized projection SVD.
         :type M: torch.Tensor
         :type k: int
+        :type use_full_svd: bool
         :return: leading k left eigenvectors U, singular values S, and right 
                  eigenvectors V
         :rtype: torch.Tensor, torch.Tensor, torch.Tensor
@@ -381,8 +393,8 @@ class SVD_PROPACK(torch.autograd.Function):
         # print(f"Performing SVD with k={k}, k_extra={k_extra}, rel_cutoff={rel_cutoff.item()}, m_dim={m_dim}, n_dim={n_dim}, k_total={k_total}")
 
 
-        if True: # Here to put the fallback for full SVD or not!
-
+        if not use_full_svd:  # Partial (randomized) SVD — fast but can blow up
+            #print("Trunc", end=' ')
             matmul = _utils.matmul
 
 
@@ -420,6 +432,7 @@ class SVD_PROPACK(torch.autograd.Function):
             return U, S, V
 
         else:
+            #print("Full", end='')
             # Partial SVD via ARPACK — only k_total singular triples computed.
             # With the 5th-term backward this is now EXACT (previously it was
             # approximate because the out-of-subspace contribution was missing).
@@ -523,7 +536,7 @@ class SVD_PROPACK(torch.autograd.Function):
             sigma_term = torch.zeros(m, n, dtype=u.dtype, device=u.device)
 
         if (gu is None) and (gv is None):
-            return sigma_term, None, None, None, None
+            return sigma_term, None, None, None, None, None
         
         # k×k F, G matrices (within-subspace rotation coupling)
         F = safe_inverse(sigma.unsqueeze(-2) - sigma.unsqueeze(-1),
@@ -572,7 +585,15 @@ class SVD_PROPACK(torch.autograd.Function):
             #print("fifth term max abs:", fifthIntermediate.abs().max().item())
             dA = dA + fifthIntermediate
 
-        return dA, None, None, None, None
+        # ── Gradient blowup detection (rSVD instability) ─────────────────────
+        global _SVD_GRAD_BLOWUP_DETECTED, _SVD_GRAD_BLOWUP_MAX_VALUE
+        _max_abs_dA = dA.abs().max().item()
+        #print(f"max|dA|={_max_abs_dA:.3e}", end=' ')
+        if _max_abs_dA > _SVD_GRAD_BLOWUP_THRESHOLD:
+            _SVD_GRAD_BLOWUP_DETECTED = True
+            _SVD_GRAD_BLOWUP_MAX_VALUE = max(_SVD_GRAD_BLOWUP_MAX_VALUE, _max_abs_dA)
+
+        return dA, None, None, None, None, None
 
 
 
@@ -615,7 +636,7 @@ def truncated_svd_propack(M, chi, chi_extra, rel_cutoff, v0=None,
     # safe_inverse / safe_inverse_2 use < comparisons that are undefined for
     # complex tensors (raises "lt_cpu not implemented for 'ComplexDouble'").
     _rdtype = torch.float64 if M.dtype in (torch.complex128, torch.float64) else torch.float32
-    U, S, V = SVD_PROPACK.apply(M, chi, 0,torch.as_tensor([rel_cutoff],dtype=_rdtype, device=M.device), v0)
+    U, S, V = SVD_PROPACK.apply(M, chi, 0, torch.as_tensor([rel_cutoff], dtype=_rdtype, device=M.device), v0, _USE_FULL_SVD)
 
 
 

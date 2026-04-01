@@ -2,26 +2,26 @@
 """
 sweep_seeds_D2_chi5.py
 ======================
-Robustness test: run D=2, chi=5 optimization from 100 independent random
-seeds to check whether rel_cutoff=1e-8 in SVD backward (core_unrestricted.py)
-gives reliable convergence across all random initialisations.
+Run D=2 chi=5 optimisation from N independent random seeds.
 
-For each seed we:
-  1. Init fresh random abcdef (no warm-start).
-  2. Run optimize_at_chi for a fixed time budget.
-  3. Record: seed, final loss, best loss, number of steps, whether NaN/Inf
-     appeared, and gradient norm statistics.
+Internally this script imports main_sweep_CPU as a module and calls
+optimize_at_chi() N times — one call per seed — with exactly the same
+globals (LBFGS settings, CTM parameters, blowup recovery flag, etc.) that
+main_sweep_CPU.main() would use when invoked as:
 
-Results are saved as a JSON + a histogram PDF.
+    python scripts/main_sweep_CPU.py --D-bonds 2  (chi schedule = [5])
+
+The only difference is that each call gets a freshly seeded random init
+(torch.manual_seed + np.random.seed) and runs for --budget seconds.
 
 Usage:
-  python scripts/sweep_seeds_D2_chi5.py                   # defaults
-  python scripts/sweep_seeds_D2_chi5.py --seeds 100 --budget 120
-  python scripts/sweep_seeds_D2_chi5.py --double           # complex128
+    python tests/sweep_seeds_D2_chi5.py
+    python tests/sweep_seeds_D2_chi5.py --seeds 100 --budget 120
+    python tests/sweep_seeds_D2_chi5.py --no-recovery
+    python tests/sweep_seeds_D2_chi5.py --no-double
 """
 
 import argparse
-import collections
 import datetime
 import gc
 import json
@@ -30,15 +30,17 @@ import sys
 import time
 import traceback
 
-# ── CPU threading (must precede numpy/torch imports) ──────────────────────────
 _N_PHYSICAL_CORES = 4
-os.environ.setdefault("OMP_NUM_THREADS", str(_N_PHYSICAL_CORES))
-os.environ.setdefault("MKL_NUM_THREADS", str(_N_PHYSICAL_CORES))
-os.environ.setdefault("MKL_DYNAMIC", "FALSE")
-os.environ.setdefault("KMP_AFFINITY", "granularity=fine,compact,1,0")
-os.environ.setdefault("KMP_BLOCKTIME", "0")
+os.environ.setdefault("OMP_NUM_THREADS",  str(_N_PHYSICAL_CORES))
+os.environ.setdefault("MKL_NUM_THREADS",  str(_N_PHYSICAL_CORES))
+os.environ.setdefault("MKL_DYNAMIC",      "FALSE")
+os.environ.setdefault("KMP_AFFINITY",     "granularity=fine,compact,1,0")
+os.environ.setdefault("KMP_BLOCKTIME",    "0")
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+# ── add scripts/ to path so we can import main_sweep_CPU as a module ─────────
+_THIS_DIR    = os.path.dirname(os.path.abspath(__file__))
+_SCRIPTS_DIR = os.path.join(_THIS_DIR, '..', 'scripts')
+sys.path.insert(0, _SCRIPTS_DIR)
 
 import matplotlib
 matplotlib.use('Agg')
@@ -46,50 +48,18 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-torch.set_num_threads(_N_PHYSICAL_CORES)
-torch.set_num_interop_threads(1)
+# Do NOT call torch.set_num_threads / set_num_interop_threads here:
+# main_sweep_CPU sets them at module level on import, and calling them
+# a second time after parallel work has started raises a RuntimeError.
 
-from core_unrestricted import (
-    normalize_tensor,
-    normalize_single_layer_tensor_for_double_layer,
-    initialize_abcdef,
-    abcdef_to_ABCDEF,
-    CTMRG_from_init_to_stop,
-    build_heisenberg_H,
-    energy_expectation_nearest_neighbor_3ebadcf_bonds,
-    energy_expectation_nearest_neighbor_3afcbed_bonds,
-    energy_expectation_nearest_neighbor_other_3_bonds,
-    set_dtype,
-)
+import main_sweep_CPU as _m   # the real thing — all globals live here
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Fixed parameters for this test
-# ══════════════════════════════════════════════════════════════════════════════
-
-D_BOND = 2
-D_SQ   = D_BOND ** 2
-CHI    = 5
-D_PHYS = 2
-J      = 1.0
-N_BONDS = 9
-
-# Optimizer
-LBFGS_MAX_ITER     = 15
-LBFGS_LR           = 1.0
-LBFGS_HISTORY      = LBFGS_MAX_ITER
-OPT_TOL_GRAD       = 1e-9
-OPT_TOL_CHANGE     = 3e-9
-OPT_CONV_THRESHOLD = 1e-8
-
-# CTMRG
-CTM_MAX_STEPS     = 30
-CTM_CONV_THR      = 2e-7
-ENV_IDENTITY_INIT = False
-
-# Init
-INIT_NOISE = 3e-3
-
-CDTYPE = torch.complex64  # overridden by --double
+# Fixed parameters for this sweep (same as the first chi level of D=2 in main)
+D_BOND  = 2
+CHI     = 5
+D_PHYS  = _m.D_PHYS
+J       = _m.J_COUPLING
+N_BONDS = _m.N_BONDS
 
 
 def timestamp() -> str:
@@ -97,411 +67,235 @@ def timestamp() -> str:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Single-seed optimisation (stripped-down version of optimize_at_chi)
-# ══════════════════════════════════════════════════════════════════════════════
-
-def run_single_seed(
-    seed: int,
-    Hs: list,
-    budget_seconds: float,
-) -> dict:
-    """Run one optimisation from random init and return a results dict."""
-    global CDTYPE
-
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-
-    a, b, c, d, e, f = initialize_abcdef('random', D_BOND, D_PHYS, INIT_NOISE)
-    for t in (a, b, c, d, e, f):
-        t.requires_grad_(True)
-
-    best_loss    = float('inf')
-    best_abcdef  = tuple(t.detach().clone() for t in (a, b, c, d, e, f))
-    prev_loss    = None
-    loss_history = collections.deque(maxlen=12)
-    step         = 0
-    t_start      = time.perf_counter()
-
-    nan_count    = 0
-    inf_count    = 0
-    gnorm_list   = []
-    loss_list    = []
-    converged    = False
-    error_msg    = None
-
-    try:
-        while True:
-            elapsed = time.perf_counter() - t_start
-            if elapsed >= budget_seconds:
-                break
-
-            # ── One L-BFGS outer step ─────────────────────────────────────────
-            optimizer = torch.optim.LBFGS(
-                [a, b, c, d, e, f],
-                lr=LBFGS_LR,
-                max_iter=LBFGS_MAX_ITER,
-                history_size=LBFGS_HISTORY,
-                tolerance_grad=OPT_TOL_GRAD,
-                tolerance_change=OPT_TOL_CHANGE,
-                line_search_fn='strong_wolfe',
-            )
-
-            _loss = None
-            _ctm_steps = 0
-
-            def closure():
-                nonlocal _loss, _ctm_steps
-                optimizer.zero_grad()
-
-                aN = normalize_single_layer_tensor_for_double_layer(a)
-                bN = normalize_single_layer_tensor_for_double_layer(b)
-                cN = normalize_single_layer_tensor_for_double_layer(c)
-                dN = normalize_single_layer_tensor_for_double_layer(d)
-                eN = normalize_single_layer_tensor_for_double_layer(e)
-                fN = normalize_single_layer_tensor_for_double_layer(f)
-
-                A, B, C, Dt, E, F = abcdef_to_ABCDEF(aN, bN, cN, dN, eN, fN, D_SQ)
-                all28 = CTMRG_from_init_to_stop(
-                    A, B, C, Dt, E, F, CHI, D_SQ,
-                    CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT)
-
-                (C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E,
-                 C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A,
-                 C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C,
-                 ctm_steps_inner) = all28
-                _ctm_steps = ctm_steps_inner
-
-                loss = (
-                    energy_expectation_nearest_neighbor_3ebadcf_bonds(
-                        aN, bN, cN, dN, eN, fN,
-                        Hs[0], Hs[1], Hs[2],
-                        CHI, D_BOND, D_PHYS,
-                        C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E)
-                    + energy_expectation_nearest_neighbor_3afcbed_bonds(
-                        aN, bN, cN, dN, eN, fN,
-                        Hs[3], Hs[4], Hs[5],
-                        CHI, D_BOND, D_PHYS,
-                        C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A)
-                    + energy_expectation_nearest_neighbor_other_3_bonds(
-                        aN, bN, cN, dN, eN, fN,
-                        Hs[6], Hs[7], Hs[8],
-                        CHI, D_BOND, D_PHYS,
-                        C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C)
-                )
-
-                loss.backward()
-                _loss = loss
-                return loss
-
-            optimizer.step(closure)
-
-            if _loss is None:
-                break
-
-            loss_item = _loss.detach().item()
-
-            # Track NaN / Inf
-            if not np.isfinite(loss_item):
-                if np.isnan(loss_item):
-                    nan_count += 1
-                else:
-                    inf_count += 1
-                break  # abort this seed
-
-            # Gradient norm
-            gnorm = 0.0
-            for t in (a, b, c, d, e, f):
-                if t.grad is not None:
-                    gnorm += t.grad.detach().norm().item() ** 2
-            gnorm = gnorm ** 0.5
-            gnorm_list.append(gnorm)
-            loss_list.append(loss_item)
-
-            if loss_item < best_loss:
-                best_loss = loss_item
-                best_abcdef = tuple(t.detach().clone() for t in (a, b, c, d, e, f))
-
-            # Convergence check
-            if prev_loss is not None:
-                delta = abs(loss_item - prev_loss)
-                if delta < OPT_CONV_THRESHOLD:
-                    converged = True
-                    break
-            # Cycle detection
-            if any(abs(loss_item - h) < 1e-10 for h in loss_history):
-                converged = True  # cycle = effectively converged
-                break
-
-            loss_history.append(loss_item)
-            prev_loss = loss_item
-            step += 1
-
-    except Exception as exc:
-        error_msg = f"{type(exc).__name__}: {exc}"
-        traceback.print_exc()
-
-    elapsed = time.perf_counter() - t_start
-
-    # ── Clean energy evaluation at best tensors ───────────────────────────────
-    clean_energy = float('nan')
-    try:
-        with torch.no_grad():
-            aN = normalize_single_layer_tensor_for_double_layer(best_abcdef[0])
-            bN = normalize_single_layer_tensor_for_double_layer(best_abcdef[1])
-            cN = normalize_single_layer_tensor_for_double_layer(best_abcdef[2])
-            dN = normalize_single_layer_tensor_for_double_layer(best_abcdef[3])
-            eN = normalize_single_layer_tensor_for_double_layer(best_abcdef[4])
-            fN = normalize_single_layer_tensor_for_double_layer(best_abcdef[5])
-            A, B, C, Dt, E, F = abcdef_to_ABCDEF(aN, bN, cN, dN, eN, fN, D_SQ)
-            all27 = CTMRG_from_init_to_stop(
-                A, B, C, Dt, E, F, CHI, D_SQ,
-                CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT)
-            E3ebadcf = energy_expectation_nearest_neighbor_3ebadcf_bonds(
-                aN, bN, cN, dN, eN, fN,
-                Hs[0], Hs[1], Hs[2],
-                CHI, D_BOND, D_PHYS, *all27[:9])
-            E3afcbed = energy_expectation_nearest_neighbor_3afcbed_bonds(
-                aN, bN, cN, dN, eN, fN,
-                Hs[3], Hs[4], Hs[5],
-                CHI, D_BOND, D_PHYS, *all27[9:18])
-            E3 = energy_expectation_nearest_neighbor_other_3_bonds(
-                aN, bN, cN, dN, eN, fN,
-                Hs[6], Hs[7], Hs[8],
-                CHI, D_BOND, D_PHYS, *all27[18:27])
-            clean_energy = (E3ebadcf + E3afcbed + E3).item()
-    except Exception:
-        pass
-
-    return {
-        'seed': seed,
-        'steps': step + 1,
-        'best_loss': best_loss,
-        'final_loss': loss_list[-1] if loss_list else float('nan'),
-        'clean_energy': clean_energy,
-        'clean_energy_per_bond': clean_energy / N_BONDS,
-        'converged': converged,
-        'nan_count': nan_count,
-        'inf_count': inf_count,
-        'gnorm_mean': float(np.mean(gnorm_list)) if gnorm_list else float('nan'),
-        'gnorm_max': float(np.max(gnorm_list)) if gnorm_list else float('nan'),
-        'gnorm_min': float(np.min(gnorm_list)) if gnorm_list else float('nan'),
-        'elapsed_s': round(elapsed, 2),
-        'error': error_msg,
-        'loss_trajectory': loss_list,
-    }
-
-
-# ══════════════════════════════════════════════════════════════════════════════
 # Main
 # ══════════════════════════════════════════════════════════════════════════════
 
 def main():
-    global CDTYPE
-
     parser = argparse.ArgumentParser(
-        description="Robustness test: D=2 chi=5, 100 random seeds",
+        description="Robustness test: D=2 chi=5, N random seeds "
+                    "(each run is identical to one main_sweep_CPU.py run for D=2, chi=5)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--seeds', type=int, default=100,
-                        help='Number of independent random seeds to test.')
-    parser.add_argument('--budget', type=float, default=120.0,
-                        help='Time budget per seed in seconds.')
-    parser.add_argument('--double', action='store_true', default=True,
-                        help='Use float64/complex128.')
-    parser.add_argument('--output-dir', default=None,
-                        help='Output directory (default: auto-timestamped).')
+    parser.add_argument('--seeds',       type=int,   default=100,
+                        help='Number of independent random seeds.')
+    parser.add_argument('--budget',      type=float, default=120.0,
+                        help='Wall-clock budget per seed in seconds.')
+    parser.add_argument('--double',      action='store_true',
+                        default=_m.USE_DOUBLE_PRECISION,
+                        help='Use float64/complex128 (mirrors USE_DOUBLE_PRECISION in main).')
+    parser.add_argument('--no-double',   dest='double', action='store_false')
+    parser.add_argument('--no-recovery', action='store_true', default=False,
+                        help='Set USE_BLOWUP_RECOVERY=False in main_sweep_CPU '
+                             '(always use partial SVD, never recover).')
+    parser.add_argument('--output-dir',  default=None)
     args = parser.parse_args()
 
-    # ── Precision ─────────────────────────────────────────────────────────────
-    if args.double:
-        CDTYPE = torch.complex128
-        set_dtype(True)
-    else:
-        CDTYPE = torch.complex64
-        set_dtype(False)
+    # ── configure main_sweep_CPU globals exactly as main() would ─────────────
+    _m.CDTYPE = torch.complex128 if args.double else torch.complex64
+    _m.set_dtype(args.double)
+    if args.no_recovery:
+        _m.USE_BLOWUP_RECOVERY = False
 
-    # ── Output dir ────────────────────────────────────────────────────────────
-    run_ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    default_dir = os.path.join('/home/chye/6ADctmrg/data/raw',
-                               f'seed_sweep_D{D_BOND}_chi{CHI}_{run_ts}')
-    out_dir = args.output_dir or default_dir
+    # ── output dir ────────────────────────────────────────────────────────────
+    run_ts  = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    out_dir = args.output_dir or os.path.join(
+        '/home/chye/6ADctmrg/data/raw',
+        f'seed_sweep_D{D_BOND}_chi{CHI}_{run_ts}')
     os.makedirs(out_dir, exist_ok=True)
 
-    # ── Hamiltonian ───────────────────────────────────────────────────────────
-    H  = build_heisenberg_H(J, D_PHYS)
-    Hs = [H] * 9
+    # ── Hamiltonians (identical to main) ─────────────────────────────────────
+    H  = _m.build_heisenberg_H(J, D_PHYS)
+    Hs = [H] * N_BONDS
 
     # ── Banner ────────────────────────────────────────────────────────────────
     print("=" * 76)
-    print(f"  Seed sweep: D={D_BOND}, chi={CHI}, d_phys={D_PHYS}, J={J}")
+    print(f"  Seed sweep using main_sweep_CPU.optimize_at_chi()")
+    print(f"  D={D_BOND}, chi={CHI}, d_phys={D_PHYS}, J={J}")
     print(f"  Seeds: {args.seeds}   Budget/seed: {args.budget:.0f}s")
-    print(f"  Precision: {'complex128' if args.double else 'complex64'}")
-    print(f"  rel_cutoff in core: 1e-8 (hardcoded)")
+    print(f"  Precision: {'complex128' if args.double else 'complex64'}  "
+          f"(USE_DOUBLE_PRECISION={_m.USE_DOUBLE_PRECISION})")
+    print(f"  USE_BLOWUP_RECOVERY={_m.USE_BLOWUP_RECOVERY}   "
+          f"OPTIMIZER={_m.OPTIMIZER}")
+    print(f"  LBFGS: max_iter={_m.LBFGS_MAX_ITER}  lr={_m.LBFGS_LR}  "
+          f"history={_m.LBFGS_HISTORY}")
+    print(f"  CTM: max_steps={_m.CTM_MAX_STEPS}  conv_thr={_m.CTM_CONV_THR}")
+    print(f"  OPT_CONV_THRESHOLD={_m.OPT_CONV_THRESHOLD}")
     print(f"  Output: {out_dir}")
     print(f"  Started: {timestamp()}")
     print("=" * 76)
 
-    # ── Run seeds ─────────────────────────────────────────────────────────────
-    results = []
-    t_global = time.perf_counter()
+    results   = []
+    loss_logs = {}        # seed → list of step records from optimize_at_chi
+    t_global  = time.perf_counter()
 
-    for i in range(args.seeds):
-        seed = i
-        print(f"\n── Seed {seed:3d}/{args.seeds} ", end='', flush=True)
+    for seed in range(args.seeds):
+        print(f"\n{'─'*76}")
+        print(f"  Seed {seed:3d}/{args.seeds}  [{timestamp()}]")
+        print(f"{'─'*76}")
 
-        result = run_single_seed(seed, Hs, args.budget)
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+
+        # Reset full-SVD flag: each seed is a fresh launch of main, so the
+        # first optimize_at_chi step must use full deterministic SVD (same as
+        # _USE_FULL_SVD = True at module-load time when main is relaunched).
+        _m._core._USE_FULL_SVD = True
+
+        loss_log: list = []
+        error_msg      = None
+        best_loss      = float('nan')
+        final_abcdef   = None
+
+        try:
+            # ── This is EXACTLY the call that main_sweep_CPU.main() makes ────
+            *abcdef_out, best_loss, _steps_done = _m.optimize_at_chi(
+                Hs,
+                D_bond         = D_BOND,
+                chi            = CHI,
+                d_PHYS         = D_PHYS,
+                budget_seconds = args.budget,
+                lbfgs_max_iter = _m.LBFGS_MAX_ITER,
+                init_abcdef    = None,    # random init, same as first chi of D=2 in main
+                step_offset    = 0,
+                best_path      = None,    # no per-seed checkpoints (use out_dir summary)
+                latest_path    = None,
+                loss_log       = loss_log,
+                out_dir        = out_dir,
+            )
+            final_abcdef = tuple(abcdef_out)
+            del abcdef_out
+        except Exception as exc:
+            error_msg = f"{type(exc).__name__}: {exc}"
+            traceback.print_exc()
+
+        loss_logs[seed] = loss_log
+
+        # ── Clean energy (same as evaluate_energy_clean in main) ─────────────
+        clean_energy = float('nan')
+        if final_abcdef is not None:
+            try:
+                clean_energy = _m.evaluate_energy_clean(
+                    *final_abcdef, Hs, CHI, D_BOND, D_PHYS)
+            except Exception:
+                pass
+
+        clean_per_bond = clean_energy / N_BONDS if np.isfinite(clean_energy) else float('nan')
+        loss_items     = [r['loss'] for r in loss_log]
+        gnorms: list   = []   # optimize_at_chi doesn't export gnorms; omit
+
+        result = {
+            'seed':                  seed,
+            'steps':                 len(loss_log),
+            'best_loss':             best_loss,
+            'final_loss':            loss_items[-1] if loss_items else float('nan'),
+            'clean_energy':          clean_energy,
+            'clean_energy_per_bond': clean_per_bond,
+            'error':                 error_msg,
+        }
         results.append(result)
 
-        status = "OK" if result['error'] is None else f"ERR: {result['error'][:50]}"
-        e_bond = result['clean_energy_per_bond']
-        nan_s = f" NaN={result['nan_count']}" if result['nan_count'] else ""
-        inf_s = f" Inf={result['inf_count']}" if result['inf_count'] else ""
-        print(f"  E/bond={e_bond:+.8f}  steps={result['steps']:3d}  "
-              f"gnorm_max={result['gnorm_max']:.2e}  "
-              f"conv={'Y' if result['converged'] else 'N'}  "
-              f"{status}{nan_s}{inf_s}  ({result['elapsed_s']:.1f}s)")
+        status = "OK" if error_msg is None else f"ERR:{error_msg[:40]}"
+        nan_in_log = sum(1 for r in loss_log if not np.isfinite(r['loss']))
+        print(f"  → E/bond={clean_per_bond:+.8f}  steps={len(loss_log)}  "
+              f"best_loss={best_loss:+.8f}  {status}"
+              + (f"  non-finite={nan_in_log}" if nan_in_log else ""))
 
-        # Free memory between seeds
+        del final_abcdef
         gc.collect()
 
     total_time = time.perf_counter() - t_global
 
     # ══════════════════════════════════════════════════════════════════════════
-    # Analysis
+    # Summary
     # ══════════════════════════════════════════════════════════════════════════
-    ok_results = [r for r in results if r['error'] is None and np.isfinite(r['clean_energy'])]
-    failed     = [r for r in results if r['error'] is not None or not np.isfinite(r['clean_energy'])]
-
-    energies    = [r['clean_energy_per_bond'] for r in ok_results]
-    gnorm_maxes = [r['gnorm_max'] for r in ok_results]
-    steps_list  = [r['steps'] for r in ok_results]
+    ok      = [r for r in results if r['error'] is None and np.isfinite(r['clean_energy'])]
+    failed  = [r for r in results if r['error'] is not None or not np.isfinite(r['clean_energy'])]
+    energies = [r['clean_energy_per_bond'] for r in ok]
 
     print("\n" + "=" * 76)
     print("  SUMMARY")
     print("=" * 76)
-    print(f"  Total seeds   : {args.seeds}")
-    print(f"  Succeeded     : {len(ok_results)}")
-    print(f"  Failed (NaN/Inf/Error): {len(failed)}")
+    print(f"  Total / OK / Failed : {args.seeds} / {len(ok)} / {len(failed)}")
     if failed:
-        print(f"    Failed seeds: {[r['seed'] for r in failed]}")
-    print()
+        print(f"  Failed seeds: {[r['seed'] for r in failed]}")
 
     if energies:
-        e_arr = np.array(energies)
-        print(f"  E/bond statistics (N={len(e_arr)}):")
-        print(f"    mean   = {e_arr.mean():+.10f}")
-        print(f"    std    = {e_arr.std():.2e}")
-        print(f"    min    = {e_arr.min():+.10f}")
-        print(f"    max    = {e_arr.max():+.10f}")
-        print(f"    median = {np.median(e_arr):+.10f}")
-        print()
+        e = np.array(energies)
+        print(f"\n  E/bond  mean={e.mean():+.10f}  std={e.std():.2e}  "
+              f"min={e.min():+.10f}  max={e.max():+.10f}")
+        print(f"  Below −0.30 E/bond : {sum(1 for x in energies if x < -0.30)}/{len(energies)}")
+        print(f"  Within 0.01 of best: "
+              f"{sum(1 for x in energies if abs(x - e.min()) < 0.01)}/{len(energies)}")
 
-        # Convergence quality: how many reach near -0.3630?
-        good_threshold = -0.30   # loose bar for D=2 chi=5
-        n_good = sum(1 for e in energies if e < good_threshold)
-        print(f"  Convergence (<{good_threshold} E/bond): {n_good}/{len(energies)}"
-              f" ({100*n_good/len(energies):.0f}%)")
-
-        # Spread
-        near_best = sum(1 for e in energies if abs(e - e_arr.min()) < 0.01)
-        print(f"  Within 0.01 of best: {near_best}/{len(energies)}"
-              f" ({100*near_best/len(energies):.0f}%)")
-
-    if gnorm_maxes:
-        gn = np.array(gnorm_maxes)
-        print(f"\n  Gradient norm max statistics:")
-        print(f"    mean = {gn.mean():.2e}  max = {gn.max():.2e}  "
-              f"min = {gn.min():.2e}")
-        n_exploded = sum(1 for g in gnorm_maxes if g > 1e6)
-        print(f"    Exploded (>1e6): {n_exploded}/{len(gnorm_maxes)}")
-
-    print(f"\n  Total wall time: {total_time/60:.1f} min")
-    print(f"  QMC reference: E/bond ≈ −0.3630 (D→∞)")
+    print(f"\n  Wall time: {total_time/60:.1f} min  |  QMC ref: E/bond ≈ −0.3630")
     print("=" * 76)
 
-    # ── Save JSON ─────────────────────────────────────────────────────────────
-    # Strip loss_trajectory to keep JSON small
-    results_slim = []
-    for r in results:
-        r2 = dict(r)
-        r2['loss_trajectory_len'] = len(r2.pop('loss_trajectory', []))
-        results_slim.append(r2)
-
+    # ── JSON ──────────────────────────────────────────────────────────────────
     json_path = os.path.join(out_dir, 'seed_sweep_results.json')
     with open(json_path, 'w') as fp:
         json.dump({
             'D_bond': D_BOND, 'chi': CHI, 'd_phys': D_PHYS, 'J': J,
             'n_seeds': args.seeds, 'budget_per_seed_s': args.budget,
-            'double': args.double, 'rel_cutoff_in_core': '1e-8',
+            'double': args.double,
+            'USE_BLOWUP_RECOVERY': _m.USE_BLOWUP_RECOVERY,
+            'OPTIMIZER': _m.OPTIMIZER,
+            'OPT_CONV_THRESHOLD': _m.OPT_CONV_THRESHOLD,
+            'LBFGS_MAX_ITER': _m.LBFGS_MAX_ITER,
+            'CTM_MAX_STEPS': _m.CTM_MAX_STEPS,
+            'CTM_CONV_THR': _m.CTM_CONV_THR,
             'total_time_s': round(total_time, 1),
-            'n_ok': len(ok_results), 'n_failed': len(failed),
-            'results': results_slim,
+            'n_ok': len(ok), 'n_failed': len(failed),
+            'results': results,
             'timestamp': timestamp(),
         }, fp, indent=2)
     print(f"\n  JSON → {json_path}")
 
-    # ── Save full trajectories in a separate file ─────────────────────────────
     traj_path = os.path.join(out_dir, 'seed_sweep_trajectories.json')
     with open(traj_path, 'w') as fp:
-        json.dump({r['seed']: r['loss_trajectory'] for r in results}, fp)
+        json.dump({seed: log for seed, log in loss_logs.items()}, fp)
     print(f"  Trajectories → {traj_path}")
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # Plots
-    # ══════════════════════════════════════════════════════════════════════════
-
+    # ── Plots ─────────────────────────────────────────────────────────────────
     if not energies:
         print("  No successful runs — skipping plots.")
         return
 
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
 
-    # ── Panel 1: Histogram of E/bond ──────────────────────────────────────────
-    ax1 = axes[0, 0]
-    ax1.hist(energies, bins=30, edgecolor='black', alpha=0.7)
-    ax1.axvline(-0.3630, color='red', ls='--', lw=1.5, label='QMC ref (D→∞)')
-    ax1.set_xlabel('E/bond')
-    ax1.set_ylabel('Count')
-    ax1.set_title(f'Clean E/bond distribution (N={len(energies)})')
-    ax1.legend()
+    ax = axes[0, 0]
+    ax.hist(energies, bins=30, edgecolor='black', alpha=0.7)
+    ax.axvline(-0.3630, color='red', ls='--', lw=1.5, label='QMC ref')
+    ax.set_xlabel('E/bond'); ax.set_ylabel('Count')
+    ax.set_title(f'E/bond distribution (N={len(energies)})'); ax.legend()
 
-    # ── Panel 2: E/bond vs seed ───────────────────────────────────────────────
-    ax2 = axes[0, 1]
-    seeds_ok = [r['seed'] for r in ok_results]
-    ax2.scatter(seeds_ok, energies, s=12, alpha=0.7, c='tab:blue')
-    ax2.axhline(-0.3630, color='red', ls='--', lw=1, label='QMC ref')
-    ax2.set_xlabel('Seed')
-    ax2.set_ylabel('E/bond')
-    ax2.set_title('E/bond vs seed')
-    ax2.legend()
-    # Mark failed seeds
-    if failed:
-        for r in failed:
-            ax2.axvline(r['seed'], color='red', alpha=0.3, lw=0.5)
+    ax = axes[0, 1]
+    seeds_ok = [r['seed'] for r in ok]
+    ax.scatter(seeds_ok, energies, s=12, alpha=0.7, c='tab:blue')
+    ax.axhline(-0.3630, color='red', ls='--', lw=1, label='QMC ref')
+    for r in failed:
+        ax.axvline(r['seed'], color='red', alpha=0.3, lw=0.5)
+    ax.set_xlabel('Seed'); ax.set_ylabel('E/bond')
+    ax.set_title('E/bond vs seed'); ax.legend()
 
-    # ── Panel 3: Max gradient norm vs seed ────────────────────────────────────
-    ax3 = axes[1, 0]
-    ax3.scatter(seeds_ok, gnorm_maxes, s=12, alpha=0.7, c='tab:orange')
-    ax3.set_yscale('log')
-    ax3.set_xlabel('Seed')
-    ax3.set_ylabel('Max ||grad||')
-    ax3.set_title('Max gradient norm vs seed')
+    ax = axes[1, 0]
+    steps_ok = [r['steps'] for r in ok]
+    ax.scatter(seeds_ok, steps_ok, s=12, alpha=0.7, c='tab:orange')
+    ax.set_xlabel('Seed'); ax.set_ylabel('Outer steps')
+    ax.set_title('Steps to convergence / budget exhaustion')
 
-    # ── Panel 4: Loss trajectories (overlay all seeds) ────────────────────────
-    ax4 = axes[1, 1]
-    for r in results:
-        traj = r.get('loss_trajectory', [])
+    ax = axes[1, 1]
+    for seed, log in loss_logs.items():
+        traj = [r['loss'] / N_BONDS for r in log if np.isfinite(r['loss'])]
         if traj:
-            ax4.plot(range(len(traj)), [l / N_BONDS for l in traj],
-                     lw=0.4, alpha=0.4)
-    ax4.axhline(-0.3630, color='red', ls='--', lw=1, label='QMC ref')
-    ax4.set_xlabel('Outer step')
-    ax4.set_ylabel('Loss / N_BONDS')
-    ax4.set_title(f'All {args.seeds} loss trajectories')
-    ax4.legend()
+            ax.plot(range(len(traj)), traj, lw=0.4, alpha=0.4)
+    ax.axhline(-0.3630, color='red', ls='--', lw=1, label='QMC ref')
+    ax.set_xlabel('Outer step'); ax.set_ylabel('Loss/N_BONDS')
+    ax.set_title(f'All {args.seeds} loss trajectories'); ax.legend()
 
-    fig.suptitle(f'Seed sweep: D={D_BOND}, χ={CHI}, rel_cutoff=1e-8, '
-                 f'{"complex128" if args.double else "complex64"}',
-                 fontsize=13, fontweight='bold')
+    fig.suptitle(
+        f'Seed sweep D={D_BOND} χ={CHI}  '
+        f'{"complex128" if args.double else "complex64"}  '
+        f'recovery={_m.USE_BLOWUP_RECOVERY}',
+        fontsize=13, fontweight='bold')
     fig.tight_layout()
     fig_path = os.path.join(out_dir, 'seed_sweep_D2_chi5.pdf')
     fig.savefig(fig_path, dpi=150)
