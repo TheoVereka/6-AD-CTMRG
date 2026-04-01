@@ -581,9 +581,9 @@ class SVD_PROPACK(torch.autograd.Function):
         if A_input is not None:
             _gu = gu if gu is not None else torch.zeros(m, k, dtype=u.dtype, device=u.device)
             _gv = gv if gv is not None else torch.zeros(n, k, dtype=u.dtype, device=u.device)
-            fifthIntermediate = _solve_fifth_term_svd(A_input, u, sigma, v, _gu, _gv, eps_val)
-            #print("fifth term max abs:", fifthIntermediate.abs().max().item())
-            dA = dA + fifthIntermediate
+            dA += _solve_fifth_term_svd(A_input, u, sigma, v, _gu, _gv, eps_val)
+            
+
 
         # ── Gradient blowup detection (rSVD instability) ─────────────────────
         global _SVD_GRAD_BLOWUP_DETECTED, _SVD_GRAD_BLOWUP_MAX_VALUE
@@ -812,8 +812,6 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
                         abs_tol=1e-14,
                         eps_multiplet=1e-10)
     
-    truncV = V
-    truncUh = U.conj().T
 
     
 
@@ -859,8 +857,8 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
 ###############################
 
 
-    P21My = torch.mm( R2.T ,torch.mm( truncV , sqrtInvTruncS ))
-    P32yM = torch.mm(torch.mm( sqrtInvTruncS , truncUh ), R1 )
+    P21My = torch.mm( R2.T ,torch.mm( V , sqrtInvTruncS ))
+    P32yM = torch.mm(torch.mm( sqrtInvTruncS , U.conj().T ), R1 )
 
     #almost_identity = torch.mm(P21My,P32yM)
     #average_diag = torch.diag(almost_identity).mean().item()
@@ -891,15 +889,13 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
                     abs_tol=1e-14,
                     eps_multiplet=1e-10)
     
-    truncUh = U.conj().T
-    truncV = V
 
     #truncUh = U[:,:chi].conj().T
     #truncV = Vh[:chi,:].conj().T
     sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
 
-    P32Nz = torch.mm( R2.T ,torch.mm( truncV , sqrtInvTruncS ))
-    P13zN = torch.mm(torch.mm( sqrtInvTruncS , truncUh ), R1 )
+    P32Nz = torch.mm( R2.T ,torch.mm( V , sqrtInvTruncS ))
+    P13zN = torch.mm(torch.mm( sqrtInvTruncS , U.conj().T ), R1 )
 
 
 
@@ -919,26 +915,24 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
 
 
 
-    truncUh = U.conj().T
-    truncV = V
 
     #truncUh = U[:,:chi].conj().T
     #truncV = Vh[:chi,:].conj().T
     sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
 
-    P13Lx = torch.mm( R2.T ,torch.mm( truncV , sqrtInvTruncS ))
-    P21xL = torch.mm(torch.mm( sqrtInvTruncS , truncUh ), R1 )
+    P13Lx = torch.mm( R2.T ,torch.mm( V , sqrtInvTruncS ))
+    P21xL = torch.mm(torch.mm( sqrtInvTruncS , U.conj().T ), R1 )
 
 
 
-    C21 = torch.mm(P21My.T, torch.mm(matC21, P21xL.T))
-    C32 = torch.mm(P32Nz.T, torch.mm(matC32, P32yM.T))
-    C13 = torch.mm(P13Lx.T, torch.mm(matC13, P13zN.T))
+    matC21 = torch.mm(P21My.T, torch.mm(matC21, P21xL.T))
+    matC32 = torch.mm(P32Nz.T, torch.mm(matC32, P32yM.T))
+    matC13 = torch.mm(P13Lx.T, torch.mm(matC13, P13zN.T))
     
     
-    C21 = C21/torch.linalg.norm(C21)
-    C32 = C32/torch.linalg.norm(C32)
-    C13 = C13/torch.linalg.norm(C13)
+    matC21 = matC21/torch.linalg.norm(matC21)
+    matC32 = matC32/torch.linalg.norm(matC32)
+    matC13 = matC13/torch.linalg.norm(matC13)
     
 
     """
@@ -968,15 +962,7 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     """
 
 
-    U1dag = P21My.reshape(chi,D_squared, chi)
-    U2dag = P32Nz.reshape(chi,D_squared, chi)
-    U3dag = P13Lx.reshape(chi,D_squared, chi)
-
-    V1 = P13zN.reshape(chi, chi,D_squared)
-    V2 = P21xL.reshape(chi, chi,D_squared)
-    V3 = P32yM.reshape(chi, chi,D_squared)
-
-    return V2, C21, U1dag, V3, C32, U2dag, V1, C13, U3dag
+    return P21xL.reshape(chi, chi,D_squared), matC21, P21My.reshape(chi,D_squared, chi), P32yM.reshape(chi, chi,D_squared), matC32, P32Nz.reshape(chi,D_squared, chi), P13zN.reshape(chi, chi,D_squared), matC13, P13Lx.reshape(chi,D_squared, chi)
 
 
 def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
@@ -1126,7 +1112,7 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
 
         R1 = C21CD.T
         R2 = torch.mm(C13AB,C32EF)
-
+        
         #Q1, R1 = torch.linalg.qr(matC21.T)
         #Q2, R2 = torch.linalg.qr(torch.mm(matC13,matC32))
         U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
@@ -1136,13 +1122,12 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
                     keep_multiplets=False,
                     abs_tol=1e-14,
                     eps_multiplet=1e-10)
+        
 
-        truncUh = U.conj().T
-        truncV = V
         sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
 
-        P21My = torch.mm( R2.T ,torch.mm( truncV , sqrtInvTruncS ))
-        P32yM = torch.mm(torch.mm( sqrtInvTruncS , truncUh ), R1 )
+        P21My = torch.mm( R2.T ,torch.mm( V , sqrtInvTruncS ))
+        P32yM = torch.mm(torch.mm( sqrtInvTruncS , U.conj().T ), R1 )
 
 
         R1 = C32EF.T
@@ -1158,12 +1143,10 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
                     abs_tol=1e-14,
                     eps_multiplet=1e-10)
 
-        truncUh = U.conj().T
-        truncV = V
         sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
 
-        P32Nz = torch.mm( R2.T ,torch.mm( truncV , sqrtInvTruncS ))
-        P13zN = torch.mm(torch.mm( sqrtInvTruncS , truncUh ), R1 )
+        P32Nz = torch.mm( R2.T ,torch.mm( V , sqrtInvTruncS ))
+        P13zN = torch.mm(torch.mm( sqrtInvTruncS , U.conj().T ), R1 )
 
 
         R1 = C13AB.T
@@ -1179,22 +1162,20 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
                     abs_tol=1e-14,
                     eps_multiplet=1e-10)
 
-        truncUh = U.conj().T
-        truncV = V
         sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
 
-        P13Lx = torch.mm( R2.T ,torch.mm( truncV , sqrtInvTruncS ))
-        P21xL = torch.mm(torch.mm( sqrtInvTruncS , truncUh ), R1 )
+        P13Lx = torch.mm( R2.T ,torch.mm( V , sqrtInvTruncS ))
+        P21xL = torch.mm(torch.mm( sqrtInvTruncS , U.conj().T ), R1 )
 
 
 
-        C21 = torch.mm(P21My.T, torch.mm(C21CD, P21xL.T))
-        C32 = torch.mm(P32Nz.T, torch.mm(C32EF, P32yM.T))
-        C13 = torch.mm(P13Lx.T, torch.mm(C13AB, P13zN.T))
+        C21CD = torch.mm(P21My.T, torch.mm(C21CD, P21xL.T))
+        C32EF = torch.mm(P32Nz.T, torch.mm(C32EF, P32yM.T))
+        C13AB = torch.mm(P13Lx.T, torch.mm(C13AB, P13zN.T))
         
-        C21CD = C21/torch.linalg.norm(C21)
-        C32EF = C32/torch.linalg.norm(C32)
-        C13AB = C13/torch.linalg.norm(C13)
+        C21CD = C21CD/torch.linalg.norm(C21CD)
+        C32EF = C32EF/torch.linalg.norm(C32EF)
+        C13AB = C13AB/torch.linalg.norm(C13AB)
    
         """
         tr_abs = tr_rho.abs()
@@ -1221,23 +1202,18 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
             C13AB = C13 * (nC_geo / n13)
         """
 
-        U1B = P21My.reshape(D_squared*D_squared, chi)
-        U2D = P32Nz.reshape(D_squared*D_squared, chi)
-        U3F = P13Lx.reshape(D_squared*D_squared, chi)
-
-        V1C = P13zN.reshape(chi, D_squared*D_squared)
-        V2E = P21xL.reshape(chi, D_squared*D_squared)
-        V3A = P32yM.reshape(chi, D_squared*D_squared)
 
 
         # Uh,V project on one side(XYZ) of Ts
 
-        T1F = oe.contract("MYa,yY->Mya",T1F,V3A,optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)
-        T2A = oe.contract("LXb,Xx->Lxb",T2A,U3F,optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)
-        T2B = oe.contract("NZb,zZ->Nzb",T2B,V1C,optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)
-        T3C = oe.contract("MYg,Yy->Myg",T3C,U1B,optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)
-        T3D = oe.contract("LXg,xX->Lxg",T3D,V2E,optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)
-        T1E = oe.contract("NZa,Zz->Nza",T1E,U2D,optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)  
+
+
+        T1F = oe.contract("MYa,yY->Mya",T1F,P32yM.reshape(chi, D_squared*D_squared),optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)
+        T2A = oe.contract("LXb,Xx->Lxb",T2A,P13Lx.reshape(D_squared*D_squared, chi),optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)
+        T2B = oe.contract("NZb,zZ->Nzb",T2B,P13zN.reshape(chi, D_squared*D_squared),optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)
+        T3C = oe.contract("MYg,Yy->Myg",T3C,P21My.reshape(D_squared*D_squared, chi),optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)
+        T3D = oe.contract("LXg,xX->Lxg",T3D,P21xL.reshape(chi, D_squared*D_squared),optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)
+        T1E = oe.contract("NZa,Zz->Nza",T1E,P32Nz.reshape(D_squared*D_squared, chi),optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)  
 
 
 
@@ -1289,13 +1265,13 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
                         keep_multiplets=False,
                         abs_tol=1e-14,
                         eps_multiplet=1e-10)
-            truncUh = U.conj().T
-            truncV = V
+            
+
             sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
-            projFor1st = torch.mm(T3C, torch.mm(truncV, sqrtInvTruncS))
-            projFor2nd = torch.mm( torch.mm(sqrtInvTruncS, truncUh), T1F.T)
-            T1F = torch.mm(projFor1st.T, T1F)
-            T3C = torch.mm(projFor2nd, T3C)
+
+            T1Fold = T1F
+            T1F = torch.mm((torch.mm(T3C, torch.mm(V, sqrtInvTruncS))).T, T1F)
+            T3C = torch.mm(torch.mm( torch.mm(sqrtInvTruncS, U.conj().T), T1Fold.T), T3C)
 
 
             U, S, V = truncated_svd_propack(torch.mm(T3D.T,T2A), chi,
@@ -1305,13 +1281,13 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
                         keep_multiplets=False,
                         abs_tol=1e-14,
                         eps_multiplet=1e-10)
-            truncUh = U.conj().T
-            truncV = V
+            
             sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
-            projFor1st = torch.mm(T2A, torch.mm(truncV, sqrtInvTruncS))
-            projFor2nd = torch.mm( torch.mm(sqrtInvTruncS, truncUh), T3D.T)
-            T3D = torch.mm(projFor1st.T, T3D)
-            T2A = torch.mm(projFor2nd, T2A)
+            
+            T3Dold = T3D
+            T3D = torch.mm((torch.mm(T2A, torch.mm(V, sqrtInvTruncS))).T, T3D)
+            T2A = torch.mm(torch.mm( torch.mm(sqrtInvTruncS, U.conj().T), T3Dold.T), T2A)
+
 
             U, S, V = truncated_svd_propack(torch.mm(T2B.T,T1E), chi,
                         chi_extra=round(2*np.sqrt(D_squared)),
@@ -1320,13 +1296,12 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
                         keep_multiplets=False,
                         abs_tol=1e-14,
                         eps_multiplet=1e-10)
-            truncUh = U.conj().T
-            truncV = V
+            
             sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
-            projFor1st = torch.mm(T1E, torch.mm(truncV, sqrtInvTruncS))
-            projFor2nd = torch.mm( torch.mm(sqrtInvTruncS, truncUh), T2B.T)
-            T2B = torch.mm(projFor1st.T, T2B)
-            T1E = torch.mm(projFor2nd, T1E)
+
+            T2Bold = T2B
+            T2B = torch.mm((torch.mm(T1E, torch.mm(V, sqrtInvTruncS))).T, T2B)
+            T1E = torch.mm(torch.mm( torch.mm(sqrtInvTruncS, U.conj().T), T2Bold.T), T1E)
             
 
 
@@ -1471,8 +1446,6 @@ def check_env_CV_using_3rho(lastC21CD, lastC32EF, lastC13AB,
                             env_conv_threshold):
    
     # Warm-up guard: all three env types must have been computed at least once.
-    if lastC21CD is None or lastC21EB is None or lastC21AF is None:
-        return False
 
     max_delta = 0.0
     # The rhos defined by 1-1 cut: 13 @ 32 @ 21
@@ -1632,29 +1605,30 @@ def update_environmentCTs_1to2(C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
         transfer tensors (shape ``(chi, D_squared, D_squared)``).
     """
 
-    matC21EB = oe.contract("YX,MYa,LXb,amg,lbg->MmLl",
+    C21EB = oe.contract("YX,MYa,LXb,amg,lbg->MmLl",
                            C21CD,T1F,T2A,E,B,
                            optimize=[(0,2),(0,3),(1,2),(0,1)],
                            backend='torch')
     
-    matC21EB = matC21EB.reshape(chi*D_squared,chi*D_squared)
+    C21EB = C21EB.reshape(chi*D_squared,chi*D_squared)
     
-    matC32AD = oe.contract("ZY,NZb,MYg,abn,amg->NnMm",
+    C32AD = oe.contract("ZY,NZb,MYg,abn,amg->NnMm",
                            C32EF,T2B,T3C,A,D,
                            optimize=[(0,2),(0,3),(1,2),(0,1)],
                            backend='torch')
     
-    matC32AD = matC32AD.reshape(chi*D_squared,chi*D_squared)
+    C32AD = C32AD.reshape(chi*D_squared,chi*D_squared)
     
-    matC13CF = oe.contract("XZ,LXg,NZa,lbg,abn->LlNn",
+    C13CF = oe.contract("XZ,LXg,NZa,lbg,abn->LlNn",
                            C13AB,T3D,T1E,C,F,
                            optimize=[(0,2),(0,3),(1,2),(0,1)],
                            backend='torch')
     
-    matC13CF = matC13CF.reshape(chi*D_squared,chi*D_squared)
+    C13CF = C13CF.reshape(chi*D_squared,chi*D_squared)
+
 
     V2A, C21EB, U1F, V3C, C32AD, U2B, V1E, C13CF, U3D = trunc_rhoCCC(
-                        matC21EB, matC32AD, matC13CF, chi, D_squared)
+                        C21EB, C32AD, C13CF, chi, D_squared)
 
 
     T3E = oe.contract("OYa,abg,ObM->YMg",
@@ -1772,29 +1746,29 @@ def update_environmentCTs_2to3(C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A
         T3A, T3F, T1C)`` — the type-3 corners and transfer tensors.
     """
 
-    matC21AF = oe.contract("YX,MYa,LXb,amg,lbg->MmLl",
+    C21AF = oe.contract("YX,MYa,LXb,amg,lbg->MmLl",
                            C21EB,T1D,T2C,A,F,
                            optimize=[(0,2),(0,3),(1,2),(0,1)],
                            backend='torch')
     
-    matC21AF = matC21AF.reshape(chi*D_squared,chi*D_squared)
+    C21AF = C21AF.reshape(chi*D_squared,chi*D_squared)
     
-    matC32CB = oe.contract("ZY,NZb,MYg,abn,amg->NnMm",
+    C32CB = oe.contract("ZY,NZb,MYg,abn,amg->NnMm",
                            C32AD,T2F,T3E,C,B,
                            optimize=[(0,2),(0,3),(1,2),(0,1)],
                            backend='torch')
     
-    matC32CB = matC32CB.reshape(chi*D_squared,chi*D_squared)
+    C32CB = C32CB.reshape(chi*D_squared,chi*D_squared)
     
-    matC13ED = oe.contract("XZ,LXg,NZa,lbg,abn->LlNn",
+    C13ED = oe.contract("XZ,LXg,NZa,lbg,abn->LlNn",
                            C13CF,T3B,T1A,E,D,
                            optimize=[(0,2),(0,3),(1,2),(0,1)],
                            backend='torch')
     
-    matC13ED = matC13ED.reshape(chi*D_squared,chi*D_squared)
+    C13ED = C13ED.reshape(chi*D_squared,chi*D_squared)
 
     V2C, C21AF, U1D, V3E, C32CB, U2F, V1A, C13ED, U3B = trunc_rhoCCC(
-                        matC21AF, matC32CB, matC13ED, chi, D_squared)
+                        C21AF, C32CB, C13ED, chi, D_squared)
 
     T3A = oe.contract("OYa,abg,ObM->YMg",
                         T1D,A,U1D,
@@ -1907,29 +1881,29 @@ def update_environmentCTs_3to1(C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C
         T3C, T3D, T1E)`` — the renewed type-1 corners and transfer tensors.
     """
 
-    matC21CD = oe.contract("YX,MYa,LXb,amg,lbg->MmLl",
+    C21CD = oe.contract("YX,MYa,LXb,amg,lbg->MmLl",
                            C21AF,T1B,T2E,C,D,
                            optimize=[(0,2),(0,3),(1,2),(0,1)],
                            backend='torch')
     
-    matC21CD = matC21CD.reshape(chi*D_squared,chi*D_squared)
+    C21CD = C21CD.reshape(chi*D_squared,chi*D_squared)
     
-    matC32EF = oe.contract("ZY,NZb,MYg,abn,amg->NnMm",
+    C32EF = oe.contract("ZY,NZb,MYg,abn,amg->NnMm",
                            C32CB,T2D,T3A,E,F,
                            optimize=[(0,2),(0,3),(1,2),(0,1)],
                            backend='torch')
     
-    matC32EF = matC32EF.reshape(chi*D_squared,chi*D_squared)
+    C32EF = C32EF.reshape(chi*D_squared,chi*D_squared)
     
-    matC13AB = oe.contract("XZ,LXg,NZa,lbg,abn->LlNn",
+    C13AB = oe.contract("XZ,LXg,NZa,lbg,abn->LlNn",
                            C13ED,T3F,T1C,A,B,
                            optimize=[(0,2),(0,3),(1,2),(0,1)],
                            backend='torch')
     
-    matC13AB = matC13AB.reshape(chi*D_squared,chi*D_squared)
+    C13AB = C13AB.reshape(chi*D_squared,chi*D_squared)
 
     V2E, C21CD, U1B, V3A, C32EF, U2D, V1C, C13AB, U3F = trunc_rhoCCC(
-                        matC21CD, matC32EF, matC13AB, chi, D_squared)
+                        C21CD, C32EF, C13AB, chi, D_squared)
 
 
 
@@ -2100,15 +2074,16 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
             #      f"last={len(_all_last)}tensors/{_last_mb:.1f}MB  "
             #      f" T-shape={_t_sh}")
 
-        if check_env_CV_using_3rho(lastC21CD, lastC32EF, lastC13AB, #lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E, 
-                                 nowC21CD, nowC32EF, nowC13AB, #nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, 
-                                 lastC21EB, lastC32AD, lastC13CF, #lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A, 
-                                 nowC21EB, nowC32AD, nowC13CF, #nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A, 
-                                 lastC21AF, lastC32CB, lastC13ED, #lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C, 
-                                 nowC21AF, nowC32CB, nowC13ED, #nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C, 
-                                 env_conv_threshold):
-            ctm_steps = iteration + 1
-            break
+        if not (lastC21CD is None or lastC21EB is None or lastC21AF is None):
+            if check_env_CV_using_3rho(lastC21CD.detach(), lastC32EF.detach(), lastC13AB.detach(), #lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E, 
+                                    nowC21CD.detach(), nowC32EF.detach(), nowC13AB.detach(), #nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, 
+                                    lastC21EB.detach(), lastC32AD.detach(), lastC13CF.detach(), #lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A, 
+                                    nowC21EB.detach(), nowC32AD.detach(), nowC13CF.detach(), #nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A, 
+                                    lastC21AF.detach(), lastC32CB.detach(), lastC13ED.detach(), #lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C, 
+                                    nowC21AF.detach(), nowC32CB.detach(), nowC13ED.detach(), #nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C, 
+                                    env_conv_threshold):
+                ctm_steps = iteration + 1
+                break
 
         # Update the environment corner and edge transfer tensors
         # match iteration % 3 :

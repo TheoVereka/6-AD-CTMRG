@@ -1,3 +1,5 @@
+
+
 #!/usr/bin/env python3
 """
 main_sweep.py
@@ -51,10 +53,13 @@ Outputs (all in log/)
 import argparse
 import collections
 import datetime
+import gc
 import json
 import os
 import sys
 import time
+
+memory_diagn = False
 
 # ── CPU threading ─────────────────────────────────────────────────────────────
 # MUST be set BEFORE importing NumPy / PyTorch / MKL — they read these at init.
@@ -68,7 +73,7 @@ import time
 #
 # Use os.environ.setdefault so a user can still override from the shell:
 #   OMP_NUM_THREADS=2 python scripts/main_sweep_CPU.py   ← respected
-_N_PHYSICAL_CORES = 30
+_N_PHYSICAL_CORES = 8
 os.environ.setdefault("OMP_NUM_THREADS", str(_N_PHYSICAL_CORES))
 os.environ.setdefault("MKL_NUM_THREADS", str(_N_PHYSICAL_CORES))
 # Prevent MKL from silently reducing thread count when it detects nested
@@ -107,6 +112,7 @@ if os.environ.get("CTMRG_ANOMALY", "0") == "1":
 torch.set_num_threads(_N_PHYSICAL_CORES)
 torch.set_num_interop_threads(1)
 
+import core_unrestricted as _core
 from core_unrestricted import (
     normalize_tensor,
     normalize_single_layer_tensor_for_double_layer,
@@ -177,6 +183,14 @@ USE_DOUBLE_PRECISION = True
 #             receive EQUAL time budget and IDENTICAL L-BFGS settings, making
 #             results at different chi directly comparable.
 
+# ── Sweep control ─────────────────────────────────────────────────────────────
+
+D_BOND_LIST = [2,3, 4, 5, 6, 7, 8, 9, 10, 11]
+#   Ordered list of iPEPS virtual bond dimensions to sweep (outer loop).
+#   Each D is warm-started from the best tensors found at the previous D
+#   (zero-padded to the new size + PAD_NOISE Gaussian noise).
+
+
 DEFAULT_D_BUDGET_FRACS = {2: 0.1, 3: 0.1, 4: 0.1, 5:0.1, 6:0.1, 7:0.1, 8:0.1, 9:0.1, 10:0.1, 11:0.1}
 #   Fraction of the total wall-clock budget allocated to each D_bond value.
 #   Normalised to sum=1 before use, so only the RATIOS matter.
@@ -225,16 +239,11 @@ DEFAULT_CHI_SCHEDULES = {
 #     3. Repeat until time budget is exhausted or OPT_CONV_THRESHOLD hit.
 #   This is the "cheap-environment" AD-CTMRG gradient scheme.
 
-LBFGS_MAX_ITER = 11
+LBFGS_MAX_ITER = 15
 #   Maximum L-BFGS sub-iterations per outer step (= max closure evaluations
 #   inside a single optimizer.step() call).  Each sub-iteration does a
-#   forward + backward pass through the energy formula.
-#
-#   Rule: set to CTM_time / sub_iter_time (break-even ratio where extra
-#   sub-iters cost as much as one full CTMRG re-convergence):
-#     D=2–3: sub-iter ~1.5 s, warm CTM ~48 s → ratio ~32; use 25.
-#     D=4–5: sub-iter ~4   s, warm CTM ~80 s → ratio ~20; use 25.
-#     D≥6  : sub-iter grows faster than CTM → do NOT exceed 25.
+#   forward + backward pass through the energy formula.  30 gives a thorough
+#   line search and good Dividecurvature estimation without being excessively slow.
 #   Applies UNIFORMLY to every (D, chi) level — no difference between small
 #   and large chi.
 
@@ -254,17 +263,23 @@ LBFGS_HISTORY = LBFGS_MAX_ITER
 #   and wastes nothing.  Old values like 50–100 were appropriate for classical
 #   L-BFGS that runs continuously; they do not apply here.
 
-OPT_TOL_GRAD = 1e-7
+OPT_TOL_GRAD = 1e-9
 #   L-BFGS inner convergence criterion on the infinity-norm of the gradient:
 #   the sub-iteration loop exits early if  ||∇loss||_∞ < OPT_TOL_GRAD.
 #   This is an inner stopping rule inside a single optimizer.step() call.
 
-OPT_TOL_CHANGE = 1e-8
+OPT_TOL_CHANGE = 3e-9
 #   L-BFGS inner convergence criterion on consecutive loss change:
 #   sub-iteration exits if  |L_{k+1} – L_k| < OPT_TOL_CHANGE.
 #   Set tighter than OPT_TOL_GRAD to catch near-flat regions.
 
-OPT_CONV_THRESHOLD = 5e-8
+OPT_CONV_THRESHOLD = 1e-8
+# Outer-loop early-stop: disabled (= 0).
+# The outer delta |loss(k) - loss(k-1)| compares two L-BFGS final values that
+# used DIFFERENT CTMRG environments, so even near a true minimum the delta is
+# contaminated by env drift O(CTM_CONV_THR).  A non-zero threshold fires
+# spuriously.  Stopping is by wall-clock budget; genuine convergence is caught
+# by the cycle-detection check below.
 #   Outer-loop early-stop criterion: if |loss(step k) – loss(step k–1)|
 #   < OPT_CONV_THRESHOLD, the outer while-loop exits and we move to the
 #   next (D, chi) level.  Set to 0 to disable early stopping and always
@@ -315,13 +330,13 @@ ENV_IDENTITY_INIT = False
 
 
 
-CTM_MAX_STEPS = 50
+CTM_MAX_STEPS = 30
 #   Hard cap on CTMRG iterations per environment convergence call.
 #   With the singular-value convergence criterion and CTM_CONV_THR=1e-3,
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
 #   ansatz ~4 steps, 6-tensor ~40 steps).  90 is a safe upper bound.
 
-CTM_CONV_THR = 4e-7
+CTM_CONV_THR = 2e-7
 #   CTMRG convergence threshold: stop iterating when the max change in
 #   normalised corner singular values between consecutive steps is below
 #   this value.  The convergence criterion compares the spectra of all 9
@@ -351,7 +366,7 @@ J_COUPLING = 1.0
 #   (AFM), ground state is a singlet.  The Hamiltonian is
 #   H = J Σ_{<i,j>} S_i · S_j  summed over all nearest-neighbour pairs on the
 #   honeycomb.  For the AFM sign convention the optimal iPEPS energy is
-#   E/bond ≈ −0.3646 J in the D→∞ limit (QMC reference).
+#   E/bond ≈ −0.3630 J in the D→∞ limit (QMC reference).
 
 D_PHYS = 2
 #   Physical Hilbert-space dimension per lattice site.
@@ -363,25 +378,24 @@ N_BONDS = 9
 #   cyclically) + 3 bonds of the secondary type = 9 total.
 #   Used only to compute the reported E/bond = E_total / N_BONDS.
 
-# ── Sweep control ─────────────────────────────────────────────────────────────
-
-D_BOND_LIST = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-#   Ordered list of iPEPS virtual bond dimensions to sweep (outer loop).
-#   Each D is warm-started from the best tensors found at the previous D
-#   (zero-padded to the new size + PAD_NOISE Gaussian noise).
 
 # ── Tensor initialisation & padding ──────────────────────────────────────────
 
-INIT_NOISE = 1e-3
-#   Gaussian noise amplitude for RANDOM tensor initialisation at the very
-#   first (D, chi) level or whenever no warm-start is available.
-#   1e-3 keeps tensors near the origin so the first CTMRG converges quickly.
+INIT_NOISE = 3e-3
+# abcdef init noise, not used.
 
-PAD_NOISE = 1e-3
+PAD_NOISE = 2e-1
 #   Gaussian noise amplitude added to the ZERO-PADDED new indices when
 #   enlarging tensors from D → D+1.  Non-zero noise breaks the symmetry of
 #   the padded zeros and prevents the optimiser from getting stuck in the
 #   subspace of the smaller-D manifold.  Keep comparable to INIT_NOISE.
+
+USE_BLOWUP_RECOVERY = False
+#   When True: if rSVD gradient blowup is detected AND the outer loss stalls
+#   (|Δ| ≤ OPT_CONV_THRESHOLD), recover by re-noising the current tensors and
+#   using full deterministic SVD for the next step instead of treating it as
+#   genuine convergence.
+#   When False: always use partial (randomized) SVD and ignore blowup events.
 
 GEO_SCHEDULE_STEPS = 5
 #   Number of chi values generated by the geometric FALLBACK schedule.
@@ -415,6 +429,64 @@ def free_ram_gb() -> float:
     return float('inf')
 
 
+def mem_mb() -> float:
+    """Return current process Resident Set Size (RSS) in MB.
+
+    Uses psutil when available; falls back to /proc/self/status (Linux).
+    Returns NaN when neither is available.
+    """
+    try:
+        import psutil
+        return psutil.Process().memory_info().rss / 1e6
+    except ImportError:
+        pass
+    try:
+        with open("/proc/self/status") as _fh:
+            for _line in _fh:
+                if _line.startswith("VmRSS:"):
+                    return int(_line.split()[1]) / 1e3
+    except OSError:
+        pass
+    return float('nan')
+
+
+def tensor_mb(t: torch.Tensor) -> float:
+    """Return the allocated memory of a single tensor in MB."""
+    return t.element_size() * t.nelement() / 1e6
+
+
+def env_mem_report(env28: tuple, chi: int, D_bond: int) -> str:
+    """One-line summary of the 27 CTMRG environment tensor sizes.
+
+    env28 is the 28-tuple from CTMRG_from_init_to_stop (27 tensors + ctm_steps).
+    """
+    _names = [
+        'C21CD', 'C32EF', 'C13AB', 'T1F',  'T2A',  'T2B',  'T3C',  'T3D',  'T1E',
+        'C21EB', 'C32AD', 'C13CF', 'T1D',  'T2C',  'T2F',  'T3E',  'T3B',  'T1A',
+        'C21AF', 'C32CB', 'C13ED', 'T1B',  'T2E',  'T2D',  'T3A',  'T3F',  'T1C',
+    ]
+    _tns = env28[:27]
+    _total   = sum(tensor_mb(t) for t in _tns)
+    _corners = sum(tensor_mb(t) for n, t in zip(_names, _tns) if n.startswith('C'))
+    _trans   = sum(tensor_mb(t) for n, t in zip(_names, _tns) if n.startswith('T'))
+    _c_shape = tuple(_tns[0].shape)   # C21CD
+    _t_shape = tuple(_tns[3].shape)   # T1F
+    return (
+        f"env chi={chi} D={D_bond}: total={_total:.1f}MB "
+        f"(corners={_corners:.1f}MB transfer={_trans:.1f}MB) "
+        f" T-shape={_t_shape}"
+    )
+
+
+def abcdef_mem_report(tensors: tuple, D_bond: int) -> str:
+    """One-line summary of the 6 site tensors (a..f)."""
+    _total = sum(tensor_mb(t) for t in tensors)
+    return (
+        f"site D={D_bond}: total={_total:.4f}MB "
+        f"shape={tuple(tensors[0].shape)} dtype={tensors[0].dtype}"
+    )
+
+
 def peak_ram_gb(chi: int, D_sq: int) -> float:
     """Estimate peak RAM for one CTMRG step in GB."""
     n = chi * D_sq
@@ -441,13 +513,34 @@ def build_heisenberg_H(J: float = 1.0, d: int = 2) -> torch.Tensor:
 """
 
 
+def _new_tensors_from_data(tensors: tuple) -> tuple:
+    """Create brand-new tensors from raw numerical data.
+
+    Each returned tensor is a *fresh* ``torch.empty`` + ``copy_``, sharing
+    zero autograd lineage, zero storage, zero Python identity with the
+    originals.  After calling this, ``del tensors`` truly frees everything
+    from the old optimisation run (optimizer state, CTMRG envs, closures).
+    """
+    out = []
+    for t in tensors:
+        new = torch.empty(t.shape, dtype=CDTYPE, device=t.device)
+        new.copy_(t.detach())
+        out.append(new)
+    return tuple(out)
+
+
 def pad_tensor(t: torch.Tensor, old_D: int, new_D: int,
                d_PHYS: int, noise: float) -> torch.Tensor:
-    out = noise * torch.randn(new_D, new_D, new_D, d_PHYS,
-                              dtype=CDTYPE)
-    s = old_D
-    out[:s, :s, :s, :] = t[:s, :s, :s, :]
-    return normalize_tensor(out)
+    # Whenever pad_tensor is called (D→D+1 warm-start OR same-D recovery),
+    # the next optimization step should use full (deterministic) SVD to avoid
+    # rSVD gradient blowup on the noisy initial point.  The flag is cleared
+    # automatically after one L-BFGS step completes.
+    _core._USE_FULL_SVD = True
+
+    out = noise * torch.randn(new_D, new_D, new_D, d_PHYS, dtype=CDTYPE)
+    out[:old_D, :old_D, :old_D, :] += normalize_tensor(t.detach())*torch.sqrt(torch.tensor(old_D**3 * d_PHYS, dtype=CDTYPE))
+    
+    return out
 
 
 def evaluate_energy_clean(a, b, c, d, e, f,
@@ -600,14 +693,21 @@ def optimize_at_chi(
     D_sq = D_bond ** 2
     t_start = time.perf_counter()
 
-    # initialise tensors
+    # initialise tensors — ALWAYS brand-new objects, no shared lineage
     if init_abcdef is not None:
-        a, b, c, d, e, f = [t.detach().clone().to(CDTYPE)
-                             for t in init_abcdef]
+        a, b, c, d, e, f = _new_tensors_from_data(init_abcdef)
     else:
         a, b, c, d, e, f = initialize_abcdef('random', D_bond, d_PHYS, INIT_NOISE)
     for t in (a, b, c, d, e, f):
         t.requires_grad_(True)
+
+    # ── MEM-A: site-tensor footprint before any CTMRG allocation ─────────────
+    # BREAKPOINT-A  ← set breakpoint on the print line below.
+    # Debug Console queries when paused here:
+    #   tensor_mb(a)                           → MB for one site tensor
+    #   abcdef_mem_report((a,b,c,d,e,f), D_bond)  → one-liner summary
+    #   mem_mb()                               → total process RSS
+    if memory_diagn: print(f"[MEM-A] RSS={mem_mb():.1f}MB, {abcdef_mem_report((a, b, c, d, e, f), D_bond)}")
 
     best_loss     = float('inf')
     best_abcdef   = tuple(t.detach().clone() for t in (a, b, c, d, e, f))
@@ -622,6 +722,42 @@ def optimize_at_chi(
             [a, b, c, d, e, f],
             lr=ADAM_LR, betas=ADAM_BETAS, eps=ADAM_EPS,
             weight_decay=ADAM_WEIGHT_DECAY)
+
+    # ── pre-create L-BFGS optimizer (curvature state persists across outer
+    #    steps within one (D,chi) level; the object is local to this function
+    #    call so there is ZERO cross-(D,chi) leakage) ──────────────────────────
+    _lbfgs: torch.optim.Optimizer | None = None
+    # last_ctm_steps / last_cn: shared between the closure (nonlocal writes)
+    # and the outer step (read-back after _lbfgs.step returns).  Declared here
+    # so the history-clear hooks can inspect the *previous* step's values.
+    last_ctm_steps: int | None = None
+    last_cn: dict[str, float] | None = None
+    if OPTIMIZER == 'lbfgs':
+        def _make_lbfgs(*params) -> torch.optim.LBFGS:
+            return torch.optim.LBFGS(
+                list(params),
+                lr=LBFGS_LR,
+                max_iter=lbfgs_max_iter,
+                tolerance_grad=OPT_TOL_GRAD,
+                tolerance_change=OPT_TOL_CHANGE,
+                history_size=LBFGS_HISTORY,
+                line_search_fn='strong_wolfe',
+            )
+        _lbfgs = _make_lbfgs(a, b, c, d, e, f)
+
+        def _lbfgs_reset_history() -> None:
+            """Clear L-BFGS curvature history, resetting the Hessian approx to
+            a scaled identity.  O(1): just drops the stored (s_k, y_k) vector
+            pairs; the next .step() call re-initialises state from scratch.
+
+            Call whenever accumulated curvature pairs would mislead the
+            Hessian approximation:
+              - after a penalty-closure contamination  (automatic, see Hook 1)
+              - after changing SVD hyperparameters (rel_cutoff, chi_extra)  <- Hook 2
+              - any other structural perturbation to the objective.
+            """
+            assert _lbfgs is not None
+            _lbfgs.state.clear()
 
     def _loss_with_differentiable_ctmrg() -> tuple[torch.Tensor, int, dict[str, float]]:
         """Compute loss with CTMRG inside the autograd graph.
@@ -645,6 +781,17 @@ def optimize_at_chi(
         all28 = CTMRG_from_init_to_stop(
             A, B, C, Dt, E, F, chi, D_sq,
             CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT)
+
+        # ── MEM-B: env tensors allocated by CTMRG forward pass ───────────────
+        # BREAKPOINT-B  ← set breakpoint on the print line below.
+        # This is the PEAK env allocation point (27 tensors live + autograd graph).
+        # Debug Console queries when paused here:
+        #   env_mem_report(all28, chi, D_bond)     → detailed per-category sizes
+        #   mem_mb()                               → total RSS (includes graph)
+        #   tensor_mb(all28[3])                    → size of T1F (transfer tensor)
+        #   all28[0].shape                         → C21CD corner shape
+        #   sum(t.element_size()*t.nelement() for t in all28[:27]) / 1e6
+        if memory_diagn: print(f"[MEM-B] RSS={mem_mb():.1f}MB, {env_mem_report(all28, chi, D_bond)}")
 
         (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
          C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
@@ -700,6 +847,15 @@ def optimize_at_chi(
         if elapsed >= budget_seconds:
             break
 
+        # ── MEM-C: RSS at the start of each outer optimization step ──────────
+        # BREAKPOINT-C  ← set breakpoint on the print line below.
+        # Watch for monotonic RSS growth → indicates graph/tensor leak.
+        # Debug Console queries when paused here:
+        #   mem_mb()           → current RSS
+        #   free_ram_gb()      → free system RAM (cluster OOM risk if < 1 GB)
+        #   step               → current step number
+        if memory_diagn: print(f"[MEM-C] RSS={mem_mb():.1f}MB, step={step} free={free_ram_gb()*1e3:.0f}MB")
+
         # # normalise (scale-redundancy fix, preserves requires_grad)
         # with torch.no_grad():
         #     a.data = normalize_tensor(a.data)
@@ -715,21 +871,26 @@ def optimize_at_chi(
         ctm_steps = -1
         cn: dict[str, float] = {}
         if OPTIMIZER == 'lbfgs':
-            # fresh L-BFGS each outer step (resets curvature state)
-            _opt = torch.optim.LBFGS(
-                [a, b, c, d, e, f],
-                lr=LBFGS_LR,
-                max_iter=lbfgs_max_iter,
-                tolerance_grad=OPT_TOL_GRAD,
-                tolerance_change=OPT_TOL_CHANGE,
-                history_size=LBFGS_HISTORY,
-                line_search_fn='strong_wolfe',
-            )
-            last_ctm_steps: int | None = None
-            last_cn: dict[str, float] | None = None
+            if _lbfgs is None:
+                raise RuntimeError("L-BFGS optimizer requested but was not initialized")
+
+            # ── HISTORY-CLEAR HOOKS ───────────────────────────────────────────
+            # Hook 0 (MANDATORY, every outer step): reset L-BFGS state.
+            # Prevents prev_flat_grad from a converged inner loop from
+            # creating y = g_new - 0 = g_new with s=0 (degenerate pair).
+            _lbfgs_reset_history()
+            # Hook 1 (penalty path, already covered by Hook 0): no extra action.
+            # Hook 2 (SVD hyperparameter change, future): Hook 0 covers it;
+            #   add a diagnostic print here when rel_cutoff/chi_extra change:
+            # if <svd_params_changed>:
+            #     print("[lbfgs] SVD params changed; Hook 0 cleared history.")
+            # ─────────────────────────────────────────────────────────────────
+
+            last_ctm_steps = None
+            last_cn = None
             def closure():
                 nonlocal last_ctm_steps, last_cn
-                _opt.zero_grad()
+                _lbfgs.zero_grad()
                 try:
                     loss, _ctm_steps, _cn = _loss_with_differentiable_ctmrg()
                     # Guard against NaN/Inf losses which break strong-wolfe.
@@ -738,6 +899,16 @@ def optimize_at_chi(
                     last_ctm_steps = _ctm_steps
                     last_cn = _cn
                     loss.backward()
+                    #print("gradient example:", a.grad.view(-1)[:5])
+                    # ── MEM-D: RSS after backward (peak: forward graph + grad graph) ──
+                    # BREAKPOINT-D  ← set breakpoint on the print line below.
+                    # After this point the autograd graph is released when `loss`
+                    # goes out of scope.  The delta MEM-D minus MEM-B tells you
+                    # how large the backward computation graph was.
+                    # Debug Console queries when paused here:
+                    #   mem_mb()                       → RSS at backward peak
+                    #   a.grad.shape, tensor_mb(a.grad) → gradient tensor sizes
+                    if memory_diagn: print(f"[MEM-D] RSS={mem_mb():.1f}MB after backward")
                     # Guard against NaN/Inf gradients.
                     for p in (a, b, c, d, e, f):
                         if p.grad is not None:
@@ -760,7 +931,13 @@ def optimize_at_chi(
                     msg = str(exc).splitlines()[0][:200]
                     print(f"[closure] Non-finite/ill-defined point -> penalty loss (reason: {msg})")
                     return torch.tensor(1.0e6, dtype=a.real.dtype, device=a.device)
-            loss_val  = _opt.step(closure)
+            loss_val  = _lbfgs.step(closure)
+
+            # After a successful step with full SVD, revert to partial for all
+            # subsequent steps (the noisy initial basin has been escaped).
+            if _core._USE_FULL_SVD:
+                _core._USE_FULL_SVD = False
+
             loss_item = loss_val.item()
             if last_ctm_steps is not None:
                 ctm_steps = last_ctm_steps
@@ -914,7 +1091,7 @@ def optimize_at_chi(
                          'elapsed': round(elapsed, 1)})
 
         sys.stdout.flush()
-
+        
         if loss_item < best_loss:
             best_loss   = loss_item
             best_abcdef = tuple(t.detach().clone() for t in (a, b, c, d, e, f))
@@ -926,8 +1103,25 @@ def optimize_at_chi(
             save_checkpoint(latest_path, best_abcdef, D_bond, chi,
                             best_loss, None, step, loss_log)
 
+        _blowup, _blowup_max = _core._SVD_GRAD_BLOWUP_DETECTED, _core._SVD_GRAD_BLOWUP_MAX_VALUE
+        _core._SVD_GRAD_BLOWUP_DETECTED, _core._SVD_GRAD_BLOWUP_MAX_VALUE = False, 0.0
         if prev_loss is not None and abs(delta) < OPT_CONV_THRESHOLD:
-            print(f"    Outer convergence at step {step} (Δ={delta:.2e})")
+            if USE_BLOWUP_RECOVERY and _blowup:
+                print(f"[SVD] rSVD grad blowup (max|dA|={_blowup_max:.3e}) + "
+                      f"\u0394={delta:.2e} \u2264 OPT_CONV_THRESHOLD "
+                      f"\u2192 recovering from latest tensors + noise (D={D_bond})")
+                padded = tuple(
+                    pad_tensor(t.detach(), D_bond, D_bond, d_PHYS, PAD_NOISE)
+                    for t in (a, b, c, d, e, f))
+                a, b, c, d, e, f = _new_tensors_from_data(padded)
+                del padded
+                for t in (a, b, c, d, e, f):
+                    t.requires_grad_(True)
+                _lbfgs = _make_lbfgs(a, b, c, d, e, f)
+                prev_loss = None
+                step += 1
+                continue
+            print(f"    Outer convergence at step {step} (\u0394={delta:.2e})")
             break
         if any(abs(loss_item - h) < 1e-10 for h in loss_history):
             print(f"    Cycle detected at step {step} "
@@ -1037,8 +1231,6 @@ def main():
         chi_max_map = {D: c for D, c in zip(D_bond_list, cm_vals)}
     else:
         chi_max_map = {D: DEFAULT_CHI_MAX.get(D, D**4) for D in D_bond_list}
-    for D in D_bond_list:
-        validate_chi(chi_max_map[D], D, label=f'D={D} ')
 
     # ── chi schedules ─────────────────────────────────────────────────────────
     # Use defaults for known D values, otherwise compute geometrically.
@@ -1141,13 +1333,16 @@ def main():
         ckpt = torch.load(args.resume, map_location='cpu')
         resume_D   = ckpt.get('D_bond')
         resume_chi = ckpt.get('chi')
-        best_abcdef_by_D[resume_D] = (
+        ckpt_step  = ckpt.get('step', 0) + 1
+        ckpt_loss  = ckpt.get('loss', float('nan'))
+        best_abcdef_by_D[resume_D] = _new_tensors_from_data((
             ckpt['a'], ckpt['b'], ckpt['c'],
-            ckpt['d'], ckpt['e'], ckpt['f'])
-        global_step = ckpt.get('step', 0) + 1
+            ckpt['d'], ckpt['e'], ckpt['f']))
+        del ckpt; gc.collect()
+        global_step = ckpt_step
         print(f"  Resumed from {args.resume}  "
               f"(D={resume_D}, chi={resume_chi}, "
-              f"loss={ckpt.get('loss', float('nan')):.6f})\n")
+              f"loss={ckpt_loss:.6f})\n")
 
     # ══════════════════════════════════════════════════════════════════════════
     # Outer loop: D_bond
@@ -1174,9 +1369,11 @@ def main():
             print(f"  Warm-starting from D={prev_D} tensors "
                   f"(padding {prev_D}→{D_bond}, noise={args.noise})")
             prev_tensors = best_abcdef_by_D[prev_D]
-            best_abcdef_by_D[D_bond] = tuple(
+            padded = tuple(
                 pad_tensor(t, prev_D, D_bond, d_PHYS, args.noise)
                 for t in prev_tensors)
+            best_abcdef_by_D[D_bond] = _new_tensors_from_data(padded)
+            del padded
 
         # current best tensors at this D (None = random init at first chi)
         cur_abcdef = best_abcdef_by_D.get(D_bond)
@@ -1229,7 +1426,10 @@ def main():
                 loss_log=loss_log,
                 out_dir=output_dir,
             )
-            cur_abcdef = tuple(out[:6])  # warm-start for next chi
+            # ── Brand-new tensors from raw data; kill the old run entirely ──
+            cur_abcdef = _new_tensors_from_data(tuple(out[:6]))
+            del out
+            gc.collect()  # free old optimizer state + CTMRG envs + graph
 
             # Clean energy evaluation
             print(f"  │  Evaluating energy at (D={D_bond}, chi={chi}) ...")
@@ -1255,7 +1455,12 @@ def main():
                   f"  wall={wall/3600:.2f}h")
 
         # Store best tensors at this D for warm-starting next D
-        best_abcdef_by_D[D_bond] = cur_abcdef
+        # (brand-new objects — old D's entire graph is released)
+        best_abcdef_by_D[D_bond] = (
+            _new_tensors_from_data(cur_abcdef) if cur_abcdef is not None
+            else None)
+        del cur_abcdef
+        gc.collect()
 
         D_elapsed = time.perf_counter() - D_start_time
         print(f"\n  D={D_bond} complete in {D_elapsed/3600:.2f} h")
