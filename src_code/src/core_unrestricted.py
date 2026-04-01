@@ -76,7 +76,7 @@ def mem_mb() -> float:
 
 
 
-def safe_inverse(x, epsilon=1e-8):
+def safe_inverse(x, epsilon=1e-10):
     return x/(x**2 + epsilon**2)
     
 def safe_inverse_2(x, epsilon):
@@ -135,13 +135,10 @@ def _solve_fifth_term_svd(A, U, S, V, gu, gv, eps):
     denom = S2.unsqueeze(0) - Lambda.unsqueeze(1)          # (1,k) − (n,1) = n×k
 
     # Regularise near-zero denominators (touching a multiplet boundary)
-    denom_reg = torch.where(
-        denom.abs() >= eps,
-        denom,
-        torch.full_like(denom, eps))
+    invDenom_reg = safe_inverse(denom, epsilon=eps)  # n×k
 
     # γ̃ = Q [(Q†·RHS) / denom]   (n×k)
-    gamma_tilde = Q @ (Qh @ RHS / denom_reg)
+    gamma_tilde = Q @ (Qh @ RHS * invDenom_reg)
 
     # γ_j = (gu_j + B·γ̃_j) / s_j   (m×k)
     gamma = (gu + B @ gamma_tilde) / S.to(A.dtype).unsqueeze(0)
@@ -224,7 +221,7 @@ def normalize_tensor(tensor, *, rtol: float | None = None, atol: float | None = 
 
     # Choose dtype-appropriate default tolerances.
     # For complex64 (norm is float32), norms around 1 typically fluctuate at ~1e-7,
-    # so a strict 1e-8 check would *keep renormalizing* and introduce drift.
+    # so a strict 1e-10 check would *keep renormalizing* and introduce drift.
     if rtol is None or atol is None:
         if norm.dtype == torch.float32:
             default_rtol = 4e-7
@@ -384,11 +381,12 @@ class SVD_PROPACK(torch.autograd.Function):
         # print(f"Performing SVD with k={k}, k_extra={k_extra}, rel_cutoff={rel_cutoff.item()}, m_dim={m_dim}, n_dim={n_dim}, k_total={k_total}")
 
 
-        if True:
+        if True: # Here to put the fallback for full SVD or not!
+
             matmul = _utils.matmul
 
 
-            niter = 2 
+            niter = 1 
 
             dtype = _utils.get_floating_dtype(A) if not A.is_complex() else A.dtype
             matmul = _utils.matmul
@@ -425,22 +423,14 @@ class SVD_PROPACK(torch.autograd.Function):
             # Partial SVD via ARPACK — only k_total singular triples computed.
             # With the 5th-term backward this is now EXACT (previously it was
             # approximate because the out-of-subspace contribution was missing).
-            _uP, _sP, _vhP = svds(
-                aslinearoperator(M.detach().cpu().numpy()),
-                k=k_total, tol=0, which='LM',
-                v0=v0.cpu().numpy() if v0 is not None else None,
-                solver='arpack')
-            # ARPACK returns in *ascending* order — reverse.
-            idx = np.argsort(_sP)[::-1]
-            _sP, _uP, _vhP = _sP[idx], _uP[:, idx], _vhP[idx, :]
+            _uP, _sP, _vhP = np.linalg.svd(A.detach().cpu().numpy(), full_matrices=False)
+            S_k = torch.as_tensor(_sP.copy(),  dtype=_rdtype,  device=A.device)
+            U_k = torch.as_tensor(_uP.copy(),  dtype=A.dtype,  device=A.device)
+            V_k = torch.as_tensor(_vhP.copy(), dtype=A.dtype,  device=A.device).T.conj()
 
-            S_k = torch.as_tensor(_sP.copy(),  dtype=_rdtype,  device=M.device)
-            U_k = torch.as_tensor(_uP.copy(),  dtype=M.dtype,  device=M.device)
-            V_k = torch.as_tensor(_vhP.copy(), dtype=M.dtype,  device=M.device).transpose(-2,-1).conj()
+            self.save_for_backward(U_k, S_k, V_k, None, rel_cutoff)
 
-            self.save_for_backward(U_k, S_k, V_k, M.detach(), rel_cutoff)
-
-            return U_k, S_k, V_k
+            return U_k[:,:k], S_k[:k], V_k[:,:k]
 
     @staticmethod
     def backward(self, gu, gsigma, gv):
@@ -494,9 +484,38 @@ class SVD_PROPACK(torch.autograd.Function):
 
         sigma_inv = safe_inverse_2(sigma.clone(), sigma_scale * _eps_real)
 
+        if A_input is None:
+                # Forward returned only k_return singular triples; gu and gv have width
+            # k_return ≤ k.  Pad them with zeros so the F,G cross-coupling between
+            # kept and discarded singular values is captured correctly.
+            k_return = gsigma.size(0)  # fallback to k for safety
+            if k_return < k:
+                _z = lambda g, cols: torch.cat(
+                    [g, g.new_zeros(*g.shape[:-1], cols)], dim=-1)
+                if gu is not None:
+                    gu = _z(gu, k - k_return)
+                if gv is not None:
+                    gv = _z(gv, k - k_return)
+                if gsigma is not None:
+                    gsigma = torch.cat(
+                        [gsigma, gsigma.new_zeros(k - k_return)], dim=-1)
+
+            # u, sigma, v are now full-rank (min(m,n) columns) so the
+            # "free subspace" narrowing below will normally be a no-op.
+            if (u.size(-2)!=u.size(-1)) or (v.size(-2)!=v.size(-1)):
+                # We ignore the free subspace here because possible base vectors cancel
+                # each other, e.g., both -v and +v are valid base for a dimension.
+                # Don't assume behavior of any particular implementation of svd.
+                u = u.narrow(-1, 0, k)
+                v = v.narrow(-1, 0, k)
+                if not (gu is None): gu = gu.narrow(-1, 0, k)
+                if not (gv is None): gv = gv.narrow(-1, 0, k)
+
         uh = u.conj().transpose(-2, -1)
         vh = v.conj().transpose(-2, -1)
+        
 
+        
         # ── 1st term: σ-gradient ─────────────────────────────────────────────
         if gsigma is not None:
             sigma_term = u * gsigma.unsqueeze(-2) @ vh
@@ -505,7 +524,7 @@ class SVD_PROPACK(torch.autograd.Function):
 
         if (gu is None) and (gv is None):
             return sigma_term, None, None, None, None
-
+        
         # k×k F, G matrices (within-subspace rotation coupling)
         F = safe_inverse(sigma.unsqueeze(-2) - sigma.unsqueeze(-1),
                          sigma_scale * _eps_real)
@@ -513,7 +532,7 @@ class SVD_PROPACK(torch.autograd.Function):
         G = safe_inverse(sigma.unsqueeze(-2) + sigma.unsqueeze(-1),
                          sigma_scale * _eps_real)
         G.diagonal(0, -2, -1).fill_(0)
-
+        
         # ── 2nd term: within-subspace U rotation ─────────────────────────────
         if gu is not None:
             guh    = gu.conj().transpose(-2, -1)
@@ -527,7 +546,7 @@ class SVD_PROPACK(torch.autograd.Function):
             v_term = u @ ((F - G).mul(vh @ gv - gvh @ v)) @ vh * 0.5
         else:
             v_term = torch.zeros(m, n, dtype=u.dtype, device=u.device)
-
+        
         # ── 4th term: complex phase correction (arXiv:1909.02659) ────────────
         dA = u_term + sigma_term + v_term
         if (u.is_complex() or v.is_complex()) and (gu is not None):
@@ -545,12 +564,13 @@ class SVD_PROPACK(torch.autograd.Function):
         # exactly to the old proj_on_ortho terms and gives zero extra correction.
         # When k < min(m,n) (partial SVD branch or ARPACK) this provides the
         # previously-missing truncation correction.
-        _gu = gu if gu is not None else \
-              torch.zeros(m, k, dtype=u.dtype, device=u.device)
-        _gv = gv if gv is not None else \
-              torch.zeros(n, k, dtype=u.dtype, device=u.device)
-        dA = dA + _solve_fifth_term_svd(
-            A_input, u, sigma, v, _gu, _gv, eps_val)
+
+        if A_input is not None:
+            _gu = gu if gu is not None else torch.zeros(m, k, dtype=u.dtype, device=u.device)
+            _gv = gv if gv is not None else torch.zeros(n, k, dtype=u.dtype, device=u.device)
+            fifthIntermediate = _solve_fifth_term_svd(A_input, u, sigma, v, _gu, _gv, eps_val)
+            #print("fifth term max abs:", fifthIntermediate.abs().max().item())
+            dA = dA + fifthIntermediate
 
         return dA, None, None, None, None
 
@@ -560,7 +580,7 @@ class SVD_PROPACK(torch.autograd.Function):
 
 def truncated_svd_propack(M, chi, chi_extra, rel_cutoff, v0=None,
     abs_tol=1.0e-14,  keep_multiplets=False, \
-    eps_multiplet=1e-8, ):
+    eps_multiplet=1e-10, ):
     r"""
     :param M: square matrix of dimensions :math:`N \times N`
     :param chi: desired maximal rank :math:`\chi`
@@ -595,11 +615,10 @@ def truncated_svd_propack(M, chi, chi_extra, rel_cutoff, v0=None,
     # safe_inverse / safe_inverse_2 use < comparisons that are undefined for
     # complex tensors (raises "lt_cpu not implemented for 'ComplexDouble'").
     _rdtype = torch.float64 if M.dtype in (torch.complex128, torch.float64) else torch.float32
-    U, S, V = SVD_PROPACK.apply(M, chi, max(chi_extra,1),torch.as_tensor([rel_cutoff],dtype=_rdtype, device=M.device), v0)
+    U, S, V = SVD_PROPACK.apply(M, chi, 0,torch.as_tensor([rel_cutoff],dtype=_rdtype, device=M.device), v0)
 
 
-    # TODO: dynamically change the chi and rel-cutoff to save for backward
-    # TODO: Run duplicate of one outer-step if detected the gradient norm too large and loss change too small!
+
 
 
     # estimate the chi_new 
@@ -617,11 +636,11 @@ use of truncate_svd_propack:
 
 truncated_svd_propack(M, chi,
                     chi_extra=1,
-                    rel_cutoff=1e-8,
+                    rel_cutoff=1e-10,
                     v0=None,
                     keep_multiplets=False,
                     abs_tol=1e-14,
-                    eps_multiplet=1e-8)  # returns U, S, V of M= USV^\dag
+                    eps_multiplet=1e-10)  # returns U, S, V of M= USV^\dag
 
 """
 
@@ -766,11 +785,11 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
 
     U,S,V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
                         chi_extra=round(2*np.sqrt(D_squared)),  # extra singular values to compute for better truncation decisions
-                        rel_cutoff=1e-8,
+                        rel_cutoff=1e-10,
                         v0=None,
                         keep_multiplets=False,
                         abs_tol=1e-14,
-                        eps_multiplet=1e-8)
+                        eps_multiplet=1e-10)
     
     truncV = V
     truncUh = U.conj().T
@@ -814,8 +833,8 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     #inverse_error = torch.linalg.norm(approx_produc_inverse - produc_inverse) #/ torch.linalg.norm(produc_inverse)
     #print(f"approx_produc_inverse vs exact inverse check: relative error = {inverse_error:.4e}")
 ################################
-    # TODO: But still, the error for R2 V 1/S Uh R1 is much larger than V 1/S Uh R1 R2
-    # TODO: QR (SVD-1)R1R2 >~= no-QR (SVD-1)R1R2 > QR R2(SVD-1)R1 ~= no-QR R2(SVD-1)R1
+    # NOTE: But still, the error for R2 V 1/S Uh R1 is much larger than V 1/S Uh R1 R2
+    # NOTE: QR (SVD-1)R1R2 >~= no-QR (SVD-1)R1R2 > QR R2(SVD-1)R1 ~= no-QR R2(SVD-1)R1
 ###############################
 
 
@@ -845,11 +864,11 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     #U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
     U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
                     chi_extra=round(2*np.sqrt(D_squared)),
-                    rel_cutoff=1e-8,
+                    rel_cutoff=1e-10,
                     v0=None,
                     keep_multiplets=False,
                     abs_tol=1e-14,
-                    eps_multiplet=1e-8)
+                    eps_multiplet=1e-10)
     
     truncUh = U.conj().T
     truncV = V
@@ -871,12 +890,13 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     #U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
     U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
                     chi_extra=round(2*np.sqrt(D_squared)),
-                    rel_cutoff=1e-8,
+                    rel_cutoff=1e-10,
                     v0=None,
                     keep_multiplets=False,
                     abs_tol=1e-14,
-                    eps_multiplet=1e-8)
-    #print("1st 'QR'-cut done")
+                    eps_multiplet=1e-10)
+
+
 
     truncUh = U.conj().T
     truncV = V
@@ -899,16 +919,6 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     C32 = C32/torch.linalg.norm(C32)
     C13 = C13/torch.linalg.norm(C13)
     
-
-    
-    rho_trunc = C13 @ C32 @ C21
-    tr_rho = torch.trace(rho_trunc)
-    #print(f"Tr(rho_trunc) before normalization: {tr_rho.item():.6e}")
-    toBeDivided = torch.pow(tr_rho, 1.0/3.0)
-    C21 = C21 / toBeDivided
-    C32 = C32 / toBeDivided
-    C13 = C13 / toBeDivided
-
 
     """
     tr_abs = tr_rho.abs()
@@ -1100,11 +1110,11 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         #Q2, R2 = torch.linalg.qr(torch.mm(matC13,matC32))
         U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
                     chi_extra=round(2*np.sqrt(D_squared)),
-                    rel_cutoff=1e-8,
+                    rel_cutoff=1e-10,
                     v0=None,
                     keep_multiplets=False,
                     abs_tol=1e-14,
-                    eps_multiplet=1e-8)
+                    eps_multiplet=1e-10)
 
         truncUh = U.conj().T
         truncV = V
@@ -1121,11 +1131,11 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         #Q2, R2 = torch.linalg.qr(torch.mm(matC21,matC13))
         U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
                     chi_extra=round(2*np.sqrt(D_squared)),
-                    rel_cutoff=1e-8,
+                    rel_cutoff=1e-10,
                     v0=None,
                     keep_multiplets=False,
                     abs_tol=1e-14,
-                    eps_multiplet=1e-8)
+                    eps_multiplet=1e-10)
 
         truncUh = U.conj().T
         truncV = V
@@ -1142,11 +1152,11 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         #Q2, R2 = torch.linalg.qr(torch.mm(matC32,matC21))
         U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
                     chi_extra=round(2*np.sqrt(D_squared)),
-                    rel_cutoff=1e-8,
+                    rel_cutoff=1e-10,
                     v0=None,
                     keep_multiplets=False,
                     abs_tol=1e-14,
-                    eps_multiplet=1e-8)
+                    eps_multiplet=1e-10)
 
         truncUh = U.conj().T
         truncV = V
@@ -1161,18 +1171,10 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         C32 = torch.mm(P32Nz.T, torch.mm(C32EF, P32yM.T))
         C13 = torch.mm(P13Lx.T, torch.mm(C13AB, P13zN.T))
         
-        C21 = C21/torch.linalg.norm(C21)
-        C32 = C32/torch.linalg.norm(C32)
-        C13 = C13/torch.linalg.norm(C13)
-        
-        rho_trunc = C13 @ C32 @ C21
-        tr_rho = torch.trace(rho_trunc)
-        #print(f"Tr(rho_trunc) before normalization: {tr_rho.item():.6e}")
-        toBeDivided = torch.pow(tr_rho, 1.0/3.0)
-        C21CD = C21 / toBeDivided
-        C32EF = C32 / toBeDivided
-        C13AB = C13 / toBeDivided
-
+        C21CD = C21/torch.linalg.norm(C21)
+        C32EF = C32/torch.linalg.norm(C32)
+        C13AB = C13/torch.linalg.norm(C13)
+   
         """
         tr_abs = tr_rho.abs()
         if torch.isfinite(tr_abs).item() and (tr_abs > torch.finfo(tr_abs.dtype).tiny).item():
@@ -1228,25 +1230,25 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
             out1Ein2B = torch.mm(T1E.T, T2B)
             T2A, svL, T3D = truncated_svd_propack(out2Ain3D, chi,
                         chi_extra=1,
-                        rel_cutoff=1e-8,
+                        rel_cutoff=1e-10,
                         v0=None,
                         keep_multiplets=False,
                         abs_tol=1e-14,
-                        eps_multiplet=1e-8)
+                        eps_multiplet=1e-10)
             T3C, svM, T1F = truncated_svd_propack(out3Cin1F, chi,
                         chi_extra=1,
-                        rel_cutoff=1e-8,
+                        rel_cutoff=1e-10,
                         v0=None,
                         keep_multiplets=False,
                         abs_tol=1e-14,
-                        eps_multiplet=1e-8)
+                        eps_multiplet=1e-10)
             T1E, svN, T2B = truncated_svd_propack(out1Ein2B, chi,
                         chi_extra=1,
-                        rel_cutoff=1e-8,
+                        rel_cutoff=1e-10,
                         v0=None,
                         keep_multiplets=False,
                         abs_tol=1e-14,
-                        eps_multiplet=1e-8)
+                        eps_multiplet=1e-10)
 
             sqrt_svL = torch.sqrt(svL)
             sqrt_svM = torch.sqrt(svM)
@@ -1261,11 +1263,11 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         else: 
             U, S, V = truncated_svd_propack(torch.mm(T1F.T,T3C), chi,
                         chi_extra=round(2*np.sqrt(D_squared)),
-                        rel_cutoff=1e-8,
+                        rel_cutoff=1e-10,
                         v0=None,
                         keep_multiplets=False,
                         abs_tol=1e-14,
-                        eps_multiplet=1e-8)
+                        eps_multiplet=1e-10)
             truncUh = U.conj().T
             truncV = V
             sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
@@ -1274,13 +1276,14 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
             T1F = torch.mm(projFor1st.T, T1F)
             T3C = torch.mm(projFor2nd, T3C)
 
+
             U, S, V = truncated_svd_propack(torch.mm(T3D.T,T2A), chi,
                         chi_extra=round(2*np.sqrt(D_squared)),
-                        rel_cutoff=1e-8,
+                        rel_cutoff=1e-10,
                         v0=None,
                         keep_multiplets=False,
                         abs_tol=1e-14,
-                        eps_multiplet=1e-8)
+                        eps_multiplet=1e-10)
             truncUh = U.conj().T
             truncV = V
             sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
@@ -1291,11 +1294,11 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
 
             U, S, V = truncated_svd_propack(torch.mm(T2B.T,T1E), chi,
                         chi_extra=round(2*np.sqrt(D_squared)),
-                        rel_cutoff=1e-8,
+                        rel_cutoff=1e-10,
                         v0=None,
                         keep_multiplets=False,
                         abs_tol=1e-14,
-                        eps_multiplet=1e-8)
+                        eps_multiplet=1e-10)
             truncUh = U.conj().T
             truncV = V
             sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
@@ -1324,47 +1327,6 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         T1E = T1E / torch.linalg.norm(T1E)
 
 
-
-        # normalization of T*6
-        closed_E = oe.contract("YX,MYa,abg->MbXg",
-                                C21CD, T1F, E,
-                                optimize=[(0,1),(0,1)], backend='torch'
-                                ).reshape(chi*D_squared, chi*D_squared)
-
-        closed_D = oe.contract("MYg,abg->YaMb",
-                                T3C, D,
-                                optimize=[(0,1)], backend='torch'
-                                ).reshape(chi*D_squared, chi*D_squared)
-        closed_A = oe.contract("ZY,NZb,abg->NgYa",
-                                C32EF, T2B, A,
-                                optimize=[(0,1),(0,1)], backend='torch'
-                                ).reshape(chi*D_squared, chi*D_squared)
-        closed_F = oe.contract("NZa,abg->ZbNg",
-                                T1E, F,
-                                optimize=[(0,1)], backend='torch'
-                                ).reshape(chi*D_squared, chi*D_squared)
-        closed_C = oe.contract("XZ,LXg,abg->LaZb",
-                                C13AB, T3D, C,
-                                optimize=[(0,1),(0,1)], backend='torch'
-                                ).reshape(chi*D_squared, chi*D_squared)
-        closed_B = oe.contract("LXb,abg->XgLa",
-                                T2A, B,
-                                optimize=[(0,1)], backend='torch'
-                                ).reshape(chi*D_squared, chi*D_squared)
-        
-        AD = torch.mm(closed_A, closed_D)
-        CF = torch.mm(closed_C, closed_F)
-        EB = torch.mm(closed_E, closed_B)
-        TrRho_val  = oe.contract("xy,yz,zx->", AD, EB, CF, backend='torch')
-        #print(f"Tr(Rho) for T normalization check: {TrRho_val.item():.6e}")
-
-        toBeDivided = torch.pow(TrRho_val, 1.0/6.0)
-        T1F = T1F / toBeDivided
-        T2A = T2A / toBeDivided
-        T2B = T2B / toBeDivided
-        T3C = T3C / toBeDivided
-        T3D = T3D / toBeDivided
-        T1E = T1E / toBeDivided
 
         """
         norm_abs = norm_val.abs()
@@ -1724,67 +1686,6 @@ def update_environmentCTs_1to2(C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
 
 
 
-
-
-
-
-    D_bond = int(round(D_squared ** 0.5))
-    A6 = A.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)  # indices: (a,r,b,s,c,t)
-    B6 = B.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
-    C6 = C.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
-    D6 = D.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
-    E6 = E.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
-    F6 = F.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
-    T1D4 = T1D.reshape(chi, chi, D_bond, D_bond)
-    T2C4 = T2C.reshape(chi, chi, D_bond, D_bond)
-    T2F4 = T2F.reshape(chi, chi, D_bond, D_bond)
-    T3E4 = T3E.reshape(chi, chi, D_bond, D_bond)
-    T3B4 = T3B.reshape(chi, chi, D_bond, D_bond)
-    T1A4 = T1A.reshape(chi, chi, D_bond, D_bond)
-    # norm_env_2: open_A= "YX,MYar,abci,rstj->MbsXctij" → double-layer: "YX,MYar,arbsct->MbsXct"
-    closed_A = oe.contract("YX,MYar,arbsct->MbsXct",
-                            C21EB, T1D4, A6,
-                            optimize=[(0,1),(0,1)], backend='torch'
-                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
-    # open_B= "MYct,abci,rstj->YarMbsij" → "MYct,arbsct->YarMbs"
-    closed_B = oe.contract("MYct,arbsct->YarMbs",
-                            T3E4, B6,
-                            optimize=[(0,1)], backend='torch'
-                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
-    # open_C= "ZY,NZbs,abci,rstj->NctYarij" → "ZY,NZbs,arbsct->NctYar"
-    closed_C = oe.contract("ZY,NZbs,arbsct->NctYar",
-                            C32AD, T2F4, C6,
-                            optimize=[(0,1),(0,1)], backend='torch'
-                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
-    # open_D= "NZar,abci,rstj->ZbsNctij" → "NZar,arbsct->ZbsNct"
-    closed_D = oe.contract("NZar,arbsct->ZbsNct",
-                            T1A4, D6,
-                            optimize=[(0,1)], backend='torch'
-                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
-    # open_E= "XZ,LXct,abci,rstj->LarZbsij" → "XZ,LXct,arbsct->LarZbs"
-    closed_E = oe.contract("XZ,LXct,arbsct->LarZbs",
-                            C13CF, T3B4, E6,
-                            optimize=[(0,1),(0,1)], backend='torch'
-                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
-    # open_F= "LXbs,abci,rstj->XctLarij" → "LXbs,arbsct->XctLar"
-    closed_F = oe.contract("LXbs,arbsct->XctLar",
-                            T2C4, F6,
-                            optimize=[(0,1)], backend='torch'
-                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
-    CB = torch.mm(closed_C, closed_B)
-    ED = torch.mm(closed_E, closed_D)
-    AF = torch.mm(closed_A, closed_F)
-    TrRho_val  = oe.contract("xy,yz,zx->", CB, AF, ED, backend='torch')
-    #print("TrRhoFor6Ts_val", TrRho_val.item())
-
-    toBeDivided = torch.pow(TrRho_val.abs(), 1.0/6.0)
-    T3E = T3E / toBeDivided
-    T3B = T3B / toBeDivided
-    T1A = T1A / toBeDivided
-    T1D = T1D / toBeDivided
-    T2C = T2C / toBeDivided
-    T2F = T2F / toBeDivided
-
     """
 
     # Fix both magnitude and complex phase so <iPEPS|iPEPS> ≈ 1 (real).
@@ -1922,68 +1823,6 @@ def update_environmentCTs_2to3(C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A
 
 
 
-
-
-
-
-
-
-    # ── End-of-update transfer normalization (mirrors norm_env_3) ────────────
-    D_bond = int(round(D_squared ** 0.5))
-    A6 = A.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
-    B6 = B.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
-    C6 = C.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
-    D6 = D.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
-    E6 = E.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
-    F6 = F.reshape(D_bond, D_bond, D_bond, D_bond, D_bond, D_bond)
-    T1B4 = T1B.reshape(chi, chi, D_bond, D_bond)
-    T2E4 = T2E.reshape(chi, chi, D_bond, D_bond)
-    T2D4 = T2D.reshape(chi, chi, D_bond, D_bond)
-    T3A4 = T3A.reshape(chi, chi, D_bond, D_bond)
-    T3F4 = T3F.reshape(chi, chi, D_bond, D_bond)
-    T1C4 = T1C.reshape(chi, chi, D_bond, D_bond)
-    # norm_env_3: open_C= "YX,MYar,abci,rstj->MbsXctij" → "YX,MYar,arbsct->MbsXct"
-    closed_C = oe.contract("YX,MYar,arbsct->MbsXct",
-                            C21AF, T1B4, C6,
-                            optimize=[(0,1),(0,1)], backend='torch'
-                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
-    # open_F= "MYct,abci,rstj->YarMbsij" → "MYct,arbsct->YarMbs"
-    closed_F = oe.contract("MYct,arbsct->YarMbs",
-                            T3A4, F6,
-                            optimize=[(0,1)], backend='torch'
-                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
-    # open_E= "ZY,NZbs,abci,rstj->NctYarij" → "ZY,NZbs,arbsct->NctYar"
-    closed_E = oe.contract("ZY,NZbs,arbsct->NctYar",
-                            C32CB, T2D4, E6,
-                            optimize=[(0,1),(0,1)], backend='torch'
-                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
-    # open_B= "NZar,abci,rstj->ZbsNctij" → "NZar,arbsct->ZbsNct"
-    closed_B = oe.contract("NZar,arbsct->ZbsNct",
-                            T1C4, B6,
-                            optimize=[(0,1)], backend='torch'
-                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
-    # open_A= "XZ,LXct,abci,rstj->LarZbsij" → "XZ,LXct,arbsct->LarZbs"
-    closed_A = oe.contract("XZ,LXct,arbsct->LarZbs",
-                            C13ED, T3F4, A6,
-                            optimize=[(0,1),(0,1)], backend='torch'
-                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
-    # open_D= "LXbs,abci,rstj->XctLarij" → "LXbs,arbsct->XctLar"
-    closed_D = oe.contract("LXbs,arbsct->XctLar",
-                            T2E4, D6,
-                            optimize=[(0,1)], backend='torch'
-                            ).reshape(chi*D_bond*D_bond, chi*D_bond*D_bond)
-    EF = torch.mm(closed_E, closed_F)
-    AB = torch.mm(closed_A, closed_B)
-    CD = torch.mm(closed_C, closed_D)
-    TrRho_val  = oe.contract("xy,yz,zx->", EF, CD, AB, backend='torch')
-
-    toBeDivided = torch.pow(TrRho_val.abs(), 1.0/6.0)
-    T3A = T3A / toBeDivided
-    T3F = T3F / toBeDivided
-    T1C = T1C / toBeDivided
-    T1B = T1B / toBeDivided
-    T2E = T2E / toBeDivided
-    T2D = T2D / toBeDivided
 
     """
     # Fix both magnitude and complex phase so <iPEPS|iPEPS> ≈ 1 (real).
@@ -2124,54 +1963,6 @@ def update_environmentCTs_3to1(C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C
 
 
 
-
-
-
-
-    # ── End-of-update transfer normalization (mirrors norm_env_1) ────────────
-    # norm_env_1: open_E= "YX,MYar,abci,rstj->MbsXctij" → "YX,MYar,arbsct->MbsXct"
-    closed_E = oe.contract("YX,MYa,abg->MbXg",
-                            C21CD, T1F, E,
-                            optimize=[(0,1),(0,1)], backend='torch'
-                            ).reshape(chi*D_squared, chi*D_squared)
-    # open_D= "MYct,abci,rstj->YarMbsij" → "MYct,arbsct->YarMbs"
-    closed_D = oe.contract("MYg,abg->YaMb",
-                            T3C, D,
-                            optimize=[(0,1)], backend='torch'
-                            ).reshape(chi*D_squared, chi*D_squared)
-    # open_A= "ZY,NZbs,abci,rstj->NctYarij" → "ZY,NZbs,arbsct->NctYar"
-    closed_A = oe.contract("ZY,NZb,abg->NgYa",
-                            C32EF, T2B, A,
-                            optimize=[(0,1),(0,1)], backend='torch'
-                            ).reshape(chi*D_squared, chi*D_squared)
-    # open_F= "NZar,abci,rstj->ZbsNctij" → "NZar,arbsct->ZbsNct"
-    closed_F = oe.contract("NZa,abg->ZbNg",
-                            T1E, F,
-                            optimize=[(0,1)], backend='torch'
-                            ).reshape(chi*D_squared, chi*D_squared)
-    # open_C= "XZ,LXct,abci,rstj->LarZbsij" → "XZ,LXct,arbsct->LarZbs"
-    closed_C = oe.contract("XZ,LXg,abg->LaZb",
-                            C13AB, T3D, C,
-                            optimize=[(0,1),(0,1)], backend='torch'
-                            ).reshape(chi*D_squared, chi*D_squared)
-    # open_B= "LXbs,abci,rstj->XctLarij" → "LXbs,arbsct->XctLar"
-    closed_B = oe.contract("LXb,abg->XgLa",
-                            T2A, B,
-                            optimize=[(0,1)], backend='torch'
-                            ).reshape(chi*D_squared, chi*D_squared)
-    AD = torch.mm(closed_A, closed_D)
-    CF = torch.mm(closed_C, closed_F)
-    EB = torch.mm(closed_E, closed_B)
-    TrRho_val  = oe.contract("xy,yz,zx->", AD, EB, CF, backend='torch')
-
-    toBeDivided = torch.pow(TrRho_val.abs(), 1.0/6.0)
-    T3C = T3C / toBeDivided
-    T3D = T3D / toBeDivided
-    T1E = T1E / toBeDivided
-    T1F = T1F / toBeDivided
-    T2A = T2A / toBeDivided
-    T2B = T2B / toBeDivided
-
     """
     
     # Fix both magnitude and complex phase so <iPEPS|iPEPS> ≈ 1 (real).
@@ -2264,7 +2055,7 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
         #                    nowT1D,nowT2C,nowT2F,nowT3E,nowT3B,nowT1A,
         #                    nowC21AF,nowC32CB,nowC13ED,nowT1B,nowT2E,nowT2D,
         #                    nowT3A,nowT3F,nowT1C] if t is not None]) / 1e6
-        if True:
+        if False:
             _all_now = [t for t in [
                 nowC21CD, nowC32EF, nowC13AB, nowT1F,  nowT2A,  nowT2B,
                 nowT3C,   nowT3D,   nowT1E,   nowC21EB, nowC32AD, nowC13CF,
@@ -2801,7 +2592,7 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
         opt_conv_threshold      : stop when |Δloss| < this value
 
     Returns:
-        a, b, c, d, e, f  —  optimised site tensors. TODO:(still require_grad=True),
+        a, b, c, d, e, f  —  optimised site tensors. 
     """
     D_squared = D_bond ** 2
 

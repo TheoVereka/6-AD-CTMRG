@@ -212,9 +212,18 @@ def abcdef_to_ABCDEF(a,b,c,d,e,f, D_squared:int):
 
 
 def truncate_SVD(M,chi, ...!!! ):
+    
     """
     TODO: let TrRho re-normalization of C be a bool option, default False
     """
+
+
+#################################
+# TODO: GPU USE gesvd! -- Fisherman: https://journals.aps.org/prb/pdf/10.1103/PhysRevB.98.235148
+#################################
+
+
+
     pass
 
 

@@ -57,6 +57,8 @@ import os
 import sys
 import time
 
+memory_diagn = False
+
 # ── CPU threading ─────────────────────────────────────────────────────────────
 # MUST be set BEFORE importing NumPy / PyTorch / MKL — they read these at init.
 #
@@ -180,13 +182,13 @@ USE_DOUBLE_PRECISION = True
 
 # ── Sweep control ─────────────────────────────────────────────────────────────
 
-D_BOND_LIST = [3, 4]
+D_BOND_LIST = [2,3, 4]
 #   Ordered list of iPEPS virtual bond dimensions to sweep (outer loop).
 #   Each D is warm-started from the best tensors found at the previous D
 #   (zero-padded to the new size + PAD_NOISE Gaussian noise).
 
 
-DEFAULT_D_BUDGET_FRACS = {3:0.6, 4:0.2}
+DEFAULT_D_BUDGET_FRACS = {2:0.03, 3:0.45, 4:0.52}
 #   Fraction of the total wall-clock budget allocated to each D_bond value.
 #   Normalised to sum=1 before use, so only the RATIOS matter.
 #   Rationale:
@@ -197,14 +199,14 @@ DEFAULT_D_BUDGET_FRACS = {3:0.6, 4:0.2}
 #   values have genuinely different computational costs and scientific weight.
 #   Within each D, every chi level gets equal time (see below).
 
-DEFAULT_CHI_MAX = { 3:81, 4: 80}
+DEFAULT_CHI_MAX = { 2:16, 3:81, 4: 80}
 #   Largest chi to attempt for each D_bond.  Hard upper bound is D⁴
 #   (gives 16, 81, 256 for D=2,3,4).  We cap D=4 at 80 because chi >> 80
 #   requires too much RAM on a typical workstation and adds negligible accuracy.
 #   Increase if you have more memory; decrease if you hit OOM.
 
 DEFAULT_CHI_SCHEDULES = {
-    #2: [5, 8, 12],       # , 20, 25] ← append to extend the schedule
+    2: [5, 8, 12],       # , 20, 25] ← append to extend the schedule
     3: [10, 17, 29],       # , 57, 81],  ← append to extend the schedule
     4: [17, 29],           # , 40, 62, 80] ← append to extend the schedule
 }
@@ -251,7 +253,7 @@ LBFGS_HISTORY = LBFGS_MAX_ITER
 #   and wastes nothing.  Old values like 50–100 were appropriate for classical
 #   L-BFGS that runs continuously; they do not apply here.
 
-OPT_TOL_GRAD = 1e-7
+OPT_TOL_GRAD = 1e-9
 #   L-BFGS inner convergence criterion on the infinity-norm of the gradient:
 #   the sub-iteration loop exits early if  ||∇loss||_∞ < OPT_TOL_GRAD.
 #   This is an inner stopping rule inside a single optimizer.step() call.
@@ -262,6 +264,12 @@ OPT_TOL_CHANGE = 3e-9
 #   Set tighter than OPT_TOL_GRAD to catch near-flat regions.
 
 OPT_CONV_THRESHOLD = 1e-8
+# Outer-loop early-stop: disabled (= 0).
+# The outer delta |loss(k) - loss(k-1)| compares two L-BFGS final values that
+# used DIFFERENT CTMRG environments, so even near a true minimum the delta is
+# contaminated by env drift O(CTM_CONV_THR).  A non-zero threshold fires
+# spuriously.  Stopping is by wall-clock budget; genuine convergence is caught
+# by the cycle-detection check below.
 #   Outer-loop early-stop criterion: if |loss(step k) – loss(step k–1)|
 #   < OPT_CONV_THRESHOLD, the outer while-loop exits and we move to the
 #   next (D, chi) level.  Set to 0 to disable early stopping and always
@@ -364,12 +372,9 @@ N_BONDS = 9
 # ── Tensor initialisation & padding ──────────────────────────────────────────
 
 INIT_NOISE = 3e-3
-# TODO: are you f-sure that this is for abcdef init or for env init?
-#   Gaussian noise amplitude for RANDOM tensor initialisation at the very
-#   first (D, chi) level or whenever no warm-start is available.
-#   1e-3 keeps tensors near the origin so the first CTMRG converges quickly.
+# abcdef init noise, not used.
 
-PAD_NOISE = 2e-2
+PAD_NOISE = 2e-1
 #   Gaussian noise amplitude added to the ZERO-PADDED new indices when
 #   enlarging tensors from D → D+1.  Non-zero noise breaks the symmetry of
 #   the padded zeros and prevents the optimiser from getting stuck in the
@@ -509,12 +514,10 @@ def _new_tensors_from_data(tensors: tuple) -> tuple:
 
 def pad_tensor(t: torch.Tensor, old_D: int, new_D: int,
                d_PHYS: int, noise: float) -> torch.Tensor:
+
+    out = noise * torch.randn(new_D, new_D, new_D, d_PHYS, dtype=CDTYPE)
+    out[:old_D, :old_D, :old_D, :] += normalize_tensor(t.detach())*torch.sqrt(torch.tensor(old_D**3 * d_PHYS, dtype=CDTYPE))
     
-    noise = noise / (d_PHYS * new_D**3)  # scale noise to keep total variance per tensor constant
-    out = noise * torch.randn(new_D, new_D, new_D, d_PHYS,
-                              dtype=CDTYPE)
-    s = old_D
-    out[:s, :s, :s, :] += normalize_tensor(t.detach())  
     return out
 
 
@@ -682,7 +685,7 @@ def optimize_at_chi(
     #   tensor_mb(a)                           → MB for one site tensor
     #   abcdef_mem_report((a,b,c,d,e,f), D_bond)  → one-liner summary
     #   mem_mb()                               → total process RSS
-    # print(f"[MEM-A] RSS={mem_mb():.1f}MB, {abcdef_mem_report((a, b, c, d, e, f), D_bond)}")
+    if memory_diagn: print(f"[MEM-A] RSS={mem_mb():.1f}MB, {abcdef_mem_report((a, b, c, d, e, f), D_bond)}")
 
     best_loss     = float('inf')
     best_abcdef   = tuple(t.detach().clone() for t in (a, b, c, d, e, f))
@@ -697,6 +700,40 @@ def optimize_at_chi(
             [a, b, c, d, e, f],
             lr=ADAM_LR, betas=ADAM_BETAS, eps=ADAM_EPS,
             weight_decay=ADAM_WEIGHT_DECAY)
+
+    # ── pre-create L-BFGS optimizer (curvature state persists across outer
+    #    steps within one (D,chi) level; the object is local to this function
+    #    call so there is ZERO cross-(D,chi) leakage) ──────────────────────────
+    _lbfgs: torch.optim.Optimizer | None = None
+    # last_ctm_steps / last_cn: shared between the closure (nonlocal writes)
+    # and the outer step (read-back after _lbfgs.step returns).  Declared here
+    # so the history-clear hooks can inspect the *previous* step's values.
+    last_ctm_steps: int | None = None
+    last_cn: dict[str, float] | None = None
+    if OPTIMIZER == 'lbfgs':
+        _lbfgs = torch.optim.LBFGS(
+            [a, b, c, d, e, f],
+            lr=LBFGS_LR,
+            max_iter=lbfgs_max_iter,
+            tolerance_grad=OPT_TOL_GRAD,
+            tolerance_change=OPT_TOL_CHANGE,
+            history_size=LBFGS_HISTORY,
+            line_search_fn='strong_wolfe',
+        )
+
+        def _lbfgs_reset_history() -> None:
+            """Clear L-BFGS curvature history, resetting the Hessian approx to
+            a scaled identity.  O(1): just drops the stored (s_k, y_k) vector
+            pairs; the next .step() call re-initialises state from scratch.
+
+            Call whenever accumulated curvature pairs would mislead the
+            Hessian approximation:
+              - after a penalty-closure contamination  (automatic, see Hook 1)
+              - after changing SVD hyperparameters (rel_cutoff, chi_extra)  <- Hook 2
+              - any other structural perturbation to the objective.
+            """
+            assert _lbfgs is not None
+            _lbfgs.state.clear()
 
     def _loss_with_differentiable_ctmrg() -> tuple[torch.Tensor, int, dict[str, float]]:
         """Compute loss with CTMRG inside the autograd graph.
@@ -730,7 +767,7 @@ def optimize_at_chi(
         #   tensor_mb(all28[3])                    → size of T1F (transfer tensor)
         #   all28[0].shape                         → C21CD corner shape
         #   sum(t.element_size()*t.nelement() for t in all28[:27]) / 1e6
-        # print(f"[MEM-B] RSS={mem_mb():.1f}MB, {env_mem_report(all28, chi, D_bond)}")
+        if memory_diagn: print(f"[MEM-B] RSS={mem_mb():.1f}MB, {env_mem_report(all28, chi, D_bond)}")
 
         (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
          C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
@@ -793,7 +830,7 @@ def optimize_at_chi(
         #   mem_mb()           → current RSS
         #   free_ram_gb()      → free system RAM (cluster OOM risk if < 1 GB)
         #   step               → current step number
-        # print(f"[MEM-C] RSS={mem_mb():.1f}MB, step={step} free={free_ram_gb()*1e3:.0f}MB")
+        if memory_diagn: print(f"[MEM-C] RSS={mem_mb():.1f}MB, step={step} free={free_ram_gb()*1e3:.0f}MB")
 
         # # normalise (scale-redundancy fix, preserves requires_grad)
         # with torch.no_grad():
@@ -810,25 +847,26 @@ def optimize_at_chi(
         ctm_steps = -1
         cn: dict[str, float] = {}
         if OPTIMIZER == 'lbfgs':
-            # fresh L-BFGS each outer step (resets curvature state)
+            if _lbfgs is None:
+                raise RuntimeError("L-BFGS optimizer requested but was not initialized")
 
-            # TODO: find out whether L_BFGS could do less inner-iter if it know the history (curvature)
-            # TODO: why I refresh the optimizer at the first place????(find it out)
+            # ── HISTORY-CLEAR HOOKS ───────────────────────────────────────────
+            # Hook 0 (MANDATORY, every outer step): reset L-BFGS state.
+            # Prevents prev_flat_grad from a converged inner loop from
+            # creating y = g_new - 0 = g_new with s=0 (degenerate pair).
+            _lbfgs_reset_history()
+            # Hook 1 (penalty path, already covered by Hook 0): no extra action.
+            # Hook 2 (SVD hyperparameter change, future): Hook 0 covers it;
+            #   add a diagnostic print here when rel_cutoff/chi_extra change:
+            # if <svd_params_changed>:
+            #     print("[lbfgs] SVD params changed; Hook 0 cleared history.")
+            # ─────────────────────────────────────────────────────────────────
 
-            _opt = torch.optim.LBFGS(
-                [a, b, c, d, e, f],
-                lr=LBFGS_LR,
-                max_iter=lbfgs_max_iter,
-                tolerance_grad=OPT_TOL_GRAD,
-                tolerance_change=OPT_TOL_CHANGE,
-                history_size=LBFGS_HISTORY,
-                line_search_fn='strong_wolfe',
-            )
-            last_ctm_steps: int | None = None
-            last_cn: dict[str, float] | None = None
+            last_ctm_steps = None
+            last_cn = None
             def closure():
                 nonlocal last_ctm_steps, last_cn
-                _opt.zero_grad()
+                _lbfgs.zero_grad()
                 try:
                     loss, _ctm_steps, _cn = _loss_with_differentiable_ctmrg()
                     # Guard against NaN/Inf losses which break strong-wolfe.
@@ -848,7 +886,7 @@ def optimize_at_chi(
                     # Debug Console queries when paused here:
                     #   mem_mb()                       → RSS at backward peak
                     #   a.grad.shape, tensor_mb(a.grad) → gradient tensor sizes
-                    # print(f"[MEM-D] RSS={mem_mb():.1f}MB after backward")
+                    if memory_diagn: print(f"[MEM-D] RSS={mem_mb():.1f}MB after backward")
                     # Guard against NaN/Inf gradients.
                     for p in (a, b, c, d, e, f):
                         if p.grad is not None:
@@ -871,7 +909,7 @@ def optimize_at_chi(
                     msg = str(exc).splitlines()[0][:200]
                     print(f"[closure] Non-finite/ill-defined point -> penalty loss (reason: {msg})")
                     return torch.tensor(1.0e6, dtype=a.real.dtype, device=a.device)
-            loss_val  = _opt.step(closure)
+            loss_val  = _lbfgs.step(closure)
             loss_item = loss_val.item()
             if last_ctm_steps is not None:
                 ctm_steps = last_ctm_steps
