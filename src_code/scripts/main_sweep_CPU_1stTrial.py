@@ -54,7 +54,6 @@ DEFAULT_CHI_SCHEDULES = {
 
 
 
- 
 
 """
 main_sweep.py
@@ -128,7 +127,7 @@ import os
 import sys
 import time
 
-memory_diagn = True
+memory_diagn = False
 
 # ── CPU threading ─────────────────────────────────────────────────────────────
 # MUST be set BEFORE importing NumPy / PyTorch / MKL — they read these at init.
@@ -214,11 +213,11 @@ TOTAL_BUDGET_HOURS = 9999
 
 
 
-# Default complex dtype — updated to float64 by --double / USE_DOUBLE_PRECISION.
+# Default tensor dtype — updated by --double / --real / --complex flags.
 # Python functions look up globals at call time, so build_heisenberg_H(),
 # pad_tensor(), and optimize_at_chi() all see the updated value after main()
-# calls set_dtype() and reassigns CDTYPE.
-CDTYPE: torch.dtype = torch.float32
+# calls set_dtype() and reassigns TENSORDTYPE.
+TENSORDTYPE: torch.dtype = torch.float64
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║                  ALL TUNABLE PARAMETERS — EDIT HERE                     ║
@@ -227,12 +226,17 @@ CDTYPE: torch.dtype = torch.float32
 # ── Precision ─────────────────────────────────────────────────────────────────
 
 USE_DOUBLE_PRECISION = True
-#   False → float32  / float32 (default): fastest on both CPU (Intel MKL)
+#   False → float32(/complex64): fastest on both CPU (Intel MKL)
 #            and CUDA (fp32 tensor cores give full throughput).
-#   True  → float64 / float64: double precision.
+#   True  → float64(/complex128): double precision.
 #            CPU (Intel MKL): float64 is native, same throughput, 2× RAM.
 #            CUDA: 2–4× slower on consumer GPUs (no fp64 tensor cores).
 #   Overrideable at runtime: --double CLI flag takes precedence.
+
+USE_REAL_TENSORS = False
+#   True  → TENSORDTYPE = RDTYPE  (real iPEPS tensors, S+/S- Hamiltonian).
+#   False → TENSORDTYPE = CDTYPE  (complex iPEPS tensors, Sx/Sy/Sz Hamiltonian).
+#   Overrideable at runtime: --complex CLI flag sets this to False.
 
 # ── Physical sweep dimensions ────────────────────────────────────────────────
 #
@@ -427,6 +431,20 @@ GEO_SCHEDULE_STEPS = 5
 #   be used.  Generates GEO_SCHEDULE_STEPS log-uniformly spaced values
 #   from D²+1 to chi_max (inclusive).
 
+# ── Reproducibility ──────────────────────────────────────────────────────────
+
+RANDOM_SEED_FIX = True
+#   True  → fix all RNGs (Python random, NumPy, PyTorch CPU + CUDA) to
+#            RANDOM_SEED before any tensor is allocated.  Guarantees
+#            bit-identical initialisation, padding noise, and rSVD random
+#            vectors across two runs with the same hyperparameters.
+#   False → non-reproducible (random initialisation differs each run).
+#   Overrideable at runtime: --no-seed CLI flag sets this to False.
+
+RANDOM_SEED = 42
+#   Integer seed used when RANDOM_SEED_FIX = True.
+#   Override at runtime: --seed <int>
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Utilities
@@ -546,7 +564,7 @@ def _new_tensors_from_data(tensors: tuple) -> tuple:
     """
     out = []
     for t in tensors:
-        new = torch.empty(t.shape, dtype=CDTYPE, device=t.device)
+        new = torch.empty(t.shape, dtype=TENSORDTYPE, device=t.device)
         new.copy_(t.detach())
         out.append(new)
     return tuple(out)
@@ -560,8 +578,8 @@ def pad_tensor(t: torch.Tensor, old_D: int, new_D: int,
     # automatically after one L-BFGS step completes.
     _core._USE_FULL_SVD = True
 
-    out = noise * torch.randn(new_D, new_D, new_D, d_PHYS, dtype=CDTYPE)
-    out[:old_D, :old_D, :old_D, :] += normalize_tensor(t.detach())*torch.sqrt(torch.tensor(old_D**3 * d_PHYS, dtype=CDTYPE))
+    out = noise * torch.randn(new_D, new_D, new_D, d_PHYS, dtype=TENSORDTYPE)
+    out[:old_D, :old_D, :old_D, :] += normalize_tensor(t.detach())*torch.sqrt(torch.tensor(old_D**3 * d_PHYS, dtype=TENSORDTYPE))
     
     return out
 
@@ -814,9 +832,7 @@ def optimize_at_chi(
         #   tensor_mb(all28[3])                    → size of T1F (transfer tensor)
         #   all28[0].shape                         → C21CD corner shape
         #   sum(t.element_size()*t.nelement() for t in all28[:27]) / 1e6
-        if memory_diagn: 
-            print(f"[MEM-B] RSS={mem_mb():.1f}MB, {env_mem_report(all28, chi, D_bond)}")
-            sys.stdout.flush()
+        if memory_diagn: print(f"[MEM-B] RSS={mem_mb():.1f}MB, {env_mem_report(all28, chi, D_bond)}")
 
         (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
          C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
@@ -1196,7 +1212,7 @@ def optimize_at_chi(
 # ══════════════════════════════════════════════════════════════════════════════
 
 def main():
-    global CDTYPE, OPTIMIZER
+    global TENSORDTYPE, OPTIMIZER
     parser = argparse.ArgumentParser(
         description="10-12 h iPEPS benchmark: sweep D_bond (outer) × chi (inner)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -1228,8 +1244,12 @@ def main():
         help='Gaussian noise amplitude when padding tensors for D→D+1 (= PAD_NOISE).')
     parser.add_argument(
         '--double', action='store_true', default=USE_DOUBLE_PRECISION,
-        help='Use float64/float64 everywhere (default: float32/float32). '
+        help='Use float64/complex128 (default: float32/complex64). '
              'Same throughput on CPU/MKL; 2–4× slower on CUDA consumer GPUs.')
+    parser.add_argument(
+        '--complex', action='store_true', default=not USE_REAL_TENSORS,
+        help='Use complex iPEPS tensors (Sx/Sy/Sz Hamiltonian). '
+             'Default: real tensors (S+/S- Hamiltonian).')
     parser.add_argument(
         '--optimizer', choices=['lbfgs', 'adam'], default=OPTIMIZER,
         help="Optimiser: 'lbfgs' (default, fast on smooth landscapes) or "
@@ -1240,11 +1260,36 @@ def main():
              'SV spectra of the ρ matrices on every trunc_rhoCCC call, and save '
              'a two-panel figure (anti-Hermitian track + SV spectrum with χ cutoff) '
              'at the end of each (D, χ) optimisation level.')
+    parser.add_argument(
+        '--seed', type=int, default=RANDOM_SEED,
+        help='Integer RNG seed (used when --no-seed is NOT given). '
+             'Seeds Python random, NumPy, and PyTorch CPU+CUDA.')
+    parser.add_argument(
+        '--no-seed', action='store_true', default=not RANDOM_SEED_FIX,
+        help='Disable RNG seeding — runs will NOT be reproducible.')
     args = parser.parse_args()
 
+    # ── RNG seeding (must happen BEFORE any tensor allocation) ────────────────
+    _seed_enabled = not args.no_seed
+    if _seed_enabled:
+        import random as _random
+        import numpy as _np
+        _random.seed(args.seed)
+        _np.random.seed(args.seed)
+        torch.manual_seed(args.seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(args.seed)
+        # Make cuBLAS / cuDNN deterministic when a CUDA device is used.
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark     = False
+        print(f"  RNG seed fixed to {args.seed} (use --no-seed to disable)")
+    else:
+        print("  RNG seeding disabled — results will NOT be reproducible.")
+
     # ── Precision + optimizer setup ───────────────────────────────────────────
-    CDTYPE = torch.float64 if args.double else torch.float32
-    set_dtype(args.double)
+    use_real = not getattr(args, 'complex', False)
+    set_dtype(args.double, use_real)
+    TENSORDTYPE = _core.TENSORDTYPE          # sync from core
     OPTIMIZER = args.optimizer
     # Only *enable* the flag from the CLI; never let the argparse default (False)
     # override a True that was already set at module level in core_unrestricted.py.
@@ -1319,19 +1364,67 @@ def main():
 
     # ── save hyperparameters to YAML (JSON fallback if PyYAML not installed) ──
     _hp = dict(
-        ansatz='6tensors',
-        optimizer=OPTIMIZER,
-        lbfgs_lr=LBFGS_LR, lbfgs_max_iter=LBFGS_MAX_ITER,
-        lbfgs_history=LBFGS_HISTORY, opt_tol_grad=OPT_TOL_GRAD,
-        opt_tol_change=OPT_TOL_CHANGE, opt_conv_threshold=OPT_CONV_THRESHOLD,
-        adam_lr=ADAM_LR, adam_betas=list(ADAM_BETAS), adam_eps=ADAM_EPS,
-        adam_weight_decay=ADAM_WEIGHT_DECAY, adam_steps_per_ctm=ADAM_STEPS_PER_CTM,
-        ctm_max_steps=CTM_MAX_STEPS, ctm_conv_thr=CTM_CONV_THR,
-        J=args.J, d_phys=d_PHYS, double=args.double,
-        hours=args.hours, D_bond_list=D_bond_list,
-        chi_max_map={str(k): v for k, v in chi_max_map.items()},
-        schedules={str(k): v for k, v in schedules.items()},
-        run_timestamp=run_ts,
+        # ── run identity ───────────────────────────────────────────────────
+        ansatz             = '6tensors',
+        run_timestamp      = run_ts,
+        output_dir         = output_dir,
+
+        # ── reproducibility ────────────────────────────────────────────────
+        random_seed_fix    = _seed_enabled,
+        random_seed        = args.seed if _seed_enabled else None,
+
+        # ── precision ──────────────────────────────────────────────────────
+        use_double         = args.double,
+        use_real_tensors   = use_real,
+        tensordtype        = str(TENSORDTYPE),
+
+        # ── time budget ────────────────────────────────────────────────────
+        hours              = args.hours,
+        D_bond_list        = D_bond_list,
+        default_d_budget_fracs = {str(k): v for k, v in DEFAULT_D_BUDGET_FRACS.items()},
+        d_budgets_seconds  = {str(k): round(v, 2) for k, v in d_budgets.items()},
+        chi_max_map        = {str(k): v for k, v in chi_max_map.items()},
+        schedules          = {str(k): v for k, v in schedules.items()},
+        geo_schedule_steps = GEO_SCHEDULE_STEPS,
+
+        # ── physical model ─────────────────────────────────────────────────
+        J                  = args.J,
+        d_phys             = d_PHYS,
+        n_bonds            = N_BONDS,
+
+        # ── optimiser ──────────────────────────────────────────────────────
+        optimizer          = OPTIMIZER,
+        # L-BFGS
+        lbfgs_lr           = LBFGS_LR,
+        lbfgs_max_iter     = LBFGS_MAX_ITER,
+        lbfgs_history      = LBFGS_HISTORY,
+        opt_tol_grad       = OPT_TOL_GRAD,
+        opt_tol_change     = OPT_TOL_CHANGE,
+        opt_conv_threshold = OPT_CONV_THRESHOLD,
+        # Adam
+        adam_lr            = ADAM_LR,
+        adam_betas         = list(ADAM_BETAS),
+        adam_eps           = ADAM_EPS,
+        adam_weight_decay  = ADAM_WEIGHT_DECAY,
+        adam_steps_per_ctm = ADAM_STEPS_PER_CTM,
+
+        # ── CTMRG ──────────────────────────────────────────────────────────
+        ctm_max_steps      = CTM_MAX_STEPS,
+        ctm_conv_thr       = CTM_CONV_THR,
+        env_identity_init  = ENV_IDENTITY_INIT,
+
+        # ── tensor init & padding ──────────────────────────────────────────
+        init_noise         = INIT_NOISE,
+        pad_noise          = args.noise,
+        use_blowup_recovery= USE_BLOWUP_RECOVERY,
+
+        # ── I/O & memory ───────────────────────────────────────────────────
+        save_every         = SAVE_EVERY,
+        ram_safety_gb      = RAM_SAFETY_GB,
+        check_truncation   = args.check_truncation,
+
+        # ── CPU threading ──────────────────────────────────────────────────
+        n_physical_cores   = _N_PHYSICAL_CORES,
     )
     try:
         import yaml
@@ -1445,6 +1538,7 @@ def main():
             print(f"\n  ┌── D={D_bond}  chi={chi}"
                   f"  budget={chi_budget:.0f}s={chi_budget/60:.1f}min"
                   f"  [{timestamp()}]")
+            sys.stdout.flush()
 
             best_path   = os.path.join(output_dir,
                                        f"sweep_D{D_bond}_chi{chi}_best.pt")

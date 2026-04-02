@@ -213,7 +213,7 @@ USE_DOUBLE_PRECISION = True
 #            CUDA: 2–4× slower on consumer GPUs (no fp64 tensor cores).
 #   Overrideable at runtime: --double CLI flag takes precedence.
 
-USE_REAL_TENSORS = False
+USE_REAL_TENSORS = True
 #   True  → TENSORDTYPE = RDTYPE  (real iPEPS tensors, S+/S- Hamiltonian).
 #   False → TENSORDTYPE = CDTYPE  (complex iPEPS tensors, Sx/Sy/Sz Hamiltonian).
 #   Overrideable at runtime: --complex CLI flag sets this to False.
@@ -410,6 +410,20 @@ GEO_SCHEDULE_STEPS = 5
 #   differs from DEFAULT_CHI_MAX[D], meaning DEFAULT_CHI_SCHEDULES cannot
 #   be used.  Generates GEO_SCHEDULE_STEPS log-uniformly spaced values
 #   from D²+1 to chi_max (inclusive).
+
+# ── Reproducibility ──────────────────────────────────────────────────────────
+
+RANDOM_SEED_FIX = True
+#   True  → fix all RNGs (Python random, NumPy, PyTorch CPU + CUDA) to
+#            RANDOM_SEED before any tensor is allocated.  Guarantees
+#            bit-identical initialisation, padding noise, and rSVD random
+#            vectors across two runs with the same hyperparameters.
+#   False → non-reproducible (random initialisation differs each run).
+#   Overrideable at runtime: --no-seed CLI flag sets this to False.
+
+RANDOM_SEED = 42
+#   Integer seed used when RANDOM_SEED_FIX = True.
+#   Override at runtime: --seed <int>
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1225,7 +1239,31 @@ def main():
              'SV spectra of the ρ matrices on every trunc_rhoCCC call, and save '
              'a two-panel figure (anti-Hermitian track + SV spectrum with χ cutoff) '
              'at the end of each (D, χ) optimisation level.')
+    parser.add_argument(
+        '--seed', type=int, default=RANDOM_SEED,
+        help='Integer RNG seed (used when --no-seed is NOT given). '
+             'Seeds Python random, NumPy, and PyTorch CPU+CUDA.')
+    parser.add_argument(
+        '--no-seed', action='store_true', default=not RANDOM_SEED_FIX,
+        help='Disable RNG seeding — runs will NOT be reproducible.')
     args = parser.parse_args()
+
+    # ── RNG seeding (must happen BEFORE any tensor allocation) ────────────────
+    _seed_enabled = not args.no_seed
+    if _seed_enabled:
+        import random as _random
+        import numpy as _np
+        _random.seed(args.seed)
+        _np.random.seed(args.seed)
+        torch.manual_seed(args.seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(args.seed)
+        # Make cuBLAS / cuDNN deterministic when a CUDA device is used.
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark     = False
+        print(f"  RNG seed fixed to {args.seed} (use --no-seed to disable)")
+    else:
+        print("  RNG seeding disabled — results will NOT be reproducible.")
 
     # ── Precision + optimizer setup ───────────────────────────────────────────
     use_real = not getattr(args, 'complex', False)
@@ -1305,19 +1343,67 @@ def main():
 
     # ── save hyperparameters to YAML (JSON fallback if PyYAML not installed) ──
     _hp = dict(
-        ansatz='6tensors',
-        optimizer=OPTIMIZER,
-        lbfgs_lr=LBFGS_LR, lbfgs_max_iter=LBFGS_MAX_ITER,
-        lbfgs_history=LBFGS_HISTORY, opt_tol_grad=OPT_TOL_GRAD,
-        opt_tol_change=OPT_TOL_CHANGE, opt_conv_threshold=OPT_CONV_THRESHOLD,
-        adam_lr=ADAM_LR, adam_betas=list(ADAM_BETAS), adam_eps=ADAM_EPS,
-        adam_weight_decay=ADAM_WEIGHT_DECAY, adam_steps_per_ctm=ADAM_STEPS_PER_CTM,
-        ctm_max_steps=CTM_MAX_STEPS, ctm_conv_thr=CTM_CONV_THR,
-        J=args.J, d_phys=d_PHYS, double=args.double,
-        hours=args.hours, D_bond_list=D_bond_list,
-        chi_max_map={str(k): v for k, v in chi_max_map.items()},
-        schedules={str(k): v for k, v in schedules.items()},
-        run_timestamp=run_ts,
+        # ── run identity ───────────────────────────────────────────────────
+        ansatz             = '6tensors',
+        run_timestamp      = run_ts,
+        output_dir         = output_dir,
+
+        # ── reproducibility ────────────────────────────────────────────────
+        random_seed_fix    = _seed_enabled,
+        random_seed        = args.seed if _seed_enabled else None,
+
+        # ── precision ──────────────────────────────────────────────────────
+        use_double         = args.double,
+        use_real_tensors   = use_real,
+        tensordtype        = str(TENSORDTYPE),
+
+        # ── time budget ────────────────────────────────────────────────────
+        hours              = args.hours,
+        D_bond_list        = D_bond_list,
+        default_d_budget_fracs = {str(k): v for k, v in DEFAULT_D_BUDGET_FRACS.items()},
+        d_budgets_seconds  = {str(k): round(v, 2) for k, v in d_budgets.items()},
+        chi_max_map        = {str(k): v for k, v in chi_max_map.items()},
+        schedules          = {str(k): v for k, v in schedules.items()},
+        geo_schedule_steps = GEO_SCHEDULE_STEPS,
+
+        # ── physical model ─────────────────────────────────────────────────
+        J                  = args.J,
+        d_phys             = d_PHYS,
+        n_bonds            = N_BONDS,
+
+        # ── optimiser ──────────────────────────────────────────────────────
+        optimizer          = OPTIMIZER,
+        # L-BFGS
+        lbfgs_lr           = LBFGS_LR,
+        lbfgs_max_iter     = LBFGS_MAX_ITER,
+        lbfgs_history      = LBFGS_HISTORY,
+        opt_tol_grad       = OPT_TOL_GRAD,
+        opt_tol_change     = OPT_TOL_CHANGE,
+        opt_conv_threshold = OPT_CONV_THRESHOLD,
+        # Adam
+        adam_lr            = ADAM_LR,
+        adam_betas         = list(ADAM_BETAS),
+        adam_eps           = ADAM_EPS,
+        adam_weight_decay  = ADAM_WEIGHT_DECAY,
+        adam_steps_per_ctm = ADAM_STEPS_PER_CTM,
+
+        # ── CTMRG ──────────────────────────────────────────────────────────
+        ctm_max_steps      = CTM_MAX_STEPS,
+        ctm_conv_thr       = CTM_CONV_THR,
+        env_identity_init  = ENV_IDENTITY_INIT,
+
+        # ── tensor init & padding ──────────────────────────────────────────
+        init_noise         = INIT_NOISE,
+        pad_noise          = args.noise,
+        use_blowup_recovery= USE_BLOWUP_RECOVERY,
+
+        # ── I/O & memory ───────────────────────────────────────────────────
+        save_every         = SAVE_EVERY,
+        ram_safety_gb      = RAM_SAFETY_GB,
+        check_truncation   = args.check_truncation,
+
+        # ── CPU threading ──────────────────────────────────────────────────
+        n_physical_cores   = _N_PHYSICAL_CORES,
     )
     try:
         import yaml
