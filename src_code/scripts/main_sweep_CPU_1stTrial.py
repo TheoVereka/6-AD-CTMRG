@@ -1,6 +1,60 @@
 
-
 #!/usr/bin/env python3
+
+
+
+#NOTE:N_cores, validate_chi, TOTAL_BUDGET_HOURS = 9999
+# # sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+# _default_outdir = os.path.join('/scratch/chye/1stTrialRun',
+#  f'6tensors_{run_ts}')
+# sys.stdout.flush()
+
+
+
+# ── Sweep control ─────────────────────────────────────────────────────────────
+
+D_BOND_LIST = [2,3, 4, 5, 6, 7, 8, 9, 10, 11]
+#   Ordered list of iPEPS virtual bond dimensions to sweep (outer loop).
+#   Each D is warm-started from the best tensors found at the previous D
+#   (zero-padded to the new size + PAD_NOISE Gaussian noise).
+
+
+DEFAULT_D_BUDGET_FRACS = {2: 0.1, 3: 0.1, 4: 0.1, 5:0.1, 6:0.1, 7:0.1, 8:0.1, 9:0.1, 10:0.1, 11:0.1}
+#   Fraction of the total wall-clock budget allocated to each D_bond value.
+#   Normalised to sum=1 before use, so only the RATIOS matter.
+#   Rationale:
+#     D=2 : small tensors, converges quickly — 3 % is enough.
+#     D=3 : main physics workhorse, needs the most time — 52 %.
+#     D=4 : highest accuracy but very slow per step — 45 %.
+#   Note: This is the ONLY intentional asymmetry in the sweep.  Different D
+#   values have genuinely different computational costs and scientific weight.
+#   Within each D, every chi level gets equal time (see below).
+
+DEFAULT_CHI_MAX = {2: 16, 3: 81, 4: 80, 5:9999, 6:9999, 7:9999, 8:9999, 9:9999, 10:9999, 11:9999}
+#   Largest chi to attempt for each D_bond.  Hard upper bound is D⁴
+#   (gives 16, 81, 256 for D=2,3,4).  We cap D=4 at 80 because chi >> 80
+#   requires too much RAM on a typical workstation and adds negligible accuracy.
+#   Increase if you have more memory; decrease if you hit OOM.
+
+DEFAULT_CHI_SCHEDULES = {
+    2: [5, 7, 9],
+    3: [10, 13, 16],       # , 57, 81],  ← append to extend the schedule
+    4: [17, 21, 25],           # , 40, 62, 80] ← append to extend the schedule
+    5: [26, 31, 36],
+    6: [37, 43, 49],
+    7: [50, 57, 64],
+    8: [65, 73, 81],
+    9: [82, 91, 100],
+    10:[101,111,121],
+    11:[122,133,144],
+}
+
+
+
+
+
+
+ 
 """
 main_sweep.py
 =============
@@ -59,7 +113,7 @@ import os
 import sys
 import time
 
-memory_diagn = False
+memory_diagn = True
 
 # ── CPU threading ─────────────────────────────────────────────────────────────
 # MUST be set BEFORE importing NumPy / PyTorch / MKL — they read these at init.
@@ -73,7 +127,7 @@ memory_diagn = False
 #
 # Use os.environ.setdefault so a user can still override from the shell:
 #   OMP_NUM_THREADS=2 python scripts/main_sweep_CPU.py   ← respected
-_N_PHYSICAL_CORES = 8
+_N_PHYSICAL_CORES = 12
 os.environ.setdefault("OMP_NUM_THREADS", str(_N_PHYSICAL_CORES))
 os.environ.setdefault("MKL_NUM_THREADS", str(_N_PHYSICAL_CORES))
 # Prevent MKL from silently reducing thread count when it detects nested
@@ -99,6 +153,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import opt_einsum as oe
 import torch
+from torch.utils.checkpoint import checkpoint as _ckpt
 
 # Optional debugging aid: if set, PyTorch will print the forward op trace that
 # produced a backward error (e.g. complex SVD phase-gauge issues).
@@ -182,53 +237,6 @@ USE_DOUBLE_PRECISION = True
 #             warm-starting each chi level from the previous.  ALL chi levels
 #             receive EQUAL time budget and IDENTICAL L-BFGS settings, making
 #             results at different chi directly comparable.
-
-# ── Sweep control ─────────────────────────────────────────────────────────────
-
-D_BOND_LIST = [2,3, 4, 5, 6, 7, 8, 9, 10, 11]
-#   Ordered list of iPEPS virtual bond dimensions to sweep (outer loop).
-#   Each D is warm-started from the best tensors found at the previous D
-#   (zero-padded to the new size + PAD_NOISE Gaussian noise).
-
-
-DEFAULT_D_BUDGET_FRACS = {2: 0.1, 3: 0.1, 4: 0.1, 5:0.1, 6:0.1, 7:0.1, 8:0.1, 9:0.1, 10:0.1, 11:0.1}
-#   Fraction of the total wall-clock budget allocated to each D_bond value.
-#   Normalised to sum=1 before use, so only the RATIOS matter.
-#   Rationale:
-#     D=2 : small tensors, converges quickly — 3 % is enough.
-#     D=3 : main physics workhorse, needs the most time — 52 %.
-#     D=4 : highest accuracy but very slow per step — 45 %.
-#   Note: This is the ONLY intentional asymmetry in the sweep.  Different D
-#   values have genuinely different computational costs and scientific weight.
-#   Within each D, every chi level gets equal time (see below).
-
-DEFAULT_CHI_MAX = {2: 16, 3: 81, 4: 80, 5:9999, 6:9999, 7:9999, 8:9999, 9:9999, 10:9999, 11:9999}
-#   Largest chi to attempt for each D_bond.  Hard upper bound is D⁴
-#   (gives 16, 81, 256 for D=2,3,4).  We cap D=4 at 80 because chi >> 80
-#   requires too much RAM on a typical workstation and adds negligible accuracy.
-#   Increase if you have more memory; decrease if you hit OOM.
-
-DEFAULT_CHI_SCHEDULES = {
-    2: [5, 7, 9],
-    3: [10, 13, 16],       # , 57, 81],  ← append to extend the schedule
-    4: [17, 21, 25],           # , 40, 62, 80] ← append to extend the schedule
-    5: [26, 31, 36],
-    6: [37, 43, 49],
-    7: [50, 57, 64],
-    8: [65, 73, 81],
-    9: [82, 91, 100],
-    10:[101,111,121],
-    11:[122,133,144],
-}
-#   Explicit chi schedule for each D (must all satisfy D² < chi ≤ D⁴).
-#   Used as-is when chi_max == DEFAULT_CHI_MAX[D]; otherwise a geometric
-#   sequence from D²+1 to chi_max in ~5 steps is generated automatically.
-#   The D_bond budget is split EQUALLY across all chi values in the schedule:
-#
-#       chi_budget = D_budget / len(chis)     ← same for every chi level
-#
-#   This means every chi level gets the same wall-clock time and the same
-#   L-BFGS settings — no special treatment for any particular chi.
 
 # ── L-BFGS optimiser ─────────────────────────────────────────────────────────
 #
@@ -798,24 +806,35 @@ def optimize_at_chi(
          C21AF, C32CB, C13ED, T1B,  T2E,  T2D,  T3A,  T3F,  T1C,
          ctm_steps) = all28
 
+        # ── Checkpoint the three energy-function calls. ────────────────────
+        # Why: each energy_expectation call creates large intermediate tensors
+        # (6 open_* tensors ≈ 4.4 MB each, 3 rho tensors ≈ 17 MB each at
+        # chi=29, D=3) that would all be retained in the autograd graph for
+        # the backward pass.  At D=3, chi=29 that is ~88 MB per function, or
+        # ~265 MB total — the dominant source of backward peak memory.
+        # These functions are purely deterministic (no randomness), so the
+        # checkpoint recompute is bit-identical to the original forward.
         loss = (
-            energy_expectation_nearest_neighbor_3ebadcf_bonds(
-                aN, bN, cN, dN, eN, fN,
-                Hs[0], Hs[1], Hs[2],
-                chi, D_bond, d_PHYS,
-                C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E)
+            _ckpt(energy_expectation_nearest_neighbor_3ebadcf_bonds,
+                  aN, bN, cN, dN, eN, fN,
+                  Hs[0], Hs[1], Hs[2],
+                  chi, D_bond, d_PHYS,
+                  C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E,
+                  use_reentrant=False)
             +
-            energy_expectation_nearest_neighbor_3afcbed_bonds(
-                aN, bN, cN, dN, eN, fN,
-                Hs[3], Hs[4], Hs[5],
-                chi, D_bond, d_PHYS,
-                C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A)
+            _ckpt(energy_expectation_nearest_neighbor_3afcbed_bonds,
+                  aN, bN, cN, dN, eN, fN,
+                  Hs[3], Hs[4], Hs[5],
+                  chi, D_bond, d_PHYS,
+                  C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A,
+                  use_reentrant=False)
             +
-            energy_expectation_nearest_neighbor_other_3_bonds(
-                aN, bN, cN, dN, eN, fN,
-                Hs[6], Hs[7], Hs[8],
-                chi, D_bond, d_PHYS,
-                C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C)
+            _ckpt(energy_expectation_nearest_neighbor_other_3_bonds,
+                  aN, bN, cN, dN, eN, fN,
+                  Hs[6], Hs[7], Hs[8],
+                  chi, D_bond, d_PHYS,
+                  C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C,
+                  use_reentrant=False)
         )
 
         # Physical corner normalisation diagnostic: Tr(rho)=Tr(C13·C32·C21)
@@ -899,6 +918,7 @@ def optimize_at_chi(
                     last_ctm_steps = _ctm_steps
                     last_cn = _cn
                     loss.backward()
+                    gc.collect()  # free cyclic refs in backward graph immediately
                     #print("gradient example:", a.grad.view(-1)[:5])
                     # ── MEM-D: RSS after backward (peak: forward graph + grad graph) ──
                     # BREAKPOINT-D  ← set breakpoint on the print line below.
@@ -908,7 +928,9 @@ def optimize_at_chi(
                     # Debug Console queries when paused here:
                     #   mem_mb()                       → RSS at backward peak
                     #   a.grad.shape, tensor_mb(a.grad) → gradient tensor sizes
-                    if memory_diagn: print(f"[MEM-D] RSS={mem_mb():.1f}MB after backward")
+                    if memory_diagn: 
+                        print(f"[MEM-D] RSS={mem_mb():.1f}MB after backward")
+                        sys.stdout.flush()
                     # Guard against NaN/Inf gradients.
                     for p in (a, b, c, d, e, f):
                         if p.grad is not None:
@@ -1080,6 +1102,7 @@ def optimize_at_chi(
         else:
             print(f"    step {step:5d}  ctm={ctm_steps:3d}  loss={loss_item:+.10f}"
                   f"  Δ={delta:+.3e}  {elapsed:.0f}/{budget_seconds:.0f}s")
+            sys.stdout.flush()
         
         # ────────────────────────────────────────────────────────────────────────
         # END DIAGNOSTIC CODE
@@ -1090,8 +1113,6 @@ def optimize_at_chi(
                          'D_bond': D_bond, 'chi': chi,
                          'elapsed': round(elapsed, 1)})
 
-        sys.stdout.flush()
-        
         if loss_item < best_loss:
             best_loss   = loss_item
             best_abcdef = tuple(t.detach().clone() for t in (a, b, c, d, e, f))
@@ -1231,6 +1252,8 @@ def main():
         chi_max_map = {D: c for D, c in zip(D_bond_list, cm_vals)}
     else:
         chi_max_map = {D: DEFAULT_CHI_MAX.get(D, D**4) for D in D_bond_list}
+    for D in D_bond_list:
+        validate_chi(chi_max_map[D], D, label=f'D={D} ')
 
     # ── chi schedules ─────────────────────────────────────────────────────────
     # Use defaults for known D values, otherwise compute geometrically.
@@ -1430,6 +1453,18 @@ def main():
             cur_abcdef = _new_tensors_from_data(tuple(out[:6]))
             del out
             gc.collect()  # free old optimizer state + CTMRG envs + graph
+            # ── Return fragmented heap pages to the OS. ──────────────────────
+            # glibc's ptmalloc2 does not automatically shrink the heap after
+            # freeing large tensors; RSS keeps accumulating across chi levels
+            # even after gc.collect().  malloc_trim(0) asks glibc to release
+            # all releasable pages immediately, resetting RSS close to the
+            # actual live-data footprint.  This is the primary cause of the
+            # 600+ MB baseline seen at the start of large (D, chi) levels.
+            try:
+                import ctypes
+                ctypes.CDLL(None).malloc_trim(0)
+            except Exception:
+                pass  # non-Linux systems: silently skip
 
             # Clean energy evaluation
             print(f"  │  Evaluating energy at (D={D_bond}, chi={chi}) ...")
@@ -1461,6 +1496,11 @@ def main():
             else None)
         del cur_abcdef
         gc.collect()
+        try:
+            import ctypes
+            ctypes.CDLL(None).malloc_trim(0)
+        except Exception:
+            pass
 
         D_elapsed = time.perf_counter() - D_start_time
         print(f"\n  D={D_bond} complete in {D_elapsed/3600:.2f} h")

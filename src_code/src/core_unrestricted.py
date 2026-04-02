@@ -17,6 +17,7 @@ import scipy
 import opt_einsum as oe
 import torch
 from scipy.sparse.linalg import aslinearoperator, svds
+from torch.utils.checkpoint import checkpoint as _ckpt
 
 
 #################################
@@ -1999,6 +2000,27 @@ def update_environmentCTs_3to1(C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C
 
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Memory-efficient CTMRG: each of the three update steps is wrapped with
+# torch.utils.checkpoint.checkpoint (aliased as _ckpt).
+#
+# Why checkpoint and NOT a custom autograd.Function:
+#   The update functions call truncated_svd_propack which, on the partial-SVD
+#   path, draws R=torch.randn(...).  A custom Function that re-runs the forward
+#   in backward() would draw a *different* R → different U,S,V → wrong gradient.
+#   torch.utils.checkpoint saves and restores the full PyTorch RNG state before
+#   the recompute, so R is bit-identical to the original forward pass.
+#
+# What is saved vs recomputed:
+#   forward:  only the 15 small input tensors are kept alive for the recompute;
+#             all M×M intermediate contractions and SVD factors are freed.
+#   backward: the update function is re-run once per step to rebuild the local
+#             graph, grads are computed, then the local graph is freed.
+#
+# Memory: O(N_iter × chi² × D²)  instead of  O(N_iter × (chi·D²)²).
+# Cost  : ≈1 extra forward pass per update step during the backward phase.
+# ─────────────────────────────────────────────────────────────────────────────
+
 def CTMRG_from_init_to_stop(A,B,C,D,E,F,
                             chi: int,
                             D_squared: int,
@@ -2090,23 +2112,38 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
         #     case 0 : 
         lastC21EB, lastC32AD, lastC13CF, lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A = \
         nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A
-        nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A = update_environmentCTs_1to2(
-        nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, A,B,C,D,E,F, chi, D_squared)
+        nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A = _ckpt(
+            update_environmentCTs_1to2,
+            nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E,
+            A, B, C, D, E, F, chi, D_squared,
+            use_reentrant=False)
             
         #     case 1 : 
         lastC21AF, lastC32CB, lastC13ED, lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C = \
         nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C
 
-        nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C = update_environmentCTs_2to3(
-        nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A, A,B,C,D,E,F, chi, D_squared)
+        nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C = _ckpt(
+            update_environmentCTs_2to3,
+            nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A,
+            A, B, C, D, E, F, chi, D_squared,
+            use_reentrant=False)
             
         #     case 2 : 
         lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E = \
         nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E
-        
-        nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E = update_environmentCTs_3to1(
-        nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C, A,B,C,D,E,F, chi, D_squared)
+
+        nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E = _ckpt(
+            update_environmentCTs_3to1,
+            nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C,
+            A, B, C, D, E, F, chi, D_squared,
+            use_reentrant=False)
     
+    # Release Python references to stale last-iteration env tensors so the
+    # autograd engine can GC them as soon as the backward pass processes them.
+    del lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E
+    del lastC21EB, lastC32AD, lastC13CF, lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A
+    del lastC21AF, lastC32CB, lastC13ED, lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C
+
     return  nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, \
             nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A, \
             nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C, \
