@@ -55,6 +55,7 @@ DEFAULT_CHI_SCHEDULES = {
 
 
  
+
 """
 main_sweep.py
 =============
@@ -104,6 +105,20 @@ Outputs (all in log/)
   sweep_energy_vs_D.pdf          E/bond vs D at chi_max (convergence in D)
 """
 
+
+# ── glibc malloc tuning (MUST be before any heavy imports) ────────────────────
+# Without this, freed intermediate tensors stay in glibc arenas and RSS
+# grows 10-100× larger than the actual live tensors.  These mallopt calls
+# force allocations ≥ 64 KB to use mmap (returned to OS on free) and limit
+# arenas to 2 (less fragmentation).
+import ctypes as _ctypes
+_libc = _ctypes.CDLL(None)
+_libc.mallopt(_ctypes.c_int(-3), _ctypes.c_int(65536))   # M_MMAP_THRESHOLD  = 64 KB
+_libc.mallopt(_ctypes.c_int(-1), _ctypes.c_int(0))       # M_TRIM_THRESHOLD  = 0 (trim eagerly)
+_libc.mallopt(_ctypes.c_int(-8), _ctypes.c_int(2))       # M_ARENA_MAX       = 2
+del _libc
+
+
 import argparse
 import collections
 import datetime
@@ -127,7 +142,7 @@ memory_diagn = True
 #
 # Use os.environ.setdefault so a user can still override from the shell:
 #   OMP_NUM_THREADS=2 python scripts/main_sweep_CPU.py   ← respected
-_N_PHYSICAL_CORES = 12
+_N_PHYSICAL_CORES = 16
 os.environ.setdefault("OMP_NUM_THREADS", str(_N_PHYSICAL_CORES))
 os.environ.setdefault("MKL_NUM_THREADS", str(_N_PHYSICAL_CORES))
 # Prevent MKL from silently reducing thread count when it detects nested
@@ -799,7 +814,9 @@ def optimize_at_chi(
         #   tensor_mb(all28[3])                    → size of T1F (transfer tensor)
         #   all28[0].shape                         → C21CD corner shape
         #   sum(t.element_size()*t.nelement() for t in all28[:27]) / 1e6
-        if memory_diagn: print(f"[MEM-B] RSS={mem_mb():.1f}MB, {env_mem_report(all28, chi, D_bond)}")
+        if memory_diagn: 
+            print(f"[MEM-B] RSS={mem_mb():.1f}MB, {env_mem_report(all28, chi, D_bond)}")
+            sys.stdout.flush()
 
         (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
          C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
@@ -928,9 +945,7 @@ def optimize_at_chi(
                     # Debug Console queries when paused here:
                     #   mem_mb()                       → RSS at backward peak
                     #   a.grad.shape, tensor_mb(a.grad) → gradient tensor sizes
-                    if memory_diagn: 
-                        print(f"[MEM-D] RSS={mem_mb():.1f}MB after backward")
-                        sys.stdout.flush()
+                    if memory_diagn: print(f"[MEM-D] RSS={mem_mb():.1f}MB after backward")
                     # Guard against NaN/Inf gradients.
                     for p in (a, b, c, d, e, f):
                         if p.grad is not None:

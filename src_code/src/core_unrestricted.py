@@ -28,13 +28,22 @@ from torch.utils.checkpoint import checkpoint as _ckpt
 
 
 # ── Precision control ─────────────────────────────────────────────────────────
-# Default: float32 / float32 — fastest on both CPU (MKL) and CUDA.
-# Call  set_dtype(True)  BEFORE allocating any tensor to switch to
-# float64 / float64 (double precision).
-#   CPU (Intel MKL): float64 is native → same throughput, 2× more memory.
-#   CUDA: float64 is 2–4× slower (no fp64 tensor cores on consumer GPUs).
-CDTYPE: torch.dtype = torch.float32   # complex dtype for all tensors
-RDTYPE: torch.dtype = torch.float32     # real dtype (SVD singular values, norms)
+# Three dtype globals control the entire codebase:
+#   CDTYPE      – always complex (complex64 or complex128).
+#                 Used for inherently complex quantities: Hamiltonian (Sy has -1j),
+#                 spin operators, and any future complex-valued objects.
+#   RDTYPE      – always real (float32 or float64).
+#                 Used for SVD singular values, norms, and other inherently real
+#                 quantities.
+#   TENSORDTYPE – the dtype of the iPEPS site tensors a..f, environment tensors
+#                 C/T, and all intermediate contractions.  Can be real (RDTYPE)
+#                 for the S+/S- Hamiltonian formulation, or complex (CDTYPE) for
+#                 the full Sx/Sy/Sz formulation.
+#
+# Call  set_dtype(use_double, use_real)  BEFORE allocating any tensor.
+CDTYPE: torch.dtype = torch.complex128   # complex dtype for all tensors
+RDTYPE: torch.dtype = torch.float64      # real dtype (SVD singular values, norms)
+TENSORDTYPE: torch.dtype = torch.float64 # tensor dtype (real or complex)
 
 # Set to True to enable a runtime check inside trunc_rhoCCC that the three
 # SV sums (sum(sv32[:chi]), sum(sv13[:chi]), sum(sv21[:chi])) are nearly equal.
@@ -190,22 +199,30 @@ def set_check_truncation(enabled: bool) -> None:
     DEBUG_CHECK_TRUNCATION = enabled
 
 
-def set_dtype(use_double: bool) -> None:
-    """Switch all core computations between float32/float32 and float64/float64.
+def set_dtype(use_double: bool, use_real: bool = True) -> None:
+    """Switch all core computations between float32/complex64 and float64/complex128.
 
     Must be called BEFORE any tensor is allocated — ideally right after import.
 
     Args:
-        use_double: ``True``  → float64 / float64 (double precision).
-                    ``False`` → float32  / float32 (single precision, default).
+        use_double: ``True``  → complex128 / float64 (double precision).
+                    ``False`` → complex64  / float32 (single precision, default).
+        use_real:   ``True``  → TENSORDTYPE = RDTYPE  (real iPEPS tensors, S+/S- Hamiltonian).
+                    ``False`` → TENSORDTYPE = CDTYPE  (complex iPEPS tensors, Sx/Sy/Sz Hamiltonian).
     """
-    global CDTYPE, RDTYPE
+    global CDTYPE, RDTYPE, TENSORDTYPE
+
     if use_double:
-        CDTYPE = torch.float64
+        CDTYPE = torch.complex128
         RDTYPE = torch.float64
     else:
-        CDTYPE = torch.float32
+        CDTYPE = torch.complex64
         RDTYPE = torch.float32
+
+    if use_real:
+        TENSORDTYPE = RDTYPE
+    else:
+        TENSORDTYPE = CDTYPE
 
 
 # for now only the case of ABCDEF, nearest neighbor, exact SVD, D^4 >= chi > D^2 .
@@ -384,8 +401,8 @@ class SVD_PROPACK(torch.autograd.Function):
         # scipy.linalg.eig (wrong algorithm) when k >= N-1, and PROPACK's
         # Fortran ZLASCL routine crashes on ill-conditioned matrices.
         # The CTMRG matrices are at most ~100×100; dense SVD is fast.
-        _np_dtype = np.float64 if A.is_complex() else np.float64
-        _rdtype = torch.float64 if A.dtype in (torch.float64, torch.float64) else torch.float32
+        _np_dtype = np.complex128 if A.is_complex() else np.float64
+        _rdtype = torch.float64 if A.dtype in (torch.complex128, torch.float64) else torch.float32
 
         m_dim, n_dim = A.shape
         k_total = min(k + k_extra, min(m_dim, n_dim))
@@ -636,7 +653,7 @@ def truncated_svd_propack(M, chi, chi_extra, rel_cutoff, v0=None,
     # rel_cutoff must always be real-typed: singular values are real, and
     # safe_inverse / safe_inverse_2 use < comparisons that are undefined for
     # complex tensors (raises "lt_cpu not implemented for 'ComplexDouble'").
-    _rdtype = torch.float64 if M.dtype in (torch.float64, torch.float64) else torch.float32
+    _rdtype = torch.float64 if M.dtype in (torch.complex128, torch.float64) else torch.float32
     U, S, V = SVD_PROPACK.apply(M, chi, 0, torch.as_tensor([rel_cutoff], dtype=_rdtype, device=M.device), v0, _USE_FULL_SVD)
 
 
@@ -704,12 +721,12 @@ def initialize_abcdef(initialize_way:str, D_bond:int, d_PHYS:int, noise_scale:fl
 
     if initialize_way == 'random' :
 
-        a = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=CDTYPE)
-        b = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=CDTYPE)
-        c = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=CDTYPE)
-        d = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=CDTYPE)
-        e = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=CDTYPE)
-        f = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=CDTYPE)
+        a = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=TENSORDTYPE)
+        b = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=TENSORDTYPE)
+        c = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=TENSORDTYPE)
+        d = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=TENSORDTYPE)
+        e = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=TENSORDTYPE)
+        f = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=TENSORDTYPE)
 
     elif initialize_way == 'product' : # product state but always with small noise
 
@@ -816,16 +833,16 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
 
     
 
-    #approx_product =  U[:,:chi] @ torch.diag(S[:chi]).to(CDTYPE) @ Vh[:chi,:]
+    #approx_product =  U[:,:chi] @ torch.diag(S[:chi]).to(TENSORDTYPE) @ Vh[:chi,:]
     #exact_product = R1 @ R2.T
     #product_error = torch.linalg.norm(approx_product - exact_product) / torch.linalg.norm(exact_product)
     #VERIFIED print(f"R1 @ R2.T vs truncated U @ diag(S) @ Vh check: relative error = {product_error:.2e}")
 
-    sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
+    sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
     #VERIFIED print((S[chi]/S[0]).item())
-    #VERIFIED print(torch.diag(sqrtInvTruncS @ sqrtInvTruncS @ torch.diag(S[:chi]).to(CDTYPE)).detach().cpu().numpy())
+    #VERIFIED print(torch.diag(sqrtInvTruncS @ sqrtInvTruncS @ torch.diag(S[:chi]).to(TENSORDTYPE)).detach().cpu().numpy())
 
-    #product_inverse = Vh.conj().T @ torch.diag(1.0 / torch.sqrt(S).to(CDTYPE)) @ torch.diag(1.0 / torch.sqrt(S).to(CDTYPE)) @ U.conj().T
+    #product_inverse = Vh.conj().T @ torch.diag(1.0 / torch.sqrt(S).to(TENSORDTYPE)) @ torch.diag(1.0 / torch.sqrt(S).to(TENSORDTYPE)) @ U.conj().T
     #exact_inverse = torch.linalg.inv(R1 @ R2.T)
     #inverse_error = torch.linalg.norm(product_inverse - exact_inverse) / torch.linalg.norm(exact_inverse)
     #VERIFIED print(f"(R1 @ R2.T)^-1 vs Vh @ diag(1/sqrt(S)) @ diag(1/sqrt(S)) @ U check: relative error = {inverse_error:.2e}")
@@ -893,7 +910,7 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
 
     #truncUh = U[:,:chi].conj().T
     #truncV = Vh[:chi,:].conj().T
-    sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
+    sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
 
     P32Nz = torch.mm( R2.T ,torch.mm( V , sqrtInvTruncS ))
     P13zN = torch.mm(torch.mm( sqrtInvTruncS , U.conj().T ), R1 )
@@ -919,7 +936,7 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
 
     #truncUh = U[:,:chi].conj().T
     #truncV = Vh[:chi,:].conj().T
-    sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
+    sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
 
     P13Lx = torch.mm( R2.T ,torch.mm( V , sqrtInvTruncS ))
     P21xL = torch.mm(torch.mm( sqrtInvTruncS , U.conj().T ), R1 )
@@ -1125,7 +1142,7 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
                     eps_multiplet=1e-10)
         
 
-        sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
+        sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
 
         P21My = torch.mm( R2.T ,torch.mm( V , sqrtInvTruncS ))
         P32yM = torch.mm(torch.mm( sqrtInvTruncS , U.conj().T ), R1 )
@@ -1144,7 +1161,7 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
                     abs_tol=1e-14,
                     eps_multiplet=1e-10)
 
-        sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
+        sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
 
         P32Nz = torch.mm( R2.T ,torch.mm( V , sqrtInvTruncS ))
         P13zN = torch.mm(torch.mm( sqrtInvTruncS , U.conj().T ), R1 )
@@ -1163,7 +1180,7 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
                     abs_tol=1e-14,
                     eps_multiplet=1e-10)
 
-        sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
+        sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
 
         P13Lx = torch.mm( R2.T ,torch.mm( V , sqrtInvTruncS ))
         P21xL = torch.mm(torch.mm( sqrtInvTruncS , U.conj().T ), R1 )
@@ -1268,7 +1285,7 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
                         eps_multiplet=1e-10)
             
 
-            sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
+            sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
 
             T1Fold = T1F
             T1F = torch.mm((torch.mm(T3C, torch.mm(V, sqrtInvTruncS))).T, T1F)
@@ -1283,7 +1300,7 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
                         abs_tol=1e-14,
                         eps_multiplet=1e-10)
             
-            sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
+            sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
             
             T3Dold = T3D
             T3D = torch.mm((torch.mm(T2A, torch.mm(V, sqrtInvTruncS))).T, T3D)
@@ -1298,7 +1315,7 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
                         abs_tol=1e-14,
                         eps_multiplet=1e-10)
             
-            sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(CDTYPE))
+            sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
 
             T2Bold = T2B
             T2B = torch.mm((torch.mm(T1E, torch.mm(V, sqrtInvTruncS))).T, T2B)
@@ -2637,7 +2654,7 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
 
     # ── 1. Initialise site tensors ────────────────────────────────────────────
     if init_abcdef is not None:
-        a, b, c, d, e, f = [t.detach().clone().to(CDTYPE) for t in init_abcdef]
+        a, b, c, d, e, f = [t.detach().clone().to(TENSORDTYPE) for t in init_abcdef]
     else:
         a, b, c, d, e, f = initialize_abcdef(a2f_initialize_way, D_bond, d_PHYS, a2f_noise_scale)
     a.requires_grad_(True)
@@ -2759,7 +2776,7 @@ def build_heisenberg_H(J: float = 1.0, d: int = 2) -> torch.Tensor:
 
     SdotS = torch.tensor(oe.contract("ij,kl->ijkl", Splus, Sminus) * 0.5
                         +oe.contract("ij,kl->ijkl", Sminus, Splus) * 0.5
-                        +oe.contract("ij,kl->ijkl", Sz, Sz), dtype=RDTYPE)
+                        +oe.contract("ij,kl->ijkl", Sz, Sz), dtype=TENSORDTYPE)
     return J * SdotS
 
 

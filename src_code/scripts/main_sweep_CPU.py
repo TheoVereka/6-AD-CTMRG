@@ -1,17 +1,5 @@
 #!/usr/bin/env python3
 
-# ── glibc malloc tuning (MUST be before any heavy imports) ────────────────────
-# Without this, freed intermediate tensors stay in glibc arenas and RSS
-# grows 10-100× larger than the actual live tensors.  These mallopt calls
-# force allocations ≥ 64 KB to use mmap (returned to OS on free) and limit
-# arenas to 2 (less fragmentation).
-import ctypes as _ctypes
-_libc = _ctypes.CDLL(None)
-_libc.mallopt(_ctypes.c_int(-3), _ctypes.c_int(65536))   # M_MMAP_THRESHOLD  = 64 KB
-_libc.mallopt(_ctypes.c_int(-1), _ctypes.c_int(0))       # M_TRIM_THRESHOLD  = 0 (trim eagerly)
-_libc.mallopt(_ctypes.c_int(-8), _ctypes.c_int(2))       # M_ARENA_MAX       = 2
-del _libc
-
 # ── Sweep control ─────────────────────────────────────────────────────────────
 
 D_BOND_LIST = [2,3, 4]
@@ -96,6 +84,20 @@ Outputs (all in log/)
   sweep_energy_vs_D.pdf          E/bond vs D at chi_max (convergence in D)
 """
 
+
+# ── glibc malloc tuning (MUST be before any heavy imports) ────────────────────
+# Without this, freed intermediate tensors stay in glibc arenas and RSS
+# grows 10-100× larger than the actual live tensors.  These mallopt calls
+# force allocations ≥ 64 KB to use mmap (returned to OS on free) and limit
+# arenas to 2 (less fragmentation).
+import ctypes as _ctypes
+_libc = _ctypes.CDLL(None)
+_libc.mallopt(_ctypes.c_int(-3), _ctypes.c_int(65536))   # M_MMAP_THRESHOLD  = 64 KB
+_libc.mallopt(_ctypes.c_int(-1), _ctypes.c_int(0))       # M_TRIM_THRESHOLD  = 0 (trim eagerly)
+_libc.mallopt(_ctypes.c_int(-8), _ctypes.c_int(2))       # M_ARENA_MAX       = 2
+del _libc
+
+
 import argparse
 import collections
 import datetime
@@ -105,7 +107,7 @@ import os
 import sys
 import time
 
-memory_diagn = True
+memory_diagn = False
 
 # ── CPU threading ─────────────────────────────────────────────────────────────
 # MUST be set BEFORE importing NumPy / PyTorch / MKL — they read these at init.
@@ -191,11 +193,11 @@ TOTAL_BUDGET_HOURS = 1.45
 
 
 
-# Default complex dtype — updated to float64 by --double / USE_DOUBLE_PRECISION.
+# Default tensor dtype — updated by --double / --real / --complex flags.
 # Python functions look up globals at call time, so build_heisenberg_H(),
 # pad_tensor(), and optimize_at_chi() all see the updated value after main()
-# calls set_dtype() and reassigns CDTYPE.
-CDTYPE: torch.dtype = torch.float32
+# calls set_dtype() and reassigns TENSORDTYPE.
+TENSORDTYPE: torch.dtype = torch.float64
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║                  ALL TUNABLE PARAMETERS — EDIT HERE                     ║
@@ -204,12 +206,17 @@ CDTYPE: torch.dtype = torch.float32
 # ── Precision ─────────────────────────────────────────────────────────────────
 
 USE_DOUBLE_PRECISION = True
-#   False → float32  / float32 (default): fastest on both CPU (Intel MKL)
+#   False → float32(/complex64): fastest on both CPU (Intel MKL)
 #            and CUDA (fp32 tensor cores give full throughput).
-#   True  → float64 / float64: double precision.
+#   True  → float64(/complex128): double precision.
 #            CPU (Intel MKL): float64 is native, same throughput, 2× RAM.
 #            CUDA: 2–4× slower on consumer GPUs (no fp64 tensor cores).
 #   Overrideable at runtime: --double CLI flag takes precedence.
+
+USE_REAL_TENSORS = False
+#   True  → TENSORDTYPE = RDTYPE  (real iPEPS tensors, S+/S- Hamiltonian).
+#   False → TENSORDTYPE = CDTYPE  (complex iPEPS tensors, Sx/Sy/Sz Hamiltonian).
+#   Overrideable at runtime: --complex CLI flag sets this to False.
 
 # ── Physical sweep dimensions ────────────────────────────────────────────────
 #
@@ -523,7 +530,7 @@ def _new_tensors_from_data(tensors: tuple) -> tuple:
     """
     out = []
     for t in tensors:
-        new = torch.empty(t.shape, dtype=CDTYPE, device=t.device)
+        new = torch.empty(t.shape, dtype=TENSORDTYPE, device=t.device)
         new.copy_(t.detach())
         out.append(new)
     return tuple(out)
@@ -537,8 +544,8 @@ def pad_tensor(t: torch.Tensor, old_D: int, new_D: int,
     # automatically after one L-BFGS step completes.
     _core._USE_FULL_SVD = True
 
-    out = noise * torch.randn(new_D, new_D, new_D, d_PHYS, dtype=CDTYPE)
-    out[:old_D, :old_D, :old_D, :] += normalize_tensor(t.detach())*torch.sqrt(torch.tensor(old_D**3 * d_PHYS, dtype=CDTYPE))
+    out = noise * torch.randn(new_D, new_D, new_D, d_PHYS, dtype=TENSORDTYPE)
+    out[:old_D, :old_D, :old_D, :] += normalize_tensor(t.detach())*torch.sqrt(torch.tensor(old_D**3 * d_PHYS, dtype=TENSORDTYPE))
     
     return out
 
@@ -1170,7 +1177,7 @@ def optimize_at_chi(
 # ══════════════════════════════════════════════════════════════════════════════
 
 def main():
-    global CDTYPE, OPTIMIZER
+    global TENSORDTYPE, OPTIMIZER
     parser = argparse.ArgumentParser(
         description="10-12 h iPEPS benchmark: sweep D_bond (outer) × chi (inner)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -1202,8 +1209,12 @@ def main():
         help='Gaussian noise amplitude when padding tensors for D→D+1 (= PAD_NOISE).')
     parser.add_argument(
         '--double', action='store_true', default=USE_DOUBLE_PRECISION,
-        help='Use float64/float64 everywhere (default: float32/float32). '
+        help='Use float64/complex128 (default: float32/complex64). '
              'Same throughput on CPU/MKL; 2–4× slower on CUDA consumer GPUs.')
+    parser.add_argument(
+        '--complex', action='store_true', default=not USE_REAL_TENSORS,
+        help='Use complex iPEPS tensors (Sx/Sy/Sz Hamiltonian). '
+             'Default: real tensors (S+/S- Hamiltonian).')
     parser.add_argument(
         '--optimizer', choices=['lbfgs', 'adam'], default=OPTIMIZER,
         help="Optimiser: 'lbfgs' (default, fast on smooth landscapes) or "
@@ -1217,8 +1228,9 @@ def main():
     args = parser.parse_args()
 
     # ── Precision + optimizer setup ───────────────────────────────────────────
-    CDTYPE = torch.float64 if args.double else torch.float32
-    set_dtype(args.double)
+    use_real = not getattr(args, 'complex', False)
+    set_dtype(args.double, use_real)
+    TENSORDTYPE = _core.TENSORDTYPE          # sync from core
     OPTIMIZER = args.optimizer
     # Only *enable* the flag from the CLI; never let the argparse default (False)
     # override a True that was already set at module level in core_unrestricted.py.
