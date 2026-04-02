@@ -28,12 +28,12 @@ from torch.utils.checkpoint import checkpoint as _ckpt
 
 
 # ── Precision control ─────────────────────────────────────────────────────────
-# Default: float32 / complex64 — fastest on both CPU (MKL) and CUDA.
+# Default: float32 / float32 — fastest on both CPU (MKL) and CUDA.
 # Call  set_dtype(True)  BEFORE allocating any tensor to switch to
-# float64 / complex128 (double precision).
+# float64 / float64 (double precision).
 #   CPU (Intel MKL): float64 is native → same throughput, 2× more memory.
 #   CUDA: float64 is 2–4× slower (no fp64 tensor cores on consumer GPUs).
-CDTYPE: torch.dtype = torch.complex64   # complex dtype for all tensors
+CDTYPE: torch.dtype = torch.float32   # complex dtype for all tensors
 RDTYPE: torch.dtype = torch.float32     # real dtype (SVD singular values, norms)
 
 # Set to True to enable a runtime check inside trunc_rhoCCC that the three
@@ -191,20 +191,20 @@ def set_check_truncation(enabled: bool) -> None:
 
 
 def set_dtype(use_double: bool) -> None:
-    """Switch all core computations between float32/complex64 and float64/complex128.
+    """Switch all core computations between float32/float32 and float64/float64.
 
     Must be called BEFORE any tensor is allocated — ideally right after import.
 
     Args:
-        use_double: ``True``  → complex128 / float64 (double precision).
-                    ``False`` → complex64  / float32 (single precision, default).
+        use_double: ``True``  → float64 / float64 (double precision).
+                    ``False`` → float32  / float32 (single precision, default).
     """
     global CDTYPE, RDTYPE
     if use_double:
-        CDTYPE = torch.complex128
+        CDTYPE = torch.float64
         RDTYPE = torch.float64
     else:
-        CDTYPE = torch.complex64
+        CDTYPE = torch.float32
         RDTYPE = torch.float32
 
 
@@ -230,7 +230,7 @@ def normalize_tensor(tensor, *, rtol: float | None = None, atol: float | None = 
     norm = torch.linalg.norm(tensor)
 
     # Choose dtype-appropriate default tolerances.
-    # For complex64 (norm is float32), norms around 1 typically fluctuate at ~1e-7,
+    # For float32 (norm is float32), norms around 1 typically fluctuate at ~1e-7,
     # so a strict 1e-10 check would *keep renormalizing* and introduce drift.
     if rtol is None or atol is None:
         if norm.dtype == torch.float32:
@@ -384,8 +384,8 @@ class SVD_PROPACK(torch.autograd.Function):
         # scipy.linalg.eig (wrong algorithm) when k >= N-1, and PROPACK's
         # Fortran ZLASCL routine crashes on ill-conditioned matrices.
         # The CTMRG matrices are at most ~100×100; dense SVD is fast.
-        _np_dtype = np.complex128 if A.is_complex() else np.float64
-        _rdtype = torch.float64 if A.dtype in (torch.complex128, torch.float64) else torch.float32
+        _np_dtype = np.float64 if A.is_complex() else np.float64
+        _rdtype = torch.float64 if A.dtype in (torch.float64, torch.float64) else torch.float32
 
         m_dim, n_dim = A.shape
         k_total = min(k + k_extra, min(m_dim, n_dim))
@@ -636,7 +636,7 @@ def truncated_svd_propack(M, chi, chi_extra, rel_cutoff, v0=None,
     # rel_cutoff must always be real-typed: singular values are real, and
     # safe_inverse / safe_inverse_2 use < comparisons that are undefined for
     # complex tensors (raises "lt_cpu not implemented for 'ComplexDouble'").
-    _rdtype = torch.float64 if M.dtype in (torch.complex128, torch.float64) else torch.float32
+    _rdtype = torch.float64 if M.dtype in (torch.float64, torch.float64) else torch.float32
     U, S, V = SVD_PROPACK.apply(M, chi, 0, torch.as_tensor([rel_cutoff], dtype=_rdtype, device=M.device), v0, _USE_FULL_SVD)
 
 
@@ -696,7 +696,7 @@ def initialize_abcdef(initialize_way:str, D_bond:int, d_PHYS:int, noise_scale:fl
 
     Returns:
         Tuple[torch.Tensor, ...]: ``(a, b, c, d, e, f)``, each of shape
-        ``(D_bond, D_bond, D_bond, d_PHYS)``, dtype ``torch.complex64``.
+        ``(D_bond, D_bond, D_bond, d_PHYS)``, dtype ``torch.float32``.
 
     Raises:
         ValueError: If ``initialize_way`` is not a recognised strategy.
@@ -751,7 +751,7 @@ def abcdef_to_ABCDEF(a,b,c,d,e,f, D_squared:int):
     Returns:
         Tuple[torch.Tensor, ...]: ``(A, B, C, D, E, F)``, each of shape
         ``(D_squared, D_squared, D_squared)`` (rank-3, one fused virtual-index
-        pair per honeycomb leg), dtype ``torch.complex64``.
+        pair per honeycomb leg), dtype ``torch.float32``.
     """
 
     A = oe.contract("uvwp,xyzp->uxvywz", a, a.conj(), optimize=[(0, 1)], backend='torch')
@@ -1608,21 +1608,21 @@ def update_environmentCTs_1to2(C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
 
     C21EB = oe.contract("YX,MYa,LXb,amg,lbg->MmLl",
                            C21CD,T1F,T2A,E,B,
-                           optimize=[(0,2),(0,3),(1,2),(0,1)],
+                           optimize=[(0,1),(1,3),(0,1),(0,1)],
                            backend='torch')
     
     C21EB = C21EB.reshape(chi*D_squared,chi*D_squared)
     
     C32AD = oe.contract("ZY,NZb,MYg,abn,amg->NnMm",
                            C32EF,T2B,T3C,A,D,
-                           optimize=[(0,2),(0,3),(1,2),(0,1)],
+                           optimize=[(0,1),(1,3),(0,1),(0,1)],
                            backend='torch')
     
     C32AD = C32AD.reshape(chi*D_squared,chi*D_squared)
     
     C13CF = oe.contract("XZ,LXg,NZa,lbg,abn->LlNn",
                            C13AB,T3D,T1E,C,F,
-                           optimize=[(0,2),(0,3),(1,2),(0,1)],
+                           optimize=[(0,1),(1,3),(0,1),(0,1)],
                            backend='torch')
     
     C13CF = C13CF.reshape(chi*D_squared,chi*D_squared)
@@ -1749,21 +1749,21 @@ def update_environmentCTs_2to3(C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A
 
     C21AF = oe.contract("YX,MYa,LXb,amg,lbg->MmLl",
                            C21EB,T1D,T2C,A,F,
-                           optimize=[(0,2),(0,3),(1,2),(0,1)],
+                           optimize=[(0,1),(1,3),(0,1),(0,1)],
                            backend='torch')
     
     C21AF = C21AF.reshape(chi*D_squared,chi*D_squared)
     
     C32CB = oe.contract("ZY,NZb,MYg,abn,amg->NnMm",
                            C32AD,T2F,T3E,C,B,
-                           optimize=[(0,2),(0,3),(1,2),(0,1)],
+                           optimize=[(0,1),(1,3),(0,1),(0,1)],
                            backend='torch')
     
     C32CB = C32CB.reshape(chi*D_squared,chi*D_squared)
     
     C13ED = oe.contract("XZ,LXg,NZa,lbg,abn->LlNn",
                            C13CF,T3B,T1A,E,D,
-                           optimize=[(0,2),(0,3),(1,2),(0,1)],
+                           optimize=[(0,1),(1,3),(0,1),(0,1)],
                            backend='torch')
     
     C13ED = C13ED.reshape(chi*D_squared,chi*D_squared)
@@ -1884,21 +1884,21 @@ def update_environmentCTs_3to1(C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C
 
     C21CD = oe.contract("YX,MYa,LXb,amg,lbg->MmLl",
                            C21AF,T1B,T2E,C,D,
-                           optimize=[(0,2),(0,3),(1,2),(0,1)],
+                           optimize=[(0,1),(1,3),(0,1),(0,1)],
                            backend='torch')
     
     C21CD = C21CD.reshape(chi*D_squared,chi*D_squared)
     
     C32EF = oe.contract("ZY,NZb,MYg,abn,amg->NnMm",
                            C32CB,T2D,T3A,E,F,
-                           optimize=[(0,2),(0,3),(1,2),(0,1)],
+                           optimize=[(0,1),(1,3),(0,1),(0,1)],
                            backend='torch')
     
     C32EF = C32EF.reshape(chi*D_squared,chi*D_squared)
     
     C13AB = oe.contract("XZ,LXg,NZa,lbg,abn->LlNn",
                            C13ED,T3F,T1C,A,B,
-                           optimize=[(0,2),(0,3),(1,2),(0,1)],
+                           optimize=[(0,1),(1,3),(0,1),(0,1)],
                            backend='torch')
     
     C13AB = C13AB.reshape(chi*D_squared,chi*D_squared)
@@ -2046,7 +2046,13 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
     lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E = None, None, None, None, None, None, None, None, None
     lastC21EB, lastC32AD, lastC13CF, lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A = None, None, None, None, None, None, None, None, None
     lastC21AF, lastC32CB, lastC13ED, lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C = None, None, None, None, None, None, None, None, None
-    nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E = initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=identity_init)
+    # ── Initialization under torch.no_grad() ─────────────────────────────
+    # The init only sets the starting point for the iterative CTMRG loop.
+    # Gradients flow through the converged update steps, not the init.
+    # Running under no_grad prevents the (D²×D², D²×D²) SVD intermediates
+    # from being kept alive in the autograd graph (saves ~75 MB for D=5).
+    with torch.no_grad():
+        nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E = initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=identity_init)
     nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A = None, None, None, None, None, None, None, None, None
     nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C = None, None, None, None, None, None, None, None, None
 
@@ -2195,7 +2201,7 @@ def energy_expectation_nearest_neighbor_6_bonds(a,b,c,d,e,f,
             reshape.
 
     Returns:
-        torch.Tensor: Scalar energy per bond (complex64; imaginary part should
+        torch.Tensor: Scalar energy per bond (float32; imaginary part should
         vanish for a Hermitian Hamiltonian).
     """
     
@@ -2482,7 +2488,7 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
         T1B, T2E, T2D, T3A, T3F, T1C (torch.Tensor): Type-3 transfer tensors.
 
     Returns:
-        torch.Tensor: Scalar energy per bond (complex64).
+        torch.Tensor: Scalar energy per bond (float32).
     """
     T1B = T1B.reshape(chi,chi,D_bond,D_bond)
     T2E = T2E.reshape(chi,chi,D_bond,D_bond)
@@ -2735,35 +2741,25 @@ def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, 
 def build_heisenberg_H(J: float = 1.0, d: int = 2) -> torch.Tensor:
     # use spin s=(d-1)/2 to build spin-s operators sx, sy, sz:
     spin = (d - 1) / 2
-    spin = torch.tensor(spin, dtype=CDTYPE)
-    Sx = torch.zeros((d, d), dtype=CDTYPE)
-    Sy = torch.zeros((d, d), dtype=CDTYPE)
-    Sz = torch.zeros((d, d), dtype=CDTYPE)
+    spin = torch.tensor(spin, dtype=RDTYPE)
+    Splus = torch.zeros((d, d), dtype=RDTYPE)
+    Sminus = torch.zeros((d, d), dtype=RDTYPE)
+    Sz = torch.zeros((d, d), dtype=RDTYPE)
     for i in range(d):
         m = float(spin - i)                   # numeric m-value (float)
         Sz[i, i] = m                          # diagonal Sz
 
         if i < d - 1:
             # coefficient for the transition m -> m-1
-            coeff = 0.5 * (spin * (spin + 1) - m * (m - 1)) ** 0.5  # real CS-coeff/2
+            CScoeff = torch.sqrt(spin * (spin + 1) - m * (m - 1))  # real CS-coeff/2
+            Splus[i, i + 1] = CScoeff   # S+ raises m by 1
+            Sminus[i + 1, i] = CScoeff  # S- lowers m by 1
 
-            # Sx: symmetric real off-diagonals
-            Sx[i, i + 1] = coeff
-            Sx[i + 1, i] = coeff
+    print(Splus,Sminus,Sz)
 
-            # Sy: purely imaginary, Hermitian (use conj for the lower diag)
-            Sy[i, i + 1] = -1j * coeff
-            Sy[i + 1, i] = -Sy[i, i + 1]
-
-    # print(Sx,Sy,Sz)
-
-    #sx = torch.tensor([[0, 1], [1, 0]], dtype=CDTYPE) / 2
-    #sy = torch.tensor([[0, -1j], [1j, 0]], dtype=CDTYPE) / 2
-    #sz = torch.tensor([[1, 0], [0, -1]], dtype=CDTYPE) / 2
-
-    SdotS = (oe.contract("ij,kl->ijkl", Sx, Sx)
-           + oe.contract("ij,kl->ijkl", Sy, Sy)
-           + oe.contract("ij,kl->ijkl", Sz, Sz))
+    SdotS = torch.tensor(oe.contract("ij,kl->ijkl", Splus, Sminus) * 0.5
+                        +oe.contract("ij,kl->ijkl", Sminus, Splus) * 0.5
+                        +oe.contract("ij,kl->ijkl", Sz, Sz), dtype=RDTYPE)
     return J * SdotS
 
 

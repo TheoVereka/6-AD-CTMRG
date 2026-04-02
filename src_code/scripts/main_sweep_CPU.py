@@ -1,5 +1,17 @@
 #!/usr/bin/env python3
 
+# ── glibc malloc tuning (MUST be before any heavy imports) ────────────────────
+# Without this, freed intermediate tensors stay in glibc arenas and RSS
+# grows 10-100× larger than the actual live tensors.  These mallopt calls
+# force allocations ≥ 64 KB to use mmap (returned to OS on free) and limit
+# arenas to 2 (less fragmentation).
+import ctypes as _ctypes
+_libc = _ctypes.CDLL(None)
+_libc.mallopt(_ctypes.c_int(-3), _ctypes.c_int(65536))   # M_MMAP_THRESHOLD  = 64 KB
+_libc.mallopt(_ctypes.c_int(-1), _ctypes.c_int(0))       # M_TRIM_THRESHOLD  = 0 (trim eagerly)
+_libc.mallopt(_ctypes.c_int(-8), _ctypes.c_int(2))       # M_ARENA_MAX       = 2
+del _libc
+
 # ── Sweep control ─────────────────────────────────────────────────────────────
 
 D_BOND_LIST = [2,3, 4]
@@ -93,7 +105,7 @@ import os
 import sys
 import time
 
-memory_diagn = False
+memory_diagn = True
 
 # ── CPU threading ─────────────────────────────────────────────────────────────
 # MUST be set BEFORE importing NumPy / PyTorch / MKL — they read these at init.
@@ -179,11 +191,11 @@ TOTAL_BUDGET_HOURS = 1.45
 
 
 
-# Default complex dtype — updated to complex128 by --double / USE_DOUBLE_PRECISION.
+# Default complex dtype — updated to float64 by --double / USE_DOUBLE_PRECISION.
 # Python functions look up globals at call time, so build_heisenberg_H(),
 # pad_tensor(), and optimize_at_chi() all see the updated value after main()
 # calls set_dtype() and reassigns CDTYPE.
-CDTYPE: torch.dtype = torch.complex64
+CDTYPE: torch.dtype = torch.float32
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║                  ALL TUNABLE PARAMETERS — EDIT HERE                     ║
@@ -192,9 +204,9 @@ CDTYPE: torch.dtype = torch.complex64
 # ── Precision ─────────────────────────────────────────────────────────────────
 
 USE_DOUBLE_PRECISION = True
-#   False → complex64  / float32 (default): fastest on both CPU (Intel MKL)
+#   False → float32  / float32 (default): fastest on both CPU (Intel MKL)
 #            and CUDA (fp32 tensor cores give full throughput).
-#   True  → complex128 / float64: double precision.
+#   True  → float64 / float64: double precision.
 #            CPU (Intel MKL): float64 is native, same throughput, 2× RAM.
 #            CUDA: 2–4× slower on consumer GPUs (no fp64 tensor cores).
 #   Overrideable at runtime: --double CLI flag takes precedence.
@@ -345,7 +357,7 @@ RAM_SAFETY_GB = 0.4
 #   Minimum free RAM that must remain available before attempting a (D, chi)
 #   level.  If free_RAM < peak_estimate + RAM_SAFETY_GB, the level is skipped
 #   with a warning.  Peak memory estimate per CTMRG step: 3 corners × 4×
-#   SVD workspace × (chi·D²)² × 8 bytes (complex64).  Increase if OOM.
+#   SVD workspace × (chi·D²)² × 8 bytes (float32).  Increase if OOM.
 
 # ── Physical model ────────────────────────────────────────────────────────────
 
@@ -833,11 +845,11 @@ def optimize_at_chi(
             'C32CB': float(torch.linalg.norm(C32CB.detach()).item()),
             'C13ED': float(torch.linalg.norm(C13ED.detach()).item()),
             'Tr_rho_1_re': float(tr_rho_1.real.detach().item()),
-            'Tr_rho_1_im': float(tr_rho_1.imag.detach().item()),
+            #'Tr_rho_1_im': float(tr_rho_1.imag.detach().item()),
             'Tr_rho_2_re': float(tr_rho_2.real.detach().item()),
-            'Tr_rho_2_im': float(tr_rho_2.imag.detach().item()),
+            #'Tr_rho_2_im': float(tr_rho_2.imag.detach().item()),
             'Tr_rho_3_re': float(tr_rho_3.real.detach().item()),
-            'Tr_rho_3_im': float(tr_rho_3.imag.detach().item()),
+            #'Tr_rho_3_im': float(tr_rho_3.imag.detach().item()),
         }
         return loss, int(ctm_steps), corner_norms
 
@@ -1190,7 +1202,7 @@ def main():
         help='Gaussian noise amplitude when padding tensors for D→D+1 (= PAD_NOISE).')
     parser.add_argument(
         '--double', action='store_true', default=USE_DOUBLE_PRECISION,
-        help='Use float64/complex128 everywhere (default: float32/complex64). '
+        help='Use float64/float64 everywhere (default: float32/float32). '
              'Same throughput on CPU/MKL; 2–4× slower on CUDA consumer GPUs.')
     parser.add_argument(
         '--optimizer', choices=['lbfgs', 'adam'], default=OPTIMIZER,
@@ -1205,7 +1217,7 @@ def main():
     args = parser.parse_args()
 
     # ── Precision + optimizer setup ───────────────────────────────────────────
-    CDTYPE = torch.complex128 if args.double else torch.complex64
+    CDTYPE = torch.float64 if args.double else torch.float32
     set_dtype(args.double)
     OPTIMIZER = args.optimizer
     # Only *enable* the flag from the CLI; never let the argparse default (False)
