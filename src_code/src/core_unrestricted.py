@@ -827,6 +827,8 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
 
 
     U,S,Vh = torch.linalg.svd(torch.mm(R1,R2.T), full_matrices=False)
+    U=U[:,:chi]
+    Vh=Vh[:chi,:]
     
 
     
@@ -898,6 +900,8 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     R2 = torch.mm(matC21,matC13)
     #U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
     U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T), full_matrices=False)
+    U=U[:,:chi]
+    Vh=Vh[:chi,:]
     
 
     #truncUh = U[:,:chi].conj().T
@@ -916,6 +920,8 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     R2 = torch.mm(matC32,matC21)
     #U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
     U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T), full_matrices=False)
+    U=U[:,:chi]
+    Vh=Vh[:chi,:]
 
 
 
@@ -1120,7 +1126,8 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         #Q1, R1 = torch.linalg.qr(matC21.T)
         #Q2, R2 = torch.linalg.qr(torch.mm(matC13,matC32))
         U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T), full_matrices=False)
-        
+        U=U[:,:chi]
+        Vh=Vh[:chi,:]
 
         sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
 
@@ -1134,6 +1141,8 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         #Q1, R1 = torch.linalg.qr(matC32.T)
         #Q2, R2 = torch.linalg.qr(torch.mm(matC21,matC13))
         U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T), full_matrices=False)
+        U=U[:,:chi]
+        Vh=Vh[:chi,:]
 
         sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
 
@@ -1147,6 +1156,8 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         #Q1, R1 = torch.linalg.qr(matC13.T)
         #Q2, R2 = torch.linalg.qr(torch.mm(matC32,matC21))
         U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T), full_matrices=False)
+        U=U[:,:chi]
+        Vh=Vh[:chi,:]
 
         sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
 
@@ -1245,6 +1256,8 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         
         else: 
             U, S, Vh = torch.linalg.svd(torch.mm(T1F.T,T3C), full_matrices=False)
+            U=U[:,:chi]
+            Vh=Vh[:chi,:]
             
             
 
@@ -1256,6 +1269,8 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
 
 
             U, S, Vh = torch.linalg.svd(torch.mm(T3D.T,T2A), full_matrices=False)
+            U=U[:,:chi]
+            Vh=Vh[:chi,:]
             
             sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
             
@@ -1265,6 +1280,8 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
 
 
             U, S, Vh = torch.linalg.svd(torch.mm(T2B.T,T1E), full_matrices=False)
+            U=U[:,:chi]
+            Vh=Vh[:chi,:]
             
             sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
 
