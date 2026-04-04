@@ -233,7 +233,7 @@ USE_DOUBLE_PRECISION = True
 #            CUDA: 2–4× slower on consumer GPUs (no fp64 tensor cores).
 #   Overrideable at runtime: --double CLI flag takes precedence.
 
-USE_REAL_TENSORS = False
+USE_REAL_TENSORS = True
 #   True  → TENSORDTYPE = RDTYPE  (real iPEPS tensors, S+/S- Hamiltonian).
 #   False → TENSORDTYPE = CDTYPE  (complex iPEPS tensors, Sx/Sy/Sz Hamiltonian).
 #   Overrideable at runtime: --complex CLI flag sets this to False.
@@ -266,7 +266,7 @@ USE_REAL_TENSORS = False
 #     3. Repeat until time budget is exhausted or OPT_CONV_THRESHOLD hit.
 #   This is the "cheap-environment" AD-CTMRG gradient scheme.
 
-LBFGS_MAX_ITER = 15
+LBFGS_MAX_ITER = 20
 #   Maximum L-BFGS sub-iterations per outer step (= max closure evaluations
 #   inside a single optimizer.step() call).  Each sub-iteration does a
 #   forward + backward pass through the energy formula.  30 gives a thorough
@@ -280,7 +280,7 @@ LBFGS_LR = 1.0
 #   and almost always correct.  Only change if you observe line-search
 #   failures or divergence.
 
-LBFGS_HISTORY = LBFGS_MAX_ITER
+LBFGS_HISTORY = 160
 #   Number of (s, y) curvature vector pairs retained for the L-BFGS inverse-
 #   Hessian approximation.  In our alternating-optimisation scheme the LBFGS
 #   instance is RECREATED from scratch at every outer step, so curvature pairs
@@ -374,7 +374,7 @@ CTM_CONV_THR = 2e-7
 
 # ── Checkpointing & memory guard ─────────────────────────────────────────────
 
-SAVE_EVERY = 20
+SAVE_EVERY = 10
 #   Frequency (in outer optimisation steps) at which the "latest" checkpoint
 #   is written.  The "best" checkpoint is written immediately whenever a new
 #   minimum energy is found, independently of SAVE_EVERY.  Lower = more I/O
@@ -409,9 +409,10 @@ N_BONDS = 9
 # ── Tensor initialisation & padding ──────────────────────────────────────────
 
 INIT_NOISE = 3e-3
-# abcdef init noise, not used.
+# abcdef init noise, NOTE: NOT USED.
 
 PAD_NOISE = 2e-1
+# NOTE: NOT USED, noise is divided by sqrt(new_D**3 * d_PHYS) to keep the total noise power per tensor constant as D grows.
 #   Gaussian noise amplitude added to the ZERO-PADDED new indices when
 #   enlarging tensors from D → D+1.  Non-zero noise breaks the symmetry of
 #   the padded zeros and prevents the optimiser from getting stuck in the
@@ -578,7 +579,7 @@ def pad_tensor(t: torch.Tensor, old_D: int, new_D: int,
     # automatically after one L-BFGS step completes.
     _core._USE_FULL_SVD = True
 
-    out = noise * torch.randn(new_D, new_D, new_D, d_PHYS, dtype=TENSORDTYPE)
+    out = torch.randn(new_D, new_D, new_D, d_PHYS, dtype=TENSORDTYPE)/torch.sqrt(torch.tensor(new_D**3 * d_PHYS, dtype=TENSORDTYPE))
     out[:old_D, :old_D, :old_D, :] += normalize_tensor(t.detach())*torch.sqrt(torch.tensor(old_D**3 * d_PHYS, dtype=TENSORDTYPE))
     
     return out
@@ -906,7 +907,9 @@ def optimize_at_chi(
         #   mem_mb()           → current RSS
         #   free_ram_gb()      → free system RAM (cluster OOM risk if < 1 GB)
         #   step               → current step number
-        if memory_diagn: print(f"[MEM-C] RSS={mem_mb():.1f}MB, step={step} free={free_ram_gb()*1e3:.0f}MB")
+        if True and memory_diagn: 
+            print(f"[MEM-C] RSS={mem_mb():.1f}MB, step={step} free={free_ram_gb()*1e3:.0f}MB")
+            sys.stdout.flush()  # ensure the print appears before a potential OOM crash
 
         # # normalise (scale-redundancy fix, preserves requires_grad)
         # with torch.no_grad():
