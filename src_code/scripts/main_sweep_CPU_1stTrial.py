@@ -907,7 +907,7 @@ def optimize_at_chi(
         #   mem_mb()           → current RSS
         #   free_ram_gb()      → free system RAM (cluster OOM risk if < 1 GB)
         #   step               → current step number
-        if True and memory_diagn: 
+        if memory_diagn: 
             print(f"[MEM-C] RSS={mem_mb():.1f}MB, step={step} free={free_ram_gb()*1e3:.0f}MB")
             sys.stdout.flush()  # ensure the print appears before a potential OOM crash
 

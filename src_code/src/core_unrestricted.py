@@ -411,7 +411,7 @@ class SVD_PROPACK(torch.autograd.Function):
         # print(f"Performing SVD with k={k}, k_extra={k_extra}, rel_cutoff={rel_cutoff.item()}, m_dim={m_dim}, n_dim={n_dim}, k_total={k_total}")
 
 
-        if not use_full_svd:  # Partial (randomized) SVD — fast but can blow up
+        if False and not use_full_svd:  # Partial (randomized) SVD — fast but can blow up
             #print("Trunc", end=' ')
             matmul = _utils.matmul
 
@@ -826,9 +826,13 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
 
 
 
-    U,S,Vh = torch.linalg.svd(torch.mm(R1,R2.T), full_matrices=False)
-    U=U[:,:chi]
-    Vh=Vh[:chi,:]
+    U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
+                    chi_extra=round(2*np.sqrt(D_squared)),
+                    rel_cutoff=1e-10,
+                    v0=None,
+                    keep_multiplets=False,
+                    abs_tol=1e-14,
+                    eps_multiplet=1e-10)
     
 
     
@@ -875,7 +879,7 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
 ###############################
 
 
-    P21My = torch.mm( R2.T ,torch.mm( Vh.conj().T , sqrtInvTruncS ))
+    P21My = torch.mm( R2.T ,torch.mm( V , sqrtInvTruncS ))
     P32yM = torch.mm(torch.mm( sqrtInvTruncS , U.conj().T ), R1 )
 
     #almost_identity = torch.mm(P21My,P32yM)
@@ -899,16 +903,20 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     R1 = matC32.T
     R2 = torch.mm(matC21,matC13)
     #U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
-    U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T), full_matrices=False)
-    U=U[:,:chi]
-    Vh=Vh[:chi,:]
+    U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
+                    chi_extra=round(2*np.sqrt(D_squared)),
+                    rel_cutoff=1e-10,
+                    v0=None,
+                    keep_multiplets=False,
+                    abs_tol=1e-14,
+                    eps_multiplet=1e-10)
     
 
     #truncUh = U[:,:chi].conj().T
     #truncV = Vh[:chi,:].conj().T
     sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
 
-    P32Nz = torch.mm( R2.T ,torch.mm( Vh.conj().T , sqrtInvTruncS ))
+    P32Nz = torch.mm( R2.T ,torch.mm( V, sqrtInvTruncS ))
     P13zN = torch.mm(torch.mm( sqrtInvTruncS , U.conj().T ), R1 )
 
 
@@ -919,9 +927,13 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     R1 = matC13.T
     R2 = torch.mm(matC32,matC21)
     #U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
-    U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T), full_matrices=False)
-    U=U[:,:chi]
-    Vh=Vh[:chi,:]
+    U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
+                    chi_extra=round(2*np.sqrt(D_squared)),
+                    rel_cutoff=1e-10,
+                    v0=None,
+                    keep_multiplets=False,
+                    abs_tol=1e-14,
+                    eps_multiplet=1e-10)
 
 
 
@@ -930,7 +942,7 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     #truncV = Vh[:chi,:].conj().T
     sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
 
-    P13Lx = torch.mm( R2.T ,torch.mm( Vh.conj().T , sqrtInvTruncS ))
+    P13Lx = torch.mm( R2.T ,torch.mm( V, sqrtInvTruncS ))
     P21xL = torch.mm(torch.mm( sqrtInvTruncS , U.conj().T ), R1 )
 
 
@@ -1125,13 +1137,18 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         
         #Q1, R1 = torch.linalg.qr(matC21.T)
         #Q2, R2 = torch.linalg.qr(torch.mm(matC13,matC32))
-        U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T), full_matrices=False)
-        U=U[:,:chi]
-        Vh=Vh[:chi,:]
+        U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
+                        chi_extra=round(2*np.sqrt(D_squared)),
+                        rel_cutoff=1e-10,
+                        v0=None,
+                        keep_multiplets=False,
+                        abs_tol=1e-14,
+                        eps_multiplet=1e-10)
+        
 
         sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
 
-        P21My = torch.mm( R2.T ,torch.mm( Vh.conj().T , sqrtInvTruncS ))
+        P21My = torch.mm( R2.T ,torch.mm( V , sqrtInvTruncS ))
         P32yM = torch.mm(torch.mm( sqrtInvTruncS , U.conj().T ), R1 )
 
 
@@ -1140,13 +1157,17 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
 
         #Q1, R1 = torch.linalg.qr(matC32.T)
         #Q2, R2 = torch.linalg.qr(torch.mm(matC21,matC13))
-        U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T), full_matrices=False)
-        U=U[:,:chi]
-        Vh=Vh[:chi,:]
+        U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
+                        chi_extra=round(2*np.sqrt(D_squared)),
+                        rel_cutoff=1e-10,
+                        v0=None,
+                        keep_multiplets=False,
+                        abs_tol=1e-14,
+                        eps_multiplet=1e-10)
 
         sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
 
-        P32Nz = torch.mm( R2.T ,torch.mm( Vh.conj().T , sqrtInvTruncS ))
+        P32Nz = torch.mm( R2.T ,torch.mm( V , sqrtInvTruncS ))
         P13zN = torch.mm(torch.mm( sqrtInvTruncS , U.conj().T ), R1 )
 
 
@@ -1155,13 +1176,17 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
 
         #Q1, R1 = torch.linalg.qr(matC13.T)
         #Q2, R2 = torch.linalg.qr(torch.mm(matC32,matC21))
-        U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T), full_matrices=False)
-        U=U[:,:chi]
-        Vh=Vh[:chi,:]
+        U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
+                        chi_extra=round(2*np.sqrt(D_squared)),
+                        rel_cutoff=1e-10,
+                        v0=None,
+                        keep_multiplets=False,
+                        abs_tol=1e-14,
+                        eps_multiplet=1e-10)
 
         sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
 
-        P13Lx = torch.mm( R2.T ,torch.mm( Vh.conj().T , sqrtInvTruncS ))
+        P13Lx = torch.mm( R2.T ,torch.mm( V , sqrtInvTruncS ))
         P21xL = torch.mm(torch.mm( sqrtInvTruncS , U.conj().T ), R1 )
 
 
@@ -1255,38 +1280,50 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
             T2B = T2B.conj().T * sqrt_svN.unsqueeze(1)
         
         else: 
-            U, S, Vh = torch.linalg.svd(torch.mm(T1F.T,T3C), full_matrices=False)
-            U=U[:,:chi]
-            Vh=Vh[:chi,:]
+            U, S, V = truncated_svd_propack(torch.mm(T1F.T,T3C), chi,
+                        chi_extra=round(2*np.sqrt(D_squared)),
+                        rel_cutoff=1e-10,
+                        v0=None,
+                        keep_multiplets=False,
+                        abs_tol=1e-14,
+                        eps_multiplet=1e-10)
             
             
 
             sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
 
             T1Fold = T1F
-            T1F = torch.mm((torch.mm(T3C, torch.mm(Vh.conj().T, sqrtInvTruncS))).T, T1F)
+            T1F = torch.mm((torch.mm(T3C, torch.mm(V, sqrtInvTruncS))).T, T1F)
             T3C = torch.mm(torch.mm( torch.mm(sqrtInvTruncS, U.conj().T), T1Fold.T), T3C)
 
 
-            U, S, Vh = torch.linalg.svd(torch.mm(T3D.T,T2A), full_matrices=False)
-            U=U[:,:chi]
-            Vh=Vh[:chi,:]
+            U, S, V = truncated_svd_propack(torch.mm(T3D.T,T2A), chi,
+                        chi_extra=round(2*np.sqrt(D_squared)),
+                        rel_cutoff=1e-10,
+                        v0=None,
+                        keep_multiplets=False,
+                        abs_tol=1e-14,
+                        eps_multiplet=1e-10)
             
             sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
             
             T3Dold = T3D
-            T3D = torch.mm((torch.mm(T2A, torch.mm(Vh.conj().T, sqrtInvTruncS))).T, T3D)
+            T3D = torch.mm((torch.mm(T2A, torch.mm(V, sqrtInvTruncS))).T, T3D)
             T2A = torch.mm(torch.mm( torch.mm(sqrtInvTruncS, U.conj().T), T3Dold.T), T2A)
 
 
-            U, S, Vh = torch.linalg.svd(torch.mm(T2B.T,T1E), full_matrices=False)
-            U=U[:,:chi]
-            Vh=Vh[:chi,:]
+            U, S, V = truncated_svd_propack(torch.mm(T2B.T,T1E), chi,
+                        chi_extra=round(2*np.sqrt(D_squared)),
+                        rel_cutoff=1e-10,
+                        v0=None,
+                        keep_multiplets=False,
+                        abs_tol=1e-14,
+                        eps_multiplet=1e-10)
             
             sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
 
             T2Bold = T2B
-            T2B = torch.mm((torch.mm(T1E, torch.mm(Vh.conj().T, sqrtInvTruncS))).T, T2B)
+            T2B = torch.mm((torch.mm(T1E, torch.mm(V, sqrtInvTruncS))).T, T2B)
             T1E = torch.mm(torch.mm( torch.mm(sqrtInvTruncS, U.conj().T), T2Bold.T), T1E)
             
 

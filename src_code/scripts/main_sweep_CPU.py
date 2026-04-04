@@ -246,7 +246,7 @@ USE_REAL_TENSORS = True
 #     3. Repeat until time budget is exhausted or OPT_CONV_THRESHOLD hit.
 #   This is the "cheap-environment" AD-CTMRG gradient scheme.
 
-LBFGS_MAX_ITER = 15
+LBFGS_MAX_ITER = 20
 #   Maximum L-BFGS sub-iterations per outer step (= max closure evaluations
 #   inside a single optimizer.step() call).  Each sub-iteration does a
 #   forward + backward pass through the energy formula.  30 gives a thorough
@@ -260,7 +260,7 @@ LBFGS_LR = 1.0
 #   and almost always correct.  Only change if you observe line-search
 #   failures or divergence.
 
-LBFGS_HISTORY = LBFGS_MAX_ITER
+LBFGS_HISTORY = 100
 #   Number of (s, y) curvature vector pairs retained for the L-BFGS inverse-
 #   Hessian approximation.  In our alternating-optimisation scheme the LBFGS
 #   instance is RECREATED from scratch at every outer step, so curvature pairs
@@ -337,7 +337,7 @@ ENV_IDENTITY_INIT = False
 
 
 
-CTM_MAX_STEPS = 60
+CTM_MAX_STEPS = 50
 #   Hard cap on CTMRG iterations per environment convergence call.
 #   With the singular-value convergence criterion and CTM_CONV_THR=1e-3,
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
@@ -354,7 +354,7 @@ CTM_CONV_THR = 2e-7
 
 # ── Checkpointing & memory guard ─────────────────────────────────────────────
 
-SAVE_EVERY = 20
+SAVE_EVERY = 10
 #   Frequency (in outer optimisation steps) at which the "latest" checkpoint
 #   is written.  The "best" checkpoint is written immediately whenever a new
 #   minimum energy is found, independently of SAVE_EVERY.  Lower = more I/O
@@ -389,7 +389,7 @@ N_BONDS = 9
 # ── Tensor initialisation & padding ──────────────────────────────────────────
 
 INIT_NOISE = 3e-3
-# abcdef init noise, not used.
+# abcdef init noise, NOTE: NOT USED.
 
 PAD_NOISE = 2e-1
 #   Gaussian noise amplitude added to the ZERO-PADDED new indices when
