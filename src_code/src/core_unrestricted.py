@@ -95,7 +95,7 @@ def mem_mb() -> float:
 
 
 
-def safe_inverse(x, epsilon=1e-10):
+def safe_inverse(x, epsilon=1e-12):
     return x/(x**2 + epsilon**2)
     
 def safe_inverse_2(x, epsilon):
@@ -248,7 +248,7 @@ def normalize_tensor(tensor, *, rtol: float | None = None, atol: float | None = 
 
     # Choose dtype-appropriate default tolerances.
     # For float32 (norm is float32), norms around 1 typically fluctuate at ~1e-7,
-    # so a strict 1e-10 check would *keep renormalizing* and introduce drift.
+    # so a strict 1e-12 check would *keep renormalizing* and introduce drift.
     if rtol is None or atol is None:
         if norm.dtype == torch.float32:
             default_rtol = 4e-7
@@ -316,11 +316,11 @@ def normalize_single_layer_tensor_for_double_layer(
     # Choose dtype-appropriate default tolerances.
     if rtol is None or atol is None:
         if dl_norm.dtype == torch.float32:
-            default_rtol = 4e-7
-            default_atol = 4e-7
+            default_rtol = 2e-7
+            default_atol = 2e-7
         else:
-            default_rtol = 1e-13
-            default_atol = 1e-13
+            default_rtol = 5e-14
+            default_atol = 5e-14
         rtol = default_rtol if rtol is None else rtol
         atol = default_atol if atol is None else atol
 
@@ -621,7 +621,7 @@ class SVD_PROPACK(torch.autograd.Function):
 
 def truncated_svd_propack(M, chi, chi_extra, rel_cutoff, v0=None,
     abs_tol=1.0e-14,  keep_multiplets=False, \
-    eps_multiplet=1e-10, ):
+    eps_multiplet=1e-12, ):
     r"""
     :param M: square matrix of dimensions :math:`N \times N`
     :param chi: desired maximal rank :math:`\chi`
@@ -677,11 +677,11 @@ use of truncate_svd_propack:
 
 truncated_svd_propack(M, chi,
                     chi_extra=1,
-                    rel_cutoff=1e-10,
+                    rel_cutoff=1e-12,
                     v0=None,
                     keep_multiplets=False,
                     abs_tol=1e-14,
-                    eps_multiplet=1e-10)  # returns U, S, V of M= USV^\dag
+                    eps_multiplet=1e-12)  # returns U, S, V of M= USV^\dag
 
 """
 
@@ -828,11 +828,11 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
 
     U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
                     chi_extra=round(2*np.sqrt(D_squared)),
-                    rel_cutoff=1e-10,
+                    rel_cutoff=1e-12,
                     v0=None,
                     keep_multiplets=False,
                     abs_tol=1e-14,
-                    eps_multiplet=1e-10)
+                    eps_multiplet=1e-12)
     
 
     
@@ -905,11 +905,11 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     #U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
     U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
                     chi_extra=round(2*np.sqrt(D_squared)),
-                    rel_cutoff=1e-10,
+                    rel_cutoff=1e-12,
                     v0=None,
                     keep_multiplets=False,
                     abs_tol=1e-14,
-                    eps_multiplet=1e-10)
+                    eps_multiplet=1e-12)
     
 
     #truncUh = U[:,:chi].conj().T
@@ -929,11 +929,11 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     #U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
     U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
                     chi_extra=round(2*np.sqrt(D_squared)),
-                    rel_cutoff=1e-10,
+                    rel_cutoff=1e-12,
                     v0=None,
                     keep_multiplets=False,
                     abs_tol=1e-14,
-                    eps_multiplet=1e-10)
+                    eps_multiplet=1e-12)
 
 
 
@@ -1139,11 +1139,11 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         #Q2, R2 = torch.linalg.qr(torch.mm(matC13,matC32))
         U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
                         chi_extra=round(2*np.sqrt(D_squared)),
-                        rel_cutoff=1e-10,
+                        rel_cutoff=1e-12,
                         v0=None,
                         keep_multiplets=False,
                         abs_tol=1e-14,
-                        eps_multiplet=1e-10)
+                        eps_multiplet=1e-12)
         
 
         sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
@@ -1159,11 +1159,11 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         #Q2, R2 = torch.linalg.qr(torch.mm(matC21,matC13))
         U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
                         chi_extra=round(2*np.sqrt(D_squared)),
-                        rel_cutoff=1e-10,
+                        rel_cutoff=1e-12,
                         v0=None,
                         keep_multiplets=False,
                         abs_tol=1e-14,
-                        eps_multiplet=1e-10)
+                        eps_multiplet=1e-12)
 
         sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
 
@@ -1178,11 +1178,11 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         #Q2, R2 = torch.linalg.qr(torch.mm(matC32,matC21))
         U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
                         chi_extra=round(2*np.sqrt(D_squared)),
-                        rel_cutoff=1e-10,
+                        rel_cutoff=1e-12,
                         v0=None,
                         keep_multiplets=False,
                         abs_tol=1e-14,
-                        eps_multiplet=1e-10)
+                        eps_multiplet=1e-12)
 
         sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
 
@@ -1237,94 +1237,51 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         T3D = oe.contract("LXg,xX->Lxg",T3D,P21xL.reshape(chi, D_squared*D_squared),optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)
         T1E = oe.contract("NZa,Zz->Nza",T1E,P32Nz.reshape(D_squared*D_squared, chi),optimize=[(0,1)],backend='torch').reshape(D_squared*D_squared,chi*D_squared)  
 
-
-
-
+        U, S, V = truncated_svd_propack(torch.mm(T1F.T,T3C), chi,
+                    chi_extra=round(2*np.sqrt(D_squared)),
+                    rel_cutoff=1e-12,
+                    v0=None,
+                    keep_multiplets=False,
+                    abs_tol=1e-14,
+                    eps_multiplet=1e-12)
         
-        #the other side(LMN) projection of Ts
-
-        if False:
-            out2Ain3D = torch.mm(T2A.T, T3D)
-            out3Cin1F = torch.mm(T3C.T, T1F)
-            out1Ein2B = torch.mm(T1E.T, T2B)
-            T2A, svL, T3D = truncated_svd_propack(out2Ain3D, chi,
-                        chi_extra=1,
-                        rel_cutoff=1e-10,
-                        v0=None,
-                        keep_multiplets=False,
-                        abs_tol=1e-14,
-                        eps_multiplet=1e-10)
-            T3C, svM, T1F = truncated_svd_propack(out3Cin1F, chi,
-                        chi_extra=1,
-                        rel_cutoff=1e-10,
-                        v0=None,
-                        keep_multiplets=False,
-                        abs_tol=1e-14,
-                        eps_multiplet=1e-10)
-            T1E, svN, T2B = truncated_svd_propack(out1Ein2B, chi,
-                        chi_extra=1,
-                        rel_cutoff=1e-10,
-                        v0=None,
-                        keep_multiplets=False,
-                        abs_tol=1e-14,
-                        eps_multiplet=1e-10)
-
-            sqrt_svL = torch.sqrt(svL)
-            sqrt_svM = torch.sqrt(svM)
-            sqrt_svN = torch.sqrt(svN)
-            T2A = T2A.T * sqrt_svL.unsqueeze(1)
-            T3D = T3D.conj().T * sqrt_svL.unsqueeze(1)
-            T3C = T3C.T * sqrt_svM.unsqueeze(1)
-            T1F = T1F.conj().T * sqrt_svM.unsqueeze(1)
-            T1E = T1E.T * sqrt_svN.unsqueeze(1)
-            T2B = T2B.conj().T * sqrt_svN.unsqueeze(1)
         
-        else: 
-            U, S, V = truncated_svd_propack(torch.mm(T1F.T,T3C), chi,
-                        chi_extra=round(2*np.sqrt(D_squared)),
-                        rel_cutoff=1e-10,
-                        v0=None,
-                        keep_multiplets=False,
-                        abs_tol=1e-14,
-                        eps_multiplet=1e-10)
-            
-            
 
-            sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
+        sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
 
-            T1Fold = T1F
-            T1F = torch.mm((torch.mm(T3C, torch.mm(V, sqrtInvTruncS))).T, T1F)
-            T3C = torch.mm(torch.mm( torch.mm(sqrtInvTruncS, U.conj().T), T1Fold.T), T3C)
+        old = T1F
+        T1F = torch.mm((torch.mm(T3C, torch.mm(V, sqrtInvTruncS))).T, T1F)
+        T3C = torch.mm(torch.mm( torch.mm(sqrtInvTruncS, U.conj().T), old.T), T3C)
 
 
-            U, S, V = truncated_svd_propack(torch.mm(T3D.T,T2A), chi,
-                        chi_extra=round(2*np.sqrt(D_squared)),
-                        rel_cutoff=1e-10,
-                        v0=None,
-                        keep_multiplets=False,
-                        abs_tol=1e-14,
-                        eps_multiplet=1e-10)
-            
-            sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
-            
-            T3Dold = T3D
-            T3D = torch.mm((torch.mm(T2A, torch.mm(V, sqrtInvTruncS))).T, T3D)
-            T2A = torch.mm(torch.mm( torch.mm(sqrtInvTruncS, U.conj().T), T3Dold.T), T2A)
+        U, S, V = truncated_svd_propack(torch.mm(T3D.T,T2A), chi,
+                    chi_extra=round(2*np.sqrt(D_squared)),
+                    rel_cutoff=1e-12,
+                    v0=None,
+                    keep_multiplets=False,
+                    abs_tol=1e-14,
+                    eps_multiplet=1e-12)
+        
+        sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
+        
+        old = T3D
+        T3D = torch.mm((torch.mm(T2A, torch.mm(V, sqrtInvTruncS))).T, T3D)
+        T2A = torch.mm(torch.mm( torch.mm(sqrtInvTruncS, U.conj().T), old.T), T2A)
 
 
-            U, S, V = truncated_svd_propack(torch.mm(T2B.T,T1E), chi,
-                        chi_extra=round(2*np.sqrt(D_squared)),
-                        rel_cutoff=1e-10,
-                        v0=None,
-                        keep_multiplets=False,
-                        abs_tol=1e-14,
-                        eps_multiplet=1e-10)
-            
-            sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
+        U, S, V = truncated_svd_propack(torch.mm(T2B.T,T1E), chi,
+                    chi_extra=round(2*np.sqrt(D_squared)),
+                    rel_cutoff=1e-12,
+                    v0=None,
+                    keep_multiplets=False,
+                    abs_tol=1e-14,
+                    eps_multiplet=1e-12)
+        
+        sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
 
-            T2Bold = T2B
-            T2B = torch.mm((torch.mm(T1E, torch.mm(V, sqrtInvTruncS))).T, T2B)
-            T1E = torch.mm(torch.mm( torch.mm(sqrtInvTruncS, U.conj().T), T2Bold.T), T1E)
+        old = T2B
+        T2B = torch.mm((torch.mm(T1E, torch.mm(V, sqrtInvTruncS))).T, T2B)
+        T1E = torch.mm(torch.mm( torch.mm(sqrtInvTruncS, U.conj().T), old.T), T1E)
             
 
 

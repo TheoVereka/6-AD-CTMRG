@@ -3,11 +3,11 @@
 
 
 
-#NOTE:N_cores, validate_chi, TOTAL_BUDGET_HOURS = 9999
+#NOTE:N_cores, 
 # # sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 # _default_outdir = os.path.join('/scratch/chye/1stTrialRun',
 #  f'6tensors_{run_ts}')
-# sys.stdout.flush()
+# sys.stdout.flush()*3
 
 
 
@@ -48,6 +48,13 @@ DEFAULT_CHI_SCHEDULES = {
     10:[101,111,121],
     11:[122,133,144],
 }
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Time Budget
+# ══════════════════════════════════════════════════════════════════════════════
+
+TOTAL_BUDGET_HOURS = 9999
+
 
 
 
@@ -141,7 +148,7 @@ memory_diagn = False
 #
 # Use os.environ.setdefault so a user can still override from the shell:
 #   OMP_NUM_THREADS=2 python scripts/main_sweep_CPU.py   ← respected
-_N_PHYSICAL_CORES = 16
+_N_PHYSICAL_CORES = 35
 os.environ.setdefault("OMP_NUM_THREADS", str(_N_PHYSICAL_CORES))
 os.environ.setdefault("MKL_NUM_THREADS", str(_N_PHYSICAL_CORES))
 # Prevent MKL from silently reducing thread count when it detects nested
@@ -199,11 +206,6 @@ from core_unrestricted import (
     get_trunc_diag_buffer,
 )
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Time Budget
-# ══════════════════════════════════════════════════════════════════════════════
-
-TOTAL_BUDGET_HOURS = 9999
 
 # Total wall-clock time for the entire sweep.  The sweep is designed to run
 # for a fixed time rather than a fixed number of steps, so that results at
@@ -266,7 +268,7 @@ USE_REAL_TENSORS = True
 #     3. Repeat until time budget is exhausted or OPT_CONV_THRESHOLD hit.
 #   This is the "cheap-environment" AD-CTMRG gradient scheme.
 
-LBFGS_MAX_ITER = 20
+LBFGS_MAX_ITER = 15
 #   Maximum L-BFGS sub-iterations per outer step (= max closure evaluations
 #   inside a single optimizer.step() call).  Each sub-iteration does a
 #   forward + backward pass through the energy formula.  30 gives a thorough
@@ -280,7 +282,7 @@ LBFGS_LR = 1.0
 #   and almost always correct.  Only change if you observe line-search
 #   failures or divergence.
 
-LBFGS_HISTORY = 160
+LBFGS_HISTORY = 150
 #   Number of (s, y) curvature vector pairs retained for the L-BFGS inverse-
 #   Hessian approximation.  In our alternating-optimisation scheme the LBFGS
 #   instance is RECREATED from scratch at every outer step, so curvature pairs
@@ -290,17 +292,17 @@ LBFGS_HISTORY = 160
 #   and wastes nothing.  Old values like 50–100 were appropriate for classical
 #   L-BFGS that runs continuously; they do not apply here.
 
-OPT_TOL_GRAD = 1e-9
+OPT_TOL_GRAD = 1e-8
 #   L-BFGS inner convergence criterion on the infinity-norm of the gradient:
 #   the sub-iteration loop exits early if  ||∇loss||_∞ < OPT_TOL_GRAD.
 #   This is an inner stopping rule inside a single optimizer.step() call.
 
-OPT_TOL_CHANGE = 3e-9
+OPT_TOL_CHANGE = 3e-8
 #   L-BFGS inner convergence criterion on consecutive loss change:
 #   sub-iteration exits if  |L_{k+1} – L_k| < OPT_TOL_CHANGE.
 #   Set tighter than OPT_TOL_GRAD to catch near-flat regions.
 
-OPT_CONV_THRESHOLD = 1e-8
+OPT_CONV_THRESHOLD = 1e-7
 # Outer-loop early-stop: disabled (= 0).
 # The outer delta |loss(k) - loss(k-1)| compares two L-BFGS final values that
 # used DIFFERENT CTMRG environments, so even near a true minimum the delta is
@@ -357,13 +359,13 @@ ENV_IDENTITY_INIT = False
 
 
 
-CTM_MAX_STEPS = 50
+CTM_MAX_STEPS = 40
 #   Hard cap on CTMRG iterations per environment convergence call.
 #   With the singular-value convergence criterion and CTM_CONV_THR=1e-3,
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
 #   ansatz ~4 steps, 6-tensor ~40 steps).  90 is a safe upper bound.
 
-CTM_CONV_THR = 2e-7
+CTM_CONV_THR = 1e-7
 #   CTMRG convergence threshold: stop iterating when the max change in
 #   normalised corner singular values between consecutive steps is below
 #   this value.  The convergence criterion compares the spectra of all 9
@@ -412,7 +414,6 @@ INIT_NOISE = 3e-3
 # abcdef init noise, NOTE: NOT USED.
 
 PAD_NOISE = 2e-1
-# NOTE: NOT USED, noise is divided by sqrt(new_D**3 * d_PHYS) to keep the total noise power per tensor constant as D grows.
 #   Gaussian noise amplitude added to the ZERO-PADDED new indices when
 #   enlarging tensors from D → D+1.  Non-zero noise breaks the symmetry of
 #   the padded zeros and prevents the optimiser from getting stuck in the
@@ -579,7 +580,7 @@ def pad_tensor(t: torch.Tensor, old_D: int, new_D: int,
     # automatically after one L-BFGS step completes.
     _core._USE_FULL_SVD = True
 
-    out = torch.randn(new_D, new_D, new_D, d_PHYS, dtype=TENSORDTYPE)/torch.sqrt(torch.tensor(new_D**3 * d_PHYS, dtype=TENSORDTYPE))
+    out = noise * torch.randn(new_D, new_D, new_D, d_PHYS, dtype=TENSORDTYPE)
     out[:old_D, :old_D, :old_D, :] += normalize_tensor(t.detach())*torch.sqrt(torch.tensor(old_D**3 * d_PHYS, dtype=TENSORDTYPE))
     
     return out
@@ -833,7 +834,7 @@ def optimize_at_chi(
         #   tensor_mb(all28[3])                    → size of T1F (transfer tensor)
         #   all28[0].shape                         → C21CD corner shape
         #   sum(t.element_size()*t.nelement() for t in all28[:27]) / 1e6
-        if memory_diagn: print(f"[MEM-B] RSS={mem_mb():.1f}MB, {env_mem_report(all28, chi, D_bond)}")
+        #if memory_diagn: print(f"[MEM-B] RSS={mem_mb():.1f}MB, {env_mem_report(all28, chi, D_bond)}")
 
         (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
          C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
@@ -964,7 +965,7 @@ def optimize_at_chi(
                     # Debug Console queries when paused here:
                     #   mem_mb()                       → RSS at backward peak
                     #   a.grad.shape, tensor_mb(a.grad) → gradient tensor sizes
-                    if memory_diagn: print(f"[MEM-D] RSS={mem_mb():.1f}MB after backward")
+                    #if memory_diagn: print(f"[MEM-D] RSS={mem_mb():.1f}MB after backward")
                     # Guard against NaN/Inf gradients.
                     for p in (a, b, c, d, e, f):
                         if p.grad is not None:

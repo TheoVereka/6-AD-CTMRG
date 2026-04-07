@@ -1,14 +1,17 @@
+
 #!/usr/bin/env python3
+
+
 
 # ── Sweep control ─────────────────────────────────────────────────────────────
 
-D_BOND_LIST = [2,3, 4]
+D_BOND_LIST = [2,3, 4, 5, 6, 7, 8, 9, 10, 11]
 #   Ordered list of iPEPS virtual bond dimensions to sweep (outer loop).
 #   Each D is warm-started from the best tensors found at the previous D
 #   (zero-padded to the new size + PAD_NOISE Gaussian noise).
 
 
-DEFAULT_D_BUDGET_FRACS = {2:0.03, 3:0.45, 4:0.52}
+DEFAULT_D_BUDGET_FRACS = {2: 0.1, 3: 0.1, 4: 0.1, 5:0.1, 6:0.1, 7:0.1, 8:0.1, 9:0.1, 10:0.1, 11:0.1}
 #   Fraction of the total wall-clock budget allocated to each D_bond value.
 #   Normalised to sum=1 before use, so only the RATIOS matter.
 #   Rationale:
@@ -19,17 +22,30 @@ DEFAULT_D_BUDGET_FRACS = {2:0.03, 3:0.45, 4:0.52}
 #   values have genuinely different computational costs and scientific weight.
 #   Within each D, every chi level gets equal time (see below).
 
-DEFAULT_CHI_MAX = { 2:16, 3:81, 4: 80}
+DEFAULT_CHI_MAX = {2: 16, 3: 81, 4: 80, 5:9999, 6:9999, 7:9999, 8:9999, 9:9999, 10:9999, 11:9999}
 #   Largest chi to attempt for each D_bond.  Hard upper bound is D⁴
 #   (gives 16, 81, 256 for D=2,3,4).  We cap D=4 at 80 because chi >> 80
 #   requires too much RAM on a typical workstation and adds negligible accuracy.
 #   Increase if you have more memory; decrease if you hit OOM.
 
 DEFAULT_CHI_SCHEDULES = {
-    2: [5, 8, 12],       # , 20, 25] ← append to extend the schedule
-    3: [10, 17, 29],       # , 57, 81],  ← append to extend the schedule
-    4: [17, 29],           # , 40, 62, 80] ← append to extend the schedule
+    2: [5, 7, 9],
+    3: [10, 13, 16],       # , 57, 81],  ← append to extend the schedule
+    4: [17, 21, 25],           # , 40, 62, 80] ← append to extend the schedule
+    5: [26, 31, 36],
+    6: [37, 43, 49],
+    7: [50, 57, 64],
+    8: [65, 73, 81],
+    9: [82, 91, 100],
+    10:[101,111,121],
+    11:[122,133,144],
 }
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Time Budget
+# ══════════════════════════════════════════════════════════════════════════════
+
+TOTAL_BUDGET_HOURS = 9999
 
 
 
@@ -179,11 +195,6 @@ from core_unrestricted import (
     get_trunc_diag_buffer,
 )
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Time Budget
-# ══════════════════════════════════════════════════════════════════════════════
-
-TOTAL_BUDGET_HOURS = 1.45
 
 # Total wall-clock time for the entire sweep.  The sweep is designed to run
 # for a fixed time rather than a fixed number of steps, so that results at
@@ -246,7 +257,7 @@ USE_REAL_TENSORS = True
 #     3. Repeat until time budget is exhausted or OPT_CONV_THRESHOLD hit.
 #   This is the "cheap-environment" AD-CTMRG gradient scheme.
 
-LBFGS_MAX_ITER = 20
+LBFGS_MAX_ITER = 15
 #   Maximum L-BFGS sub-iterations per outer step (= max closure evaluations
 #   inside a single optimizer.step() call).  Each sub-iteration does a
 #   forward + backward pass through the energy formula.  30 gives a thorough
@@ -260,7 +271,7 @@ LBFGS_LR = 1.0
 #   and almost always correct.  Only change if you observe line-search
 #   failures or divergence.
 
-LBFGS_HISTORY = 100
+LBFGS_HISTORY = 150
 #   Number of (s, y) curvature vector pairs retained for the L-BFGS inverse-
 #   Hessian approximation.  In our alternating-optimisation scheme the LBFGS
 #   instance is RECREATED from scratch at every outer step, so curvature pairs
@@ -270,17 +281,17 @@ LBFGS_HISTORY = 100
 #   and wastes nothing.  Old values like 50–100 were appropriate for classical
 #   L-BFGS that runs continuously; they do not apply here.
 
-OPT_TOL_GRAD = 1e-9
+OPT_TOL_GRAD = 1e-8
 #   L-BFGS inner convergence criterion on the infinity-norm of the gradient:
 #   the sub-iteration loop exits early if  ||∇loss||_∞ < OPT_TOL_GRAD.
 #   This is an inner stopping rule inside a single optimizer.step() call.
 
-OPT_TOL_CHANGE = 3e-9
+OPT_TOL_CHANGE = 3e-8
 #   L-BFGS inner convergence criterion on consecutive loss change:
 #   sub-iteration exits if  |L_{k+1} – L_k| < OPT_TOL_CHANGE.
 #   Set tighter than OPT_TOL_GRAD to catch near-flat regions.
 
-OPT_CONV_THRESHOLD = 1e-8
+OPT_CONV_THRESHOLD = 1e-7
 # Outer-loop early-stop: disabled (= 0).
 # The outer delta |loss(k) - loss(k-1)| compares two L-BFGS final values that
 # used DIFFERENT CTMRG environments, so even near a true minimum the delta is
@@ -337,13 +348,13 @@ ENV_IDENTITY_INIT = False
 
 
 
-CTM_MAX_STEPS = 50
+CTM_MAX_STEPS = 40
 #   Hard cap on CTMRG iterations per environment convergence call.
 #   With the singular-value convergence criterion and CTM_CONV_THR=1e-3,
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
 #   ansatz ~4 steps, 6-tensor ~40 steps).  90 is a safe upper bound.
 
-CTM_CONV_THR = 2e-7
+CTM_CONV_THR = 1e-7
 #   CTMRG convergence threshold: stop iterating when the max change in
 #   normalised corner singular values between consecutive steps is below
 #   this value.  The convergence criterion compares the spectra of all 9
@@ -516,7 +527,7 @@ def peak_ram_gb(chi: int, D_sq: int) -> float:
 
 def validate_chi(chi: int, D_bond: int, label: str = '') -> None:
     D_sq, D4 = D_bond ** 2, D_bond ** 4
-    if not (D_sq < chi <= D4):
+    if False and not (D_sq < chi <= D4):
         raise ValueError(
             f"{label}chi={chi} violates D²={D_sq} < chi ≤ D⁴={D4} "
             f"(D_bond={D_bond})."
@@ -812,7 +823,7 @@ def optimize_at_chi(
         #   tensor_mb(all28[3])                    → size of T1F (transfer tensor)
         #   all28[0].shape                         → C21CD corner shape
         #   sum(t.element_size()*t.nelement() for t in all28[:27]) / 1e6
-        if memory_diagn: print(f"[MEM-B] RSS={mem_mb():.1f}MB, {env_mem_report(all28, chi, D_bond)}")
+        #if memory_diagn: print(f"[MEM-B] RSS={mem_mb():.1f}MB, {env_mem_report(all28, chi, D_bond)}")
 
         (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
          C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
@@ -886,7 +897,8 @@ def optimize_at_chi(
         #   mem_mb()           → current RSS
         #   free_ram_gb()      → free system RAM (cluster OOM risk if < 1 GB)
         #   step               → current step number
-        if memory_diagn: print(f"[MEM-C] RSS={mem_mb():.1f}MB, step={step} free={free_ram_gb()*1e3:.0f}MB")
+        if memory_diagn: 
+            print(f"[MEM-C] RSS={mem_mb():.1f}MB, step={step} free={free_ram_gb()*1e3:.0f}MB")
 
         # # normalise (scale-redundancy fix, preserves requires_grad)
         # with torch.no_grad():
@@ -941,7 +953,7 @@ def optimize_at_chi(
                     # Debug Console queries when paused here:
                     #   mem_mb()                       → RSS at backward peak
                     #   a.grad.shape, tensor_mb(a.grad) → gradient tensor sizes
-                    if memory_diagn: print(f"[MEM-D] RSS={mem_mb():.1f}MB after backward")
+                    #if memory_diagn: print(f"[MEM-D] RSS={mem_mb():.1f}MB after backward")
                     # Guard against NaN/Inf gradients.
                     for p in (a, b, c, d, e, f):
                         if p.grad is not None:
