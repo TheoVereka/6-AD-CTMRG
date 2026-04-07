@@ -20,9 +20,6 @@ from scipy.sparse.linalg import aslinearoperator, svds
 from torch.utils.checkpoint import checkpoint as _ckpt
 
 
-#################################
-# TODO: GPU USE gesvd! -- Fisherman: https://journals.aps.org/prb/pdf/10.1103/PhysRevB.98.235148
-#################################
 
 
 
@@ -45,51 +42,14 @@ CDTYPE: torch.dtype = torch.complex128   # complex dtype for all tensors
 RDTYPE: torch.dtype = torch.float64      # real dtype (SVD singular values, norms)
 TENSORDTYPE: torch.dtype = torch.float64 # tensor dtype (real or complex)
 
-# Set to True to enable a runtime check inside trunc_rhoCCC that the three
-# SV sums (sum(sv32[:chi]), sum(sv13[:chi]), sum(sv21[:chi])) are nearly equal.
-# This is a physical consistency check; disable for production runs.
-DEBUG_CHECK_TRUNC_RHOCCC_SV_SUMS: bool = False
 
-# Set to True to enable truncation quality diagnostics: anti-Hermitian measures
-# of the three rho matrices and their full SV spectra are buffered on every
-# trunc_rhoCCC call and can be retrieved with get_trunc_diag_buffer().
-# Disable for production runs (adds minor overhead per truncation call).
-DEBUG_CHECK_TRUNCATION: bool = False
 
-# ── Truncation diagnostics buffer ────────────────────────────────────────────
-_trunc_diag_buffer: list[dict] = []
 
-# ── SVD full/partial control & gradient blowup detection ─────────────────────
+# ── SVD full/partial control ─────────────────────
 # When True, SVD_PROPACK uses full deterministic SVD (np.linalg.svd).
 # Set directly from the optimizer driver; cleared after one L-BFGS step.
 _USE_FULL_SVD: bool = False
 
-# Set to True by SVD_PROPACK.backward when max|dA| > _SVD_GRAD_BLOWUP_THRESHOLD.
-# Read and reset by the optimizer driver at the end of each outer step.
-_SVD_GRAD_BLOWUP_DETECTED: bool = False
-_SVD_GRAD_BLOWUP_MAX_VALUE: float = 0.0
-_SVD_GRAD_BLOWUP_THRESHOLD: float = 1e8
-
-
-def mem_mb() -> float:
-    """Return current process Resident Set Size (RSS) in MB.
-
-    Uses psutil when available; falls back to /proc/self/status (Linux).
-    Returns NaN when neither is available.
-    """
-    try:
-        import psutil
-        return psutil.Process().memory_info().rss / 1e6
-    except ImportError:
-        pass
-    try:
-        with open("/proc/self/status") as _fh:
-            for _line in _fh:
-                if _line.startswith("VmRSS:"):
-                    return int(_line.split()[1]) / 1e3
-    except OSError:
-        pass
-    return float('nan')
 
 
 
@@ -173,30 +133,7 @@ def _solve_fifth_term_svd(A, U, S, V, gu, gv, eps):
 
 
 
-def clear_trunc_diag_buffer() -> None:
-    """Clear the module-level truncation diagnostics buffer."""
-    global _trunc_diag_buffer
-    _trunc_diag_buffer.clear()
 
-
-def get_trunc_diag_buffer() -> list[dict]:
-    """Return a shallow copy of the truncation diagnostics buffer.
-
-    Each entry (one per trunc_rhoCCC call while DEBUG_CHECK_TRUNCATION is True)
-    is a dict with keys:
-        'anti_herm_rho32', 'anti_herm_rho13', 'anti_herm_rho21'  (float)
-            Anti-Hermitian measure  ||M - M†|| / 2 / ||M||.
-        'sv32', 'sv13', 'sv21'  (list[float])
-            Full singular-value spectrum for each rho (may be long for large chi).
-        'chi'  (int)  —  truncation cutoff index.
-    """
-    return list(_trunc_diag_buffer)
-
-
-def set_check_truncation(enabled: bool) -> None:
-    """Enable or disable truncation diagnostics buffering at runtime."""
-    global DEBUG_CHECK_TRUNCATION
-    DEBUG_CHECK_TRUNCATION = enabled
 
 
 def set_dtype(use_double: bool, use_real: bool = True) -> None:
@@ -225,7 +162,6 @@ def set_dtype(use_double: bool, use_real: bool = True) -> None:
         TENSORDTYPE = CDTYPE
 
 
-# for now only the case of ABCDEF, nearest neighbor, exact SVD, D^4 >= chi > D^2 .
 
 def normalize_tensor(tensor, *, rtol: float | None = None, atol: float | None = None):
     
@@ -605,13 +541,6 @@ class SVD_PROPACK(torch.autograd.Function):
             
 
 
-        # ── Gradient blowup detection (rSVD instability) ─────────────────────
-        global _SVD_GRAD_BLOWUP_DETECTED, _SVD_GRAD_BLOWUP_MAX_VALUE
-        _max_abs_dA = dA.abs().max().item()
-        #print(f"max|dA|={_max_abs_dA:.3e}", end=' ')
-        if _max_abs_dA > _SVD_GRAD_BLOWUP_THRESHOLD:
-            _SVD_GRAD_BLOWUP_DETECTED = True
-            _SVD_GRAD_BLOWUP_MAX_VALUE = max(_SVD_GRAD_BLOWUP_MAX_VALUE, _max_abs_dA)
 
         return dA, None, None, None, None, None
 
@@ -804,10 +733,6 @@ def abcdef_to_ABCDEF(a,b,c,d,e,f, D_squared:int):
 
 
 
-# All the deprecated function are not used at all!!!!!!!! 
-# No svd_fixed! No trunc_rhoCCC_deprecated!!!!! 
-# Stops trying to call these tested-to-be-even-more-unstable
-# functions than the bare torch.linalg.svd
 
 
 
@@ -1342,78 +1267,6 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
 
 
 
-
-def check_env_convergence_DEPRECATED(lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E, 
-                          nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, 
-                          lastC21EB, lastC32AD, lastC13CF, lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A, 
-                          nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A, 
-                          lastC21AF, lastC32CB, lastC13ED, lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C, 
-                          nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C,
-                          env_conv_threshold):
-    """
-    Decide whether all 9 CTMRG corner matrices have converged.
-
-    Convergence is measured by comparing the **singular-value spectra** of the
-    nine corner matrices (three per environment type) between consecutive
-    CTMRG cycles.  Singular values are gauge-invariant — unlike raw tensor
-    elements, they are unaffected by the sign/phase ambiguity that arises from
-    the SVD-based projectors inside ``trunc_rhoCCC``.  Using raw Frobenius
-    distance on the environment tensors would *never* converge because those
-    sign flips produce an O(1) Frobenius difference even when the physical
-    environment is at its fixed point.
-
-    The convergence metric is:
-
-    .. math::
-
-        d = \\max_{c \\in \\{9\\,\\text{corners}\\}}
-              \\max_k \\left|
-                \\sigma_k^{\\text{now}}(c) - \\sigma_k^{\\text{last}}(c)
-              \\right|
-
-    where :math:`\\sigma_k(c)` are the singular values of corner matrix ``c``
-    normalised so that :math:`\\sigma_1 = 1`.  The function returns
-    ``True`` when ``d < env_conv_threshold``.
-
-    The function returns ``False`` immediately when any of the ``last*``
-    corner tensors is ``None`` (i.e. during the first full cycle where not all
-    three environment types have been computed yet).
-
-    Args:
-        lastC21CD … lastT1C: The 27 environment tensors from the previous
-            CTMRG cycle (corner tensors may be ``None`` during warm-up;
-            transfer tensors are accepted but not used for convergence).
-        nowC21CD … nowT1C: The 27 environment tensors from the current cycle.
-        env_conv_threshold (float): Convergence threshold for ``d``.
-
-    Returns:
-        bool: ``True`` iff ``d < env_conv_threshold``, ``False`` otherwise
-        (including when any ``last*`` corner tensor is ``None``).
-    """
-
-    # Warm-up guard: all three env types must have been computed at least once.
-    if lastC21CD is None or lastC21EB is None or lastC21AF is None:
-        return False
-
-    # The 9 corner pairs (last, now) across all three environment types.
-    corner_pairs = [
-        (lastC21CD, nowC21CD), (lastC32EF, nowC32EF), (lastC13AB, nowC13AB),
-        (lastC21EB, nowC21EB), (lastC32AD, nowC32AD), (lastC13CF, nowC13CF),
-        (lastC21AF, nowC21AF), (lastC32CB, nowC32CB), (lastC13ED, nowC13ED),
-    ]
-
-    max_delta = 0.0
-    for last_c, now_c in corner_pairs:
-        sv_last = torch.linalg.svdvals(last_c).real
-        sv_now  = torch.linalg.svdvals(now_c ).real
-        # Normalise so that the largest singular value is 1 (scale-invariant).
-        sv_last = sv_last / (sv_last[0] + 1e-30)
-        sv_now  = sv_now  / (sv_now [0] + 1e-30)
-        delta = (sv_now - sv_last).abs().max().item()
-        if delta > max_delta:
-            max_delta = delta
-
-    return bool(max_delta < env_conv_threshold)
 
 
 
@@ -2043,44 +1896,6 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
     ctm_steps = a_third_max_iterations  # will be overwritten on early convergence
     for iteration in range(a_third_max_iterations):
 
-        # ── MEM-E: per-iteration env tensor footprint (first 3 iterations only) ──
-        # BREAKPOINT-E  ← set breakpoint on the print line below.
-        # Shows how many tensors are live and their combined size as the env grows.
-        # Only fires for iterations 0–2 to avoid log spam; remove the guard to log all.
-        # Debug Console queries when paused here:
-        #   iteration                                   → current iteration index
-        #   nowC21CD.shape if nowC21CD is not None else None  → corner shape
-        #   nowT1F.shape   if nowT1F   is not None else None  → transfer shape
-        #   sum(t.element_size()*t.nelement() for t in
-        #       [t for t in [nowC21CD,nowC32EF,nowC13AB,nowT1F,nowT2A,nowT2B,
-        #                    nowT3C,nowT3D,nowT1E,nowC21EB,nowC32AD,nowC13CF,
-        #                    nowT1D,nowT2C,nowT2F,nowT3E,nowT3B,nowT1A,
-        #                    nowC21AF,nowC32CB,nowC13ED,nowT1B,nowT2E,nowT2D,
-        #                    nowT3A,nowT3F,nowT1C] if t is not None]) / 1e6
-        if False:
-            _all_now = [t for t in [
-                nowC21CD, nowC32EF, nowC13AB, nowT1F,  nowT2A,  nowT2B,
-                nowT3C,   nowT3D,   nowT1E,   nowC21EB, nowC32AD, nowC13CF,
-                nowT1D,   nowT2C,   nowT2F,   nowT3E,   nowT3B,   nowT1A,
-                nowC21AF, nowC32CB, nowC13ED,  nowT1B,  nowT2E,   nowT2D,
-                nowT3A,   nowT3F,   nowT1C,
-            ] if t is not None]
-            _all_last = [t for t in [
-                lastC21CD, lastC32EF, lastC13AB, lastT1F,  lastT2A,  lastT2B,
-                lastT3C,   lastT3D,   lastT1E,   lastC21EB, lastC32AD, lastC13CF,
-                lastT1D,   lastT2C,   lastT2F,   lastT3E,   lastT3B,   lastT1A,
-                lastC21AF, lastC32CB, lastC13ED,  lastT1B,  lastT2E,   lastT2D,
-                lastT3A,   lastT3F,   lastT1C,
-            ] if t is not None]
-            _now_mb  = sum(t.element_size() * t.nelement() / 1e6 for t in _all_now)
-            _last_mb = sum(t.element_size() * t.nelement() / 1e6 for t in _all_last)
-            _c_sh = tuple(nowC21CD.shape) if nowC21CD is not None else None
-            _t_sh = tuple(nowT1F.shape)   if nowT1F   is not None else None
-            #print(f"[MEM-E] RSS={mem_mb():.1f}MB CTMRG iter={iteration}  "
-            #      f"now={len(_all_now)}tensors/{_now_mb:.1f}MB  "
-            #      f"last={len(_all_last)}tensors/{_last_mb:.1f}MB  "
-            #      f" T-shape={_t_sh}")
-
         if not (lastC21CD is None or lastC21EB is None or lastC21AF is None):
             if check_env_CV_using_3rho(lastC21CD.detach(), lastC32EF.detach(), lastC13AB.detach(), #lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E, 
                                     nowC21CD.detach(), nowC32EF.detach(), nowC13AB.detach(), #nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, 
@@ -2138,97 +1953,6 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
 
 
 
-
-
-def energy_expectation_nearest_neighbor_6_bonds(a,b,c,d,e,f, 
-                                                Hed,Had,Haf,Hcf,Hcb,Heb, # (d_PHYS * d_PHYS^*, d_PHYS * d_PHYS^*) matrices
-                                                chi, D_bond, # d_PHYS,
-                                                C21CD,C32EF,C13AB,T1F,T2A,T2B,T3C,T3D,T1E):
-    """
-    Compute the variational energy expectation value for the 6 bonds in the
-    type-1 environment.
-
-    The six nearest-neighbour bonds covered here are E-D, A-D, F-A, C-F,
-    B-C, E-B (the bonds associated with the type-1 corner/transfer
-    environment).  For each bond, an ``open`` tensor is built by contracting
-    the single-layer tensor with its conjugate while leaving the physical
-    indices un-contracted (the ``ij`` dangling pair).  A ``closed`` version
-    (trace over ``ij``) gives the denominator norm contributions.  The
-    numerator for bond ``XY`` is obtained by inserting the Hamiltonian
-    ``H_XY[i,j,k,l]`` between the open physical legs.
-
-    The final energy is::
-
-        E_6 = (sum over 6 bonds of E_unnormed) / norm_1st_env
-
-    where ``norm_1st_env = Tr[DE * BC * FA]`` (cyclic product of the three
-    closed two-site operators around the unit cell).
-
-    Args:
-        a, b, c, d, e, f (torch.Tensor): Single-layer site tensors,
-            shape ``(D_bond, D_bond, D_bond, d_PHYS)``, with
-            ``requires_grad=True`` for the optimisation.
-        Hed, Had, Haf, Hcf, Hcb, Heb (torch.Tensor): Two-site nearest-neighbour
-            Hamiltonian matrices, shape ``(d_PHYS, d_PHYS, d_PHYS, d_PHYS)``
-            (bra1, bra2, ket1, ket2 ordering).
-        chi (int): Environment bond dimension.
-        D_bond (int): Virtual bond dimension.
-        C21CD, C32EF, C13AB (torch.Tensor): Type-1 corner matrices,
-            shape ``(chi, chi)``.
-        T1F, T2A, T2B, T3C, T3D, T1E (torch.Tensor): Type-1 transfer tensors,
-            shape ``(chi*D_bond*D_bond, chi*D_bond*D_bond)`` before the internal
-            reshape.
-
-    Returns:
-        torch.Tensor: Scalar energy per bond (float32; imaginary part should
-        vanish for a Hermitian Hamiltonian).
-    """
-    
-    T1F = T1F.reshape(chi,chi,D_bond,D_bond)
-    T2A = T2A.reshape(chi,chi,D_bond,D_bond)
-    T2B = T2B.reshape(chi,chi,D_bond,D_bond)
-    T3C = T3C.reshape(chi,chi,D_bond,D_bond)
-    T3D = T3D.reshape(chi,chi,D_bond,D_bond)
-    T1E = T1E.reshape(chi,chi,D_bond,D_bond)
-
-    open_E = oe.contract("YX,MYar,abci,rstj->MbsXctij", C21CD, T1F, e, e.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch")
-    open_D = oe.contract("MYct,abci,rstj->YarMbsij", T3C, d, d.conj(), optimize=[(0,1),(0,1)], backend="torch")
-    open_A = oe.contract("ZY,NZbs,abci,rstj->NctYarij", C32EF, T2B, a, a.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch")
-    open_F = oe.contract("NZar,abci,rstj->ZbsNctij", T1E, f, f.conj(), optimize=[(0,1),(0,1)], backend="torch")
-    open_C = oe.contract("XZ,LXct,abci,rstj->LarZbsij", C13AB, T3D, c, c.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch")
-    open_B = oe.contract("LXbs,abci,rstj->XctLarij", T2A, b, b.conj(), optimize=[(0,1),(0,1)], backend="torch")
-                              
-    closed_E = oe.contract("MbsXctii->MbsXct", open_E, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_D = oe.contract("YarMbsii->YarMbs", open_D, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_A = oe.contract("NctYarii->NctYar", open_A, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_F = oe.contract("ZbsNctii->ZbsNct", open_F, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_C = oe.contract("LarZbsii->LarZbs", open_C, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_B = oe.contract("XctLarii->XctLar", open_B, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-
-    H_DE = oe.contract("MbsXctij,ijkl,YarMbskl->YarXct", open_E, Hed, open_D, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    H_AD = oe.contract("NctYarij,ijkl,YarMbskl->NctMbs", open_A, Had, open_D, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    H_FA = oe.contract("NctYarij,ijkl,ZbsNctkl->ZbsYar", open_A, Haf, open_F, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    H_CF = oe.contract("LarZbsij,ijkl,ZbsNctkl->LarNct", open_C, Hcf, open_F, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    H_BC = oe.contract("LarZbsij,ijkl,XctLarkl->XctZbs", open_C, Hcb, open_B, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    H_EB = oe.contract("MbsXctij,ijkl,XctLarkl->MbsLar", open_E, Heb, open_B, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-
-    DE = torch.mm(closed_D, closed_E)
-    AD = torch.mm(closed_A, closed_D)
-    FA = torch.mm(closed_F, closed_A)
-    CF = torch.mm(closed_C, closed_F)
-    BC = torch.mm(closed_B, closed_C)
-    EB = torch.mm(closed_E, closed_B)
-
-    E_unnormed_DE = oe.contract("xy,yz,zx->", H_DE, BC, FA, backend="torch")
-    E_unnormed_AD = oe.contract("xy,yz,zx->", H_AD, EB, CF, backend="torch")
-    E_unnormed_FA = oe.contract("xy,yz,zx->", H_FA, DE, BC, backend="torch")
-    E_unnormed_CF = oe.contract("xy,yz,zx->", H_CF, AD, EB, backend="torch")
-    E_unnormed_BC = oe.contract("xy,yz,zx->", H_BC, FA, DE, backend="torch")
-    E_unnormed_EB = oe.contract("xy,yz,zx->", H_EB, CF, AD, backend="torch")
-
-    norm_1st_env = oe.contract("xy,yz,zx->", DE, BC, FA, backend="torch")
-    energyNearestNeighbor_6_bonds = (E_unnormed_DE + E_unnormed_AD + E_unnormed_FA + E_unnormed_CF + E_unnormed_BC + E_unnormed_EB) / norm_1st_env
-    return energyNearestNeighbor_6_bonds
 
 
 
@@ -2553,166 +2277,6 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
     return torch.real(E_EF + E_AB + E_CD)
 
 
-
-
-def optmization_iPEPS(Hed,Had,Haf,Hcf,Hcb,Heb,Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, d_PHYS, d_PHYS^*) matrices
-                      opt_conv_threshold: float = 1e-6, # SCALES with Hamiltonian!!!!
-                      chi: int=10, D_bond: int=3, d_PHYS: int=2,
-                      a_third_max_steps_CTMRG: int = 70, 
-                      CTM_env_conv_threshold: float = 1e-7,
-                      a2f_initialize_way: str = 'random',
-                      a2f_noise_scale: float = 1e-3,
-                      max_opt_steps: int = 200,
-                      lbfgs_max_iter: int = 20,
-                      lbfgs_lr: float = 1.0,
-                      lbfgs_history: int = 100,
-                      opt_tolerance_grad: float = 1e-7,
-                      opt_tolerance_change: float = 2e-8,
-                      init_abcdef=None,
-                      identity_init=False):
-    """
-
-
-    [UNUSED!!!! 
-      MANY OF ITS COMPONENTS ARE NOW OUTDATED AND IN NEED OF REWORKING;
-      STILL RETAINED AS A REFERENCE FOR THE OPTIMISATION STRATEGY]
-
-
-    Optimize the iPEPS tensors a,b,c,d,e,f using L-BFGS.
-
-    Strategy (standard for AD-CTMRG):
-      • Outer loop  (max_opt_steps iterations):
-          1. Recompute double-layer tensors A..F and run CTMRG to convergence
-             inside torch.no_grad() — environment is treated as fixed.
-          2. Run L-BFGS (up to lbfgs_max_iter sub-steps with strong-Wolfe line
-             search).  The closure recomputes only the cheap energy evaluation
-             and calls backward() through a..f; gradients do NOT flow back
-             through the CTMRG iterations.
-          3. Check outer convergence on the loss change.
-
-    This is the "environment-fixed" / implicit-differentiation variant.
-    Gradients through the full CTMRG unroll are available in principle but
-    are prohibitively expensive for production runs.
-
-    Args:
-        Hab..Hfa                : 2-site nearest-neighbour Hamiltonians
-        chi                     : environment bond dimension
-        D_bond                  : physical projector bond dimension
-        d_PHYS                  : physical Hilbert-space dimension
-        a_third_max_steps_CTMRG  : max CTMRG sweeps per environment update
-        CTM_env_conv_threshold      : CTMRG convergence criterion
-        a2f_initialize_way      : initialisation mode ('random', 'product', ...)
-        a2f_noise_scale         : noise amplitude for initialisation
-        max_opt_steps           : max outer optimisation iterations
-        lbfgs_max_iter          : max L-BFGS sub-iterations per outer step
-        lbfgs_lr                : initial step size for L-BFGS
-        lbfgs_history           : L-BFGS history size
-        opt_conv_threshold      : stop when |Δloss| < this value
-
-    Returns:
-        a, b, c, d, e, f  —  optimised site tensors. 
-    """
-    D_squared = D_bond ** 2
-
-    # ── 1. Initialise site tensors ────────────────────────────────────────────
-    if init_abcdef is not None:
-        a, b, c, d, e, f = [t.detach().clone().to(TENSORDTYPE) for t in init_abcdef]
-    else:
-        a, b, c, d, e, f = initialize_abcdef(a2f_initialize_way, D_bond, d_PHYS, a2f_noise_scale)
-    a.requires_grad_(True)
-    b.requires_grad_(True)
-    c.requires_grad_(True)
-    d.requires_grad_(True)
-    e.requires_grad_(True)
-    f.requires_grad_(True)
-
-    prev_loss = None
-    loss_item: float = float('nan')
-
-    # ── 2 & 3. Outer optimisation loop ───────────────────────────────────────
-    # Note: a–f are scale-redundant (the energy is a ratio, hence invariant to
-    # the common norm of each tensor).  We therefore normalise each tensor after
-    # every outer step so that their scale never drifts.  Because the environment
-    # is re-converged from scratch at the start of every outer step, the L-BFGS
-    # curvature history from the previous outer step is stale; a fresh optimizer
-    # is created each iteration — this costs nothing and avoids misleading
-    # quasi-Newton updates built against a different loss landscape.
-    for opt_step in range(max_opt_steps):
-
-        # 3a. Normalise a–f (scale redundancy; no-op on first step if init is
-        #     already unit-norm, harmless otherwise).  Done via .data so that
-        #     the computation graph and grad accumulators are untouched.
-        # with torch.no_grad():
-        #     a.data = normalize_tensor(a.data)
-        #     b.data = normalize_tensor(b.data)
-        #     c.data = normalize_tensor(c.data)
-        #     d.data = normalize_tensor(d.data)
-        #     e.data = normalize_tensor(e.data)
-        #     f.data = normalize_tensor(f.data)
-
-        # 3b. Fresh L-BFGS for this outer step (environment will change, so old
-        #     curvature history is irrelevant and would only mislead the solver).
-        optimizer = torch.optim.LBFGS(
-            [a, b, c, d, e, f],
-            lr=lbfgs_lr,
-            max_iter=lbfgs_max_iter,
-            tolerance_grad=opt_tolerance_grad,
-            tolerance_change=opt_tolerance_change,
-            history_size=lbfgs_history,
-            line_search_fn='strong_wolfe',
-        )
-
-        # 3d. L-BFGS closure: energy evaluation + backward through a...f only.
-        def closure():
-            optimizer.zero_grad()
-        # with torch.no_grad():
-
-            A, B, C, D, E, F = abcdef_to_ABCDEF(a, b, c, d, e, f, D_squared)
-            
-            (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
-                C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
-                C21AF, C32CB, C13ED, T1B,  T2E,  T2D,  T3A,  T3F,  T1C,
-                _ctm_steps) = \
-            CTMRG_from_init_to_stop(A, B, C, D, E, F, chi, D_squared,
-                a_third_max_steps_CTMRG, CTM_env_conv_threshold, identity_init=identity_init)
-
-            loss = (
-            energy_expectation_nearest_neighbor_3ebadcf_bonds(
-                a,b,c,d,e,f, 
-                Heb,Had,Hcf,
-                chi, D_bond, d_PHYS, 
-                C21CD,C32EF,C13AB,T1F,T2A,T2B,T3C,T3D,T1E)
-            +
-            energy_expectation_nearest_neighbor_3afcbed_bonds(
-                a,b,c,d,e,f, 
-                Haf,Hcb,Hed, 
-                chi, D_bond, d_PHYS, 
-                C21EB, C32AD,C13CF,T1D,T2C,T2F,T3E,T3B,T1A)
-            +
-            energy_expectation_nearest_neighbor_other_3_bonds(
-                a,b,c,d,e,f, 
-                Hcd,Hef,Hab, 
-                chi, D_bond, d_PHYS, 
-                C21AF,C32CB,C13ED,T1B,T2E,T2D,T3A,T3F,T1C)
-            )
-
-            loss.backward()
-            return loss
-
-        # 3e. Run L-BFGS sub-iterations (strong-Wolfe line search built in).
-        loss_val = optimizer.step(closure)
-
-        loss_item = loss_val.item()
-        delta = (loss_item - prev_loss) if prev_loss is not None else float('inf')
-        print(f"  opt {opt_step:4d}  loss = {loss_item:+.10f}  Δloss = {delta:.3e}")
-
-        # 3f. Outer convergence check.
-        if prev_loss is not None and abs(delta) < opt_conv_threshold:
-            print(f"  Outer convergence achieved at step {opt_step} (Δloss={delta:.3e}).")
-            break
-        prev_loss = loss_item
-
-    return a, b, c, d, e, f, loss_item
 
 
 # PG: To avoid complex numbers Hamiltonian can be wriiten with S+ and S-
