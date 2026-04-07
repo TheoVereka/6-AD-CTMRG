@@ -13,10 +13,8 @@ pytorch==2.5.1
 """
 
 import numpy as np
-import scipy
 import opt_einsum as oe
 import torch
-from scipy.sparse.linalg import aslinearoperator, svds
 from torch.utils.checkpoint import checkpoint as _ckpt
 
 
@@ -356,7 +354,6 @@ class SVD_PROPACK(torch.autograd.Function):
         # scipy.linalg.eig (wrong algorithm) when k >= N-1, and PROPACK's
         # Fortran ZLASCL routine crashes on ill-conditioned matrices.
         # The CTMRG matrices are at most ~100×100; dense SVD is fast.
-        _np_dtype = np.complex128 if A.is_complex() else np.float64
         _rdtype = torch.float64 if A.dtype in (torch.complex128, torch.float64) else torch.float32
 
         m_dim, n_dim = A.shape

@@ -213,13 +213,13 @@ TENSORDTYPE: torch.dtype = torch.float64
 
 # ── Precision ─────────────────────────────────────────────────────────────────
 
-USE_GPU = False
+USE_GPU = True
 #   True  → use CUDA GPU when available; automatically falls back to CPU
 #            if  torch.cuda.is_available()  returns False.
 #   False → always use CPU.
 #   Overrideable at runtime: --gpu / --no-gpu CLI flags.
 
-USE_DOUBLE_PRECISION = True
+USE_DOUBLE_PRECISION = False
 #   False → float32(/complex64): fastest on both CPU (Intel MKL)
 #            and CUDA (fp32 tensor cores give full throughput).
 #   True  → float64(/complex128): double precision.
@@ -370,7 +370,7 @@ CTM_MAX_STEPS = 40
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
 #   ansatz ~4 steps, 6-tensor ~40 steps).  90 is a safe upper bound.
 
-CTM_CONV_THR = 1e-7
+CTM_CONV_THR = 3e-7
 #   CTMRG convergence threshold: stop iterating when the max change in
 #   normalised corner singular values between consecutive steps is below
 #   this value.  The convergence criterion compares the spectra of all 9

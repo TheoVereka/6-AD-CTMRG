@@ -381,7 +381,7 @@ CTM_MAX_STEPS = 40
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
 #   ansatz ~4 steps, 6-tensor ~40 steps).  90 is a safe upper bound.
 
-CTM_CONV_THR = 1e-7
+CTM_CONV_THR = 3e-7
 #   CTMRG convergence threshold: stop iterating when the max change in
 #   normalised corner singular values between consecutive steps is below
 #   this value.  The convergence criterion compares the spectra of all 9
@@ -1236,8 +1236,8 @@ def main():
             # chi levels for this D and jump straight to D_next.
             # The finishing chi for D_next schedule filtering is the CURRENT
             # chi (not chi_next), per the protocol.
-            if chi_idx + 1 < len(chis):
-                chi_la = chis[chi_idx + 1]
+            if chi_idx < len(chis):
+                chi_la = chis[chi_idx] + D_bond * 2
                 print(f"  │  [Lookahead] evaluating (D={D_bond}, chi={chi_la}) "
                       f"with current tensors ...")
                 with torch.no_grad():
