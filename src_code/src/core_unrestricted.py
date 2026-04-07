@@ -66,6 +66,43 @@ def safe_inverse_2(x, epsilon):
     return x.pow(-1)
 
 
+def _safe_sqrt_inv_diag(S: torch.Tensor) -> torch.Tensor:
+    """Compute diag(1/sqrt(S)) safely, clamping near-zero singular values.
+
+    On GPU with float32, singular values near machine epsilon can underflow
+    to zero → 1/sqrt(0) = inf → exploding CTMRG projectors → garbage
+    environment → wrong energy.  CPU float64 never hits this because the
+    same values are representable.  Fix: clamp S[i] to at least
+    S[0] * sqrt(eps_machine) before inverting:
+        float32: threshold ≈ S[0] × 3.5e-4
+        float64: threshold ≈ S[0] × 1.5e-8
+    This zeroes projector components whose singular values are
+    numerically indistinguishable from zero relative to the leading one.
+    """
+    eps_mach = torch.finfo(S.dtype).eps           # 1.19e-7 (f32) / 2.22e-16 (f64)
+    rtol     = eps_mach ** 0.5                    # 3.45e-4 (f32) / 1.49e-8  (f64)
+    s_max    = S[0].abs().clamp(min=float(torch.finfo(S.dtype).tiny))
+    S_safe   = S.clamp(min=(s_max * rtol))
+    return torch.diag(1.0 / torch.sqrt(S_safe).to(TENSORDTYPE))
+
+
+def _safe_eigh(M: torch.Tensor):
+    """Hermitian eigendecomposition with GPU float32 stability fix.
+
+    cuSOLVER syevd (float32) throws a hard error on ill-conditioned or
+    near-degenerate matrices that CPU LAPACK silently handles.  The rho
+    matrices in the energy functions become ill-conditioned when tensor
+    optimisation produces near-zero singular values in the CTMRG projectors
+    (Bug 1).  Fix: upcast to float64 before eigh on CUDA, then cast back.
+    All rho matrices here are 4×4 — the overhead is negligible.
+    """
+    if M.is_cuda and M.dtype in (torch.float32, torch.complex64):
+        M64 = M.to(torch.float64) if M.is_floating_point() else M.to(torch.complex128)
+        vals64, vecs64 = torch.linalg.eigh(M64)
+        return vals64.to(M.dtype), vecs64.to(M.dtype)
+    return torch.linalg.eigh(M)
+
+
 def _solve_fifth_term_svd(A, U, S, V, gu, gv, eps):
     """
     Compute  Γ_A^{trunc}  from arXiv:2311.11894v3 (5th term of truncated SVD backward).
@@ -106,7 +143,7 @@ def _solve_fifth_term_svd(A, U, S, V, gu, gv, eps):
     R = (R + R.conj().t()) * 0.5
 
     # EVD: R = Q Λ Q†  (Λ ascending)
-    Lambda, Q = torch.linalg.eigh(R)   # Lambda: n, Q: n×n
+    Lambda, Q = _safe_eigh(R)   # Lambda: n, Q: n×n  (upcasts to f64 on CUDA f32)
     Qh = Q.conj().t()
 
     # RHS_j = s_j · gv_j + B† · gu_j  ⟹  RHS matrix (n×k)
@@ -783,7 +820,7 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     #product_error = torch.linalg.norm(approx_product - exact_product) / torch.linalg.norm(exact_product)
     #VERIFIED print(f"R1 @ R2.T vs truncated U @ diag(S) @ Vh check: relative error = {product_error:.2e}")
 
-    sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
+    sqrtInvTruncS = _safe_sqrt_inv_diag(S[:chi])
     #VERIFIED print((S[chi]/S[0]).item())
     #VERIFIED print(torch.diag(sqrtInvTruncS @ sqrtInvTruncS @ torch.diag(S[:chi]).to(TENSORDTYPE)).detach().cpu().numpy())
 
@@ -855,7 +892,7 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
 
     #truncUh = U[:,:chi].conj().T
     #truncV = Vh[:chi,:].conj().T
-    sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
+    sqrtInvTruncS = _safe_sqrt_inv_diag(S[:chi])
 
     P32Nz = torch.mm( R2.T ,torch.mm( V, sqrtInvTruncS ))
     P13zN = torch.mm(torch.mm( sqrtInvTruncS , U.conj().T ), R1 )
@@ -881,7 +918,7 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
 
     #truncUh = U[:,:chi].conj().T
     #truncV = Vh[:chi,:].conj().T
-    sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
+    sqrtInvTruncS = _safe_sqrt_inv_diag(S[:chi])
 
     P13Lx = torch.mm( R2.T ,torch.mm( V, sqrtInvTruncS ))
     P21xL = torch.mm(torch.mm( sqrtInvTruncS , U.conj().T ), R1 )
@@ -1087,7 +1124,7 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
                         eps_multiplet=1e-12)
         
 
-        sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
+        sqrtInvTruncS = _safe_sqrt_inv_diag(S[:chi])
 
         P21My = torch.mm( R2.T ,torch.mm( V , sqrtInvTruncS ))
         P32yM = torch.mm(torch.mm( sqrtInvTruncS , U.conj().T ), R1 )
@@ -1106,7 +1143,7 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
                         abs_tol=1e-14,
                         eps_multiplet=1e-12)
 
-        sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
+        sqrtInvTruncS = _safe_sqrt_inv_diag(S[:chi])
 
         P32Nz = torch.mm( R2.T ,torch.mm( V , sqrtInvTruncS ))
         P13zN = torch.mm(torch.mm( sqrtInvTruncS , U.conj().T ), R1 )
@@ -1125,7 +1162,7 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
                         abs_tol=1e-14,
                         eps_multiplet=1e-12)
 
-        sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
+        sqrtInvTruncS = _safe_sqrt_inv_diag(S[:chi])
 
         P13Lx = torch.mm( R2.T ,torch.mm( V , sqrtInvTruncS ))
         P21xL = torch.mm(torch.mm( sqrtInvTruncS , U.conj().T ), R1 )
@@ -1188,7 +1225,7 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         
         
 
-        sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
+        sqrtInvTruncS = _safe_sqrt_inv_diag(S[:chi])
 
         old = T1F
         T1F = torch.mm((torch.mm(T3C, torch.mm(V, sqrtInvTruncS))).T, T1F)
@@ -1203,7 +1240,7 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
                     abs_tol=1e-14,
                     eps_multiplet=1e-12)
         
-        sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
+        sqrtInvTruncS = _safe_sqrt_inv_diag(S[:chi])
         
         old = T3D
         T3D = torch.mm((torch.mm(T2A, torch.mm(V, sqrtInvTruncS))).T, T3D)
@@ -1218,7 +1255,7 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
                     abs_tol=1e-14,
                     eps_multiplet=1e-12)
         
-        sqrtInvTruncS = torch.diag(1.0 / torch.sqrt(S[:chi]).to(TENSORDTYPE))
+        sqrtInvTruncS = _safe_sqrt_inv_diag(S[:chi])
 
         old = T2B
         T2B = torch.mm((torch.mm(T1E, torch.mm(V, sqrtInvTruncS))).T, T2B)
@@ -2026,7 +2063,7 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
     theOriTrace = torch.trace(rhoAD)
     rhoAD = (rhoAD + rhoAD.conj().T)/2.0
     # positive-semidefinite projection:
-    eigvals, eigvecs = torch.linalg.eigh(rhoAD)
+    eigvals, eigvecs = _safe_eigh(rhoAD)
     #print("rhoAD eigvals before clipping: ", eigvals.detach().numpy())
     eigvals_clipped = torch.clamp(eigvals, min=0.0)
     rhoAD = (eigvecs * eigvals_clipped) @ eigvecs.conj().T
@@ -2043,7 +2080,7 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
     theOriTrace = torch.trace(rhoCF)
     rhoCF = (rhoCF + rhoCF.conj().T)/2.0
     # positive-semidefinite projection:
-    eigvals, eigvecs = torch.linalg.eigh(rhoCF)
+    eigvals, eigvecs = _safe_eigh(rhoCF)
     #print("rhoCF eigvals before clipping: ", eigvals.detach().numpy())
     eigvals_clipped = torch.clamp(eigvals, min=0.0)
     rhoCF = (eigvecs * eigvals_clipped) @ eigvecs.conj().T  # PSD reconstruction (was accidentally commented out)
@@ -2060,7 +2097,7 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
     theOriTrace = torch.trace(rhoEB)
     rhoEB = (rhoEB + rhoEB.conj().T)/2.0
     # positive-semidefinite projection:
-    eigvals, eigvecs = torch.linalg.eigh(rhoEB)
+    eigvals, eigvecs = _safe_eigh(rhoEB)
     #print("rhoEB eigvals before clipping: ", eigvals.detach().numpy())
     eigvals_clipped = torch.clamp(eigvals, min=0.0)
     rhoEB = (eigvecs * eigvals_clipped) @ eigvecs.conj().T
@@ -2126,7 +2163,7 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,Haf,Hcb,Hed,
     theOriTrace = torch.trace(rhoCB)
     rhoCB = (rhoCB + rhoCB.conj().T)/2.0
     # positive-semidefinite projection:
-    eigvals, eigvecs = torch.linalg.eigh(rhoCB)
+    eigvals, eigvecs = _safe_eigh(rhoCB)
     #print("rhoCB eigvals before clipping: ", eigvals.detach().numpy())
     eigvals_clipped = torch.clamp(eigvals, min=0.0)
     rhoCB = (eigvecs * eigvals_clipped) @ eigvecs.conj().T
@@ -2143,7 +2180,7 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,Haf,Hcb,Hed,
     theOriTrace = torch.trace(rhoAF)
     rhoAF = (rhoAF + rhoAF.conj().T)/2.0
     # positive-semidefinite projection:
-    eigvals, eigvecs = torch.linalg.eigh(rhoAF)
+    eigvals, eigvecs = _safe_eigh(rhoAF)
     #print("rhoAF eigvals before clipping: ", eigvals.detach().numpy())
     eigvals_clipped = torch.clamp(eigvals, min=0.0)
     rhoAF = (eigvecs * eigvals_clipped) @ eigvecs.conj().T
@@ -2160,7 +2197,7 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,Haf,Hcb,Hed,
     theOriTrace = torch.trace(rhoED)
     rhoED = (rhoED + rhoED.conj().T)/2.0
     # positive-semidefinite projection:
-    eigvals, eigvecs = torch.linalg.eigh(rhoED)
+    eigvals, eigvecs = _safe_eigh(rhoED)
     #print("rhoED eigvals before clipping: ", eigvals.detach().numpy())
     eigvals_clipped = torch.clamp(eigvals, min=0.0)
     rhoED = (eigvecs * eigvals_clipped) @ eigvecs.conj().T
@@ -2246,7 +2283,7 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
     theOriTrace = torch.trace(rhoEF)
     rhoEF = (rhoEF + rhoEF.conj().T)/2.0
     # positive-semidefinite projection:
-    eigvals, eigvecs = torch.linalg.eigh(rhoEF)
+    eigvals, eigvecs = _safe_eigh(rhoEF)
     #print("rhoEF eigvals before clipping: ", eigvals.detach().numpy())
     eigvals_clipped = torch.clamp(eigvals, min=0.0)
     rhoEF = (eigvecs * eigvals_clipped) @ eigvecs.conj().T
@@ -2263,7 +2300,7 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
     theOriTrace = torch.trace(rhoAB)
     rhoAB = (rhoAB + rhoAB.conj().T)/2.0
     # positive-semidefinite projection:
-    eigvals, eigvecs = torch.linalg.eigh(rhoAB)
+    eigvals, eigvecs = _safe_eigh(rhoAB)
     #print("rhoAB eigvals before clipping: ", eigvals.detach().numpy())
     eigvals_clipped = torch.clamp(eigvals, min=0.0)
     rhoAB = (eigvecs * eigvals_clipped) @ eigvecs.conj().T
@@ -2280,7 +2317,7 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
     theOriTrace = torch.trace(rhoCD)
     rhoCD = (rhoCD + rhoCD.conj().T)/2.0
     # positive-semidefinite projection:
-    eigvals, eigvecs = torch.linalg.eigh(rhoCD)
+    eigvals, eigvecs = _safe_eigh(rhoCD)
     #print("rhoCD eigvals before clipping: ", eigvals.detach().numpy())
     eigvals_clipped = torch.clamp(eigvals, min=0.0)
     rhoCD = (eigvecs * eigvals_clipped) @ eigvecs.conj().T
