@@ -42,6 +42,11 @@ CDTYPE: torch.dtype = torch.complex128   # complex dtype for all tensors
 RDTYPE: torch.dtype = torch.float64      # real dtype (SVD singular values, norms)
 TENSORDTYPE: torch.dtype = torch.float64 # tensor dtype (real or complex)
 
+# Call  set_device(device)  BEFORE allocating any tensor.
+# Defaults to CPU; set to  torch.device('cuda')  from the driver script to
+# run all CTMRG + energy computations on GPU.
+DEVICE: torch.device = torch.device('cpu')
+
 
 
 
@@ -161,6 +166,20 @@ def set_dtype(use_double: bool, use_real: bool = True) -> None:
     else:
         TENSORDTYPE = CDTYPE
 
+
+def set_device(device) -> None:
+    """Switch all core tensor allocations to a different compute device.
+
+    Must be called BEFORE any tensor is allocated — ideally right after
+    ``set_dtype()``.
+
+    Args:
+        device: Anything accepted by ``torch.device()``:
+            ``'cpu'``, ``'cuda'``, ``'cuda:0'``, or a ``torch.device``
+            instance.  Passing ``None`` is treated as ``'cpu'``.
+    """
+    global DEVICE
+    DEVICE = torch.device(device) if device is not None else torch.device('cpu')
 
 
 def normalize_tensor(tensor, *, rtol: float | None = None, atol: float | None = None):
@@ -652,12 +671,12 @@ def initialize_abcdef(initialize_way:str, D_bond:int, d_PHYS:int, noise_scale:fl
 
     if initialize_way == 'random' :
 
-        a = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=TENSORDTYPE)
-        b = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=TENSORDTYPE)
-        c = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=TENSORDTYPE)
-        d = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=TENSORDTYPE)
-        e = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=TENSORDTYPE)
-        f = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=TENSORDTYPE)
+        a = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=TENSORDTYPE, device=DEVICE)
+        b = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=TENSORDTYPE, device=DEVICE)
+        c = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=TENSORDTYPE, device=DEVICE)
+        d = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=TENSORDTYPE, device=DEVICE)
+        e = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=TENSORDTYPE, device=DEVICE)
+        f = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=TENSORDTYPE, device=DEVICE)
         global _USE_FULL_SVD
         _USE_FULL_SVD = True
 
@@ -2302,7 +2321,8 @@ def build_heisenberg_H(J: float = 1.0, d: int = 2) -> torch.Tensor:
 
     SdotS = torch.tensor(oe.contract("ij,kl->ijkl", Splus, Sminus) * 0.5
                         +oe.contract("ij,kl->ijkl", Sminus, Splus) * 0.5
-                        +oe.contract("ij,kl->ijkl", Sz, Sz), dtype=TENSORDTYPE)
+                        +oe.contract("ij,kl->ijkl", Sz, Sz), dtype=TENSORDTYPE,
+                        device=DEVICE)
     return J * SdotS
 
 

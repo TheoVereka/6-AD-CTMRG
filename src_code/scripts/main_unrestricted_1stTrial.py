@@ -147,7 +147,7 @@ import time
 #
 # Use os.environ.setdefault so a user can still override from the shell:
 #   OMP_NUM_THREADS=2 python scripts/main_sweep_CPU.py   ← respected
-_N_PHYSICAL_CORES = 35
+_N_PHYSICAL_CORES = 4
 os.environ.setdefault("OMP_NUM_THREADS", str(_N_PHYSICAL_CORES))
 os.environ.setdefault("MKL_NUM_THREADS", str(_N_PHYSICAL_CORES))
 # Prevent MKL from silently reducing thread count when it detects nested
@@ -166,7 +166,7 @@ os.environ.setdefault("KMP_AFFINITY", "granularity=fine,compact,1,0")
 # immediately — the outer L-BFGS loop is sequential so this saves real time.
 os.environ.setdefault("KMP_BLOCKTIME", "0")
 
-# sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 import matplotlib
 matplotlib.use('Agg')
@@ -199,6 +199,7 @@ from core_unrestricted import (
     energy_expectation_nearest_neighbor_3afcbed_bonds,
     energy_expectation_nearest_neighbor_other_3_bonds,
     set_dtype,
+    set_device,
 )
 
 
@@ -221,6 +222,12 @@ TENSORDTYPE: torch.dtype = torch.float64
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 # ── Precision ─────────────────────────────────────────────────────────────────
+
+USE_GPU = True
+#   True  → use CUDA GPU when available; automatically falls back to CPU
+#            if  torch.cuda.is_available()  returns False.
+#   False → always use CPU.
+#   Overrideable at runtime: --gpu / --no-gpu CLI flags.
 
 USE_DOUBLE_PRECISION = True
 #   False → float32(/complex64): fastest on both CPU (Intel MKL)
@@ -314,7 +321,7 @@ CHI_CONVERGENCE_THRESHOLD = 7e-5
 #   After optimisation at (D, chi) is complete and a clean energy evaluation
 #   is done, also evaluate the energy at (D, chi_next) using the SAME (already
 #   optimised) tensors before running any optimisation at chi_next.  If
-#   |E/bond(chi) − E/bond(chi_next)| < CHI_CONVERGENCE_THRESHOLD, the
+#   |E(chi) − E(chi_next)| < CHI_CONVERGENCE_THRESHOLD, the
 #   chi series for the current D is considered converged and we immediately
 #   jump to the next D, skipping the remaining chi levels.  On entering
 #   D_next the chi schedule is filtered to start from the first chi that is
@@ -492,7 +499,8 @@ def pad_tensor(t: torch.Tensor, old_D: int, new_D: int,
     # automatically after one L-BFGS step completes.
     _core._USE_FULL_SVD = True
 
-    out = noise * torch.randn(new_D, new_D, new_D, d_PHYS, dtype=TENSORDTYPE)
+    out = noise * torch.randn(new_D, new_D, new_D, d_PHYS, dtype=TENSORDTYPE,
+                              device=_core.DEVICE)
     out[:old_D, :old_D, :old_D, :] += normalize_tensor(t.detach())*torch.sqrt(torch.tensor(old_D**3 * d_PHYS, dtype=TENSORDTYPE))
     
     return out
@@ -783,7 +791,6 @@ def optimize_at_chi(
 
         print(f"    step {step:5d}  ctm={ctm_steps:3d}  loss={loss_item:+.10f}"
               f"  Δ={delta:+.3e}  {elapsed:.0f}/{budget_seconds:.0f}s")
-        sys.stdout.flush()
         loss_log.append({'step': step, 'ctm_steps': ctm_steps, 'loss': loss_item,
                          'D_bond': D_bond, 'chi': chi,
                          'elapsed': round(elapsed, 1)})
@@ -853,6 +860,12 @@ def main():
         help='Use float64/complex128 (default: float32/complex64). '
              'Same throughput on CPU/MKL; 2–4× slower on CUDA consumer GPUs.')
     parser.add_argument(
+        '--gpu', dest='gpu', action='store_true', default=USE_GPU,
+        help='Use CUDA GPU when available (falls back to CPU if no GPU found).')
+    parser.add_argument(
+        '--no-gpu', dest='gpu', action='store_false',
+        help='Force CPU even if a CUDA GPU is present.')
+    parser.add_argument(
         '--complex', action='store_true', default=not USE_REAL_TENSORS,
         help='Use complex iPEPS tensors (Sx/Sy/Sz Hamiltonian). '
              'Default: real tensors (S+/S- Hamiltonian).')
@@ -893,6 +906,16 @@ def main():
     OPTIMIZER = args.optimizer
     # Only *enable* the flag from the CLI; never let the argparse default (False)
     # override a True that was already set at module level in core_unrestricted.py.
+    # ── Device setup ────────────────────────────────────────────────────────────────
+    _use_gpu = getattr(args, 'gpu', USE_GPU)
+    if _use_gpu and torch.cuda.is_available():
+        _dev = torch.device('cuda')
+    else:
+        if _use_gpu:
+            print("  Warning: --gpu requested but torch.cuda.is_available()=False; "
+                  "falling back to CPU.")
+        _dev = torch.device('cpu')
+    set_device(_dev)   # propagates DEVICE into core_unrestricted globals
 
     # ── parse D_bond list ─────────────────────────────────────────────────────
     D_bond_list: list[int] = [int(x) for x in args.D_bonds.split(',')]
@@ -952,7 +975,7 @@ def main():
 
     # ── output directory ──────────────────────────────────────────────────────
     run_ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    _default_outdir = os.path.join('/scratch/chye/1stTrialRun',
+    _default_outdir = os.path.join('/home/chye/6ADctmrg/data/raw',
                                    f'6tensors_{run_ts}')
     output_dir = args.output_dir or _default_outdir
     os.makedirs(output_dir, exist_ok=True)
@@ -972,6 +995,7 @@ def main():
         use_double         = args.double,
         use_real_tensors   = use_real,
         tensordtype        = str(TENSORDTYPE),
+        device             = str(_core.DEVICE),
 
         # ── time budget ────────────────────────────────────────────────────
         hours              = args.hours,
@@ -1036,6 +1060,7 @@ def main():
     print("=" * 76)
     print("  iPEPS sweep  —  AD-CTMRG  —  AFM Heisenberg on 6-site honeycomb")
     print(f"  J={args.J}  d_phys={d_PHYS}  Total budget: {args.hours:.1f} h")
+    print(f"  Device       : {_core.DEVICE}")
     print(f"  D_bond sweep : {D_bond_list}")
     for D in D_bond_list:
         bh = d_budgets[D] / 3600
@@ -1054,7 +1079,7 @@ def main():
     # ── Resume ────────────────────────────────────────────────────────────────
     resume_D, resume_chi = None, None
     if args.resume:
-        ckpt = torch.load(args.resume, map_location='cpu')
+        ckpt = torch.load(args.resume, map_location=_core.DEVICE)
         resume_D   = ckpt.get('D_bond')
         resume_chi = ckpt.get('chi')
         ckpt_step  = ckpt.get('step', 0) + 1
@@ -1142,7 +1167,6 @@ def main():
             print(f"\n  ┌── D={D_bond}  chi={chi}"
                   f"  budget={chi_budget:.0f}s={chi_budget/60:.1f}min"
                   f"  [{timestamp()}]")
-            sys.stdout.flush()
 
             best_path   = os.path.join(output_dir,
                                        f"sweep_D{D_bond}_chi{chi}_best.pt")
@@ -1205,7 +1229,7 @@ def main():
             # ── Chi-convergence lookahead ─────────────────────────────────────
             # Evaluate energy at chi_next (using current optimised tensors,
             # no further optimisation) to test if chi is already converged.
-            # If |ΔE/bond| < CHI_CONVERGENCE_THRESHOLD we skip the remaining
+            # If |ΔE| < CHI_CONVERGENCE_THRESHOLD we skip the remaining
             # chi levels for this D and jump straight to D_next.
             # The finishing chi for D_next schedule filtering is the CURRENT
             # chi (not chi_next), per the protocol.
@@ -1216,14 +1240,13 @@ def main():
                 with torch.no_grad():
                     energy_la = evaluate_energy_clean(
                         *cur_abcdef, Hs, chi_la, D_bond, d_PHYS)
-                energy_per_bond_la = energy_la / N_BONDS
-                delta_la = abs(energy_per_bond - energy_per_bond_la)
-                print(f"  │  [Lookahead] chi={chi}: E/bond={energy_per_bond:+.10f} │ "
-                      f"chi={chi_la}: E/bond={energy_per_bond_la:+.10f} │ "
-                      f"|ΔE/bond|={delta_la:.3e}  "
+                delta_la = abs(energy - energy_la)
+                print(f"  │  [Lookahead] chi={chi}: E={energy:+.10f} │ "
+                      f"chi={chi_la}: E={energy_la:+.10f} │ "
+                      f"|ΔE|={delta_la:.3e}  "
                       f"[thr={CHI_CONVERGENCE_THRESHOLD:.1e}]")
                 if delta_la < CHI_CONVERGENCE_THRESHOLD:
-                    print(f"  │  [CHI-CONV] |ΔE/bond|={delta_la:.3e} "
+                    print(f"  │  [CHI-CONV] |ΔE|={delta_la:.3e} "
                           f"< {CHI_CONVERGENCE_THRESHOLD:.1e} → chi converged at "
                           f"chi={chi}; skipping remaining chi levels for D={D_bond}. "
                           f"D_next will start from chi > {chi}.")
