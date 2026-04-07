@@ -1,0 +1,953 @@
+[chye@jed1 1stTrialRun]$ cat job-jst280-52980096.out
+***** START OF JOB ***** 
+STARTING AT lun 06 avr 2026 00:32:29 CEST
+  RNG seed fixed to 42 (use --no-seed to disable)
+tensor([[0., 1.],
+        [0., 0.]], dtype=torch.float64) tensor([[0., 0.],
+        [1., 0.]], dtype=torch.float64) tensor([[ 0.5000,  0.0000],
+        [ 0.0000, -0.5000]], dtype=torch.float64)
+============================================================================
+  iPEPS sweep  —  AD-CTMRG  —  AFM Heisenberg on 6-site honeycomb
+  J=1.0  d_phys=2  Total budget: 9999.0 h
+  D_bond sweep : [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    D=2: chi=[5, 7, 9]  budget=999.90 h  (chi_max=16)
+    D=3: chi=[10, 13, 16]  budget=999.90 h  (chi_max=81)
+    D=4: chi=[17, 21, 25]  budget=999.90 h  (chi_max=80)
+    D=5: chi=[26, 31, 36]  budget=999.90 h  (chi_max=9999)
+    D=6: chi=[37, 43, 49]  budget=999.90 h  (chi_max=9999)
+    D=7: chi=[50, 57, 64]  budget=999.90 h  (chi_max=9999)
+    D=8: chi=[65, 73, 81]  budget=999.90 h  (chi_max=9999)
+    D=9: chi=[82, 91, 100]  budget=999.90 h  (chi_max=9999)
+    D=10: chi=[101, 111, 121]  budget=999.90 h  (chi_max=9999)
+    D=11: chi=[122, 133, 144]  budget=999.90 h  (chi_max=9999)
+  Output dir   : /scratch/chye/1stTrialRun/6tensors_20260406_003305
+  Started      : 2026-04-06 00:33:06
+============================================================================
+
+════════════════════════════════════════════════════════════════════════════
+  D_bond = 2   D²=4  D⁴=16  chi_max=16  budget=999.90 h
+  chi schedule: [5, 7, 9]  (3 levels, equal time split)
+════════════════════════════════════════════════════════════════════════════
+
+  ┌── D=2  chi=5  budget=1199880s=19998.0min  [2026-04-06 00:33:06]
+[MEM-C] RSS=278.1MB, step=0 free=513332MB
+    step     0  ctm=  4  loss=-0.4137714887  Δ=+inf  13/1199880s
+[MEM-C] RSS=352.4MB, step=1 free=513260MB
+    step     1  ctm=  4  loss=-3.2028097338  Δ=-2.789e+00  16/1199880s
+[MEM-C] RSS=334.4MB, step=2 free=513277MB
+    step     2  ctm=  3  loss=-3.2120319586  Δ=-9.222e-03  19/1199880s
+[MEM-C] RSS=333.2MB, step=3 free=513277MB
+    step     3  ctm=  3  loss=-3.2122304484  Δ=-1.985e-04  22/1199880s
+[MEM-C] RSS=333.2MB, step=4 free=513277MB
+    step     4  ctm=  3  loss=-3.2122425934  Δ=-1.214e-05  25/1199880s
+[MEM-C] RSS=333.2MB, step=5 free=513275MB
+    step     5  ctm=  3  loss=-3.2122436689  Δ=-1.076e-06  27/1199880s
+[MEM-C] RSS=333.2MB, step=6 free=513273MB
+    step     6  ctm=  3  loss=-3.2122437171  Δ=-4.826e-08  30/1199880s
+[MEM-C] RSS=333.2MB, step=7 free=513276MB
+    step     7  ctm=  3  loss=-3.2122437203  Δ=-3.145e-09  33/1199880s
+[MEM-C] RSS=333.8MB, step=8 free=513276MB
+    step     8  ctm=  3  loss=-3.2122437205  Δ=-2.401e-10  35/1199880s
+[MEM-C] RSS=333.8MB, step=9 free=513276MB
+    step     9  ctm=  3  loss=-3.2122437207  Δ=-1.599e-10  38/1199880s
+[MEM-C] RSS=333.8MB, step=10 free=513276MB
+    step    10  ctm=  3  loss=-3.2122437208  Δ=-1.093e-10  39/1199880s
+[MEM-C] RSS=333.8MB, step=11 free=513277MB
+    step    11  ctm=  3  loss=-3.2122437208  Δ=+0.000e+00  39/1199880s
+    Outer convergence at step 11 (Δ=0.00e+00)
+
+🔍 DIAGNOSTIC SUMMARY (D=2, chi=5):
+   Total steps: 12
+   Loss range per bond: [-0.356916, -0.045975]
+   Extreme cases: 0 (0.0%)
+   Suspicious cases: 0 (0.0%)
+
+  │  Evaluating energy at (D=2, chi=5) ...
+  └── E=-3.2122437208  E/bond=-0.3569159690  wall=0.01h
+
+  ┌── D=2  chi=7  budget=1199880s=19998.0min  [2026-04-06 00:33:45]
+[MEM-C] RSS=298.6MB, step=11 free=513309MB
+    step    11  ctm=  3  loss=-3.2122437220  Δ=+inf  1/1199880s
+[MEM-C] RSS=306.8MB, step=12 free=513302MB
+    step    12  ctm=  3  loss=-3.2122437221  Δ=-2.693e-11  2/1199880s
+    Cycle detected at step 12 (amplitude=2.693e-11); stopping.
+
+🔍 DIAGNOSTIC SUMMARY (D=2, chi=7):
+   Total steps: 14
+   Loss range per bond: [-0.356916, -0.045975]
+   Extreme cases: 0 (0.0%)
+   Suspicious cases: 0 (0.0%)
+
+  │  Evaluating energy at (D=2, chi=7) ...
+  └── E=-3.2122437221  E/bond=-0.3569159691  wall=0.01h
+
+  ┌── D=2  chi=9  budget=1199880s=19998.0min  [2026-04-06 00:33:47]
+[MEM-C] RSS=299.4MB, step=12 free=513301MB
+    step    12  ctm=  3  loss=-3.2122437222  Δ=+inf  1/1199880s
+[MEM-C] RSS=309.6MB, step=13 free=513300MB
+    step    13  ctm=  3  loss=-3.2122437223  Δ=-6.899e-11  2/1199880s
+    Cycle detected at step 13 (amplitude=6.899e-11); stopping.
+
+🔍 DIAGNOSTIC SUMMARY (D=2, chi=9):
+   Total steps: 16
+   Loss range per bond: [-0.356916, -0.045975]
+   Extreme cases: 0 (0.0%)
+   Suspicious cases: 0 (0.0%)
+
+  │  Evaluating energy at (D=2, chi=9) ...
+  └── E=-3.2122437223  E/bond=-0.3569159691  wall=0.01h
+
+  D=2 complete in 0.01 h
+
+════════════════════════════════════════════════════════════════════════════
+  D_bond = 3   D²=9  D⁴=81  chi_max=81  budget=999.90 h
+  chi schedule: [10, 13, 16]  (3 levels, equal time split)
+════════════════════════════════════════════════════════════════════════════
+  Warm-starting from D=2 tensors (padding 2→3, noise=0.2)
+
+  ┌── D=3  chi=10  budget=1199880s=19998.0min  [2026-04-06 00:33:49]
+[MEM-C] RSS=299.8MB, step=14 free=513303MB
+    step    14  ctm=  4  loss=-3.1454820363  Δ=+inf  5/1199880s
+[MEM-C] RSS=391.0MB, step=15 free=513233MB
+    step    15  ctm=  6  loss=-3.2141270243  Δ=-6.864e-02  11/1199880s
+[MEM-C] RSS=393.8MB, step=16 free=513247MB
+    step    16  ctm=  7  loss=-3.2222102138  Δ=-8.083e-03  19/1199880s
+[MEM-C] RSS=396.0MB, step=17 free=513246MB
+    step    17  ctm=  7  loss=-3.2297592818  Δ=-7.549e-03  27/1199880s
+[MEM-C] RSS=393.6MB, step=18 free=513244MB
+    step    18  ctm=  8  loss=-3.2341935412  Δ=-4.434e-03  36/1199880s
+[MEM-C] RSS=394.4MB, step=19 free=513252MB
+    step    19  ctm=  9  loss=-3.2370182176  Δ=-2.825e-03  46/1199880s
+[MEM-C] RSS=399.5MB, step=20 free=513250MB
+    step    20  ctm=  8  loss=-3.2381197766  Δ=-1.102e-03  56/1199880s
+[MEM-C] RSS=401.0MB, step=21 free=513260MB
+    step    21  ctm=  9  loss=-3.2385484279  Δ=-4.287e-04  65/1199880s
+[MEM-C] RSS=402.0MB, step=22 free=513261MB
+    step    22  ctm=  9  loss=-3.2387696974  Δ=-2.213e-04  76/1199880s
+[MEM-C] RSS=403.6MB, step=23 free=513257MB
+    step    23  ctm= 13  loss=-3.2389128188  Δ=-1.431e-04  87/1199880s
+[MEM-C] RSS=401.7MB, step=24 free=513257MB
+    step    24  ctm= 40  loss=-3.2389894573  Δ=-7.664e-05  112/1199880s
+[MEM-C] RSS=529.7MB, step=25 free=513119MB
+    step    25  ctm= 40  loss=-3.2390545656  Δ=-6.511e-05  151/1199880s
+[MEM-C] RSS=531.5MB, step=26 free=513126MB
+    step    26  ctm= 40  loss=-3.2390874007  Δ=-3.284e-05  193/1199880s
+[MEM-C] RSS=531.6MB, step=27 free=513118MB
+    step    27  ctm= 40  loss=-3.2391139613  Δ=-2.656e-05  233/1199880s
+[MEM-C] RSS=531.6MB, step=28 free=513106MB
+    step    28  ctm= 40  loss=-3.2391296928  Δ=-1.573e-05  277/1199880s
+[MEM-C] RSS=531.1MB, step=29 free=513084MB
+    step    29  ctm= 40  loss=-3.2391447021  Δ=-1.501e-05  320/1199880s
+[MEM-C] RSS=530.9MB, step=30 free=513087MB
+    step    30  ctm= 40  loss=-3.2391539867  Δ=-9.285e-06  364/1199880s
+[MEM-C] RSS=532.0MB, step=31 free=513097MB
+    step    31  ctm= 40  loss=-3.2391569957  Δ=-3.009e-06  407/1199880s
+[MEM-C] RSS=530.5MB, step=32 free=513067MB
+    step    32  ctm= 40  loss=-3.2391590146  Δ=-2.019e-06  450/1199880s
+[MEM-C] RSS=530.1MB, step=33 free=513066MB
+    step    33  ctm= 40  loss=-3.2391604379  Δ=-1.423e-06  491/1199880s
+[MEM-C] RSS=530.1MB, step=34 free=513063MB
+    step    34  ctm= 40  loss=-3.2391614381  Δ=-1.000e-06  531/1199880s
+[MEM-C] RSS=529.9MB, step=35 free=513073MB
+    step    35  ctm= 40  loss=-3.2391620146  Δ=-5.765e-07  575/1199880s
+[MEM-C] RSS=528.8MB, step=36 free=513068MB
+    step    36  ctm= 40  loss=-3.2391624531  Δ=-4.385e-07  618/1199880s
+[MEM-C] RSS=528.8MB, step=37 free=513062MB
+    step    37  ctm= 40  loss=-3.2391628911  Δ=-4.380e-07  659/1199880s
+[MEM-C] RSS=530.0MB, step=38 free=513053MB
+    step    38  ctm= 40  loss=-3.2391632330  Δ=-3.419e-07  699/1199880s
+[MEM-C] RSS=529.1MB, step=39 free=513057MB
+    step    39  ctm= 40  loss=-3.2391635873  Δ=-3.543e-07  742/1199880s
+[MEM-C] RSS=530.1MB, step=40 free=513057MB
+    step    40  ctm= 40  loss=-3.2391638405  Δ=-2.532e-07  785/1199880s
+[MEM-C] RSS=531.3MB, step=41 free=513058MB
+    step    41  ctm= 40  loss=-3.2391641169  Δ=-2.765e-07  828/1199880s
+[MEM-C] RSS=530.7MB, step=42 free=513074MB
+    step    42  ctm= 40  loss=-3.2391643109  Δ=-1.940e-07  871/1199880s
+[MEM-C] RSS=531.7MB, step=43 free=513069MB
+    step    43  ctm= 40  loss=-3.2391644517  Δ=-1.408e-07  914/1199880s
+[MEM-C] RSS=529.3MB, step=44 free=513071MB
+    step    44  ctm= 40  loss=-3.2391645611  Δ=-1.094e-07  954/1199880s
+[MEM-C] RSS=529.3MB, step=45 free=513074MB
+    step    45  ctm= 40  loss=-3.2391647222  Δ=-1.611e-07  997/1199880s
+[MEM-C] RSS=528.2MB, step=46 free=513052MB
+    step    46  ctm= 40  loss=-3.2391648629  Δ=-1.407e-07  1040/1199880s
+[MEM-C] RSS=531.5MB, step=47 free=513055MB
+    step    47  ctm= 40  loss=-3.2391649941  Δ=-1.312e-07  1082/1199880s
+[MEM-C] RSS=529.6MB, step=48 free=513065MB
+    step    48  ctm= 40  loss=-3.2391651095  Δ=-1.154e-07  1127/1199880s
+[MEM-C] RSS=530.0MB, step=49 free=513049MB
+    step    49  ctm= 40  loss=-3.2391651909  Δ=-8.141e-08  1170/1199880s
+[MEM-C] RSS=530.9MB, step=50 free=513049MB
+    step    50  ctm= 40  loss=-3.2391652559  Δ=-6.502e-08  1211/1199880s
+[MEM-C] RSS=530.1MB, step=51 free=513047MB
+    step    51  ctm= 40  loss=-3.2391652874  Δ=-3.146e-08  1254/1199880s
+[MEM-C] RSS=530.7MB, step=52 free=513021MB
+    step    52  ctm= 40  loss=-3.2391653159  Δ=-2.855e-08  1317/1199880s
+[MEM-C] RSS=530.4MB, step=53 free=513024MB
+    step    53  ctm= 40  loss=-3.2391653296  Δ=-1.362e-08  1353/1199880s
+[MEM-C] RSS=530.5MB, step=54 free=513020MB
+    step    54  ctm= 40  loss=-3.2391653297  Δ=-8.364e-11  1396/1199880s
+    Cycle detected at step 54 (amplitude=8.364e-11); stopping.
+
+🔍 DIAGNOSTIC SUMMARY (D=3, chi=10):
+   Total steps: 57
+   Loss range per bond: [-0.359907, -0.045975]
+   Extreme cases: 0 (0.0%)
+   Suspicious cases: 0 (0.0%)
+
+  │  Evaluating energy at (D=3, chi=10) ...
+  └── E=-3.2391653607  E/bond=-0.3599072623  wall=0.40h
+
+  ┌── D=3  chi=13  budget=1199880s=19998.0min  [2026-04-06 00:57:05]
+[MEM-C] RSS=377.2MB, step=54 free=513144MB
+    step    54  ctm= 28  loss=-3.2391653364  Δ=+inf  52/1199880s
+[MEM-C] RSS=533.0MB, step=55 free=512812MB
+    step    55  ctm= 28  loss=-3.2391653621  Δ=-2.572e-08  104/1199880s
+[MEM-C] RSS=534.5MB, step=56 free=512894MB
+    step    56  ctm= 28  loss=-3.2391653821  Δ=-1.992e-08  142/1199880s
+[MEM-C] RSS=535.6MB, step=57 free=512912MB
+    step    57  ctm= 28  loss=-3.2391653986  Δ=-1.657e-08  181/1199880s
+[MEM-C] RSS=541.3MB, step=58 free=512864MB
+    step    58  ctm= 28  loss=-3.2391654064  Δ=-7.821e-09  224/1199880s
+[MEM-C] RSS=537.6MB, step=59 free=512864MB
+    step    59  ctm= 28  loss=-3.2391654262  Δ=-1.974e-08  266/1199880s
+[MEM-C] RSS=529.6MB, step=60 free=512870MB
+    step    60  ctm= 28  loss=-3.2391654445  Δ=-1.829e-08  301/1199880s
+[MEM-C] RSS=534.9MB, step=61 free=512860MB
+    step    61  ctm= 28  loss=-3.2391654629  Δ=-1.845e-08  343/1199880s
+[MEM-C] RSS=530.0MB, step=62 free=512880MB
+    step    62  ctm= 28  loss=-3.2391654854  Δ=-2.246e-08  386/1199880s
+[MEM-C] RSS=538.9MB, step=63 free=512827MB
+    step    63  ctm= 28  loss=-3.2391654942  Δ=-8.776e-09  429/1199880s
+[MEM-C] RSS=529.2MB, step=64 free=512885MB
+    step    64  ctm= 28  loss=-3.2391655052  Δ=-1.099e-08  465/1199880s
+[MEM-C] RSS=540.1MB, step=65 free=512851MB
+    step    65  ctm= 28  loss=-3.2391655152  Δ=-1.007e-08  502/1199880s
+[MEM-C] RSS=530.0MB, step=66 free=512870MB
+    step    66  ctm= 28  loss=-3.2391655237  Δ=-8.453e-09  548/1199880s
+[MEM-C] RSS=532.4MB, step=67 free=512844MB
+    step    67  ctm= 28  loss=-3.2391655243  Δ=-6.429e-10  588/1199880s
+[MEM-C] RSS=541.9MB, step=68 free=512864MB
+    step    68  ctm= 28  loss=-3.2391655251  Δ=-7.797e-10  631/1199880s
+[MEM-C] RSS=533.0MB, step=69 free=512850MB
+    step    69  ctm= 28  loss=-3.2391656085  Δ=-8.337e-08  678/1199880s
+[MEM-C] RSS=535.4MB, step=70 free=512853MB
+    step    70  ctm= 28  loss=-3.2391656357  Δ=-2.725e-08  700/1199880s
+[MEM-C] RSS=530.2MB, step=71 free=512885MB
+    step    71  ctm= 28  loss=-3.2391656358  Δ=-2.131e-11  711/1199880s
+    Cycle detected at step 71 (amplitude=2.131e-11); stopping.
+
+🔍 DIAGNOSTIC SUMMARY (D=3, chi=13):
+   Total steps: 75
+   Loss range per bond: [-0.359907, -0.045975]
+   Extreme cases: 0 (0.0%)
+   Suspicious cases: 0 (0.0%)
+
+  │  Evaluating energy at (D=3, chi=13) ...
+  └── E=-3.2391656358  E/bond=-0.3599072929  wall=0.60h
+
+  ┌── D=3  chi=16  budget=1199880s=19998.0min  [2026-04-06 01:08:57]
+[MEM-C] RSS=385.2MB, step=71 free=513031MB
+    step    71  ctm=  9  loss=-3.2391655503  Δ=+inf  41/1199880s
+[MEM-C] RSS=503.4MB, step=72 free=512832MB
+    step    72  ctm=  9  loss=-3.2391655503  Δ=-3.594e-11  64/1199880s
+    Cycle detected at step 72 (amplitude=3.594e-11); stopping.
+
+🔍 DIAGNOSTIC SUMMARY (D=3, chi=16):
+   Total steps: 77
+   Loss range per bond: [-0.359907, -0.045975]
+   Extreme cases: 0 (0.0%)
+   Suspicious cases: 0 (0.0%)
+
+  │  Evaluating energy at (D=3, chi=16) ...
+  └── E=-3.2391655503  E/bond=-0.3599072834  wall=0.62h
+
+  D=3 complete in 0.60 h
+
+════════════════════════════════════════════════════════════════════════════
+  D_bond = 4   D²=16  D⁴=256  chi_max=80  budget=999.90 h
+  chi schedule: [17, 21, 25]  (3 levels, equal time split)
+════════════════════════════════════════════════════════════════════════════
+  Warm-starting from D=3 tensors (padding 3→4, noise=0.2)
+
+  ┌── D=4  chi=17  budget=1199880s=19998.0min  [2026-04-06 01:10:04]
+[MEM-C] RSS=385.1MB, step=73 free=512960MB
+    step    73  ctm=  9  loss=-3.2272152462  Δ=+inf  47/1199880s
+[MEM-C] RSS=765.7MB, step=74 free=512598MB
+    step    74  ctm=  7  loss=-3.2391271862  Δ=-1.191e-02  111/1199880s
+[MEM-C] RSS=785.4MB, step=75 free=512632MB
+    step    75  ctm=  9  loss=-3.2463170851  Δ=-7.190e-03  161/1199880s
+[MEM-C] RSS=784.9MB, step=76 free=512602MB
+    step    76  ctm= 10  loss=-3.2593460149  Δ=-1.303e-02  197/1199880s
+[MEM-C] RSS=786.1MB, step=77 free=512637MB
+    step    77  ctm= 10  loss=-3.2625885827  Δ=-3.243e-03  252/1199880s
+[MEM-C] RSS=789.3MB, step=78 free=512631MB
+    step    78  ctm= 10  loss=-3.2631819372  Δ=-5.934e-04  305/1199880s
+[MEM-C] RSS=779.0MB, step=79 free=512614MB
+    step    79  ctm=  9  loss=-3.2633747758  Δ=-1.928e-04  359/1199880s
+[MEM-C] RSS=791.1MB, step=80 free=512642MB
+    step    80  ctm=  9  loss=-3.2634716446  Δ=-9.687e-05  395/1199880s
+[MEM-C] RSS=796.4MB, step=81 free=512569MB
+    step    81  ctm=  9  loss=-3.2635448245  Δ=-7.318e-05  427/1199880s
+[MEM-C] RSS=793.8MB, step=82 free=512556MB
+    step    82  ctm=  9  loss=-3.2635730823  Δ=-2.826e-05  465/1199880s
+[MEM-C] RSS=798.9MB, step=83 free=512567MB
+    step    83  ctm=  9  loss=-3.2635840057  Δ=-1.092e-05  512/1199880s
+[MEM-C] RSS=811.6MB, step=84 free=512593MB
+    step    84  ctm=  9  loss=-3.2635910576  Δ=-7.052e-06  560/1199880s
+[MEM-C] RSS=804.4MB, step=85 free=512567MB
+    step    85  ctm=  9  loss=-3.2635963661  Δ=-5.309e-06  602/1199880s
+[MEM-C] RSS=828.3MB, step=86 free=512538MB
+    step    86  ctm=  9  loss=-3.2636015576  Δ=-5.191e-06  637/1199880s
+[MEM-C] RSS=804.7MB, step=87 free=512572MB
+    step    87  ctm=  9  loss=-3.2636041630  Δ=-2.605e-06  672/1199880s
+[MEM-C] RSS=790.1MB, step=88 free=512569MB
+    step    88  ctm=  9  loss=-3.2636058690  Δ=-1.706e-06  708/1199880s
+[MEM-C] RSS=785.3MB, step=89 free=512582MB
+    step    89  ctm=  9  loss=-3.2636069498  Δ=-1.081e-06  745/1199880s
+[MEM-C] RSS=788.9MB, step=90 free=512566MB
+    step    90  ctm=  9  loss=-3.2636074957  Δ=-5.459e-07  787/1199880s
+[MEM-C] RSS=800.4MB, step=91 free=512572MB
+    step    91  ctm=  9  loss=-3.2636079914  Δ=-4.958e-07  832/1199880s
+[MEM-C] RSS=780.0MB, step=92 free=512600MB
+    step    92  ctm=  9  loss=-3.2636083386  Δ=-3.471e-07  866/1199880s
+[MEM-C] RSS=787.2MB, step=93 free=512602MB
+    step    93  ctm=  9  loss=-3.2636086640  Δ=-3.254e-07  911/1199880s
+[MEM-C] RSS=810.2MB, step=94 free=512567MB
+    step    94  ctm=  9  loss=-3.2636089133  Δ=-2.493e-07  965/1199880s
+[MEM-C] RSS=778.3MB, step=95 free=512605MB
+    step    95  ctm=  9  loss=-3.2636091246  Δ=-2.113e-07  1013/1199880s
+[MEM-C] RSS=787.0MB, step=96 free=512602MB
+    step    96  ctm=  9  loss=-3.2636094073  Δ=-2.827e-07  1064/1199880s
+[MEM-C] RSS=814.9MB, step=97 free=512575MB
+    step    97  ctm=  9  loss=-3.2636096291  Δ=-2.218e-07  1112/1199880s
+[MEM-C] RSS=795.5MB, step=98 free=512645MB
+    step    98  ctm=  9  loss=-3.2636097729  Δ=-1.438e-07  1154/1199880s
+[MEM-C] RSS=789.6MB, step=99 free=512635MB
+    step    99  ctm=  9  loss=-3.2636098909  Δ=-1.180e-07  1207/1199880s
+[MEM-C] RSS=786.9MB, step=100 free=512638MB
+    step   100  ctm=  9  loss=-3.2636100221  Δ=-1.311e-07  1259/1199880s
+[MEM-C] RSS=782.8MB, step=101 free=512633MB
+    step   101  ctm=  9  loss=-3.2636101342  Δ=-1.121e-07  1307/1199880s
+[MEM-C] RSS=783.6MB, step=102 free=512585MB
+    step   102  ctm=  9  loss=-3.2636102179  Δ=-8.368e-08  1355/1199880s
+[MEM-C] RSS=794.6MB, step=103 free=512598MB
+    step   103  ctm=  9  loss=-3.2636102943  Δ=-7.645e-08  1405/1199880s
+[MEM-C] RSS=790.5MB, step=104 free=512596MB
+    step   104  ctm=  9  loss=-3.2636103616  Δ=-6.721e-08  1460/1199880s
+[MEM-C] RSS=800.8MB, step=105 free=512613MB
+    step   105  ctm=  9  loss=-3.2636104359  Δ=-7.436e-08  1498/1199880s
+[MEM-C] RSS=795.0MB, step=106 free=512583MB
+    step   106  ctm=  9  loss=-3.2636104897  Δ=-5.374e-08  1552/1199880s
+[MEM-C] RSS=798.2MB, step=107 free=512607MB
+    step   107  ctm=  9  loss=-3.2636105305  Δ=-4.082e-08  1606/1199880s
+[MEM-C] RSS=794.6MB, step=108 free=512670MB
+    step   108  ctm=  9  loss=-3.2636105635  Δ=-3.303e-08  1641/1199880s
+[MEM-C] RSS=783.0MB, step=109 free=512586MB
+    step   109  ctm=  9  loss=-3.2636105921  Δ=-2.860e-08  1684/1199880s
+[MEM-C] RSS=787.5MB, step=110 free=512589MB
+    step   110  ctm=  9  loss=-3.2636106181  Δ=-2.602e-08  1720/1199880s
+[MEM-C] RSS=810.9MB, step=111 free=512532MB
+    step   111  ctm=  9  loss=-3.2636106829  Δ=-6.474e-08  1766/1199880s
+[MEM-C] RSS=786.5MB, step=112 free=512620MB
+    step   112  ctm=  9  loss=-3.2636107279  Δ=-4.502e-08  1805/1199880s
+[MEM-C] RSS=808.3MB, step=113 free=512535MB
+    step   113  ctm=  9  loss=-3.2636107495  Δ=-2.166e-08  1842/1199880s
+[MEM-C] RSS=795.7MB, step=114 free=512580MB
+    step   114  ctm=  9  loss=-3.2636107678  Δ=-1.824e-08  1877/1199880s
+[MEM-C] RSS=818.9MB, step=115 free=512563MB
+    step   115  ctm=  9  loss=-3.2636107823  Δ=-1.447e-08  1932/1199880s
+[MEM-C] RSS=798.9MB, step=116 free=512605MB
+    step   116  ctm=  9  loss=-3.2636107983  Δ=-1.607e-08  1974/1199880s
+[MEM-C] RSS=788.8MB, step=117 free=512626MB
+    step   117  ctm=  9  loss=-3.2636108124  Δ=-1.407e-08  2015/1199880s
+[MEM-C] RSS=797.3MB, step=118 free=512572MB
+    step   118  ctm=  9  loss=-3.2636108237  Δ=-1.131e-08  2049/1199880s
+[MEM-C] RSS=772.1MB, step=119 free=512619MB
+    step   119  ctm=  9  loss=-3.2636108313  Δ=-7.553e-09  2083/1199880s
+[MEM-C] RSS=789.3MB, step=120 free=512603MB
+    step   120  ctm=  9  loss=-3.2636108505  Δ=-1.924e-08  2139/1199880s
+[MEM-C] RSS=779.1MB, step=121 free=512663MB
+    step   121  ctm=  9  loss=-3.2636108645  Δ=-1.402e-08  2192/1199880s
+[MEM-C] RSS=802.1MB, step=122 free=512588MB
+    step   122  ctm=  9  loss=-3.2636108747  Δ=-1.020e-08  2234/1199880s
+[MEM-C] RSS=797.8MB, step=123 free=512636MB
+    step   123  ctm=  9  loss=-3.2636108857  Δ=-1.095e-08  2282/1199880s
+[MEM-C] RSS=784.4MB, step=124 free=512641MB
+    step   124  ctm=  9  loss=-3.2636108946  Δ=-8.946e-09  2317/1199880s
+[MEM-C] RSS=800.4MB, step=125 free=512658MB
+    step   125  ctm=  9  loss=-3.2636109013  Δ=-6.647e-09  2352/1199880s
+[MEM-C] RSS=790.1MB, step=126 free=512662MB
+    step   126  ctm=  9  loss=-3.2636109067  Δ=-5.489e-09  2407/1199880s
+[MEM-C] RSS=803.3MB, step=127 free=512623MB
+    step   127  ctm=  9  loss=-3.2636109129  Δ=-6.172e-09  2464/1199880s
+[MEM-C] RSS=800.5MB, step=128 free=512655MB
+    step   128  ctm=  9  loss=-3.2636109196  Δ=-6.682e-09  2520/1199880s
+[MEM-C] RSS=797.6MB, step=129 free=512668MB
+    step   129  ctm=  9  loss=-3.2636109261  Δ=-6.475e-09  2575/1199880s
+[MEM-C] RSS=788.3MB, step=130 free=512689MB
+    step   130  ctm=  9  loss=-3.2636109337  Δ=-7.597e-09  2625/1199880s
+[MEM-C] RSS=799.1MB, step=131 free=512673MB
+    step   131  ctm=  9  loss=-3.2636109414  Δ=-7.680e-09  2679/1199880s
+[MEM-C] RSS=788.2MB, step=132 free=512670MB
+    step   132  ctm=  9  loss=-3.2636109471  Δ=-5.740e-09  2734/1199880s
+[MEM-C] RSS=794.6MB, step=133 free=512652MB
+    step   133  ctm=  9  loss=-3.2636109513  Δ=-4.175e-09  2789/1199880s
+[MEM-C] RSS=796.6MB, step=134 free=512624MB
+    step   134  ctm=  9  loss=-3.2636109519  Δ=-5.982e-10  2839/1199880s
+[MEM-C] RSS=783.8MB, step=135 free=512654MB
+    step   135  ctm=  9  loss=-3.2636109522  Δ=-3.808e-10  2882/1199880s
+[MEM-C] RSS=792.3MB, step=136 free=512639MB
+    step   136  ctm=  9  loss=-3.2636109530  Δ=-7.123e-10  2934/1199880s
+[MEM-C] RSS=784.3MB, step=137 free=512640MB
+    step   137  ctm=  9  loss=-3.2636109824  Δ=-2.941e-08  2986/1199880s
+[MEM-C] RSS=784.0MB, step=138 free=512707MB
+    step   138  ctm=  9  loss=-3.2636110147  Δ=-3.233e-08  3034/1199880s
+[MEM-C] RSS=800.8MB, step=139 free=512595MB
+    step   139  ctm=  9  loss=-3.2636110149  Δ=-1.707e-10  3077/1199880s
+[MEM-C] RSS=810.8MB, step=140 free=512589MB
+    step   140  ctm=  9  loss=-3.2636110183  Δ=-3.438e-09  3119/1199880s
+[MEM-C] RSS=784.1MB, step=141 free=512621MB
+    step   141  ctm=  9  loss=-3.2636110198  Δ=-1.464e-09  3154/1199880s
+[MEM-C] RSS=787.7MB, step=142 free=512596MB
+    step   142  ctm=  9  loss=-3.2636110209  Δ=-1.125e-09  3204/1199880s
+[MEM-C] RSS=787.3MB, step=143 free=512624MB
+    step   143  ctm=  9  loss=-3.2636110210  Δ=-1.276e-10  3254/1199880s
+[MEM-C] RSS=795.9MB, step=144 free=512608MB
+    step   144  ctm=  9  loss=-3.2636110213  Δ=-2.852e-10  3303/1199880s
+[MEM-C] RSS=789.7MB, step=145 free=512613MB
+    step   145  ctm=  9  loss=-3.2636110214  Δ=-1.372e-10  3346/1199880s
+[MEM-C] RSS=789.0MB, step=146 free=512619MB
+    step   146  ctm=  9  loss=-3.2636110219  Δ=-4.051e-10  3389/1199880s
+[MEM-C] RSS=793.5MB, step=147 free=512633MB
+    step   147  ctm=  9  loss=-3.2636110220  Δ=-1.136e-10  3442/1199880s
+[MEM-C] RSS=792.2MB, step=148 free=512604MB
+    step   148  ctm=  9  loss=-3.2636110221  Δ=-1.091e-10  3500/1199880s
+[MEM-C] RSS=814.9MB, step=149 free=512665MB
+    step   149  ctm=  9  loss=-3.2636110222  Δ=-1.317e-10  3554/1199880s
+[MEM-C] RSS=798.9MB, step=150 free=512677MB
+    step   150  ctm=  9  loss=-3.2636110879  Δ=-6.572e-08  3610/1199880s
+[MEM-C] RSS=801.0MB, step=151 free=512691MB
+    step   151  ctm=  9  loss=-3.2636110882  Δ=-2.256e-10  3663/1199880s
+[MEM-C] RSS=805.0MB, step=152 free=512610MB
+    step   152  ctm=  9  loss=-3.2636110889  Δ=-7.784e-10  3714/1199880s
+[MEM-C] RSS=802.5MB, step=153 free=512615MB
+    step   153  ctm=  9  loss=-3.2636110890  Δ=-1.092e-10  3768/1199880s
+[MEM-C] RSS=799.7MB, step=154 free=512646MB
+    step   154  ctm=  9  loss=-3.2636110891  Δ=-8.593e-11  3828/1199880s
+    Cycle detected at step 154 (amplitude=8.593e-11); stopping.
+
+🔍 DIAGNOSTIC SUMMARY (D=4, chi=17):
+   Total steps: 159
+   Loss range per bond: [-0.362623, -0.045975]
+   Extreme cases: 0 (0.0%)
+   Suspicious cases: 0 (0.0%)
+
+  │  Evaluating energy at (D=4, chi=17) ...
+  └── E=-3.2636110893  E/bond=-0.3626234544  wall=1.68h
+
+  ┌── D=4  chi=21  budget=1199880s=19998.0min  [2026-04-06 02:13:53]
+[MEM-C] RSS=689.1MB, step=154 free=512751MB
+    step   154  ctm=  9  loss=-3.2636117457  Δ=+inf  78/1199880s
+[MEM-C] RSS=788.1MB, step=155 free=512659MB
+    step   155  ctm=  9  loss=-3.2636117467  Δ=-9.972e-10  153/1199880s
+[MEM-C] RSS=793.3MB, step=156 free=512680MB
+    step   156  ctm=  9  loss=-3.2636117486  Δ=-1.917e-09  232/1199880s
+[MEM-C] RSS=789.3MB, step=157 free=512674MB
+    step   157  ctm=  9  loss=-3.2636117490  Δ=-3.720e-10  308/1199880s
+[MEM-C] RSS=797.3MB, step=158 free=512640MB
+    step   158  ctm=  9  loss=-3.2636117531  Δ=-4.094e-09  388/1199880s
+[MEM-C] RSS=806.1MB, step=159 free=512612MB
+    step   159  ctm=  9  loss=-3.2636117533  Δ=-2.577e-10  469/1199880s
+[MEM-C] RSS=799.4MB, step=160 free=512611MB
+    step   160  ctm=  9  loss=-3.2636117536  Δ=-2.862e-10  552/1199880s
+[MEM-C] RSS=798.2MB, step=161 free=512639MB
+    step   161  ctm=  9  loss=-3.2636117538  Δ=-1.549e-10  629/1199880s
+[MEM-C] RSS=796.1MB, step=162 free=512602MB
+    step   162  ctm=  9  loss=-3.2636117539  Δ=-1.864e-10  705/1199880s
+[MEM-C] RSS=785.8MB, step=163 free=512661MB
+    step   163  ctm=  9  loss=-3.2636117541  Δ=-1.325e-10  779/1199880s
+[MEM-C] RSS=796.4MB, step=164 free=512645MB
+    step   164  ctm=  9  loss=-3.2636117544  Δ=-3.173e-10  856/1199880s
+[MEM-C] RSS=792.8MB, step=165 free=512553MB
+    step   165  ctm=  9  loss=-3.2636117545  Δ=-1.091e-10  927/1199880s
+[MEM-C] RSS=791.0MB, step=166 free=512637MB
+    step   166  ctm=  9  loss=-3.2636117546  Δ=-7.570e-11  1001/1199880s
+    Cycle detected at step 166 (amplitude=7.570e-11); stopping.
+
+🔍 DIAGNOSTIC SUMMARY (D=4, chi=21):
+   Total steps: 172
+   Loss range per bond: [-0.362624, -0.045975]
+   Extreme cases: 0 (0.0%)
+   Suspicious cases: 0 (0.0%)
+
+  │  Evaluating energy at (D=4, chi=21) ...
+  └── E=-3.2636117547  E/bond=-0.3626235283  wall=1.96h
+
+  ┌── D=4  chi=25  budget=1199880s=19998.0min  [2026-04-06 02:30:35]
+[MEM-C] RSS=686.9MB, step=166 free=512729MB
+    step   166  ctm= 10  loss=-3.2636104976  Δ=+inf  131/1199880s
+[MEM-C] RSS=714.0MB, step=167 free=512744MB
+    step   167  ctm= 10  loss=-3.2636104981  Δ=-5.329e-10  258/1199880s
+[MEM-C] RSS=707.2MB, step=168 free=512756MB
+    step   168  ctm= 10  loss=-3.2636104983  Δ=-1.079e-10  387/1199880s
+[MEM-C] RSS=729.3MB, step=169 free=512704MB
+    step   169  ctm= 10  loss=-3.2636104985  Δ=-2.022e-10  413/1199880s
+[MEM-C] RSS=714.8MB, step=170 free=512716MB
+    step   170  ctm= 10  loss=-3.2636104985  Δ=+0.000e+00  439/1199880s
+    Outer convergence at step 170 (Δ=0.00e+00)
+
+🔍 DIAGNOSTIC SUMMARY (D=4, chi=25):
+   Total steps: 177
+   Loss range per bond: [-0.362624, -0.045975]
+   Extreme cases: 0 (0.0%)
+   Suspicious cases: 0 (0.0%)
+
+  │  Evaluating energy at (D=4, chi=25) ...
+  └── E=-3.2636104985  E/bond=-0.3626233887  wall=2.08h
+
+  D=4 complete in 1.46 h
+
+════════════════════════════════════════════════════════════════════════════
+  D_bond = 5   D²=25  D⁴=625  chi_max=9999  budget=999.90 h
+  chi schedule: [26, 31, 36]  (3 levels, equal time split)
+════════════════════════════════════════════════════════════════════════════
+  Warm-starting from D=4 tensors (padding 4→5, noise=0.2)
+
+  ┌── D=5  chi=26  budget=1199880s=19998.0min  [2026-04-06 02:37:55]
+[MEM-C] RSS=574.2MB, step=171 free=512879MB
+    step   171  ctm= 26  loss=-3.2590252301  Δ=+inf  185/1199880s
+[MEM-C] RSS=701.5MB, step=172 free=512877MB
+    step   172  ctm= 11  loss=-3.2635204004  Δ=-4.495e-03  589/1199880s
+[MEM-C] RSS=701.7MB, step=173 free=512835MB
+    step   173  ctm=  9  loss=-3.2635900780  Δ=-6.968e-05  782/1199880s
+[MEM-C] RSS=701.9MB, step=174 free=512837MB
+    step   174  ctm= 10  loss=-3.2636134726  Δ=-2.339e-05  962/1199880s
+[MEM-C] RSS=701.5MB, step=175 free=512830MB
+    step   175  ctm= 40  loss=-3.2636395591  Δ=-2.609e-05  1174/1199880s
+[MEM-C] RSS=701.5MB, step=176 free=512821MB
+    step   176  ctm= 40  loss=-3.2636752973  Δ=-3.574e-05  1985/1199880s
+[MEM-C] RSS=700.8MB, step=177 free=512843MB
+    step   177  ctm= 40  loss=-3.2637521045  Δ=-7.681e-05  2799/1199880s
+[MEM-C] RSS=701.6MB, step=178 free=512842MB
+    step   178  ctm= 20  loss=-3.2638817240  Δ=-1.296e-04  3376/1199880s
+[MEM-C] RSS=649.4MB, step=179 free=512884MB
+    step   179  ctm= 10  loss=-3.2640786729  Δ=-1.969e-04  3701/1199880s
+[MEM-C] RSS=648.8MB, step=180 free=512887MB
+    step   180  ctm= 11  loss=-3.2643604444  Δ=-2.818e-04  3907/1199880s
+[MEM-C] RSS=649.7MB, step=181 free=512909MB
+    step   181  ctm= 12  loss=-3.2646594726  Δ=-2.990e-04  4114/1199880s
+[MEM-C] RSS=648.9MB, step=182 free=512888MB
+    step   182  ctm= 12  loss=-3.2651990204  Δ=-5.395e-04  4355/1199880s
+[MEM-C] RSS=650.8MB, step=183 free=512896MB
+    step   183  ctm= 14  loss=-3.2656700387  Δ=-4.710e-04  4611/1199880s
+[MEM-C] RSS=648.0MB, step=184 free=512888MB
+    step   184  ctm= 40  loss=-3.2660493799  Δ=-3.793e-04  5049/1199880s
+[MEM-C] RSS=648.8MB, step=185 free=512881MB
+    step   185  ctm= 15  loss=-3.2662456325  Δ=-1.963e-04  5466/1199880s
+[MEM-C] RSS=648.3MB, step=186 free=512873MB
+    step   186  ctm= 15  loss=-3.2663482882  Δ=-1.027e-04  5760/1199880s
+[MEM-C] RSS=632.1MB, step=187 free=512891MB
+    step   187  ctm= 16  loss=-3.2664330231  Δ=-8.473e-05  6036/1199880s
+[MEM-C] RSS=631.4MB, step=188 free=512928MB
+    step   188  ctm= 16  loss=-3.2665244058  Δ=-9.138e-05  6347/1199880s
+[MEM-C] RSS=632.8MB, step=189 free=512918MB
+    step   189  ctm= 16  loss=-3.2665808713  Δ=-5.647e-05  6657/1199880s
+[MEM-C] RSS=631.9MB, step=190 free=512933MB
+    step   190  ctm= 16  loss=-3.2666121246  Δ=-3.125e-05  6984/1199880s
+[MEM-C] RSS=631.1MB, step=191 free=512948MB
+    step   191  ctm= 16  loss=-3.2666308644  Δ=-1.874e-05  7295/1199880s
+[MEM-C] RSS=630.1MB, step=192 free=512924MB
+    step   192  ctm= 16  loss=-3.2666482200  Δ=-1.736e-05  7606/1199880s
+[MEM-C] RSS=629.9MB, step=193 free=512922MB
+    step   193  ctm= 16  loss=-3.2666615668  Δ=-1.335e-05  7916/1199880s
+[MEM-C] RSS=630.4MB, step=194 free=512923MB
+    step   194  ctm= 16  loss=-3.2666755189  Δ=-1.395e-05  8245/1199880s
+[MEM-C] RSS=632.2MB, step=195 free=512907MB
+    step   195  ctm= 16  loss=-3.2666865398  Δ=-1.102e-05  8574/1199880s
+[MEM-C] RSS=632.6MB, step=196 free=512898MB
+    step   196  ctm= 16  loss=-3.2666944947  Δ=-7.955e-06  8905/1199880s
+[MEM-C] RSS=631.4MB, step=197 free=512922MB
+    step   197  ctm= 16  loss=-3.2667031318  Δ=-8.637e-06  9217/1199880s
+[MEM-C] RSS=631.9MB, step=198 free=512920MB
+    step   198  ctm= 16  loss=-3.2667128422  Δ=-9.710e-06  9547/1199880s
+[MEM-C] RSS=632.4MB, step=199 free=512929MB
+    step   199  ctm= 16  loss=-3.2667197980  Δ=-6.956e-06  9859/1199880s
+[MEM-C] RSS=630.8MB, step=200 free=512891MB
+    step   200  ctm= 16  loss=-3.2667329496  Δ=-1.315e-05  10189/1199880s
+[MEM-C] RSS=602.2MB, step=201 free=512873MB
+    step   201  ctm= 16  loss=-3.2667413609  Δ=-8.411e-06  10519/1199880s
+[MEM-C] RSS=615.8MB, step=202 free=512864MB
+    step   202  ctm= 16  loss=-3.2667541713  Δ=-1.281e-05  10862/1199880s
+[MEM-C] RSS=618.1MB, step=203 free=512801MB
+    step   203  ctm= 17  loss=-3.2667667604  Δ=-1.259e-05  11238/1199880s
+[MEM-C] RSS=610.3MB, step=204 free=512829MB
+    step   204  ctm= 17  loss=-3.2667752005  Δ=-8.440e-06  11634/1199880s
+[MEM-C] RSS=617.9MB, step=205 free=512818MB
+    step   205  ctm= 17  loss=-3.2667810338  Δ=-5.833e-06  12043/1199880s
+[MEM-C] RSS=643.6MB, step=206 free=512816MB
+    step   206  ctm= 17  loss=-3.2667863226  Δ=-5.289e-06  12448/1199880s
+[MEM-C] RSS=624.3MB, step=207 free=512806MB
+    step   207  ctm= 17  loss=-3.2667913793  Δ=-5.057e-06  12880/1199880s
+[MEM-C] RSS=647.1MB, step=208 free=512827MB
+    step   208  ctm= 17  loss=-3.2667946950  Δ=-3.316e-06  13316/1199880s
+[MEM-C] RSS=636.4MB, step=209 free=512832MB
+    step   209  ctm= 17  loss=-3.2667978650  Δ=-3.170e-06  13754/1199880s
+[MEM-C] RSS=642.3MB, step=210 free=512815MB
+    step   210  ctm= 17  loss=-3.2668004047  Δ=-2.540e-06  14149/1199880s
+[MEM-C] RSS=627.9MB, step=211 free=512788MB
+    step   211  ctm= 16  loss=-3.2668029405  Δ=-2.536e-06  14578/1199880s
+[MEM-C] RSS=665.1MB, step=212 free=512811MB
+    step   212  ctm= 16  loss=-3.2668057146  Δ=-2.774e-06  14976/1199880s
+[MEM-C] RSS=659.9MB, step=213 free=512747MB
+    step   213  ctm= 17  loss=-3.2668082820  Δ=-2.567e-06  15403/1199880s
+[MEM-C] RSS=658.1MB, step=214 free=512753MB
+    step   214  ctm= 19  loss=-3.2668119745  Δ=-3.692e-06  15934/1199880s
+[MEM-C] RSS=637.7MB, step=215 free=512797MB
+    step   215  ctm= 24  loss=-3.2668153685  Δ=-3.394e-06  16576/1199880s
+[MEM-C] RSS=676.1MB, step=216 free=512712MB
+    step   216  ctm= 20  loss=-3.2668163943  Δ=-1.026e-06  17165/1199880s
+[MEM-C] RSS=660.4MB, step=217 free=512786MB
+    step   217  ctm= 24  loss=-3.2668172217  Δ=-8.274e-07  17744/1199880s
+[MEM-C] RSS=666.7MB, step=218 free=512777MB
+    step   218  ctm= 23  loss=-3.2668180674  Δ=-8.456e-07  18405/1199880s
+[MEM-C] RSS=658.6MB, step=219 free=512807MB
+    step   219  ctm= 22  loss=-3.2668187766  Δ=-7.093e-07  18929/1199880s
+[MEM-C] RSS=737.3MB, step=220 free=512714MB
+    step   220  ctm= 23  loss=-3.2668193116  Δ=-5.350e-07  19587/1199880s
+[MEM-C] RSS=730.3MB, step=221 free=512738MB
+    step   221  ctm= 23  loss=-3.2668199191  Δ=-6.075e-07  20130/1199880s
+[MEM-C] RSS=726.9MB, step=222 free=512703MB
+    step   222  ctm= 23  loss=-3.2668205114  Δ=-5.923e-07  20785/1199880s
+[MEM-C] RSS=729.4MB, step=223 free=512654MB
+    step   223  ctm= 25  loss=-3.2668210597  Δ=-5.483e-07  21428/1199880s
+[MEM-C] RSS=733.7MB, step=224 free=512667MB
+    step   224  ctm= 24  loss=-3.2668219291  Δ=-8.693e-07  22104/1199880s
+[MEM-C] RSS=721.5MB, step=225 free=512701MB
+    step   225  ctm= 27  loss=-3.2668227384  Δ=-8.093e-07  22725/1199880s
+[MEM-C] RSS=740.6MB, step=226 free=504506MB
+    step   226  ctm= 23  loss=-3.2668233604  Δ=-6.220e-07  23314/1199880s
+[MEM-C] RSS=730.9MB, step=227 free=512745MB
+    step   227  ctm= 27  loss=-3.2668239236  Δ=-5.633e-07  23987/1199880s
+[MEM-C] RSS=733.9MB, step=228 free=512689MB
+    step   228  ctm= 21  loss=-3.2668246037  Δ=-6.801e-07  24554/1199880s
+[MEM-C] RSS=733.8MB, step=229 free=512658MB
+    step   229  ctm= 24  loss=-3.2668251880  Δ=-5.843e-07  25103/1199880s
+[MEM-C] RSS=725.5MB, step=230 free=504582MB
+    step   230  ctm= 23  loss=-3.2668257857  Δ=-5.977e-07  25682/1199880s
+[MEM-C] RSS=735.9MB, step=231 free=504498MB
+    step   231  ctm= 24  loss=-3.2668263029  Δ=-5.172e-07  26298/1199880s
+[MEM-C] RSS=748.6MB, step=232 free=504447MB
+    step   232  ctm= 24  loss=-3.2668277100  Δ=-1.407e-06  26978/1199880s
+[MEM-C] RSS=726.2MB, step=233 free=512758MB
+    step   233  ctm= 26  loss=-3.2668289048  Δ=-1.195e-06  27641/1199880s
+[MEM-C] RSS=882.7MB, step=234 free=504309MB
+    step   234  ctm= 23  loss=-3.2668301259  Δ=-1.221e-06  28393/1199880s
+[MEM-C] RSS=856.4MB, step=235 free=504260MB
+    step   235  ctm= 28  loss=-3.2668311531  Δ=-1.027e-06  29138/1199880s
+[MEM-C] RSS=863.4MB, step=236 free=504371MB
+    step   236  ctm= 22  loss=-3.2668322358  Δ=-1.083e-06  29759/1199880s
+[MEM-C] RSS=864.7MB, step=237 free=504297MB
+    step   237  ctm= 23  loss=-3.2668332620  Δ=-1.026e-06  30366/1199880s
+[MEM-C] RSS=861.8MB, step=238 free=511250MB
+    step   238  ctm= 23  loss=-3.2668348217  Δ=-1.560e-06  30980/1199880s
+[MEM-C] RSS=871.0MB, step=239 free=511758MB
+    step   239  ctm= 32  loss=-3.2668365905  Δ=-1.769e-06  31738/1199880s
+[MEM-C] RSS=874.9MB, step=240 free=511677MB
+    step   240  ctm= 24  loss=-3.2668380661  Δ=-1.476e-06  32503/1199880s
+[MEM-C] RSS=867.6MB, step=241 free=511675MB
+    step   241  ctm= 40  loss=-3.2668394270  Δ=-1.361e-06  33199/1199880s
+[MEM-C] RSS=873.1MB, step=242 free=511671MB
+    step   242  ctm= 24  loss=-3.2668404003  Δ=-9.732e-07  34048/1199880s
+[MEM-C] RSS=871.9MB, step=243 free=511642MB
+    step   243  ctm= 25  loss=-3.2668411422  Δ=-7.420e-07  34722/1199880s
+[MEM-C] RSS=868.5MB, step=244 free=511649MB
+    step   244  ctm= 24  loss=-3.2668418722  Δ=-7.299e-07  35480/1199880s
+[MEM-C] RSS=854.5MB, step=245 free=511617MB
+    step   245  ctm= 30  loss=-3.2668430274  Δ=-1.155e-06  36183/1199880s
+[MEM-C] RSS=872.1MB, step=246 free=512514MB
+    step   246  ctm= 25  loss=-3.2668438318  Δ=-8.044e-07  37126/1199880s
+[MEM-C] RSS=878.3MB, step=247 free=512477MB
+    step   247  ctm= 29  loss=-3.2668444692  Δ=-6.373e-07  37891/1199880s
+[MEM-C] RSS=876.3MB, step=248 free=512455MB
+    step   248  ctm= 26  loss=-3.2668450112  Δ=-5.421e-07  38867/1199880s
+[MEM-C] RSS=872.7MB, step=249 free=512524MB
+    step   249  ctm= 30  loss=-3.2668454820  Δ=-4.707e-07  39736/1199880s
+[MEM-C] RSS=876.7MB, step=250 free=512169MB
+    step   250  ctm= 28  loss=-3.2668457852  Δ=-3.032e-07  40716/1199880s
+[MEM-C] RSS=870.5MB, step=251 free=511295MB
+    step   251  ctm= 32  loss=-3.2668461502  Δ=-3.650e-07  41591/1199880s
+[MEM-C] RSS=875.9MB, step=252 free=512451MB
+    step   252  ctm= 36  loss=-3.2668464465  Δ=-2.963e-07  42584/1199880s
+[MEM-C] RSS=859.9MB, step=253 free=512471MB
+    step   253  ctm= 31  loss=-3.2668466687  Δ=-2.222e-07  43490/1199880s
+[MEM-C] RSS=1129.3MB, step=254 free=512171MB
+    step   254  ctm= 24  loss=-3.2668469109  Δ=-2.422e-07  44443/1199880s
+[MEM-C] RSS=1123.6MB, step=255 free=511981MB
+    step   255  ctm= 40  loss=-3.2668473938  Δ=-4.829e-07  45421/1199880s
+[MEM-C] RSS=1119.3MB, step=256 free=510598MB
+    step   256  ctm= 35  loss=-3.2668479005  Δ=-5.067e-07  46711/1199880s
+[MEM-C] RSS=1123.3MB, step=257 free=510450MB
+    step   257  ctm= 34  loss=-3.2668479022  Δ=-1.718e-09  47304/1199880s
+[MEM-C] RSS=1127.3MB, step=258 free=511385MB
+    step   258  ctm= 34  loss=-3.2668479022  Δ=-4.099e-13  47565/1199880s
+    Outer convergence at step 258 (Δ=-4.10e-13)
+
+🔍 DIAGNOSTIC SUMMARY (D=5, chi=26):
+   Total steps: 265
+   Loss range per bond: [-0.362983, -0.045975]
+   Extreme cases: 0 (0.0%)
+   Suspicious cases: 0 (0.0%)
+
+  │  Evaluating energy at (D=5, chi=26) ...
+  └── E=-3.2668479022  E/bond=-0.3629831002  wall=15.30h
+
+  ┌── D=5  chi=31  budget=1199880s=19998.0min  [2026-04-06 15:50:59]
+[MEM-C] RSS=1040.2MB, step=258 free=511348MB
+    step   258  ctm= 17  loss=-3.2668063259  Δ=+inf  576/1199880s
+[MEM-C] RSS=1144.3MB, step=259 free=511072MB
+    step   259  ctm= 17  loss=-3.2668138401  Δ=-7.514e-06  1160/1199880s
+[MEM-C] RSS=1137.6MB, step=260 free=510839MB
+    step   260  ctm= 17  loss=-3.2668169235  Δ=-3.083e-06  1748/1199880s
+[MEM-C] RSS=1140.0MB, step=261 free=510983MB
+    step   261  ctm= 17  loss=-3.2668189927  Δ=-2.069e-06  2335/1199880s
+[MEM-C] RSS=1137.5MB, step=262 free=510937MB
+    step   262  ctm= 17  loss=-3.2668206370  Δ=-1.644e-06  2913/1199880s
+[MEM-C] RSS=1156.2MB, step=263 free=510825MB
+    step   263  ctm= 17  loss=-3.2668222253  Δ=-1.588e-06  3492/1199880s
+[MEM-C] RSS=1130.3MB, step=264 free=510872MB
+    step   264  ctm= 17  loss=-3.2668234355  Δ=-1.210e-06  4038/1199880s
+[MEM-C] RSS=1139.4MB, step=265 free=510940MB
+    step   265  ctm= 17  loss=-3.2668245700  Δ=-1.134e-06  4592/1199880s
+[MEM-C] RSS=1134.4MB, step=266 free=510747MB
+    step   266  ctm= 17  loss=-3.2668259572  Δ=-1.387e-06  5172/1199880s
+[MEM-C] RSS=1132.2MB, step=267 free=510890MB
+    step   267  ctm= 17  loss=-3.2668269484  Δ=-9.912e-07  5723/1199880s
+[MEM-C] RSS=1130.9MB, step=268 free=510906MB
+    step   268  ctm= 17  loss=-3.2668283211  Δ=-1.373e-06  6279/1199880s
+[MEM-C] RSS=1130.9MB, step=269 free=510835MB
+    step   269  ctm= 17  loss=-3.2668292526  Δ=-9.315e-07  6847/1199880s
+[MEM-C] RSS=1135.5MB, step=270 free=511457MB
+    step   270  ctm= 17  loss=-3.2668298266  Δ=-5.740e-07  7459/1199880s
+[MEM-C] RSS=1142.0MB, step=271 free=511408MB
+    step   271  ctm= 17  loss=-3.2668303420  Δ=-5.153e-07  8084/1199880s
+[MEM-C] RSS=1125.3MB, step=272 free=511433MB
+    step   272  ctm= 17  loss=-3.2668310473  Δ=-7.054e-07  8663/1199880s
+[MEM-C] RSS=1137.4MB, step=273 free=511449MB
+    step   273  ctm= 17  loss=-3.2668316166  Δ=-5.692e-07  9216/1199880s
+[MEM-C] RSS=1134.3MB, step=274 free=511430MB
+    step   274  ctm= 17  loss=-3.2668320652  Δ=-4.486e-07  9835/1199880s
+[MEM-C] RSS=1145.2MB, step=275 free=511421MB
+    step   275  ctm= 17  loss=-3.2668324780  Δ=-4.128e-07  10465/1199880s
+[MEM-C] RSS=1130.6MB, step=276 free=511416MB
+    step   276  ctm= 17  loss=-3.2668329001  Δ=-4.221e-07  11073/1199880s
+[MEM-C] RSS=1136.6MB, step=277 free=511406MB
+    step   277  ctm= 17  loss=-3.2668332854  Δ=-3.853e-07  11683/1199880s
+[MEM-C] RSS=1155.8MB, step=278 free=512133MB
+    step   278  ctm= 17  loss=-3.2668336693  Δ=-3.839e-07  12290/1199880s
+[MEM-C] RSS=1147.3MB, step=279 free=512134MB
+    step   279  ctm= 17  loss=-3.2668340108  Δ=-3.415e-07  12886/1199880s
+[MEM-C] RSS=1147.7MB, step=280 free=512124MB
+    step   280  ctm= 17  loss=-3.2668343710  Δ=-3.602e-07  13439/1199880s
+[MEM-C] RSS=1155.0MB, step=281 free=512086MB
+    step   281  ctm= 17  loss=-3.2668346845  Δ=-3.135e-07  14019/1199880s
+[MEM-C] RSS=1144.6MB, step=282 free=512119MB
+    step   282  ctm= 17  loss=-3.2668349579  Δ=-2.734e-07  14629/1199880s
+[MEM-C] RSS=1143.1MB, step=283 free=512149MB
+    step   283  ctm= 17  loss=-3.2668354316  Δ=-4.737e-07  15224/1199880s
+[MEM-C] RSS=1135.9MB, step=284 free=512168MB
+    step   284  ctm= 17  loss=-3.2668357906  Δ=-3.590e-07  15788/1199880s
+[MEM-C] RSS=1133.6MB, step=285 free=512150MB
+    step   285  ctm= 17  loss=-3.2668360188  Δ=-2.282e-07  16351/1199880s
+[MEM-C] RSS=1126.7MB, step=286 free=512152MB
+    step   286  ctm= 17  loss=-3.2668362370  Δ=-2.182e-07  16909/1199880s
+[MEM-C] RSS=1150.6MB, step=287 free=512125MB
+    step   287  ctm= 17  loss=-3.2668364058  Δ=-1.688e-07  17514/1199880s
+[MEM-C] RSS=1132.6MB, step=288 free=512141MB
+    step   288  ctm= 17  loss=-3.2668365788  Δ=-1.730e-07  18084/1199880s
+[MEM-C] RSS=1138.8MB, step=289 free=512161MB
+    step   289  ctm= 17  loss=-3.2668367728  Δ=-1.940e-07  18677/1199880s
+[MEM-C] RSS=1133.5MB, step=290 free=512143MB
+    step   290  ctm= 17  loss=-3.2668369330  Δ=-1.602e-07  19270/1199880s
+[MEM-C] RSS=1119.0MB, step=291 free=512205MB
+    step   291  ctm= 17  loss=-3.2668370795  Δ=-1.465e-07  19803/1199880s
+[MEM-C] RSS=1136.1MB, step=292 free=512175MB
+    step   292  ctm= 17  loss=-3.2668372181  Δ=-1.386e-07  20403/1199880s
+[MEM-C] RSS=1141.1MB, step=293 free=512160MB
+    step   293  ctm= 17  loss=-3.2668373424  Δ=-1.243e-07  21001/1199880s
+[MEM-C] RSS=1136.4MB, step=294 free=512200MB
+    step   294  ctm= 17  loss=-3.2668374708  Δ=-1.284e-07  21530/1199880s
+[MEM-C] RSS=1160.5MB, step=295 free=512156MB
+    step   295  ctm= 17  loss=-3.2668376006  Δ=-1.298e-07  22135/1199880s
+[MEM-C] RSS=1131.8MB, step=296 free=512188MB
+    step   296  ctm= 17  loss=-3.2668378792  Δ=-2.786e-07  22693/1199880s
+[MEM-C] RSS=1129.4MB, step=297 free=512187MB
+    step   297  ctm= 17  loss=-3.2668381123  Δ=-2.331e-07  23284/1199880s
+[MEM-C] RSS=1142.1MB, step=298 free=512192MB
+    step   298  ctm= 17  loss=-3.2668382479  Δ=-1.356e-07  23890/1199880s
+[MEM-C] RSS=1131.1MB, step=299 free=512168MB
+    step   299  ctm= 17  loss=-3.2668383918  Δ=-1.439e-07  24526/1199880s
+[MEM-C] RSS=1142.1MB, step=300 free=503992MB
+    step   300  ctm= 17  loss=-3.2668384950  Δ=-1.032e-07  25136/1199880s
+[MEM-C] RSS=1129.7MB, step=301 free=504030MB
+    step   301  ctm= 17  loss=-3.2668385906  Δ=-9.557e-08  25729/1199880s
+[MEM-C] RSS=1132.0MB, step=302 free=512290MB
+    step   302  ctm= 17  loss=-3.2668386809  Δ=-9.028e-08  26312/1199880s
+[MEM-C] RSS=1141.4MB, step=303 free=512196MB
+    step   303  ctm= 17  loss=-3.2668387712  Δ=-9.032e-08  26896/1199880s
+[MEM-C] RSS=1139.7MB, step=304 free=512203MB
+    step   304  ctm= 17  loss=-3.2668388675  Δ=-9.629e-08  27487/1199880s
+[MEM-C] RSS=1140.3MB, step=305 free=512202MB
+    step   305  ctm= 17  loss=-3.2668389471  Δ=-7.961e-08  28067/1199880s
+[MEM-C] RSS=1127.0MB, step=306 free=512209MB
+    step   306  ctm= 17  loss=-3.2668390686  Δ=-1.215e-07  28587/1199880s
+[MEM-C] RSS=1139.2MB, step=307 free=512134MB
+    step   307  ctm= 17  loss=-3.2668391795  Δ=-1.110e-07  29106/1199880s
+[MEM-C] RSS=1144.1MB, step=308 free=512200MB
+    step   308  ctm= 17  loss=-3.2668392629  Δ=-8.334e-08  29659/1199880s
+[MEM-C] RSS=1144.2MB, step=309 free=512206MB
+    step   309  ctm= 17  loss=-3.2668393715  Δ=-1.087e-07  30204/1199880s
+[MEM-C] RSS=1134.9MB, step=310 free=512200MB
+    step   310  ctm= 17  loss=-3.2668394737  Δ=-1.022e-07  30783/1199880s
+[MEM-C] RSS=1135.9MB, step=311 free=512238MB
+    step   311  ctm= 17  loss=-3.2668395663  Δ=-9.253e-08  31320/1199880s
+[MEM-C] RSS=1135.1MB, step=312 free=512200MB
+    step   312  ctm= 17  loss=-3.2668396801  Δ=-1.138e-07  31831/1199880s
+[MEM-C] RSS=1671.2MB, step=313 free=511623MB
+    step   313  ctm= 17  loss=-3.2668397479  Δ=-6.786e-08  32415/1199880s
+[MEM-C] RSS=1670.9MB, step=314 free=511621MB
+    step   314  ctm= 17  loss=-3.2668398110  Δ=-6.304e-08  33007/1199880s
+[MEM-C] RSS=1670.9MB, step=315 free=511686MB
+    step   315  ctm= 17  loss=-3.2668398688  Δ=-5.787e-08  33587/1199880s
+[MEM-C] RSS=1659.4MB, step=316 free=511671MB
+    step   316  ctm= 17  loss=-3.2668399255  Δ=-5.668e-08  34171/1199880s
+[MEM-C] RSS=1662.4MB, step=317 free=511706MB
+    step   317  ctm= 17  loss=-3.2668399951  Δ=-6.960e-08  34721/1199880s
+[MEM-C] RSS=1666.6MB, step=318 free=511702MB
+    step   318  ctm= 17  loss=-3.2668400709  Δ=-7.574e-08  35300/1199880s
+[MEM-C] RSS=1642.0MB, step=319 free=511721MB
+    step   319  ctm= 17  loss=-3.2668401410  Δ=-7.014e-08  35845/1199880s
+[MEM-C] RSS=1645.6MB, step=320 free=511714MB
+    step   320  ctm= 17  loss=-3.2668401977  Δ=-5.669e-08  36391/1199880s
+[MEM-C] RSS=1664.3MB, step=321 free=511626MB
+    step   321  ctm= 17  loss=-3.2668402667  Δ=-6.900e-08  36956/1199880s
+[MEM-C] RSS=1661.9MB, step=322 free=511681MB
+    step   322  ctm= 17  loss=-3.2668403287  Δ=-6.202e-08  37486/1199880s
+[MEM-C] RSS=1672.2MB, step=323 free=511637MB
+    step   323  ctm= 17  loss=-3.2668404064  Δ=-7.770e-08  38084/1199880s
+[MEM-C] RSS=1656.5MB, step=324 free=511674MB
+    step   324  ctm= 17  loss=-3.2668404845  Δ=-7.812e-08  38682/1199880s
+[MEM-C] RSS=1661.7MB, step=325 free=511693MB
+    step   325  ctm= 17  loss=-3.2668405471  Δ=-6.258e-08  39282/1199880s
+[MEM-C] RSS=1677.3MB, step=326 free=511683MB
+    step   326  ctm= 17  loss=-3.2668406115  Δ=-6.439e-08  39840/1199880s
+[MEM-C] RSS=1679.8MB, step=327 free=511643MB
+    step   327  ctm= 17  loss=-3.2668406638  Δ=-5.228e-08  40423/1199880s
+[MEM-C] RSS=1659.4MB, step=328 free=511649MB
+    step   328  ctm= 17  loss=-3.2668407137  Δ=-4.987e-08  40968/1199880s
+[MEM-C] RSS=1665.4MB, step=329 free=511636MB
+    step   329  ctm= 17  loss=-3.2668407544  Δ=-4.078e-08  41508/1199880s
+[MEM-C] RSS=1650.3MB, step=330 free=511653MB
+    step   330  ctm= 17  loss=-3.2668407993  Δ=-4.491e-08  42082/1199880s
+[MEM-C] RSS=1674.6MB, step=331 free=511608MB
+    step   331  ctm= 17  loss=-3.2668408442  Δ=-4.487e-08  42616/1199880s
+[MEM-C] RSS=1663.2MB, step=332 free=511645MB
+    step   332  ctm= 17  loss=-3.2668408962  Δ=-5.199e-08  43177/1199880s
+[MEM-C] RSS=1667.9MB, step=333 free=511663MB
+    step   333  ctm= 17  loss=-3.2668409609  Δ=-6.467e-08  43741/1199880s
+[MEM-C] RSS=1664.2MB, step=334 free=511698MB
+    step   334  ctm= 17  loss=-3.2668410197  Δ=-5.879e-08  44268/1199880s
+[MEM-C] RSS=1663.9MB, step=335 free=511679MB
+    step   335  ctm= 17  loss=-3.2668410799  Δ=-6.020e-08  44830/1199880s
+[MEM-C] RSS=1657.4MB, step=336 free=511709MB
+    step   336  ctm= 17  loss=-3.2668411308  Δ=-5.092e-08  45406/1199880s
+[MEM-C] RSS=1651.2MB, step=337 free=511657MB
+    step   337  ctm= 17  loss=-3.2668411689  Δ=-3.816e-08  45972/1199880s
+[MEM-C] RSS=1666.1MB, step=338 free=511649MB
+    step   338  ctm= 17  loss=-3.2668412190  Δ=-5.001e-08  46500/1199880s
+[MEM-C] RSS=1676.6MB, step=339 free=511662MB
+    step   339  ctm= 17  loss=-3.2668412741  Δ=-5.511e-08  47069/1199880s
+[MEM-C] RSS=1666.7MB, step=340 free=511700MB
+    step   340  ctm= 17  loss=-3.2668413323  Δ=-5.827e-08  47624/1199880s
+[MEM-C] RSS=1657.1MB, step=341 free=511686MB
+    step   341  ctm= 17  loss=-3.2668413843  Δ=-5.194e-08  48211/1199880s
+[MEM-C] RSS=1659.0MB, step=342 free=511693MB
+    step   342  ctm= 17  loss=-3.2668414254  Δ=-4.116e-08  48776/1199880s
+[MEM-C] RSS=1673.4MB, step=343 free=511634MB
+    step   343  ctm= 17  loss=-3.2668414734  Δ=-4.791e-08  49370/1199880s
+[MEM-C] RSS=1657.0MB, step=344 free=511701MB
+    step   344  ctm= 17  loss=-3.2668415181  Δ=-4.475e-08  49948/1199880s
+[MEM-C] RSS=1658.5MB, step=345 free=511719MB
+    step   345  ctm= 17  loss=-3.2668415688  Δ=-5.070e-08  50555/1199880s
+[MEM-C] RSS=1663.7MB, step=346 free=511693MB
+    step   346  ctm= 17  loss=-3.2668416243  Δ=-5.551e-08  51126/1199880s
+[MEM-C] RSS=1660.3MB, step=347 free=511643MB
+    step   347  ctm= 17  loss=-3.2668416693  Δ=-4.496e-08  51675/1199880s
+[MEM-C] RSS=1668.7MB, step=348 free=511670MB
+    step   348  ctm= 17  loss=-3.2668417113  Δ=-4.202e-08  52250/1199880s
+[MEM-C] RSS=1669.8MB, step=349 free=511652MB
+    step   349  ctm= 17  loss=-3.2668417542  Δ=-4.286e-08  52792/1199880s
+[MEM-C] RSS=1672.6MB, step=350 free=511578MB
+    step   350  ctm= 17  loss=-3.2668417863  Δ=-3.217e-08  53374/1199880s
+[MEM-C] RSS=1664.8MB, step=351 free=511671MB
+    step   351  ctm= 17  loss=-3.2668418379  Δ=-5.162e-08  53931/1199880s
+[MEM-C] RSS=1663.4MB, step=352 free=511693MB
+    step   352  ctm= 17  loss=-3.2668418841  Δ=-4.618e-08  54503/1199880s
+[MEM-C] RSS=1659.5MB, step=353 free=511637MB
+    step   353  ctm= 17  loss=-3.2668419753  Δ=-9.119e-08  55078/1199880s
+[MEM-C] RSS=1672.2MB, step=354 free=511648MB
+    step   354  ctm= 17  loss=-3.2668420744  Δ=-9.906e-08  55660/1199880s
+[MEM-C] RSS=1663.5MB, step=355 free=511688MB
+    step   355  ctm= 17  loss=-3.2668421406  Δ=-6.619e-08  56263/1199880s
+[MEM-C] RSS=1661.6MB, step=356 free=510821MB
+    step   356  ctm= 17  loss=-3.2668422027  Δ=-6.217e-08  56820/1199880s
+[MEM-C] RSS=1662.6MB, step=357 free=511069MB
+    step   357  ctm= 17  loss=-3.2668422508  Δ=-4.811e-08  57366/1199880s
+[MEM-C] RSS=1662.5MB, step=358 free=510408MB
+    step   358  ctm= 17  loss=-3.2668423028  Δ=-5.199e-08  57946/1199880s
+[MEM-C] RSS=1666.9MB, step=359 free=511070MB
+    step   359  ctm= 17  loss=-3.2668423475  Δ=-4.468e-08  58460/1199880s
+[MEM-C] RSS=1651.1MB, step=360 free=511048MB
+    step   360  ctm= 17  loss=-3.2668424157  Δ=-6.815e-08  58993/1199880s
+[MEM-C] RSS=1656.6MB, step=361 free=511040MB
+    step   361  ctm= 17  loss=-3.2668424825  Δ=-6.687e-08  59554/1199880s
+[MEM-C] RSS=1670.1MB, step=362 free=511058MB
+    step   362  ctm= 17  loss=-3.2668425359  Δ=-5.333e-08  60130/1199880s
+[MEM-C] RSS=1662.6MB, step=363 free=511045MB
+    step   363  ctm= 17  loss=-3.2668425924  Δ=-5.651e-08  60704/1199880s
+[MEM-C] RSS=1662.8MB, step=364 free=510705MB
+    step   364  ctm= 17  loss=-3.2668426467  Δ=-5.437e-08  61286/1199880s
+[MEM-C] RSS=1672.8MB, step=365 free=510719MB
+    step   365  ctm= 17  loss=-3.2668427080  Δ=-6.127e-08  61884/1199880s
+[MEM-C] RSS=1661.2MB, step=366 free=510896MB
+    step   366  ctm= 17  loss=-3.2668427662  Δ=-5.819e-08  62477/1199880s
+[MEM-C] RSS=1662.7MB, step=367 free=510880MB
+    step   367  ctm= 17  loss=-3.2668427912  Δ=-2.495e-08  63056/1199880s
+[MEM-C] RSS=1656.4MB, step=368 free=510962MB
+    step   368  ctm= 17  loss=-3.2668428306  Δ=-3.945e-08  63655/1199880s
+[MEM-C] RSS=1657.9MB, step=369 free=510917MB
+    step   369  ctm= 17  loss=-3.2668428687  Δ=-3.812e-08  64250/1199880s
+[MEM-C] RSS=1666.6MB, step=370 free=510948MB
+    step   370  ctm= 17  loss=-3.2668429071  Δ=-3.842e-08  64789/1199880s
+[MEM-C] RSS=1666.8MB, step=371 free=510950MB
+    step   371  ctm= 17  loss=-3.2668430080  Δ=-1.009e-07  65357/1199880s
+[MEM-C] RSS=1668.6MB, step=372 free=510909MB
+    step   372  ctm= 17  loss=-3.2668430876  Δ=-7.955e-08  65898/1199880s
+[MEM-C] RSS=1664.6MB, step=373 free=510942MB
+    step   373  ctm= 17  loss=-3.2668431233  Δ=-3.573e-08  66476/1199880s
+[MEM-C] RSS=1653.7MB, step=374 free=510912MB
+    step   374  ctm= 17  loss=-3.2668431600  Δ=-3.673e-08  67023/1199880s
+[MEM-C] RSS=1654.0MB, step=375 free=510905MB
+    step   375  ctm= 17  loss=-3.2668431909  Δ=-3.085e-08  67526/1199880s
+[MEM-C] RSS=1671.5MB, step=376 free=510874MB
+    step   376  ctm= 17  loss=-3.2668432302  Δ=-3.934e-08  68059/1199880s
+[MEM-C] RSS=1664.7MB, step=377 free=510892MB
+    step   377  ctm= 17  loss=-3.2668432643  Δ=-3.407e-08  68618/1199880s
+[MEM-C] RSS=1668.6MB, step=378 free=510894MB
+    step   378  ctm= 17  loss=-3.2668432987  Δ=-3.445e-08  69176/1199880s
+[MEM-C] RSS=1664.3MB, step=379 free=510912MB
+    step   379  ctm= 17  loss=-3.2668433337  Δ=-3.498e-08  69742/1199880s
+[MEM-C] RSS=1663.1MB, step=380 free=510874MB
+    step   380  ctm= 17  loss=-3.2668433710  Δ=-3.723e-08  70306/1199880s
+[MEM-C] RSS=1666.5MB, step=381 free=510859MB

@@ -29,16 +29,16 @@ DEFAULT_CHI_MAX = {2: 16, 3: 81, 4: 80, 5:9999, 6:9999, 7:9999, 8:9999, 9:9999, 
 #   Increase if you have more memory; decrease if you hit OOM.
 
 DEFAULT_CHI_SCHEDULES = {
-    2: [5, 7, 9],
-    3: [10, 13, 16],       # , 57, 81],  ← append to extend the schedule
-    4: [17, 21, 25],           # , 40, 62, 80] ← append to extend the schedule
-    5: [26, 31, 36],
-    6: [37, 43, 49],
-    7: [50, 57, 64],
-    8: [65, 73, 81],
-    9: [82, 91, 100],
-    10:[101,111,121],
-    11:[122,133,144],
+    2: [ 4,  6,  8],
+    3: [ 6,  9, 12, 15],
+    4: [12, 16, 20, 24], 
+    5: [15, 20, 25, 30, 35],
+    6: [24, 30, 36, 42, 48],
+    7: [28, 35, 42, 49, 56, 63],
+    8: [40, 48, 56, 64, 72, 80],
+    9: [45, 54, 63, 72, 81, 90, 99],
+    10:[60, 70, 80, 90,100,110,120],
+    11:[66, 77, 88, 99,110,121,132,143],
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -46,6 +46,9 @@ DEFAULT_CHI_SCHEDULES = {
 # ══════════════════════════════════════════════════════════════════════════════
 
 TOTAL_BUDGET_HOURS = 9999
+
+
+
 
 
 
@@ -302,6 +305,19 @@ OPT_CONV_THRESHOLD = 1e-7
 #   < OPT_CONV_THRESHOLD, the outer while-loop exits and we move to the
 #   next (D, chi) level.  Set to 0 to disable early stopping and always
 #   run until the time budget is exhausted.
+
+CHI_CONVERGENCE_THRESHOLD = 7e-5
+#   Chi-level early-exit criterion (lookahead).
+#   After optimisation at (D, chi) is complete and a clean energy evaluation
+#   is done, also evaluate the energy at (D, chi_next) using the SAME (already
+#   optimised) tensors before running any optimisation at chi_next.  If
+#   |E/bond(chi) − E/bond(chi_next)| < CHI_CONVERGENCE_THRESHOLD, the
+#   chi series for the current D is considered converged and we immediately
+#   jump to the next D, skipping the remaining chi levels.  On entering
+#   D_next the chi schedule is filtered to start from the first chi that is
+#   strictly larger than the finishing chi of D (not chi_next), so low-chi
+#   environments already covered by the previous D are not repeated.
+#   Recorded in hyperparams.yaml as chi_convergence_threshold.
 
 # ── Optimizer choice ──────────────────────────────────────────────────────────
 
@@ -1389,9 +1405,10 @@ def main():
         lbfgs_lr           = LBFGS_LR,
         lbfgs_max_iter     = LBFGS_MAX_ITER,
         lbfgs_history      = LBFGS_HISTORY,
-        opt_tol_grad       = OPT_TOL_GRAD,
-        opt_tol_change     = OPT_TOL_CHANGE,
-        opt_conv_threshold = OPT_CONV_THRESHOLD,
+        opt_tol_grad               = OPT_TOL_GRAD,
+        opt_tol_change             = OPT_TOL_CHANGE,
+        opt_conv_threshold         = OPT_CONV_THRESHOLD,
+        chi_convergence_threshold  = CHI_CONVERGENCE_THRESHOLD,
         # Adam
         adam_lr            = ADAM_LR,
         adam_betas         = list(ADAM_BETAS),
@@ -1469,12 +1486,32 @@ def main():
     # ══════════════════════════════════════════════════════════════════════════
     # Outer loop: D_bond
     # ══════════════════════════════════════════════════════════════════════════
+    # Tracks the chi at which the previous D exited early (chi-convergence).
+    # When set, D_next's chi schedule is filtered to chis > this value so that
+    # chi environments already implicitly covered are not re-run.
+    _prev_D_finished_chi: int | None = None
+
     for D_bond in D_bond_list:
         D_sq     = D_bond ** 2
         D_budget = d_budgets[D_bond]
         chis     = schedules[D_bond]
         chi_max  = chi_max_map[D_bond]
         D_start_time = time.perf_counter()
+
+        # ── Filter chi schedule when entering this D after an early exit ──────
+        # Previous D finished at _prev_D_finished_chi via chi-convergence;
+        # skip all chi values ≤ that level (already implicitly captured).
+        if _prev_D_finished_chi is not None:
+            chis_filtered = [c for c in chis if c > _prev_D_finished_chi]
+            if chis_filtered:
+                print(f"  [CHI-FILTER] Prev D finished at chi={_prev_D_finished_chi} "
+                      f"(early chi-convergence); filtering D={D_bond} schedule to "
+                      f"chi > {_prev_D_finished_chi}: {chis_filtered}")
+                chis = chis_filtered
+            else:
+                print(f"  [CHI-FILTER] No chi > {_prev_D_finished_chi} in schedule "
+                      f"for D={D_bond}; using full schedule {chis}.")
+            _prev_D_finished_chi = None   # consumed; reset for the next D
 
         print(f"\n{'═'*76}")
         print(f"  D_bond = {D_bond}   D²={D_sq}  D⁴={D_bond**4}  "
@@ -1501,7 +1538,7 @@ def main():
         cur_abcdef = best_abcdef_by_D.get(D_bond)
 
         # ── Inner loop: chi ───────────────────────────────────────────────────
-        for chi in chis:
+        for chi_idx, chi in enumerate(chis):
             # Skip (D, chi) pairs that come before the resume point
             if resume_D is not None and resume_chi is not None:
                 if D_bond < resume_D:
@@ -1587,6 +1624,34 @@ def main():
             wall = time.perf_counter() - t_global_start
             print(f"  └── E={energy:+.10f}  E/bond={energy_per_bond:+.10f}"
                   f"  wall={wall/3600:.2f}h")
+
+            # ── Chi-convergence lookahead ─────────────────────────────────────
+            # Evaluate energy at chi_next (using current optimised tensors,
+            # no further optimisation) to test if chi is already converged.
+            # If |ΔE/bond| < CHI_CONVERGENCE_THRESHOLD we skip the remaining
+            # chi levels for this D and jump straight to D_next.
+            # The finishing chi for D_next schedule filtering is the CURRENT
+            # chi (not chi_next), per the protocol.
+            if chi_idx + 1 < len(chis):
+                chi_la = chis[chi_idx + 1]
+                print(f"  │  [Lookahead] evaluating (D={D_bond}, chi={chi_la}) "
+                      f"with current tensors ...")
+                with torch.no_grad():
+                    energy_la = evaluate_energy_clean(
+                        *cur_abcdef, Hs, chi_la, D_bond, d_PHYS)
+                energy_per_bond_la = energy_la / N_BONDS
+                delta_la = abs(energy_per_bond - energy_per_bond_la)
+                print(f"  │  [Lookahead] chi={chi}: E/bond={energy_per_bond:+.10f} │ "
+                      f"chi={chi_la}: E/bond={energy_per_bond_la:+.10f} │ "
+                      f"|ΔE/bond|={delta_la:.3e}  "
+                      f"[thr={CHI_CONVERGENCE_THRESHOLD:.1e}]")
+                if delta_la < CHI_CONVERGENCE_THRESHOLD:
+                    print(f"  │  [CHI-CONV] |ΔE/bond|={delta_la:.3e} "
+                          f"< {CHI_CONVERGENCE_THRESHOLD:.1e} → chi converged at "
+                          f"chi={chi}; skipping remaining chi levels for D={D_bond}. "
+                          f"D_next will start from chi > {chi}.")
+                    _prev_D_finished_chi = chi
+                    break   # exit chi loop early; cur_abcdef stays at chi
 
         # Store best tensors at this D for warm-starting next D
         # (brand-new objects — old D's entire graph is released)

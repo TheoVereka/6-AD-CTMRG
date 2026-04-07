@@ -251,11 +251,11 @@ def normalize_tensor(tensor, *, rtol: float | None = None, atol: float | None = 
     # so a strict 1e-12 check would *keep renormalizing* and introduce drift.
     if rtol is None or atol is None:
         if norm.dtype == torch.float32:
-            default_rtol = 4e-7
-            default_atol = 4e-7
+            default_rtol = 2e-7
+            default_atol = 2e-7
         else:
-            default_rtol = 1e-13
-            default_atol = 1e-13
+            default_rtol = 4e-14
+            default_atol = 4e-14
         rtol = default_rtol if rtol is None else rtol
         atol = default_atol if atol is None else atol
 
