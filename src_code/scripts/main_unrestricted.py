@@ -43,7 +43,7 @@ DEFAULT_CHI_SCHEDULES = {
 # Time Budget
 # ══════════════════════════════════════════════════════════════════════════════
 
-TOTAL_BUDGET_HOURS = 9999
+TOTAL_BUDGET_HOURS = 99999
 
 
 
@@ -213,7 +213,7 @@ TENSORDTYPE: torch.dtype = torch.float64
 
 # ── Precision ─────────────────────────────────────────────────────────────────
 
-USE_GPU = True
+USE_GPU = False
 #   True  → use CUDA GPU when available; automatically falls back to CPU
 #            if  torch.cuda.is_available()  returns False.
 #   False → always use CPU.
@@ -781,6 +781,7 @@ def optimize_at_chi(
 
         print(f"    step {step:5d}  ctm={ctm_steps:3d}  loss={loss_item:+.10f}"
               f"  Δ={delta:+.3e}  {elapsed:.0f}/{budget_seconds:.0f}s")
+        # sys.stdout.flush()
         loss_log.append({'step': step, 'ctm_steps': ctm_steps, 'loss': loss_item,
                          'D_bond': D_bond, 'chi': chi,
                          'elapsed': round(elapsed, 1)})
@@ -1157,6 +1158,7 @@ def main():
             print(f"\n  ┌── D={D_bond}  chi={chi}"
                   f"  budget={chi_budget:.0f}s={chi_budget/60:.1f}min"
                   f"  [{timestamp()}]")
+            # sys.stdout.flush()
 
             best_path   = os.path.join(output_dir,
                                        f"sweep_D{D_bond}_chi{chi}_best.pt")
@@ -1223,8 +1225,8 @@ def main():
             # chi levels for this D and jump straight to D_next.
             # The finishing chi for D_next schedule filtering is the CURRENT
             # chi (not chi_next), per the protocol.
-            if chi_idx + 1 < len(chis):
-                chi_la = chis[chi_idx + 1]
+            if chi_idx < len(chis):
+                chi_la = chis[chi_idx] + D_bond * 2
                 print(f"  │  [Lookahead] evaluating (D={D_bond}, chi={chi_la}) "
                       f"with current tensors ...")
                 with torch.no_grad():

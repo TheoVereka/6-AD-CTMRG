@@ -3,10 +3,11 @@
 
 
 
-#NOTE:N_cores, 
-# # sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-# _default_outdir = os.path.join('/scratch/chye/1stTrialRun',
+#NOTE:N_cores, GPU (LINE UNDER TOO!!!!!)
+# _default_outdir = os.path.join('/scratch/chye/1stTrialRun', # for izar is ...atch/izar/chye/...
 #  f'6tensors_{run_ts}')
+
+# # sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 # sys.stdout.flush()*3
 
 
@@ -37,23 +38,23 @@ DEFAULT_CHI_MAX = {2: 16, 3: 81, 4: 80, 5:9999, 6:9999, 7:9999, 8:9999, 9:9999, 
 #   Increase if you have more memory; decrease if you hit OOM.
 
 DEFAULT_CHI_SCHEDULES = {
-    2: [ 4,  6,  8],
-    3: [ 6,  9, 12, 15],
-    4: [12, 16, 20, 24], 
-    5: [15, 20, 25, 30, 35],
-    6: [24, 30, 36, 42, 48],
-    7: [28, 35, 42, 49, 56, 63],
-    8: [40, 48, 56, 64, 72, 80],
-    9: [45, 54, 63, 72, 81, 90, 99],
-    10:[60, 70, 80, 90,100,110,120],
-    11:[66, 77, 88, 99,110,121,132,143],
+    2: [ 3,  4,  6,  8],
+    3: [ 4,  6,  9, 12, 15],
+    4: [ 8, 12, 16, 20, 24], 
+    5: [10, 15, 20, 25, 30, 35],
+    6: [18, 24, 30, 36, 42, 48],
+    7: [21, 28, 35, 42, 49, 56, 63],
+    8: [32, 40, 48, 56, 64, 72, 80],
+    9: [36, 45, 54, 63, 72, 81, 90, 99],
+    10:[50, 60, 70, 80, 90,100,110,120],
+    11:[55, 66, 77, 88, 99,110,121,132,143],
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Time Budget
 # ══════════════════════════════════════════════════════════════════════════════
 
-TOTAL_BUDGET_HOURS = 9999
+TOTAL_BUDGET_HOURS = 99999
 
 
 
@@ -147,7 +148,7 @@ import time
 #
 # Use os.environ.setdefault so a user can still override from the shell:
 #   OMP_NUM_THREADS=2 python scripts/main_sweep_CPU.py   ← respected
-_N_PHYSICAL_CORES = 4
+_N_PHYSICAL_CORES = 35
 os.environ.setdefault("OMP_NUM_THREADS", str(_N_PHYSICAL_CORES))
 os.environ.setdefault("MKL_NUM_THREADS", str(_N_PHYSICAL_CORES))
 # Prevent MKL from silently reducing thread count when it detects nested
@@ -166,7 +167,7 @@ os.environ.setdefault("KMP_AFFINITY", "granularity=fine,compact,1,0")
 # immediately — the outer L-BFGS loop is sequential so this saves real time.
 os.environ.setdefault("KMP_BLOCKTIME", "0")
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+# sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 import matplotlib
 matplotlib.use('Agg')
@@ -223,7 +224,7 @@ TENSORDTYPE: torch.dtype = torch.float64
 
 # ── Precision ─────────────────────────────────────────────────────────────────
 
-USE_GPU = True
+USE_GPU = False
 #   True  → use CUDA GPU when available; automatically falls back to CPU
 #            if  torch.cuda.is_available()  returns False.
 #   False → always use CPU.
@@ -791,6 +792,7 @@ def optimize_at_chi(
 
         print(f"    step {step:5d}  ctm={ctm_steps:3d}  loss={loss_item:+.10f}"
               f"  Δ={delta:+.3e}  {elapsed:.0f}/{budget_seconds:.0f}s")
+        sys.stdout.flush()
         loss_log.append({'step': step, 'ctm_steps': ctm_steps, 'loss': loss_item,
                          'D_bond': D_bond, 'chi': chi,
                          'elapsed': round(elapsed, 1)})
@@ -975,7 +977,7 @@ def main():
 
     # ── output directory ──────────────────────────────────────────────────────
     run_ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    _default_outdir = os.path.join('/home/chye/6ADctmrg/data/raw',
+    _default_outdir = os.path.join('/scratch/chye/1stTrialRun',
                                    f'6tensors_{run_ts}')
     output_dir = args.output_dir or _default_outdir
     os.makedirs(output_dir, exist_ok=True)
@@ -1167,6 +1169,7 @@ def main():
             print(f"\n  ┌── D={D_bond}  chi={chi}"
                   f"  budget={chi_budget:.0f}s={chi_budget/60:.1f}min"
                   f"  [{timestamp()}]")
+            sys.stdout.flush()
 
             best_path   = os.path.join(output_dir,
                                        f"sweep_D{D_bond}_chi{chi}_best.pt")

@@ -1,0 +1,31 @@
+#!/bin/bash
+# #SBATCH -q gpu
+#SBATCH --partition gpu
+#SBATCH -e ./job-%N-%j.error
+#SBATCH -o ./job-%N-%j.out
+#SBATCH --gres=gpu:1                # Request one GPU
+#SBATCH --ntasks=1                  # Run on a single CPU
+#SBATCH --cpus-per-task=4           # Number of CPU cores per task
+#SBATCH --mem=109G                   # Job memory request
+#SBATCH --time=71:50:00             # Time limit 
+
+
+export SOU=/home/chye/1stTrial/
+
+echo "***** START OF JOB ***** "
+
+# module purge
+module load nvhpc/23.3-mpi
+module load gcc/11.3.0
+module load cuda/11.8.0
+
+echo STARTING AT `date`
+
+source /home/chye/venvs/6adctmrg_Izar/bin/activate
+python /home/chye/1stTrial/main_unrestricted_1stTrial.py
+
+echo FINISHED at `date`
+
+echo " ***** END OF JOB ***** "
+
+cp -r ../1stTrialRun  /home/chye/1stTrial/
