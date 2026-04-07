@@ -53,6 +53,21 @@ DEVICE: torch.device = torch.device('cpu')
 # Set directly from the optimizer driver; cleared after one L-BFGS step.
 _USE_FULL_SVD: bool = False
 
+# ── SVD GPU/CPU dispatch threshold ───────────────
+# For CUDA inputs, matrices with min(m,n) < this threshold are SVD'd on CPU
+# and results moved back to GPU.  cuSOLVER SVD has a fixed per-call overhead
+# that makes it slower than CPU LAPACK for small matrices on any GPU, and
+# slower at ALL sizes on low-end mobile GPUs (MX250 etc.).
+#
+# Crossover (approx, depends on GPU model):
+#   MX250 / laptop GPU : CPU always faster  → set to 99999
+#   A100 / V100 / H100 : GPU faster for n > ~300-500 → set to 0 or 512
+#
+# Default 512: small CTMRG matrices (low chi/D) go to CPU, large ones to GPU.
+# Change to 0 to always use GPU (best for large-chi runs on cluster A100).
+# Change to 99999 to always use CPU (best on MX250 / quick local testing).
+_SVD_CPU_OFFLOAD_THRESHOLD: int = 1024
+
 
 
 
@@ -71,13 +86,12 @@ def _safe_sqrt_inv_diag(S: torch.Tensor) -> torch.Tensor:
 
     On GPU with float32, singular values near machine epsilon can underflow
     to zero → 1/sqrt(0) = inf → exploding CTMRG projectors → garbage
-    environment → wrong energy.  CPU float64 never hits this because the
-    same values are representable.  Fix: clamp S[i] to at least
-    S[0] * sqrt(eps_machine) before inverting:
-        float32: threshold ≈ S[0] × 3.5e-4
-        float64: threshold ≈ S[0] × 1.5e-8
-    This zeroes projector components whose singular values are
-    numerically indistinguishable from zero relative to the leading one.
+    environment → wrong energy.  Fix: clamp S[i] to at least
+    S[0] * eps_machine before inverting:
+        float32: threshold = S[0] × 1.19e-7
+        float64: threshold = S[0] × 2.22e-16
+    Only genuine underflows (S[i] represented as 0 in floating point) are
+    affected; physically meaningful small singular values are untouched.
     """
     s_max    = S[0].abs().clamp(min=float(torch.finfo(S.dtype).tiny))
     S_safe   = S.clamp(min=(s_max * torch.finfo(S.dtype).eps ))
@@ -421,15 +435,21 @@ class SVD_PROPACK(torch.autograd.Function):
 
         else:
             #print("Full", end='')
-            # Partial SVD via ARPACK — only k_total singular triples computed.
-            # With the 5th-term backward this is now EXACT (previously it was
-            # approximate because the out-of-subspace contribution was missing).
-            U, S, V = torch.linalg.svd(A.detach(), full_matrices=False)
-            #S_k = torch.as_tensor(_sP.copy(),  dtype=_rdtype,  device=A.device)
-            #U_k = torch.as_tensor(_uP.copy(),  dtype=A.dtype,  device=A.device)
-            #V_k = torch.as_tensor(_vhP.copy(), dtype=A.dtype,  device=A.device).T.conj()
-            V=V.conj().T
-            
+            # Full thin SVD.  cuSOLVER has a fixed per-call overhead that makes
+            # it slower than CPU LAPACK for matrices below the crossover size
+            # (varies by GPU: always on MX250, n<~500 on A100/V100).
+            # Use _SVD_CPU_OFFLOAD_THRESHOLD to control dispatch per hardware.
+            dev = A.device
+            n_min = min(A.shape)
+            if dev.type == 'cuda' and n_min < _SVD_CPU_OFFLOAD_THRESHOLD:
+                A_cpu = A.detach().cpu()
+                U_cpu, S_cpu, Vh_cpu = torch.linalg.svd(A_cpu, full_matrices=False)
+                U = U_cpu.to(dev)
+                S = S_cpu.to(dev)
+                V = Vh_cpu.mH.to(dev)
+            else:
+                U, S, V = torch.linalg.svd(A.detach(), full_matrices=False)
+                V = V.conj().T
 
             self.save_for_backward(U, S, V, None, rel_cutoff)
 
@@ -619,6 +639,15 @@ def truncated_svd_propack(M, chi, chi_extra, rel_cutoff, v0=None,
     # safe_inverse / safe_inverse_2 use < comparisons that are undefined for
     # complex tensors (raises "lt_cpu not implemented for 'ComplexDouble'").
     _rdtype = torch.float64 if M.dtype in (torch.complex128, torch.float64) else torch.float32
+
+    # Clamp all tolerances to be at least proportional to the dtype's machine
+    # epsilon.  Hardcoded 1e-12/1e-14 values are fine for float64 (eps≈2e-16)
+    # but are effectively zero for float32 (eps≈1.2e-7), giving no regularisation.
+    _eps_dtype = float(torch.finfo(_rdtype).eps)
+    rel_cutoff    = max(rel_cutoff,    _eps_dtype)
+    abs_tol       = max(abs_tol,       _eps_dtype)
+    eps_multiplet = max(eps_multiplet, _eps_dtype)
+
     U, S, V = SVD_PROPACK.apply(M, chi, 0, torch.as_tensor([rel_cutoff], dtype=_rdtype, device=M.device), v0, _USE_FULL_SVD)
 
 

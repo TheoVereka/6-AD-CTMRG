@@ -3,7 +3,7 @@
 
 
 
-#NOTE:N_cores, GPU (LINE UNDER TOO!!!!!)
+#NOTE:N_cores, USE_GPU (LINE UNDER TOO!!!!!)
 # _default_outdir = os.path.join('/scratch/chye/1stTrialRun', # for izar is ...atch/izar/chye/...
 #  f'6tensors_{run_ts}')
 
@@ -148,7 +148,7 @@ import time
 #
 # Use os.environ.setdefault so a user can still override from the shell:
 #   OMP_NUM_THREADS=2 python scripts/main_sweep_CPU.py   ← respected
-_N_PHYSICAL_CORES = 35
+_N_PHYSICAL_CORES = 12
 os.environ.setdefault("OMP_NUM_THREADS", str(_N_PHYSICAL_CORES))
 os.environ.setdefault("MKL_NUM_THREADS", str(_N_PHYSICAL_CORES))
 # Prevent MKL from silently reducing thread count when it detects nested
@@ -224,13 +224,13 @@ TENSORDTYPE: torch.dtype = torch.float64
 
 # ── Precision ─────────────────────────────────────────────────────────────────
 
-USE_GPU = False
+USE_GPU = True
 #   True  → use CUDA GPU when available; automatically falls back to CPU
 #            if  torch.cuda.is_available()  returns False.
 #   False → always use CPU.
 #   Overrideable at runtime: --gpu / --no-gpu CLI flags.
 
-USE_DOUBLE_PRECISION = True
+USE_DOUBLE_PRECISION = False
 #   False → float32(/complex64): fastest on both CPU (Intel MKL)
 #            and CUDA (fp32 tensor cores give full throughput).
 #   True  → float64(/complex128): double precision.
@@ -261,6 +261,22 @@ USE_REAL_TENSORS = True
 #             ALL chi levels
 #             receive EQUAL time budget and IDENTICAL L-BFGS settings, making
 #             results at different chi directly comparable.
+
+
+SVD_CPU_OFFLOAD_THRESHOLD = 1024
+#   SVD dispatch: for CUDA runs, matrices with min(m,n) < this value are
+#   computed on CPU then moved back to GPU (avoids cuSOLVER launch overhead
+#   which dominates for small matrices on low-end GPUs).
+#
+#   Desktop / laptop GPU (MX250, GTX 1650, etc.):
+#     CPU LAPACK beats cuSOLVER at ALL sizes → set to 99999
+#   Cluster GPU (A100, V100, H100, RTX 4090, etc.):
+#     GPU faster for large matrices (n > ~300-500) → set to 0 or 512
+#     0   = always GPU (best for large-chi runs on cluster)
+#     512 = CPU for small chi, GPU for large chi (safe default)
+#
+#   Default 0 → always GPU (correct for cluster; change to 99999 on laptop).
+
 
 # ── L-BFGS optimiser ─────────────────────────────────────────────────────────
 #
@@ -317,7 +333,7 @@ OPT_CONV_THRESHOLD = 1e-7
 #   next (D, chi) level.  Set to 0 to disable early stopping and always
 #   run until the time budget is exhausted.
 
-CHI_CONVERGENCE_THRESHOLD = 7e-5
+CHI_CONVERGENCE_THRESHOLD = 6e-6
 #   Chi-level early-exit criterion (lookahead).
 #   After optimisation at (D, chi) is complete and a clean energy evaluation
 #   is done, also evaluate the energy at (D, chi_next) using the SAME (already
@@ -382,6 +398,7 @@ CTM_MAX_STEPS = 40
 #   ansatz ~4 steps, 6-tensor ~40 steps).  90 is a safe upper bound.
 
 CTM_CONV_THR = 3e-7
+CTM_CONV_THR_FLOAT32_MIN = 1e-5
 #   CTMRG convergence threshold: stop iterating when the max change in
 #   normalised corner singular values between consecutive steps is below
 #   this value.  The convergence criterion compares the spectra of all 9
@@ -389,6 +406,9 @@ CTM_CONV_THR = 3e-7
 #   from SVD sign ambiguity do NOT affect it.  In float32 the spectral noise
 #   floor is ~5e-5–2e-4, so any threshold below ~5e-4 effectively never
 #   triggers; 1e-3 converges in 7–20 steps across all tested D/chi configs.
+#   NOTE: main() automatically raises CTM_CONV_THR to CTM_CONV_THR_FLOAT32_MIN when running in
+#   float32 (USE_DOUBLE_PRECISION=False / --single) — do not hard-code 3e-7
+#   for single-precision runs or CTMRG will never converge (ctm=40 always).
 
 # ── Checkpointing ───────────────────────────────────────────────────────────
 
@@ -906,6 +926,16 @@ def main():
     set_dtype(args.double, use_real)
     TENSORDTYPE = _core.TENSORDTYPE          # sync from core
     OPTIMIZER = args.optimizer
+    # Float32 spectral noise floor is ~5e-5–2e-4; CTM_CONV_THR=3e-7 is below
+    # that floor and will never trigger in single precision — CTMRG would
+    # always burn all CTM_MAX_STEPS steps and return a non-converged (garbage)
+    # environment, causing the optimizer to stall (Δ=0 immediately) and the
+    # lookahead clean_eval to return wrong energies (e.g. 0.0 or unphysical
+    # values).  Raise the threshold to 5e-4 automatically for float32 runs.
+    global CTM_CONV_THR
+    if not args.double and CTM_CONV_THR < CTM_CONV_THR_FLOAT32_MIN:
+        CTM_CONV_THR = CTM_CONV_THR_FLOAT32_MIN
+        print(f"  CTM_CONV_THR auto-raised to 1e-5")
     # Only *enable* the flag from the CLI; never let the argparse default (False)
     # override a True that was already set at module level in core_unrestricted.py.
     # ── Device setup ────────────────────────────────────────────────────────────────
@@ -918,6 +948,7 @@ def main():
                   "falling back to CPU.")
         _dev = torch.device('cpu')
     set_device(_dev)   # propagates DEVICE into core_unrestricted globals
+    _core._SVD_CPU_OFFLOAD_THRESHOLD = SVD_CPU_OFFLOAD_THRESHOLD
 
     # ── parse D_bond list ─────────────────────────────────────────────────────
     D_bond_list: list[int] = [int(x) for x in args.D_bonds.split(',')]
@@ -977,7 +1008,7 @@ def main():
 
     # ── output directory ──────────────────────────────────────────────────────
     run_ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    _default_outdir = os.path.join('/scratch/chye/1stTrialRun',
+    _default_outdir = os.path.join('/scratch/izar/chye/1stTrialRun',
                                    f'6tensors_{run_ts}')
     output_dir = args.output_dir or _default_outdir
     os.makedirs(output_dir, exist_ok=True)

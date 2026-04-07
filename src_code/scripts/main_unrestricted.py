@@ -251,6 +251,22 @@ USE_REAL_TENSORS = True
 #             receive EQUAL time budget and IDENTICAL L-BFGS settings, making
 #             results at different chi directly comparable.
 
+
+SVD_CPU_OFFLOAD_THRESHOLD = 1024
+#   SVD dispatch: for CUDA runs, matrices with min(m,n) < this value are
+#   computed on CPU then moved back to GPU (avoids cuSOLVER launch overhead
+#   which dominates for small matrices on low-end GPUs).
+#
+#   Desktop / laptop GPU (MX250, GTX 1650, etc.):
+#     CPU LAPACK beats cuSOLVER at ALL sizes → set to 99999
+#   Cluster GPU (A100, V100, H100, RTX 4090, etc.):
+#     GPU faster for large matrices (n > ~300-500) → set to 0 or 512
+#     0   = always GPU (best for large-chi runs on cluster)
+#     512 = CPU for small chi, GPU for large chi (safe default)
+#
+#   Default 0 → always GPU (correct for cluster; change to 99999 on laptop).
+
+
 # ── L-BFGS optimiser ─────────────────────────────────────────────────────────
 #
 #   Optimisation strategy: alternating CTMRG + L-BFGS.
@@ -306,7 +322,7 @@ OPT_CONV_THRESHOLD = 1e-7
 #   next (D, chi) level.  Set to 0 to disable early stopping and always
 #   run until the time budget is exhausted.
 
-CHI_CONVERGENCE_THRESHOLD = 2e-5
+CHI_CONVERGENCE_THRESHOLD = 6e-6
 #   Chi-level early-exit criterion (lookahead).
 #   After optimisation at (D, chi) is complete and a clean energy evaluation
 #   is done, also evaluate the energy at (D, chi_next) using the SAME (already
@@ -921,6 +937,7 @@ def main():
                   "falling back to CPU.")
         _dev = torch.device('cpu')
     set_device(_dev)   # propagates DEVICE into core_unrestricted globals
+    _core._SVD_CPU_OFFLOAD_THRESHOLD = SVD_CPU_OFFLOAD_THRESHOLD
 
     # ── parse D_bond list ─────────────────────────────────────────────────────
     D_bond_list: list[int] = [int(x) for x in args.D_bonds.split(',')]
