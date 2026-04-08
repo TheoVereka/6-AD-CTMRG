@@ -252,10 +252,12 @@ USE_REAL_TENSORS = True
 #             results at different chi directly comparable.
 
 
-SVD_CPU_OFFLOAD_THRESHOLD = 1024
+SVD_CPU_OFFLOAD_THRESHOLD = 0
 #   SVD dispatch: for CUDA runs, matrices with min(m,n) < this value are
 #   computed on CPU then moved back to GPU (avoids cuSOLVER launch overhead
 #   which dominates for small matrices on low-end GPUs).
+#   SET TO 0 FOR CLUSTER GPU — all CTMRG matrices are < 1024, so 1024 forces
+#   every SVD to CPU + GPU↔CPU round-trip transfer, defeating the GPU entirely.
 #
 #   Desktop / laptop GPU (MX250, GTX 1650, etc.):
 #     CPU LAPACK beats cuSOLVER at ALL sizes → set to 99999

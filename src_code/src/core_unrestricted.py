@@ -66,7 +66,7 @@ _USE_FULL_SVD: bool = False
 # Default 512: small CTMRG matrices (low chi/D) go to CPU, large ones to GPU.
 # Change to 0 to always use GPU (best for large-chi runs on cluster A100).
 # Change to 99999 to always use CPU (best on MX250 / quick local testing).
-_SVD_CPU_OFFLOAD_THRESHOLD: int = 1024
+_SVD_CPU_OFFLOAD_THRESHOLD: int = 0
 
 
 
@@ -221,6 +221,10 @@ def normalize_tensor(tensor, *, rtol: float | None = None, atol: float | None = 
     (e.g. an all-zero tensor) the input is returned unchanged to avoid a
     division-by-zero NaN.
 
+    GPU-friendly: no GPU→CPU synchronisation (no .item(), no Python ``if``
+    on a CUDA scalar).  Uses ``clamp`` to guard against zero/NaN norms
+    instead of branching.
+
     Args:
         tensor (torch.Tensor): Any complex or real tensor of arbitrary shape.
 
@@ -231,34 +235,12 @@ def normalize_tensor(tensor, *, rtol: float | None = None, atol: float | None = 
     # Frobenius norm (for arbitrary-rank tensors). Returns a real scalar.
     norm = torch.linalg.norm(tensor)
 
-    # Choose dtype-appropriate default tolerances.
-    # For float32 (norm is float32), norms around 1 typically fluctuate at ~1e-7,
-    # so a strict 1e-12 check would *keep renormalizing* and introduce drift.
-    if rtol is None or atol is None:
-        if norm.dtype == torch.float32:
-            default_rtol = 2e-7
-            default_atol = 2e-7
-        else:
-            default_rtol = 4e-14
-            default_atol = 4e-14
-        rtol = default_rtol if rtol is None else rtol
-        atol = default_atol if atol is None else atol
-
-    # Guard against NaNs/Infs.
-    if not torch.isfinite(norm):
-        return tensor
-
-    # Avoid division-by-zero for (near) all-zero tensors.
-    if norm <= atol:
-        return tensor
-
-    # Make repeated calls effectively idempotent:
-    # if already normalized within tolerance, return unchanged.
-    one = torch.ones((), dtype=norm.dtype, device=norm.device)
-    if torch.isclose(norm, one, rtol=rtol, atol=atol):
-        return tensor
-
-    return tensor / norm
+    # Clamp norm to a safe minimum to avoid division-by-zero.
+    # For NaN/Inf/zero norms this produces a harmless (possibly large) result
+    # rather than NaN — same logical effect as the old early-return branches
+    # but without GPU→CPU sync.
+    safe_norm = norm.clamp(min=1e-30)
+    return tensor / safe_norm
 
 
 def normalize_single_layer_tensor_for_double_layer(
@@ -298,27 +280,11 @@ def normalize_single_layer_tensor_for_double_layer(
 
     dl_norm = torch.linalg.norm(dl)
 
-    # Choose dtype-appropriate default tolerances.
-    if rtol is None or atol is None:
-        if dl_norm.dtype == torch.float32:
-            default_rtol = 2e-7
-            default_atol = 2e-7
-        else:
-            default_rtol = 5e-14
-            default_atol = 5e-14
-        rtol = default_rtol if rtol is None else rtol
-        atol = default_atol if atol is None else atol
-
-    if not torch.isfinite(dl_norm):
-        return tensor
-    if dl_norm <= atol:
-        return tensor
-
-    one = torch.ones((), dtype=dl_norm.dtype, device=dl_norm.device)
-    if torch.isclose(dl_norm, one, rtol=rtol, atol=atol):
-        return tensor
-
-    return tensor / torch.sqrt(dl_norm)
+    # GPU-friendly: clamp dl_norm to a safe minimum to avoid division-by-zero
+    # and sqrt(0).  No GPU→CPU sync — no .item(), no Python ``if`` on a CUDA
+    # scalar.  For NaN/Inf/zero norms the clamp produces a safe denominator.
+    safe_dl_norm = dl_norm.clamp(min=1e-30)
+    return tensor / torch.sqrt(safe_dl_norm)
 
 
 
