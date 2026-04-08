@@ -48,7 +48,7 @@ TOTAL_BUDGET_HOURS = 99999
 # ── GPU/CPU intent — declared here (before threading) so _GPU_LIKELY can read it ──
 # Duplicated below in the TUNABLE PARAMETERS section with full comments.
 
-USE_GPU = False
+USE_GPU = True
 # ── glibc malloc tuning (MUST be before any heavy imports) ────────────────────
 # Without this, freed intermediate tensors stay in glibc arenas and RSS
 # grows 10-100× larger than the actual live tensors.  These mallopt calls
@@ -71,7 +71,7 @@ J1_COUPLING = 1.0
 #   The nn Hamiltonian is  H_nn = J1 Σ_{<i,j>} S_i · S_j
 #   summed over all 9 nearest-neighbour pairs in the 6-site honeycomb unit cell.
 
-J2_COUPLING = 0.3
+J2_COUPLING = 0.0
 #   Next-nearest-neighbour (nnn) Heisenberg exchange coupling constant.
 #   J2 > 0 = frustrated AFM.  Set to 0 to recover the pure J1 model.
 #   The nnn Hamiltonian is  H_nnn = J2 Σ_{<<i,j>>} S_i · S_j
@@ -406,7 +406,7 @@ ENV_IDENTITY_INIT = False
 
 
 
-CTM_MAX_STEPS = 90
+CTM_MAX_STEPS = 60
 #   Hard cap on CTMRG iterations per environment convergence call.
 #   With the singular-value convergence criterion and CTM_CONV_THR=1e-3,
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
