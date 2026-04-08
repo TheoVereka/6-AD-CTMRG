@@ -502,8 +502,8 @@ class SVD_PROPACK(torch.autograd.Function):
 
         # eps was stored with real dtype; extract .real to guard legacy paths.
         _eps_real   = eps.real if eps.is_complex() else eps
-        eps_val     = (sigma_scale * _eps_real).item()
-        eps_val     = max(eps_val, 1e-30)
+        # Keep eps_val as a scalar tensor to avoid GPU→CPU sync.
+        eps_val     = (sigma_scale * _eps_real).clamp(min=1e-30)
 
         sigma_inv = safe_inverse_2(sigma.clone(), sigma_scale * _eps_real)
 
@@ -1343,7 +1343,8 @@ def check_env_CV_using_3rho(lastC21CD, lastC32EF, lastC13AB,
    
     # Warm-up guard: all three env types must have been computed at least once.
 
-    max_delta = 0.0
+    # Keep max_delta as a GPU scalar tensor; extract to Python only once at return.
+    max_delta = lastC21CD.new_tensor(0.0).real
     # The rhos defined by 1-1 cut: 13 @ 32 @ 21
     last_rho1 = oe.contract("UZ,ZY,YV->UV",
                                 lastC13AB,lastC32EF,lastC21CD,
@@ -1382,9 +1383,8 @@ def check_env_CV_using_3rho(lastC21CD, lastC32EF, lastC13AB,
         # Normalise so that the largest singular value is 1 (scale-invariant).
         sv_last = sv_last / (sv_last[0] + 1e-30)
         sv_now  = sv_now  / (sv_now [0] + 1e-30)
-        delta = (sv_now - sv_last).abs().max().item()
-        if delta > max_delta:
-            max_delta = delta
+        delta = (sv_now - sv_last).abs().max()
+        max_delta = torch.maximum(max_delta, delta)
 
     last_rho1 = oe.contract("UY,YX,XV->UV",
                                 lastC32EF,lastC21CD,lastC13AB,
@@ -1423,9 +1423,8 @@ def check_env_CV_using_3rho(lastC21CD, lastC32EF, lastC13AB,
         # Normalise so that the largest singular value is 1 (scale-invariant).
         sv_last = sv_last / (sv_last[0] + 1e-30)
         sv_now  = sv_now  / (sv_now [0] + 1e-30)
-        delta = (sv_now - sv_last).abs().max().item()
-        if delta > max_delta:
-            max_delta = delta
+        delta = (sv_now - sv_last).abs().max()
+        max_delta = torch.maximum(max_delta, delta)
 
     last_rho1 = oe.contract("UX,XZ,ZV->UV",
                                 lastC21CD,lastC13AB,lastC32EF,
@@ -1464,11 +1463,11 @@ def check_env_CV_using_3rho(lastC21CD, lastC32EF, lastC13AB,
         # Normalise so that the largest singular value is 1 (scale-invariant).
         sv_last = sv_last / (sv_last[0] + 1e-30)
         sv_now  = sv_now  / (sv_now [0] + 1e-30)
-        delta = (sv_now - sv_last).abs().max().item()
-        if delta > max_delta:
-            max_delta = delta
+        delta = (sv_now - sv_last).abs().max()
+        max_delta = torch.maximum(max_delta, delta)
 
-    return bool(max_delta < env_conv_threshold)
+    # Single GPU→CPU sync for the entire convergence check.
+    return (max_delta < env_conv_threshold).item()
 
 
 

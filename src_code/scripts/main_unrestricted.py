@@ -219,7 +219,7 @@ USE_GPU = True
 #   False → always use CPU.
 #   Overrideable at runtime: --gpu / --no-gpu CLI flags.
 
-USE_DOUBLE_PRECISION = False
+USE_DOUBLE_PRECISION = True
 #   False → float32(/complex64): fastest on both CPU (Intel MKL)
 #            and CUDA (fp32 tensor cores give full throughput).
 #   True  → float64(/complex128): double precision.

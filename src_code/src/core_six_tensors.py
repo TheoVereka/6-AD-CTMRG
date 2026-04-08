@@ -469,6 +469,7 @@ def build_heisenberg_H_ikjl(J: float = 1.0, d: int = 2) -> torch.Tensor:
 def energy_expectation_nearest_neighbor_3ebadcf_bonds(
                 a,b,c,d,e,f, 
                 Heb,Had,Hcf,
+                Hea,Hac,Hce,Hbd,Hdf,Hfb,
                 chi, D_bond, d_PHYS, 
                 C21CD,C32EF,C13AB,T1F,T2A,T2B,T3C,T3D,T1E):
     
@@ -576,7 +577,9 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
     return torch.real(E_AD + E_CF + E_EB)
 
 
-def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,Haf,Hcb,Hed, 
+def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
+                                                      Haf,Hcb,Hed, 
+                                                      Hac,Hce,Hea,Hfb,Hbd,Hdf,
                 chi, D_bond, d_PHYS, 
                 C21EB, C32AD,C13CF,T1D,T2C,T2F,T3E,T3B,T1A):
 
@@ -670,7 +673,8 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,Haf,Hcb,Hed,
 
 
 def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f, 
-                                                      Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, d_PHYS, d_PHYS^*) matrices
+                                                      Hcd,Hef,Hab,
+                                                      Hce,Hea,Hac,Hdf,Hfb,Hbd,
                                                       chi, D_bond, d_PHYS,
                                                       C21AF,C32CB,C13ED,T1B,T2E,T2D,T3A,T3F,T1C):
     """
