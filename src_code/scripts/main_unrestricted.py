@@ -35,8 +35,8 @@ DEFAULT_CHI_SCHEDULES = {
     7: [21, 28, 35, 42, 49, 56, 63],
     8: [32, 40, 48, 56, 64, 72, 80],
     9: [36, 45, 54, 63, 72, 81, 90, 99],
-    10:[50, 60, 70, 80, 90,100,110,120],
-    11:[55, 66, 77, 88, 99,110,121,132,143],
+    #10:[50, 60, 70, 80, 90,100,110,120],
+    #11:[55, 66, 77, 88, 99,110,121,132,143],
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -447,7 +447,7 @@ GEO_SCHEDULE_STEPS = 5
 
 # ── Reproducibility ──────────────────────────────────────────────────────────
 
-RANDOM_SEED_FIX = True
+RANDOM_SEED_FIX = False
 #   True  → fix all RNGs (Python random, NumPy, PyTorch CPU + CUDA) to
 #            RANDOM_SEED before any tensor is allocated.  Guarantees
 #            bit-identical initialisation, padding noise, and rSVD random

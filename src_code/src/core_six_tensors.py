@@ -461,3 +461,327 @@ def build_heisenberg_H_ikjl(J: float = 1.0, d: int = 2) -> torch.Tensor:
 
 
 
+
+
+
+
+
+def energy_expectation_nearest_neighbor_3ebadcf_bonds(
+                a,b,c,d,e,f, 
+                Heb,Had,Hcf,
+                chi, D_bond, d_PHYS, 
+                C21CD,C32EF,C13AB,T1F,T2A,T2B,T3C,T3D,T1E):
+    
+    T1F = T1F.reshape(chi,chi,D_bond,D_bond)
+    T2A = T2A.reshape(chi,chi,D_bond,D_bond)
+    T2B = T2B.reshape(chi,chi,D_bond,D_bond)
+    T3C = T3C.reshape(chi,chi,D_bond,D_bond)
+    T3D = T3D.reshape(chi,chi,D_bond,D_bond)
+    T1E = T1E.reshape(chi,chi,D_bond,D_bond)
+
+    open_E = oe.contract("YX,MYar,abci,rstj->MbsXctij", C21CD, T1F, e, e.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch")
+    open_D = oe.contract("MYct,abci,rstj->YarMbsij", T3C, d, d.conj(), optimize=[(0,1),(0,1)], backend="torch")
+    open_A = oe.contract("ZY,NZbs,abci,rstj->NctYarij", C32EF, T2B, a, a.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch")
+    open_F = oe.contract("NZar,abci,rstj->ZbsNctij", T1E, f, f.conj(), optimize=[(0,1),(0,1)], backend="torch")
+    open_C = oe.contract("XZ,LXct,abci,rstj->LarZbsij", C13AB, T3D, c, c.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch")
+    open_B = oe.contract("LXbs,abci,rstj->XctLarij", T2A, b, b.conj(), optimize=[(0,1),(0,1)], backend="torch")
+                              
+    closed_E = oe.contract("MbsXctii->MbsXct", open_E, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_D = oe.contract("YarMbsii->YarMbs", open_D, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_A = oe.contract("NctYarii->NctYar", open_A, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_F = oe.contract("ZbsNctii->ZbsNct", open_F, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_C = oe.contract("LarZbsii->LarZbs", open_C, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_B = oe.contract("XctLarii->XctLar", open_B, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+
+    # H_AD = oe.contract("NctYarij,ijkl,YarMbskl->NctMbs", open_A, Had, open_D, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    # H_CF = oe.contract("LarZbsij,ijkl,ZbsNctkl->LarNct", open_C, Hcf, open_F, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    # H_EB = oe.contract("MbsXctij,ijkl,XctLarkl->MbsLar", open_E, Heb, open_B, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+
+
+    AD = torch.mm(closed_A, closed_D)
+    CF = torch.mm(closed_C, closed_F)
+    EB = torch.mm(closed_E, closed_B)
+
+    # E_unnormed_AD = oe.contract("xy,yz,zx->", H_AD, EB, CF, backend="torch")
+    # E_unnormed_CF = oe.contract("xy,yz,zx->", H_CF, AD, EB, backend="torch")
+    # E_unnormed_EB = oe.contract("xy,yz,zx->", H_EB, CF, AD, backend="torch")
+
+
+    # norm_1st_env = oe.contract("xy,yz,zx->", AD, EB, CF, backend="torch")
+    
+    # """ manually hermitianize!!!
+
+    rho = oe.contract("NctYarij,YarMbskl->ikjlNctMbs", open_A, open_D, backend="torch").reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
+    rhoAD = oe.contract('IJxy,yz,zx->IJ', rho, EB, CF, backend="torch")
+    #to_print = torch.norm(rhoAD - rhoAD.conj().T).item()/2.0/torch.norm(rhoAD).item()
+    #if to_print > 1e-4: print("rhoAD anti-hermiticity: ", to_print)
+    theOriTrace = torch.trace(rhoAD)
+    rhoAD = (rhoAD + rhoAD.conj().T)/2.0
+    # positive-semidefinite projection:
+    eigvals, eigvecs = torch.linalg.eigh(rhoAD)
+    #print("rhoAD eigvals before clipping: ", eigvals.detach().numpy())
+    eigvals_clipped = torch.clamp(eigvals, min=0.0)
+    rhoAD = (eigvecs * eigvals_clipped) @ eigvecs.conj().T
+    theTrace = eigvals_clipped.sum().clamp(min=1e-30)  # real scalar → safe real division
+    rhoAD = (rhoAD / theTrace).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
+    E_AD = oe.contract("ikjl,ijkl->", rhoAD, Had, backend="torch")
+    #if to_print > 1e-4: print("E_AD = ", E_AD.item(), "trace rhoAD = ", theTrace.item(), "(ori:", theOriTrace.item(), ")")
+
+    
+    rho = oe.contract("NctYarij,YarMbskl->ikjlNctMbs", open_C, open_F, backend="torch").reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
+    rhoCF = oe.contract('IJxy,yz,zx->IJ', rho, AD, EB, backend="torch")
+    #to_print = torch.norm(rhoCF - rhoCF.conj().T).item()/2.0/torch.norm(rhoCF).item()
+    #if to_print > 1e-4: print("rhoCF anti-hermiticity: ", to_print)
+    theOriTrace = torch.trace(rhoCF)
+    rhoCF = (rhoCF + rhoCF.conj().T)/2.0
+    # positive-semidefinite projection:
+    eigvals, eigvecs = torch.linalg.eigh(rhoCF)
+    #print("rhoCF eigvals before clipping: ", eigvals.detach().numpy())
+    eigvals_clipped = torch.clamp(eigvals, min=0.0)
+    rhoCF = (eigvecs * eigvals_clipped) @ eigvecs.conj().T  # PSD reconstruction (was accidentally commented out)
+    theTrace = eigvals_clipped.sum().clamp(min=1e-30)  # real scalar → safe real division
+    rhoCF = (rhoCF / theTrace).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
+    E_CF = oe.contract("ikjl,ijkl->", rhoCF, Hcf, backend="torch")
+    #if to_print > 1e-4: print("E_CF = ", E_CF.item(), "trace rhoCF = ", theTrace.item(), "(ori:", theOriTrace.item(), ")")
+
+
+    rho = oe.contract("NctYarij,YarMbskl->ikjlNctMbs", open_E, open_B, backend="torch").reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
+    rhoEB = oe.contract('IJxy,yz,zx->IJ', rho, CF, AD, backend="torch")
+    #to_print = torch.norm(rhoEB - rhoEB.conj().T).item()/2.0/torch.norm(rhoEB).item()
+    #if to_print > 1e-4: print("rhoEB anti-hermiticity: ", to_print)
+    theOriTrace = torch.trace(rhoEB)
+    rhoEB = (rhoEB + rhoEB.conj().T)/2.0
+    # positive-semidefinite projection:
+    eigvals, eigvecs = torch.linalg.eigh(rhoEB)
+    #print("rhoEB eigvals before clipping: ", eigvals.detach().numpy())
+    eigvals_clipped = torch.clamp(eigvals, min=0.0)
+    rhoEB = (eigvecs * eigvals_clipped) @ eigvecs.conj().T
+    theTrace = eigvals_clipped.sum().clamp(min=1e-30)  # real scalar → safe real division
+    rhoEB = (rhoEB / theTrace).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
+    E_EB = oe.contract("ikjl,ijkl->", rhoEB, Heb, backend="torch")
+    #if to_print > 1e-4: print("E_EB = ", E_EB.item(), "trace rhoEB = ", theTrace.item(), "(ori:", theOriTrace.item(), ")")
+
+
+    # """
+    
+    
+    # compare_energy = (torch.abs(E_unnormed_AD)+torch.abs(E_unnormed_CF)+torch.abs(E_unnormed_EB)) / torch.abs(norm_1st_env)
+    # print("E_unnormed_AD = ", E_unnormed_AD.real.item(),"+i*", E_unnormed_AD.imag.item())
+    # print("E_unnormed_CF = ", E_unnormed_CF.real.item(),"+i*", E_unnormed_CF.imag.item())
+    # print("E_unnormed_EB = ", E_unnormed_EB.real.item(),"+i*", E_unnormed_EB.imag.item())
+    # print("norm_1st_env = ", norm_1st_env.real.item(),"+i*", norm_1st_env.imag.item())
+    # print("energyNearestNeighbor_3_bonds = ", energyNearestNeighbor_3_bonds.item())
+    # print("compare_energy = ", compare_energy.item())
+    
+    return torch.real(E_AD + E_CF + E_EB)
+
+
+def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,Haf,Hcb,Hed, 
+                chi, D_bond, d_PHYS, 
+                C21EB, C32AD,C13CF,T1D,T2C,T2F,T3E,T3B,T1A):
+
+    T1D = T1D.reshape(chi,chi,D_bond,D_bond)
+    T2C = T2C.reshape(chi,chi,D_bond,D_bond)
+    T2F = T2F.reshape(chi,chi,D_bond,D_bond)
+    T3E = T3E.reshape(chi,chi,D_bond,D_bond)
+    T3B = T3B.reshape(chi,chi,D_bond,D_bond)
+    T1A = T1A.reshape(chi,chi,D_bond,D_bond)
+
+    open_A = oe.contract("YX,MYar,abci,rstj->MbsXctij", C21EB, T1D, a, a.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch")
+    open_B = oe.contract("MYct,abci,rstj->YarMbsij", T3E, b, b.conj(), optimize=[(0,1),(0,1)], backend="torch")
+    open_C = oe.contract("ZY,NZbs,abci,rstj->NctYarij", C32AD, T2F, c, c.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch")
+    open_D = oe.contract("NZar,abci,rstj->ZbsNctij", T1A, d, d.conj(), optimize=[(0,1),(0,1)], backend="torch")
+    open_E = oe.contract("XZ,LXct,abci,rstj->LarZbsij", C13CF, T3B, e, e.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch")
+    open_F = oe.contract("LXbs,abci,rstj->XctLarij", T2C, f, f.conj(), optimize=[(0,1),(0,1)], backend="torch")
+                              
+    closed_A = oe.contract("MbsXctii->MbsXct", open_A, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_B = oe.contract("YarMbsii->YarMbs", open_B, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_C = oe.contract("NctYarii->NctYar", open_C, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_D = oe.contract("ZbsNctii->ZbsNct", open_D, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_E = oe.contract("LarZbsii->LarZbs", open_E, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_F = oe.contract("XctLarii->XctLar", open_F, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+
+    #H_CB = oe.contract("NctYarij,ijkl,YarMbskl->NctMbs", open_C, Hcb, open_B, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    #H_ED = oe.contract("LarZbsij,ijkl,ZbsNctkl->LarNct", open_E, Hed, open_D, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    #H_AF = oe.contract("MbsXctij,ijkl,XctLarkl->MbsLar", open_A, Haf, open_F, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+
+    CB = torch.mm(closed_C, closed_B)
+    ED = torch.mm(closed_E, closed_D)
+    AF = torch.mm(closed_A, closed_F)
+
+
+
+    rho = oe.contract("NctYarij,YarMbskl->ikjlNctMbs", open_C, open_B, backend="torch").reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
+    rhoCB = oe.contract('IJxy,yz,zx->IJ', rho, AF, ED, backend="torch")
+    #to_print = torch.norm(rhoCB - rhoCB.conj().T).item()/2.0/torch.norm(rhoCB).item()
+    #if to_print > 1e-4: print("rhoCB anti-hermiticity: ", to_print)
+    theOriTrace = torch.trace(rhoCB)
+    rhoCB = (rhoCB + rhoCB.conj().T)/2.0
+    # positive-semidefinite projection:
+    eigvals, eigvecs = torch.linalg.eigh(rhoCB)
+    #print("rhoCB eigvals before clipping: ", eigvals.detach().numpy())
+    eigvals_clipped = torch.clamp(eigvals, min=0.0)
+    rhoCB = (eigvecs * eigvals_clipped) @ eigvecs.conj().T
+    theTrace = eigvals_clipped.sum().clamp(min=1e-30)  # real scalar → safe real division
+    rhoCB = (rhoCB / theTrace).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
+    E_CB = oe.contract("ikjl,ijkl->", rhoCB, Hcb, backend="torch")
+    #if to_print > 1e-4: print("E_CB = ", E_CB.item(), "trace rhoCB = ", theTrace.item(), "(ori:", theOriTrace.item(), ")")
+
+    
+    rho = oe.contract("NctYarij,YarMbskl->ikjlNctMbs", open_A, open_F, backend="torch").reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
+    rhoAF = oe.contract('IJxy,yz,zx->IJ', rho, ED, CB, backend="torch")
+    #to_print = torch.norm(rhoAF - rhoAF.conj().T).item()/2.0/torch.norm(rhoAF).item()
+    #if to_print > 1e-4: print("rhoAF anti-hermiticity: ", to_print)
+    theOriTrace = torch.trace(rhoAF)
+    rhoAF = (rhoAF + rhoAF.conj().T)/2.0
+    # positive-semidefinite projection:
+    eigvals, eigvecs = torch.linalg.eigh(rhoAF)
+    #print("rhoAF eigvals before clipping: ", eigvals.detach().numpy())
+    eigvals_clipped = torch.clamp(eigvals, min=0.0)
+    rhoAF = (eigvecs * eigvals_clipped) @ eigvecs.conj().T
+    theTrace = eigvals_clipped.sum().clamp(min=1e-30)  # real scalar → safe real division
+    rhoAF = (rhoAF / theTrace).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
+    E_AF = oe.contract("ikjl,ijkl->", rhoAF, Haf, backend="torch")
+    #if to_print > 1e-4: print("E_AF = ", E_AF.item(), "trace rhoAF = ", theTrace.item(), "(ori:", theOriTrace.item(), ")")
+
+
+    rho = oe.contract("NctYarij,YarMbskl->ikjlNctMbs", open_E, open_D, backend="torch").reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
+    rhoED = oe.contract('IJxy,yz,zx->IJ', rho, CB, AF, backend="torch")
+    #to_print = torch.norm(rhoED - rhoED.conj().T).item()/2.0/torch.norm(rhoED).item()
+    #if to_print > 1e-4: print("rhoED anti-hermiticity: ", to_print)
+    theOriTrace = torch.trace(rhoED)
+    rhoED = (rhoED + rhoED.conj().T)/2.0
+    # positive-semidefinite projection:
+    eigvals, eigvecs = torch.linalg.eigh(rhoED)
+    #print("rhoED eigvals before clipping: ", eigvals.detach().numpy())
+    eigvals_clipped = torch.clamp(eigvals, min=0.0)
+    rhoED = (eigvecs * eigvals_clipped) @ eigvecs.conj().T
+    theTrace = eigvals_clipped.sum().clamp(min=1e-30)  # real scalar → safe real division
+    rhoED = (rhoED / theTrace).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
+    E_ED = oe.contract("ikjl,ijkl->", rhoED, Hed, backend="torch")
+    #if to_print > 1e-4: print("E_ED = ", E_ED.item(), "trace rhoED = ", theTrace.item(), "(ori:", theOriTrace.item(), ")")
+
+
+    
+    return torch.real(E_AF + E_CB + E_ED)
+
+
+
+
+
+def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f, 
+                                                      Hcd,Hef,Hab, # (d_PHYS, d_PHYS^*, d_PHYS, d_PHYS^*) matrices
+                                                      chi, D_bond, d_PHYS,
+                                                      C21AF,C32CB,C13ED,T1B,T2E,T2D,T3A,T3F,T1C):
+    """
+    Compute the variational energy expectation value for the remaining 3 bonds
+    in the type-3 environment.
+
+    This function covers bonds C-D, E-F, A-B (the bonds not handled by
+    ``energy_expectation_nearest_neighbor_6_bonds``).  The same open/closed
+    tensor construction is used, but the environment here is the type-3 set
+    ``(C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C)``.
+
+    The energy is::
+
+        E_3 = (E_EF + E_AB + E_CD) / norm_3rd_env
+
+    where ``norm_3rd_env = Tr[EF * CD * AB]``.
+
+    Args:
+        a, b, c, d, e, f (torch.Tensor): Single-layer site tensors.
+        Hcd, Hef, Hab (torch.Tensor): Two-site Hamiltonians for the three
+            remaining bonds, shape ``(d_PHYS, d_PHYS, d_PHYS, d_PHYS)``.
+        chi (int): Environment bond dimension.
+        D_bond (int): Virtual bond dimension.
+        C21AF, C32CB, C13ED (torch.Tensor): Type-3 corner matrices,
+            shape ``(chi, chi)``.
+        T1B, T2E, T2D, T3A, T3F, T1C (torch.Tensor): Type-3 transfer tensors.
+
+    Returns:
+        torch.Tensor: Scalar energy per bond (float32).
+    """
+    T1B = T1B.reshape(chi,chi,D_bond,D_bond)
+    T2E = T2E.reshape(chi,chi,D_bond,D_bond)
+    T2D = T2D.reshape(chi,chi,D_bond,D_bond)
+    T3A = T3A.reshape(chi,chi,D_bond,D_bond)
+    T3F = T3F.reshape(chi,chi,D_bond,D_bond)
+    T1C = T1C.reshape(chi,chi,D_bond,D_bond)
+
+    open_C = oe.contract("YX,MYar,abci,rstj->MbsXctij", C21AF, T1B, c, c.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch")
+    open_F = oe.contract("MYct,abci,rstj->YarMbsij", T3A, f, f.conj(), optimize=[(0,1),(0,1)], backend="torch")
+    open_E = oe.contract("ZY,NZbs,abci,rstj->NctYarij", C32CB, T2D, e, e.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch")
+    open_B = oe.contract("NZar,abci,rstj->ZbsNctij", T1C, b, b.conj(), optimize=[(0,1),(0,1)], backend="torch")
+    open_A = oe.contract("XZ,LXct,abci,rstj->LarZbsij", C13ED, T3F, a, a.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch")
+    open_D = oe.contract("LXbs,abci,rstj->XctLarij", T2E, d, d.conj(), optimize=[(0,1),(0,1)], backend="torch")
+                              
+    closed_C = oe.contract("MbsXctii->MbsXct", open_C, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_F = oe.contract("YarMbsii->YarMbs", open_F, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_E = oe.contract("NctYarii->NctYar", open_E, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_B = oe.contract("ZbsNctii->ZbsNct", open_B, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_A = oe.contract("LarZbsii->LarZbs", open_A, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    closed_D = oe.contract("XctLarii->XctLar", open_D, backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+
+    #H_EF = oe.contract("NctYarij,ijkl,YarMbskl->NctMbs", open_E, Hef, open_F, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    #H_AB = oe.contract("LarZbsij,ijkl,ZbsNctkl->LarNct", open_A, Hab, open_B, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    #H_CD = oe.contract("MbsXctij,ijkl,XctLarkl->MbsLar", open_C, Hcd, open_D, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+
+    EF = torch.mm(closed_E, closed_F)
+    AB = torch.mm(closed_A, closed_B)
+    CD = torch.mm(closed_C, closed_D)
+
+
+    rho = oe.contract("NctYarij,YarMbskl->ikjlNctMbs", open_E, open_F, backend="torch").reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
+    rhoEF = oe.contract('IJxy,yz,zx->IJ', rho, CD, AB, backend="torch")
+    #to_print = torch.norm(rhoEF - rhoEF.conj().T).item()/2.0/torch.norm(rhoEF).item()
+    #if to_print > 1e-4: print("rhoEF anti-hermiticity: ", to_print)
+    theOriTrace = torch.trace(rhoEF)
+    rhoEF = (rhoEF + rhoEF.conj().T)/2.0
+    # positive-semidefinite projection:
+    eigvals, eigvecs = torch.linalg.eigh(rhoEF)
+    #print("rhoEF eigvals before clipping: ", eigvals.detach().numpy())
+    eigvals_clipped = torch.clamp(eigvals, min=0.0)
+    rhoEF = (eigvecs * eigvals_clipped) @ eigvecs.conj().T
+    theTrace = eigvals_clipped.sum().clamp(min=1e-30)  # real scalar → safe real division
+    rhoEF = (rhoEF / theTrace).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
+    E_EF = oe.contract("ikjl,ijkl->", rhoEF, Hef, backend="torch")
+    #if to_print > 1e-4: print("E_EF = ", E_EF.item(), "trace rhoEF = ", theTrace.item(), "(ori:", theOriTrace.item(), ")")
+
+    
+    rho = oe.contract("NctYarij,YarMbskl->ikjlNctMbs", open_A, open_B, backend="torch").reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
+    rhoAB = oe.contract('IJxy,yz,zx->IJ', rho, EF, CD, backend="torch")
+    #to_print = torch.norm(rhoAB - rhoAB.conj().T).item()/2.0/torch.norm(rhoAB).item()
+    #if to_print > 1e-4: print("rhoAB anti-hermiticity: ", to_print)
+    theOriTrace = torch.trace(rhoAB)
+    rhoAB = (rhoAB + rhoAB.conj().T)/2.0
+    # positive-semidefinite projection:
+    eigvals, eigvecs = torch.linalg.eigh(rhoAB)
+    #print("rhoAB eigvals before clipping: ", eigvals.detach().numpy())
+    eigvals_clipped = torch.clamp(eigvals, min=0.0)
+    rhoAB = (eigvecs * eigvals_clipped) @ eigvecs.conj().T
+    theTrace = eigvals_clipped.sum().clamp(min=1e-30)  # real scalar → safe real division
+    rhoAB = (rhoAB / theTrace).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
+    E_AB = oe.contract("ikjl,ijkl->", rhoAB, Hab, backend="torch")
+    #if to_print > 1e-4: print("E_AB = ", E_AB.item(), "trace rhoAB = ", theTrace.item(), "(ori:", theOriTrace.item(), ")")
+
+
+    rho = oe.contract("NctYarij,YarMbskl->ikjlNctMbs", open_C, open_D, backend="torch").reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
+    rhoCD = oe.contract('IJxy,yz,zx->IJ', rho, AB, EF, backend="torch")
+    #to_print = torch.norm(rhoCD - rhoCD.conj().T).item()/2.0/torch.norm(rhoCD).item()
+    #if to_print > 1e-4: print("rhoCD anti-hermiticity: ", to_print)
+    theOriTrace = torch.trace(rhoCD)
+    rhoCD = (rhoCD + rhoCD.conj().T)/2.0
+    # positive-semidefinite projection:
+    eigvals, eigvecs = torch.linalg.eigh(rhoCD)
+    #print("rhoCD eigvals before clipping: ", eigvals.detach().numpy())
+    eigvals_clipped = torch.clamp(eigvals, min=0.0)
+    rhoCD = (eigvecs * eigvals_clipped) @ eigvecs.conj().T
+    theTrace = eigvals_clipped.sum().clamp(min=1e-30)  # real scalar → safe real division
+    rhoCD = (rhoCD / theTrace).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
+    E_CD = oe.contract("ikjl,ijkl->", rhoCD, Hcd, backend="torch")
+    #if to_print > 1e-4: print("E_CD = ", E_CD.item(), "trace rhoCD = ", theTrace.item(), "(ori:", theOriTrace.item(), ")")
+    
+
+    return torch.real(E_EF + E_AB + E_CD)
+
+
