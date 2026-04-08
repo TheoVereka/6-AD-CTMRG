@@ -68,6 +68,60 @@ _USE_FULL_SVD: bool = False
 # Change to 99999 to always use CPU (best on MX250 / quick local testing).
 _SVD_CPU_OFFLOAD_THRESHOLD: int = 0
 
+# ── rSVD backward strategy ────────────────────────────────────────────────────
+#
+# Controls how SVD_PROPACK computes gradients when using the randomised SVD
+# forward path.  Call  set_rsvd_mode()  to change at runtime.
+#
+#   'full_svd'  (default) — full thin SVD in forward, zero-padding backward.
+#               Exact gradient, but forward cost is O(N · min(m,n)).
+#
+#   'neumann'   — rSVD forward O(N²k), Neumann series for 5th term in
+#               backward O(N²k × _RSVD_NEUMANN_TERMS).  Avoids O(N³) eigh.
+#               Convergence rate ρ = (σ_{k+1}/σ_k)²:
+#                 ρ < 0.1  (typical CTMRG):  4 terms → error < 0.01 %
+#                 ρ → 1.0  (near-degenerate): many terms; fall back to 'full_svd'
+#
+#   'augmented' — rSVD forward computing k + _RSVD_AUGMENT_EXTRA triples O(N²·k_aug),
+#               zero-padding backward over k_aug modes (no explicit 5th term).
+#               The F,G cross-coupling between modes 1..k and k+1..k_aug
+#               approximates the 5th term.  Exact when k_aug = min(m,n).
+#               k_aug = min(k + _RSVD_AUGMENT_EXTRA, min(m,n)).
+#
+#   'none'      — rSVD forward O(N²k), naive k-only backward (drops 5th term).
+#               Fast but inaccurate for near-degenerate spectra; gradient
+#               contribution from discarded modes is completely ignored.
+#
+_RSVD_BACKWARD_MODE: str = 'full_svd'
+
+_RSVD_NEUMANN_TERMS: int = 4
+# Number of Neumann series terms (L) for 'neumann' mode.
+# Positive → Neumann approximation (fast).  Negative → exact eigh (for reference).
+
+_RSVD_AUGMENT_EXTRA: int = 0
+# Extra singular triples beyond k for 'augmented' mode.
+# 0 = same as 'none'. Set to k (= chi) for doubling. -1 = use chi_extra from call.
+
+
+def set_rsvd_mode(mode: str,
+                  neumann_terms: int = 4,
+                  augment_extra: int = 0) -> None:
+    """Switch the rSVD backward strategy.
+
+    Args:
+        mode:          One of 'full_svd', 'neumann', 'augmented', 'none'.
+        neumann_terms: Neumann series length (positive=approx, negative=exact eigh).
+        augment_extra: Extra singular triples in 'augmented' mode.
+    """
+    global _RSVD_BACKWARD_MODE, _RSVD_NEUMANN_TERMS, _RSVD_AUGMENT_EXTRA
+    if mode not in ('full_svd', 'neumann', 'augmented', 'none'):
+        raise ValueError(
+            f"Unknown rSVD mode {mode!r}; choose from 'full_svd','neumann','augmented','none'"
+        )
+    _RSVD_BACKWARD_MODE = mode
+    _RSVD_NEUMANN_TERMS = neumann_terms
+    _RSVD_AUGMENT_EXTRA = augment_extra
+
 
 
 
@@ -161,6 +215,65 @@ def _solve_fifth_term_svd(A, U, S, V, gu, gv, eps):
     PU_gamma      = gamma - U @ (Uh @ gamma)            # (I−UU†)γ : m×k
     gamma_tilde_h = gamma_tilde.conj().t()              # k×n
     gtilde_h_PV   = gamma_tilde_h - (gamma_tilde_h @ V) @ Vh  # γ̃†(I−VV†) : k×n
+
+    return PU_gamma @ Vh + U @ gtilde_h_PV              # m×n
+
+
+def _solve_fifth_term_neumann(A, U, S, V, gu, gv, n_terms: int):
+    """
+    Fast approximate 5th term via Neumann series — avoids O(N³) eigh.
+
+    Replaces the exact Sylvester solve in ``_solve_fifth_term_svd`` with a
+    truncated Neumann series expansion of ``(s_j² I − B†B)⁻¹``:
+
+        γ̃_j  ≈  s_j⁻²  Σ_{l=0}^{L-1}  (B†B / s_j²)^l  RHS_j
+
+    Cost per Neumann term: two matrix products B @ x (m×n × n×k = m×k) and
+    B† @ y (n×m × m×k = n×k), i.e. O(2mnk).  Total: O(2L·mnk) vs O(N³) eigh.
+
+    For D=5, chi=25 (N=625, k=25):
+        Exact eigh  :  ~244 M ops  (625³)
+        L=4 Neumann :   ~78 M ops  (2·4·625·625·25)   — 3× faster
+        L=2 Neumann :   ~39 M ops                       — 6× faster
+
+    Convergence: geometric series with ratio ρ = ‖B†B‖ / s_k² ≤ (σ_{k+1}/σ_k)².
+      • CTMRG typical (ρ < 0.1): L=4 gives error < ρ^4 ≈ 0.01%.
+      • Near-degenerate (ρ → 1)  : convergence slow; fall back to exact eigh
+        (:func:`_solve_fifth_term_svd`) or use 'augmented'/'full_svd' mode.
+
+    n_terms : int — number of Neumann terms L (must be ≥ 1).
+    """
+    m, n = A.shape
+    k = S.shape[0]
+    Uh = U.conj().t()   # k×m
+    Vh = V.conj().t()   # k×n
+
+    # B = A − U S V†   (residual; captures the discarded subspace)
+    B  = A - U @ torch.diag(S.to(A.dtype)) @ Vh   # m×n
+    Bh = B.conj().t()                               # n×m
+
+    # RHS matrix (n×k): s_j · gv_j + B† · gu_j
+    RHS = gv * S.to(gv.dtype).unsqueeze(0) + Bh @ gu   # n×k
+
+    # ── Neumann series ────────────────────────────────────────────────────────
+    # γ̃ = Σ_{l=0}^{L-1}  (B†B)^l RHS / s_j^{2(l+1)}
+    # Recurrence: rhs ← (B†B / s_j²) · rhs,  accumulate into γ̃.
+    S2   = (S ** 2).unsqueeze(0)    # (1, k) — broadcast over n rows
+    rhs  = RHS / S2                  # l=0 term: RHS / s_j²
+    gamma_tilde = rhs.clone()
+
+    for _ in range(n_terms - 1):
+        rhs = Bh @ (B @ rhs)         # apply B†B (cost: O(2mnk))
+        rhs = rhs / S2               # divide by s_j² — rhs = (B†B/s²)^{l+1} RHS/s²
+        gamma_tilde = gamma_tilde + rhs   # accumulate
+
+    # Back-substitute: γ_j = (gu_j + B γ̃_j) / s_j
+    gamma = (gu + B @ gamma_tilde) / S.to(A.dtype).unsqueeze(0)   # m×k
+
+    # Assemble: Γ_A^{trunc} = (I−UU†)γ V†  +  U γ̃†(I−VV†)
+    PU_gamma      = gamma - U @ (Uh @ gamma)
+    gamma_tilde_h = gamma_tilde.conj().t()
+    gtilde_h_PV   = gamma_tilde_h - (gamma_tilde_h @ V) @ Vh
 
     return PU_gamma @ Vh + U @ gtilde_h_PV              # m×n
 
@@ -369,43 +482,52 @@ class SVD_PROPACK(torch.autograd.Function):
         # print(f"Performing SVD with k={k}, k_extra={k_extra}, rel_cutoff={rel_cutoff.item()}, m_dim={m_dim}, n_dim={n_dim}, k_total={k_total}")
 
 
-        if False and not use_full_svd:  # Partial (randomized) SVD — fast but can blow up
-            #print("Trunc", end=' ')
-            matmul = _utils.matmul
+        if _RSVD_BACKWARD_MODE != 'full_svd' and not use_full_svd:
+            # ── Stable randomised SVD forward ──────────────────────────────────
+            # Range-finder runs under no_grad (Q is treated as constant).
+            # Gradient flows only through  B_proj = Q†A  (q×n, differentiable).
+            # Oversampling 2×q + 4 power iterations → cosine ≥ 0.9999 on
+            # near-degenerate configs (verified by 2400-config stress test).
+            q_over = min(2 * q, min(m_dim, n_dim))
+            with torch.no_grad():
+                Rand = torch.randn(n_dim, q_over, dtype=A.dtype, device=A.device)
+                X    = A @ Rand
+                Q, _ = torch.linalg.qr(X)           # m × q_over
+                for _ in range(4):                   # 4 power iterations
+                    Q, _ = torch.linalg.qr(A.mH @ Q) # n × q_over
+                    Q, _ = torch.linalg.qr(A    @ Q) # m × q_over
 
+            # Gradient flows through B_proj = Q†A  (Q treated as constant)
+            B_proj = Q.mH @ A                        # q_over × n_dim
+            U_B, S_all, Vh_all = torch.linalg.svd(B_proj, full_matrices=False)
+            U_all = Q @ U_B                          # m × q_over
+            V_all = Vh_all.mH                        # n × q_over
 
-            niter = 1 
+            # Descending sort (cuSOLVER order not guaranteed)
+            order = torch.argsort(S_all, descending=True)
+            S_all = S_all[order];  U_all = U_all[:, order];  V_all = V_all[:, order]
 
-            dtype = _utils.get_floating_dtype(A) if not A.is_complex() else A.dtype
-            matmul = _utils.matmul
+            if _RSVD_BACKWARD_MODE == 'neumann':
+                # Save top-k triples + A for Neumann 5th-term backward
+                self.save_for_backward(U_all[:, :k], S_all[:k], V_all[:, :k],
+                                       A.detach(), rel_cutoff)
 
-            R = torch.randn(A.shape[-1], q, dtype=dtype, device=A.device)
+            elif _RSVD_BACKWARD_MODE == 'augmented':
+                # Save k_aug > k triples; zero-padding backward captures
+                # cross-coupling between modes 1..k and k+1..k_aug.
+                k_extra_aug = _RSVD_AUGMENT_EXTRA
+                if k_extra_aug < 0:
+                    k_extra_aug = k_extra          # use chi_extra from caller
+                k_aug = min(k + k_extra_aug, q_over)
+                k_aug = max(k_aug, k)              # at least k
+                self.save_for_backward(U_all[:, :k_aug], S_all[:k_aug], V_all[:, :k_aug],
+                                       None, rel_cutoff)
 
-            # The following code could be made faster using torch.geqrf + torch.ormqr
-            # but geqrf is not differentiable
+            else:  # 'none' — naive k-only, no 5th term
+                self.save_for_backward(U_all[:, :k], S_all[:k], V_all[:, :k],
+                                       None, rel_cutoff)
 
-            X = matmul(A, R)
-            Q = torch.linalg.qr(X).Q
-            for _ in range(niter):
-                X = matmul(A.mH, Q)
-                Q = torch.linalg.qr(X).Q
-                X = matmul(A, Q)
-                Q = torch.linalg.qr(X).Q
-
-            B = matmul(Q.mH, A)
-            
-            U, S, Vh = torch.linalg.svd(B, full_matrices=False)
-            V = Vh.mH
-            U = Q.matmul(U)
-            
-            #S = torch.as_tensor(S.copy(),  dtype=_rdtype,  device=A.device)
-            #U = torch.as_tensor(U.copy(),  dtype=A.dtype,  device=A.device)
-            #V = torch.as_tensor(V.copy(), dtype=A.dtype,  device=A.device)
-
-            self.save_for_backward(U,S,V, A.detach(), rel_cutoff)
-
-
-            return U, S, V
+            return U_all[:, :k], S_all[:k], V_all[:, :k]
 
         else:
             #print("Full", end='')
@@ -565,7 +687,15 @@ class SVD_PROPACK(torch.autograd.Function):
         if A_input is not None:
             _gu = gu if gu is not None else torch.zeros(m, k, dtype=u.dtype, device=u.device)
             _gv = gv if gv is not None else torch.zeros(n, k, dtype=u.dtype, device=u.device)
-            dA += _solve_fifth_term_svd(A_input, u, sigma, v, _gu, _gv, eps_val)
+            if _RSVD_NEUMANN_TERMS > 0:
+                # Fast Neumann series: O(2·L·mnk) instead of O(N³) eigh
+                dA += _solve_fifth_term_neumann(A_input, u, sigma, v, _gu, _gv,
+                                                _RSVD_NEUMANN_TERMS)
+            elif _RSVD_NEUMANN_TERMS < 0:
+                # Exact eigh (reference / validation only)
+                dA += _solve_fifth_term_svd(A_input, u, sigma, v, _gu, _gv, eps_val)
+            # == 0 : skip 5th term entirely ('none' mode should not reach here
+            #        since it saves A_input=None, but guard anyway)
             
 
 

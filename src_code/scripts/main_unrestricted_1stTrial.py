@@ -302,6 +302,34 @@ SVD_CPU_OFFLOAD_THRESHOLD = 0
 #
 #   Default 0 → always GPU (correct for cluster; change to 99999 on laptop).
 
+RSVD_MODE = 'neumann'
+#   rSVD backward mode.  Controls how the truncated-SVD 5th-term correction
+#   (arXiv:2311.11894v3) is computed in the backward pass.
+#
+#   'full_svd'  — keep full thin SVD (safe reference, no rSVD, ~O(N·min(m,n))).
+#   'neumann'   — Neumann series for 5th term: O(2·L·mnk) per call, avoids
+#                 the O(N³) eigh.  Exact when discarded SVs ≈ 0 (L=1 suffices).
+#   'augmented' — save k+k_extra rSVD triples; zero-padding captures 5th term
+#                 implicitly via F,G cross-coupling.  Needs large k_extra to
+#                 approach full accuracy.
+#   'none'      — skip 5th term entirely (wrong for projector-type losses).
+#
+#   Recommendation for CTMRG (SVs drop sharply to ≈0 at truncation chi):
+#     RSVD_MODE = 'neumann', RSVD_NEUMANN_TERMS = 1
+#   Because B†B ≈ 0 → 1 Neumann iteration is exact, zero eigh cost.
+
+RSVD_NEUMANN_TERMS = 1
+#   Number of Neumann series iterations in 'neumann' mode.
+#     positive N  → N-term approximation  (O(2·N·mnk))
+#     negative N  → exact eigh (O(N³)), for validation only
+#     0           → skip 5th term (same as RSVD_MODE='none')
+#   For CTMRG spectra where discarded SVs ≈ 0, 1 term is exact.
+#   For slower-decaying spectra (σ_{k+1}/σ_k ≈ 0.5), use 4–8 terms.
+
+RSVD_AUGMENT_EXTRA = 0
+#   Extra singular triples saved beyond k in 'augmented' mode.
+#   Unused when RSVD_MODE != 'augmented'.  Set to chi for moderate accuracy.
+
 
 # ── L-BFGS optimiser ─────────────────────────────────────────────────────────
 #
@@ -1291,6 +1319,9 @@ def main():
         _dev = torch.device('cpu')
     set_device(_dev)   # propagates DEVICE into core_unrestricted globals
     _core._SVD_CPU_OFFLOAD_THRESHOLD = SVD_CPU_OFFLOAD_THRESHOLD
+    _core.set_rsvd_mode(RSVD_MODE,
+                        neumann_terms=RSVD_NEUMANN_TERMS,
+                        augment_extra=RSVD_AUGMENT_EXTRA)
 
     # ── parse D_bond list ─────────────────────────────────────────────────────
     D_bond_list: list[int] = [int(x) for x in args.D_bonds.split(',')]
@@ -1403,6 +1434,12 @@ def main():
         adam_eps           = ADAM_EPS,
         adam_weight_decay  = ADAM_WEIGHT_DECAY,
         adam_steps_per_ctm = ADAM_STEPS_PER_CTM,
+
+        # ── SVD / rSVD ─────────────────────────────────────────────────────
+        svd_cpu_offload_threshold = SVD_CPU_OFFLOAD_THRESHOLD,
+        rsvd_mode          = RSVD_MODE,
+        rsvd_neumann_terms = RSVD_NEUMANN_TERMS,
+        rsvd_augment_extra = RSVD_AUGMENT_EXTRA,
 
         # ── CTMRG ──────────────────────────────────────────────────────────
         ctm_max_steps      = CTM_MAX_STEPS,
