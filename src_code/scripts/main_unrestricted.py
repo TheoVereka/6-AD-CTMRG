@@ -80,7 +80,7 @@ Outputs (all in log/)
 
 # ── GPU/CPU intent — declared here (before threading) so _GPU_LIKELY can read it ──
 # Duplicated below in the TUNABLE PARAMETERS section with full comments.
-USE_GPU = False
+USE_GPU = True
 
 # ── glibc malloc tuning (MUST be before any heavy imports) ────────────────────
 # Without this, freed intermediate tensors stay in glibc arenas and RSS
@@ -124,7 +124,7 @@ import time
 # Detected at import time using os.environ CUDA_VISIBLE_DEVICES and USE_GPU flag.
 # Override at runtime: OMP_NUM_THREADS=N python scripts/main_unrestricted.py
 #
-_N_PHYSICAL_CORES = 4
+_N_PHYSICAL_CORES = 35
 # Detect GPU intent: check os.environ for CUDA_VISIBLE_DEVICES="" (explicitly
 # disabled) as the only reliable heuristic before torch is imported.
 # The USE_GPU flag is defined later in the "TUNABLE PARAMETERS" section (below
@@ -226,7 +226,7 @@ USE_DOUBLE_PRECISION = True
 #            CUDA: 2–4× slower on consumer GPUs (no fp64 tensor cores).
 #   Overrideable at runtime: --double CLI flag takes precedence.
 
-USE_REAL_TENSORS = False
+USE_REAL_TENSORS = True
 #   True  → TENSORDTYPE = RDTYPE  (real iPEPS tensors, S+/S- Hamiltonian).
 #   False → TENSORDTYPE = CDTYPE  (complex iPEPS tensors, Sx/Sy/Sz Hamiltonian).
 #   Overrideable at runtime: --complex CLI flag sets this to False.
