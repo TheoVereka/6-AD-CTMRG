@@ -182,6 +182,11 @@ from core_unrestricted import (
     energy_expectation_nearest_neighbor_3ebadcf_bonds,
     energy_expectation_nearest_neighbor_3afcbed_bonds,
     energy_expectation_nearest_neighbor_other_3_bonds,
+    build_open_closed_env1,
+    build_open_closed_env2,
+    build_open_closed_env3,
+    _build_nn_rho,
+    _build_nnn_rho,
     set_dtype,
     set_device,
 )
@@ -323,7 +328,7 @@ OPT_CONV_THRESHOLD = 1e-7
 #   next (D, chi) level.  Set to 0 to disable early stopping and always
 #   run until the time budget is exhausted.
 
-CHI_CONVERGENCE_THRESHOLD = 6e-6
+CHI_CONVERGENCE_THRESHOLD = 3e-5
 #   Chi-level early-exit criterion (lookahead).
 #   After optimisation at (D, chi) is complete and a clean energy evaluation
 #   is done, also evaluate the energy at (D, chi_next) using the SAME (already
@@ -381,13 +386,14 @@ ENV_IDENTITY_INIT = False
 
 
 
-CTM_MAX_STEPS = 40
+CTM_MAX_STEPS = 90
 #   Hard cap on CTMRG iterations per environment convergence call.
 #   With the singular-value convergence criterion and CTM_CONV_THR=1e-3,
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
 #   ansatz ~4 steps, 6-tensor ~40 steps).  90 is a safe upper bound.
 
-CTM_CONV_THR = 3e-7
+CTM_CONV_THR = 9e-7
+# TODO: Weighted and softer
 CTM_CONV_THR_FLOAT32_MIN = 1e-5
 #   CTMRG convergence threshold: stop iterating when the max change in
 #   normalised corner singular values between consecutive steps is below
@@ -416,7 +422,7 @@ J1_COUPLING = 1.0
 #   The nn Hamiltonian is  H_nn = J1 Σ_{<i,j>} S_i · S_j
 #   summed over all 9 nearest-neighbour pairs in the 6-site honeycomb unit cell.
 
-J2_COUPLING = 0.1
+J2_COUPLING = 0.0
 #   Next-nearest-neighbour (nnn) Heisenberg exchange coupling constant.
 #   J2 > 0 = frustrated AFM.  Set to 0 to recover the pure J1 model.
 #   The nnn Hamiltonian is  H_nnn = J2 Σ_{<<i,j>>} S_i · S_j
@@ -523,7 +529,7 @@ def pad_tensor(t: torch.Tensor, old_D: int, new_D: int,
 
 
 def evaluate_energy_clean(a, b, c, d, e, f,
-                          Hs, chi: int, D_bond: int, d_PHYS: int) -> float:
+                          Js, SdotS, chi: int, D_bond: int, d_PHYS: int) -> float:
     """Re-converge environment from scratch and return total energy (float).
 
     IMPORTANT: CTMRG consumes *double-layer* site tensors which are normalised
@@ -545,22 +551,250 @@ def evaluate_energy_clean(a, b, c, d, e, f,
                 A, B, C, Dt, E, F, chi, D_sq, CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT)
         E3ebadcf = energy_expectation_nearest_neighbor_3ebadcf_bonds(
             aN, bN, cN, dN, eN, fN,
-                *Hs[0:9],
+                *Js[0:9],
+                SdotS,
                 chi, D_bond, d_PHYS, 
                 *all27[:9])
         E3afcbed = energy_expectation_nearest_neighbor_3afcbed_bonds(
             aN, bN, cN, dN, eN, fN,
-                *Hs[9:18],
+                *Js[9:18],
+                SdotS,
                 chi, D_bond, d_PHYS, 
                 *all27[9:18])
             
         E3 = energy_expectation_nearest_neighbor_other_3_bonds(
             aN, bN, cN, dN, eN, fN,
-            *Hs[18:27],
+            *Js[18:27],
+            SdotS,
             chi, D_bond, d_PHYS, 
             *all27[18:27])
         return (E3ebadcf + E3afcbed + E3).item()
 
+
+def evaluate_observables(a, b, c, d, e, f,
+                         Js, SdotS, chi: int, D_bond: int, d_PHYS: int,
+                         out_dir: str | None = None):
+    """Compute energy, 27 bond correlations <Si·Sj>, and 54 site magnetizations.
+
+    This is a diagnostic function called ONCE per (D, chi) level after
+    optimization.  It re-converges CTMRG from scratch (same as
+    evaluate_energy_clean), then extracts observables from the two-site
+    reduced density matrices that are already computed for the energy.
+
+    Returns:
+        energy (float): Total energy (same value as evaluate_energy_clean).
+        correlations (list[float]): 27 values of <Si·Sj> (unit SdotS, no J)
+            ordered as env1 (9: eb,ad,cf,ae,ec,ca,db,bf,fd)
+                      env2 (9: cb,af,ed,ca,ae,ec,bf,fd,db)
+                      env3 (9: ef,ab,cd,ec,ca,ae,fd,db,bf).
+        magnetizations (list[float]): 54 values of <Sα> for each of the
+            6 sites × 3 envs × 3 spin dirs (Sx, Sy, Sz).
+            Ordered: env1 site A (Sx, Sy, Sz), env1 site B, ..., env1 site F,
+                     env2 site A, ..., env3 site F.
+    """
+    D_sq = D_bond ** 2
+
+    # ── Build single-site spin operators ──────────────────────────────────
+    spin = (d_PHYS - 1) / 2.0
+    Splus = torch.zeros(d_PHYS, d_PHYS, dtype=SdotS.dtype, device=SdotS.device)
+    Sminus = torch.zeros(d_PHYS, d_PHYS, dtype=SdotS.dtype, device=SdotS.device)
+    Sz_op = torch.zeros(d_PHYS, d_PHYS, dtype=SdotS.dtype, device=SdotS.device)
+    for i in range(d_PHYS):
+        m_val = spin - i
+        Sz_op[i, i] = m_val
+        if i < d_PHYS - 1:
+            cs = (spin * (spin + 1) - m_val * (m_val - 1)) ** 0.5
+            Splus[i, i + 1] = cs
+            Sminus[i + 1, i] = cs
+    Sx_op = (Splus + Sminus) / 2.0    # real matrix
+    # Sy = -i (S+ - S-) / 2  → for real iPEPS rho, <Sy> = 0 always.
+    # We store 0.0 for Sy instead of constructing a complex operator.
+
+    def _corr(rho_4d):
+        """<Si·Sj> = Tr(rho * SdotS) — unit correlation, no J factor."""
+        return torch.real(oe.contract("ikjl,ijkl->", rho_4d, SdotS,
+                                      backend="torch")).item()
+
+    def _mag(rho_4d, site_idx):
+        """Single-site magnetization from 2-site rho via partial trace.
+
+        site_idx: 0 = first site in the pair (partial-trace second),
+                  1 = second site in the pair (partial-trace first).
+        Returns (mx, my, mz).
+        """
+        if site_idx == 0:
+            rho_1 = oe.contract("ikjk->ij", rho_4d, backend="torch")
+        else:
+            rho_1 = oe.contract("ikil->kl", rho_4d, backend="torch")
+        # Normalize
+        tr = torch.real(torch.trace(rho_1)).clamp(min=1e-30)
+        rho_1 = rho_1 / tr
+        mx = torch.real(oe.contract("ij,ji->", rho_1, Sx_op, backend="torch")).item()
+        my = 0.0   # identically zero for real iPEPS
+        mz = torch.real(oe.contract("ij,ji->", rho_1, Sz_op, backend="torch")).item()
+        return (mx, my, mz)
+
+    correlations = []
+    magnetizations = []
+
+    with torch.no_grad():
+        aN = normalize_single_layer_tensor_for_double_layer(a)
+        bN = normalize_single_layer_tensor_for_double_layer(b)
+        cN = normalize_single_layer_tensor_for_double_layer(c)
+        dN = normalize_single_layer_tensor_for_double_layer(d)
+        eN = normalize_single_layer_tensor_for_double_layer(e)
+        fN = normalize_single_layer_tensor_for_double_layer(f)
+
+        A, B, C, Dt, E, F = abcdef_to_ABCDEF(aN, bN, cN, dN, eN, fN, D_sq)
+        all27 = CTMRG_from_init_to_stop(
+                A, B, C, Dt, E, F, chi, D_sq,
+                CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT)
+
+        # ═══════════════════ Environment 1 (ebadcf) ═══════════════════════
+        o1, c1 = build_open_closed_env1(
+            aN, bN, cN, dN, eN, fN, chi, D_bond, d_PHYS, *all27[:9])
+        AD = torch.mm(c1['A'], c1['D'])
+        CF = torch.mm(c1['C'], c1['F'])
+        EB = torch.mm(c1['E'], c1['B'])
+        # nn rhos
+        rho_AD = _build_nn_rho(o1['A'], o1['D'], EB, CF, d_PHYS)
+        rho_CF = _build_nn_rho(o1['C'], o1['F'], AD, EB, d_PHYS)
+        rho_EB = _build_nn_rho(o1['E'], o1['B'], CF, AD, d_PHYS)
+        # nnn rhos
+        rho_AE = _build_nnn_rho(o1['A'], c1['D'], o1['E'], c1['B'], CF, d_PHYS)
+        rho_EC = _build_nnn_rho(o1['E'], c1['B'], o1['C'], c1['F'], AD, d_PHYS)
+        rho_CA = _build_nnn_rho(o1['C'], c1['F'], o1['A'], c1['D'], EB, d_PHYS)
+        rho_DB = _build_nnn_rho(o1['D'], c1['E'], o1['B'], c1['C'], torch.mm(c1['F'], c1['A']), d_PHYS)
+        rho_BF = _build_nnn_rho(o1['B'], c1['C'], o1['F'], c1['A'], torch.mm(c1['D'], c1['E']), d_PHYS)
+        rho_FD = _build_nnn_rho(o1['F'], c1['A'], o1['D'], c1['E'], torch.mm(c1['B'], c1['C']), d_PHYS)
+        # correlations (9 values, same order as energy function)
+        correlations += [_corr(r) for r in [rho_EB, rho_AD, rho_CF,
+                                            rho_AE, rho_EC, rho_CA,
+                                            rho_DB, rho_BF, rho_FD]]
+        # magnetizations: from nn rhos, all 6 sites
+        # AD → site A (idx 0), site D (idx 1)
+        # CF → site C (idx 0), site F (idx 1)
+        # EB → site E (idx 0), site B (idx 1)
+        mag1 = {}
+        mag1['A'] = _mag(rho_AD, 0)
+        mag1['D'] = _mag(rho_AD, 1)
+        mag1['C'] = _mag(rho_CF, 0)
+        mag1['F'] = _mag(rho_CF, 1)
+        mag1['E'] = _mag(rho_EB, 0)
+        mag1['B'] = _mag(rho_EB, 1)
+        for s in ['A','B','C','D','E','F']:
+            magnetizations.extend(mag1[s])
+        del o1, c1
+
+        # ═══════════════════ Environment 2 (afcbed) ═══════════════════════
+        o2, c2 = build_open_closed_env2(
+            aN, bN, cN, dN, eN, fN, chi, D_bond, d_PHYS, *all27[9:18])
+        CB = torch.mm(c2['C'], c2['B'])
+        ED = torch.mm(c2['E'], c2['D'])
+        AF = torch.mm(c2['A'], c2['F'])
+        rho_CB = _build_nn_rho(o2['C'], o2['B'], AF, ED, d_PHYS)
+        rho_AF = _build_nn_rho(o2['A'], o2['F'], ED, CB, d_PHYS)
+        rho_ED = _build_nn_rho(o2['E'], o2['D'], CB, AF, d_PHYS)
+        rho_CA = _build_nnn_rho(o2['C'], c2['B'], o2['A'], c2['F'], ED, d_PHYS)
+        rho_AE = _build_nnn_rho(o2['A'], c2['F'], o2['E'], c2['D'], CB, d_PHYS)
+        rho_EC = _build_nnn_rho(o2['E'], c2['D'], o2['C'], c2['B'], AF, d_PHYS)
+        rho_BF = _build_nnn_rho(o2['B'], c2['A'], o2['F'], c2['E'], torch.mm(c2['D'], c2['C']), d_PHYS)
+        rho_FD = _build_nnn_rho(o2['F'], c2['E'], o2['D'], c2['C'], torch.mm(c2['B'], c2['A']), d_PHYS)
+        rho_DB = _build_nnn_rho(o2['D'], c2['C'], o2['B'], c2['A'], torch.mm(c2['F'], c2['E']), d_PHYS)
+        correlations += [_corr(r) for r in [rho_CB, rho_AF, rho_ED,
+                                            rho_CA, rho_AE, rho_EC,
+                                            rho_BF, rho_FD, rho_DB]]
+        mag2 = {}
+        mag2['C'] = _mag(rho_CB, 0)
+        mag2['B'] = _mag(rho_CB, 1)
+        mag2['A'] = _mag(rho_AF, 0)
+        mag2['F'] = _mag(rho_AF, 1)
+        mag2['E'] = _mag(rho_ED, 0)
+        mag2['D'] = _mag(rho_ED, 1)
+        for s in ['A','B','C','D','E','F']:
+            magnetizations.extend(mag2[s])
+        del o2, c2
+
+        # ═══════════════════ Environment 3 (cdefab) ═══════════════════════
+        o3, c3 = build_open_closed_env3(
+            aN, bN, cN, dN, eN, fN, chi, D_bond, d_PHYS, *all27[18:27])
+        EF_ = torch.mm(c3['E'], c3['F'])
+        AB_ = torch.mm(c3['A'], c3['B'])
+        CD_ = torch.mm(c3['C'], c3['D'])
+        rho_EF = _build_nn_rho(o3['E'], o3['F'], CD_, AB_, d_PHYS)
+        rho_AB = _build_nn_rho(o3['A'], o3['B'], EF_, CD_, d_PHYS)
+        rho_CD = _build_nn_rho(o3['C'], o3['D'], AB_, EF_, d_PHYS)
+        rho_EC = _build_nnn_rho(o3['E'], c3['F'], o3['C'], c3['D'], AB_, d_PHYS)
+        rho_CA = _build_nnn_rho(o3['C'], c3['D'], o3['A'], c3['B'], EF_, d_PHYS)
+        rho_AE = _build_nnn_rho(o3['A'], c3['B'], o3['E'], c3['F'], CD_, d_PHYS)
+        rho_FD = _build_nnn_rho(o3['F'], c3['C'], o3['D'], c3['A'], torch.mm(c3['B'], c3['E']), d_PHYS)
+        rho_DB = _build_nnn_rho(o3['D'], c3['A'], o3['B'], c3['E'], torch.mm(c3['F'], c3['C']), d_PHYS)
+        rho_BF = _build_nnn_rho(o3['B'], c3['E'], o3['F'], c3['C'], torch.mm(c3['D'], c3['A']), d_PHYS)
+        correlations += [_corr(r) for r in [rho_EF, rho_AB, rho_CD,
+                                            rho_EC, rho_CA, rho_AE,
+                                            rho_FD, rho_DB, rho_BF]]
+        mag3 = {}
+        mag3['E'] = _mag(rho_EF, 0)
+        mag3['F'] = _mag(rho_EF, 1)
+        mag3['A'] = _mag(rho_AB, 0)
+        mag3['B'] = _mag(rho_AB, 1)
+        mag3['C'] = _mag(rho_CD, 0)
+        mag3['D'] = _mag(rho_CD, 1)
+        for s in ['A','B','C','D','E','F']:
+            magnetizations.extend(mag3[s])
+        del o3, c3
+
+        # ── Compute energy from correlations + J values ───────────────────
+        energy = sum(J * corr for J, corr in zip(Js, correlations))
+
+    return energy, correlations, magnetizations
+
+
+# ── Bond labels matching the order returned by evaluate_observables ───────────
+_ENV_BOND_LABELS = [
+    # env1 (ebadcf)
+    'EB', 'AD', 'CF', 'AE', 'EC', 'CA', 'DB', 'BF', 'FD',
+    # env2 (afcbed)
+    'CB', 'AF', 'ED', 'CA', 'AE', 'EC', 'BF', 'FD', 'DB',
+    # env3 (cdefab)
+    'EF', 'AB', 'CD', 'EC', 'CA', 'AE', 'FD', 'DB', 'BF',
+]
+_SITE_LABELS = ['A', 'B', 'C', 'D', 'E', 'F']
+
+
+def _save_observables_file(filepath: str, D_bond: int, chi: int,
+                           energy: float, correlations: list,
+                           magnetizations: list) -> None:
+    """Write energy / correlations / magnetizations to a human-readable file."""
+    n_sites = 6
+    with open(filepath, 'w') as fp:
+        fp.write(f"# D={D_bond}  chi={chi}  timestamp={timestamp()}\n\n")
+        fp.write(f"energy           = {energy:+.12e}\n")
+        fp.write(f"energy_per_site  = {energy / n_sites:+.12e}\n\n")
+
+        fp.write("# ── Bond correlations <Si·Sj>  (27 values) "
+                 "──────────────────────\n")
+        for env_idx in range(3):
+            fp.write(f"# env{env_idx+1}\n")
+            for j in range(9):
+                idx = env_idx * 9 + j
+                label = _ENV_BOND_LABELS[idx]
+                fp.write(f"corr_env{env_idx+1}_{label:>2s} = {correlations[idx]:+.12e}\n")
+            fp.write("\n")
+
+        fp.write("# ── Site magnetizations <Sx> <Sy> <Sz>  (54 values) "
+                 "────────────\n")
+        for env_idx in range(3):
+            fp.write(f"# env{env_idx+1}\n")
+            for s_idx, s in enumerate(_SITE_LABELS):
+                base = env_idx * 18 + s_idx * 3
+                mx = magnetizations[base]
+                my = magnetizations[base + 1]
+                mz = magnetizations[base + 2]
+                fp.write(f"mag_env{env_idx+1}_{s}  "
+                         f"Sx={mx:+.12e}  Sy={my:+.12e}  Sz={mz:+.12e}\n")
+            fp.write("\n")
+    print(f"  │  Observables saved → {filepath}")
 
 
 def save_checkpoint(path: str, abcdef: tuple, D_bond: int, chi: int,
@@ -581,7 +815,7 @@ def save_checkpoint(path: str, abcdef: tuple, D_bond: int, chi: int,
 # ══════════════════════════════════════════════════════════════════════════════
 
 def optimize_at_chi(
-        Hs, D_bond: int, chi: int, d_PHYS: int,
+        Js, SdotS, D_bond: int, chi: int, d_PHYS: int,
         budget_seconds: float,
         lbfgs_max_iter: int,
         init_abcdef=None,
@@ -701,21 +935,24 @@ def optimize_at_chi(
         loss = (
             _ckpt(energy_expectation_nearest_neighbor_3ebadcf_bonds,
                   aN, bN, cN, dN, eN, fN,
-                  *Hs[0:9],
+                  *Js[0:9],
+                  SdotS,
                   chi, D_bond, d_PHYS,
                   C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E,
                   use_reentrant=False)
             +
             _ckpt(energy_expectation_nearest_neighbor_3afcbed_bonds,
                   aN, bN, cN, dN, eN, fN,
-                  *Hs[9:18],
+                  *Js[9:18],
+                  SdotS,
                   chi, D_bond, d_PHYS,
                   C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A,
                   use_reentrant=False)
             +
             _ckpt(energy_expectation_nearest_neighbor_other_3_bonds,
                   aN, bN, cN, dN, eN, fN,
-                  *Hs[18:27],
+                  *Js[18:27],
+                  SdotS,
                   chi, D_bond, d_PHYS,
                   C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C,
                   use_reentrant=False)
@@ -1093,14 +1330,14 @@ def main():
             _json.dump(_hp, _fp, indent=2)
 
     # ── Hamiltonians (J1-J2 model) ────────────────────────────────────────────
-    # Each energy function takes 9 Hamiltonians: 3 nn bonds + 6 nnn bonds.
-    # Hs is a flat list of 27 = 3 × (3 nn + 6 nnn):
-    #   Hs[ 0: 9] → energy_fn_1:  Heb,Had,Hcf (nn)  + Hae,Hec,Hca,Hdb,Hbf,Hfd (nnn)
-    #   Hs[ 9:18] → energy_fn_2:  Haf,Hcb,Hed (nn)  + Hca,Hae,Hec,Hbf,Hfd,Hdb (nnn)
-    #   Hs[18:27] → energy_fn_3:  Hcd,Hef,Hab (nn)  + Hec,Hca,Hae,Hfd,Hdb,Hbf (nnn)
-    H_nn  = build_heisenberg_H(args.J1, d_PHYS)   # nearest-neighbour
-    H_nnn = build_heisenberg_H(args.J2, d_PHYS)   # next-nearest-neighbour
-    Hs = ([H_nn]*3 + [H_nnn]*6) * 3               # 27 Hamiltonians total
+    # Each energy function takes 9 coupling constants (3 nn + 6 nnn) plus the
+    # unit spin-spin operator SdotS.  Js is a flat list of 27 = 3 × (3+6):
+    #   Js[ 0: 9] → energy_fn_1:  Jeb,Jad,Jcf (nn)  + Jae,Jec,Jca,Jdb,Jbf,Jfd (nnn)
+    #   Js[ 9:18] → energy_fn_2:  Jaf,Jcb,Jed (nn)  + Jca,Jae,Jec,Jbf,Jfd,Jdb (nnn)
+    #   Js[18:27] → energy_fn_3:  Jcd,Jef,Jab (nn)  + Jec,Jca,Jae,Jfd,Jdb,Jbf (nnn)
+    SdotS = build_heisenberg_H(1.0, d_PHYS)         # unit S·S operator (J=1)
+    J1, J2 = args.J1, args.J2
+    Js = ([J1]*3 + [J2]*6) * 3                       # 27 J-values total
 
     # ── Banner ────────────────────────────────────────────────────────────────
     print("=" * 76)
@@ -1223,7 +1460,7 @@ def main():
             all_loss_logs[(D_bond, chi)] = loss_log
 
             *out, best_loss, global_step = optimize_at_chi(
-                Hs, D_bond, chi, d_PHYS,
+                Js, SdotS, D_bond, chi, d_PHYS,
                 budget_seconds=chi_budget,
                 lbfgs_max_iter=lbfgs_iters,
                 init_abcdef=cur_abcdef,
@@ -1250,11 +1487,16 @@ def main():
             except Exception:
                 pass  # non-Linux systems: silently skip
 
-            # Clean energy evaluation
-            print(f"  │  Evaluating energy at (D={D_bond}, chi={chi}) ...")
-            energy = evaluate_energy_clean(
-                *cur_abcdef, Hs, chi, D_bond, d_PHYS)
+            # Clean energy evaluation + observables
+            print(f"  │  Evaluating energy & observables at (D={D_bond}, chi={chi}) ...")
+            energy, correlations, magnetizations = evaluate_observables(
+                *cur_abcdef, Js, SdotS, chi, D_bond, d_PHYS)
             energy_per_site = energy / N_SITES
+            _save_observables_file(
+                os.path.join(output_dir,
+                             f"D_{D_bond}_chi_{chi}"
+                             f"_energy_magnetization_correlation.txt"),
+                D_bond, chi, energy, correlations, magnetizations)
 
             # Save final checkpoint for this (D, chi)
             save_checkpoint(best_path, cur_abcdef, D_bond, chi,
@@ -1285,8 +1527,13 @@ def main():
                 print(f"  │  [Lookahead] evaluating (D={D_bond}, chi={chi_la}) "
                       f"with current tensors ...")
                 with torch.no_grad():
-                    energy_la = evaluate_energy_clean(
-                        *cur_abcdef, Hs, chi_la, D_bond, d_PHYS)
+                    energy_la, corr_la, mag_la = evaluate_observables(
+                        *cur_abcdef, Js, SdotS, chi_la, D_bond, d_PHYS)
+                _save_observables_file(
+                    os.path.join(output_dir,
+                                 f"D_{D_bond}_chi_{chi}+2D={chi_la}"
+                                 f"_energy_magnetization_correlation.txt"),
+                    D_bond, chi_la, energy_la, corr_la, mag_la)
                 delta_la = abs(energy - energy_la)
                 print(f"  │  [Lookahead] chi={chi}: E={energy:+.10f} │ "
                       f"chi={chi_la}: E={energy_la:+.10f} │ "

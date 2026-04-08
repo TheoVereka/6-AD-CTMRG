@@ -964,3 +964,524 @@ Everytime the optimize for one chi stops, just after the evaluation of clean ene
 Store in a file named "D_X_chi_XXX_energy_magnetization_correlation.txt" and "D_X_chi_XXX+2D=XXX_energy_magnetization_correlation.txt" (XXX is the chi value, e.g., chi_256). 
 Besides, if you think the Hamiltonian definition including J makes the nnbonds and nnnbonds correlation redundant(first *J then /J), then change all the energy_eval function and the clean_eval ones to make the Hamiltonian to be nothing but J values, s.t. every env's eval only has 3 J1 and 6 J2 values. And the tensor are all calculated using the S_i dot S_j unit Hamiltonian, only the return energies are weighted at the end of return.
 And make sure this change is correctly and smoothly running and NOT IMPACT ANY OTHER PART OF THE CODE WE HAD!!!!!!!!!!!!!!!!!! Test thoughoutly!
+
+
+
+
+
+
+chye@ctmc-B110873L:~/6ADctmrg/6-AD-CTMRG/src_code$ source /home/chye/venvs/6adctmrg/bin/activate; cd /home/chye/6ADctmrg/6-AD-CTMRG/src_code; python scripts/main_unrestricted.py
+  RNG seeding disabled — results will NOT be reproducible.
+tensor([[0., 1.],
+        [0., 0.]], dtype=torch.float64) tensor([[0., 0.],
+        [1., 0.]], dtype=torch.float64) tensor([[ 0.5000,  0.0000],
+        [ 0.0000, -0.5000]], dtype=torch.float64)
+/home/chye/6ADctmrg/6-AD-CTMRG/src_code/scripts/../src/core_unrestricted.py:2607: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.clone().detach() or sourceTensor.clone().detach().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  SdotS = torch.tensor(oe.contract("ij,kl->ijkl", Splus, Sminus) * 0.5
+tensor([[0., 1.],
+        [0., 0.]], dtype=torch.float64) tensor([[0., 0.],
+        [1., 0.]], dtype=torch.float64) tensor([[ 0.5000,  0.0000],
+        [ 0.0000, -0.5000]], dtype=torch.float64)
+============================================================================
+  iPEPS sweep  —  AD-CTMRG  —  J1-J2 Heisenberg on 6-site honeycomb
+  J1=1.0  J2=0.0  d_phys=2  Total budget: 99999.0 h
+  Device       : cuda
+  D_bond sweep : [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    D=2: chi=[2, 3, 4, 6, 8]  budget=9999.90 h  (chi_max=16)
+    D=3: chi=[3, 4, 6, 9, 12, 15]  budget=9999.90 h  (chi_max=81)
+    D=4: chi=[6, 8, 12, 16, 20, 24]  budget=9999.90 h  (chi_max=80)
+    D=5: chi=[8, 10, 15, 20, 25, 30, 35]  budget=9999.90 h  (chi_max=9999)
+    D=6: chi=[12, 18, 24, 30, 36, 42, 48]  budget=9999.90 h  (chi_max=9999)
+    D=7: chi=[14, 21, 28, 35, 42, 49, 56, 63]  budget=9999.90 h  (chi_max=9999)
+    D=8: chi=[24, 32, 40, 48, 56, 64, 72, 80]  budget=9999.90 h  (chi_max=9999)
+    D=9: chi=[27, 36, 45, 54, 63, 72, 81, 90, 99]  budget=9999.90 h  (chi_max=9999)
+    D=10: chi=[1, 10, 100, 1000, 9999]  budget=9999.90 h  (chi_max=9999)
+    D=11: chi=[1, 10, 100, 1000, 9999]  budget=9999.90 h  (chi_max=9999)
+  Output dir   : /home/chye/6ADctmrg/data/raw/6tensors_20260408_151305
+  Started      : 2026-04-08 15:13:05
+============================================================================
+
+════════════════════════════════════════════════════════════════════════════
+  D_bond = 2   D²=4  D⁴=16  chi_max=16  budget=9999.90 h
+  chi schedule: [2, 3, 4, 6, 8]  (5 levels, equal time split)
+════════════════════════════════════════════════════════════════════════════
+
+  ┌── D=2  chi=2  budget=7199928s=119998.8min  [2026-04-08 15:13:05]
+    step     0  ctm=  4  loss=-0.2336962919  Δ=+inf  16/7199928s
+    step     1  ctm=  3  loss=-3.2017842408  Δ=-2.968e+00  25/7199928s
+    step     2  ctm=  3  loss=-3.2111632788  Δ=-9.379e-03  33/7199928s
+    step     3  ctm=  3  loss=-3.2114393562  Δ=-2.761e-04  40/7199928s
+    step     4  ctm=  3  loss=-3.2114607226  Δ=-2.137e-05  46/7199928s
+    step     5  ctm=  3  loss=-3.2114693491  Δ=-8.627e-06  57/7199928s
+    step     6  ctm=  3  loss=-3.2114743856  Δ=-5.036e-06  65/7199928s
+    step     7  ctm=  3  loss=-3.2114783735  Δ=-3.988e-06  78/7199928s
+    step     8  ctm=  3  loss=-3.2114828604  Δ=-4.487e-06  95/7199928s
+    step     9  ctm=  3  loss=-3.2114868557  Δ=-3.995e-06  96/7199928s
+    step    10  ctm=  3  loss=-3.2114868557  Δ=+0.000e+00  97/7199928s
+    Outer convergence at step 10 (Δ=0.00e+00)
+  │  Evaluating energy at (D=2, chi=2) ...
+  └── E=-3.2114868557  E/site=-0.5352478093  wall=0.03h
+  │  [Lookahead] evaluating (D=2, chi=6) with current tensors ...
+  │  [Lookahead] chi=2: E=-3.2114868557 │ chi=6: E=-3.2121854420 │ |ΔE|=6.986e-04  [thr=6.0e-06]
+
+  ┌── D=2  chi=3  budget=7199928s=119998.8min  [2026-04-08 15:14:43]
+^CTraceback (most recent call last):
+  File "/home/chye/6ADctmrg/6-AD-CTMRG/src_code/scripts/main_unrestricted.py", line 1421, in <module>
+    main()
+  File "/home/chye/6ADctmrg/6-AD-CTMRG/src_code/scripts/main_unrestricted.py", line 1225, in main
+    *out, best_loss, global_step = optimize_at_chi(
+                                   ^^^^^^^^^^^^^^^^
+  File "/home/chye/6ADctmrg/6-AD-CTMRG/src_code/scripts/main_unrestricted.py", line 793, in optimize_at_chi
+    loss_val  = _lbfgs.step(closure)
+                ^^^^^^^^^^^^^^^^^^^^
+  File "/home/chye/venvs/6adctmrg/lib/python3.11/site-packages/torch/optim/optimizer.py", line 487, in wrapper
+    out = func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chye/venvs/6adctmrg/lib/python3.11/site-packages/torch/utils/_contextlib.py", line 116, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chye/venvs/6adctmrg/lib/python3.11/site-packages/torch/optim/lbfgs.py", line 444, in step
+    loss, flat_grad, t, ls_func_evals = _strong_wolfe(
+                                        ^^^^^^^^^^^^^^
+  File "/home/chye/venvs/6adctmrg/lib/python3.11/site-packages/torch/optim/lbfgs.py", line 48, in _strong_wolfe
+    f_new, g_new = obj_func(x, t, d)
+                   ^^^^^^^^^^^^^^^^^
+  File "/home/chye/venvs/6adctmrg/lib/python3.11/site-packages/torch/optim/lbfgs.py", line 442, in obj_func
+    return self._directional_evaluate(closure, x, t, d)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chye/venvs/6adctmrg/lib/python3.11/site-packages/torch/optim/lbfgs.py", line 296, in _directional_evaluate
+    loss = float(closure())
+                 ^^^^^^^^^
+  File "/home/chye/venvs/6adctmrg/lib/python3.11/site-packages/torch/utils/_contextlib.py", line 116, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chye/6ADctmrg/6-AD-CTMRG/src_code/scripts/main_unrestricted.py", line 762, in closure
+    loss.backward()
+  File "/home/chye/venvs/6adctmrg/lib/python3.11/site-packages/torch/_tensor.py", line 581, in backward
+    torch.autograd.backward(
+  File "/home/chye/venvs/6adctmrg/lib/python3.11/site-packages/torch/autograd/__init__.py", line 347, in backward
+    _engine_run_backward(
+  File "/home/chye/venvs/6adctmrg/lib/python3.11/site-packages/torch/autograd/graph.py", line 825, in _engine_run_backward
+    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt
+
+(6adctmrg) chye@ctmc-B110873L:~/6ADctmrg/6-AD-CTMRG/src_code$ source /home/chye/venvs/6adctmrg/bin/activate; cd /home/chye/6ADctmrg/6-AD-CTMRG/src_code; python scripts/main_unrestricted.py
+  RNG seeding disabled — results will NOT be reproducible.
+tensor([[0., 1.],
+        [0., 0.]], dtype=torch.float64) tensor([[0., 0.],
+        [1., 0.]], dtype=torch.float64) tensor([[ 0.5000,  0.0000],
+        [ 0.0000, -0.5000]], dtype=torch.float64)
+/home/chye/6ADctmrg/6-AD-CTMRG/src_code/scripts/../src/core_unrestricted.py:2607: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.clone().detach() or sourceTensor.clone().detach().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  SdotS = torch.tensor(oe.contract("ij,kl->ijkl", Splus, Sminus) * 0.5
+tensor([[0., 1.],
+        [0., 0.]], dtype=torch.float64) tensor([[0., 0.],
+        [1., 0.]], dtype=torch.float64) tensor([[ 0.5000,  0.0000],
+        [ 0.0000, -0.5000]], dtype=torch.float64)
+============================================================================
+  iPEPS sweep  —  AD-CTMRG  —  J1-J2 Heisenberg on 6-site honeycomb
+  J1=1.0  J2=0.1  d_phys=2  Total budget: 99999.0 h
+  Device       : cpu
+  D_bond sweep : [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    D=2: chi=[2, 3, 4, 6, 8]  budget=9999.90 h  (chi_max=16)
+    D=3: chi=[3, 4, 6, 9, 12, 15]  budget=9999.90 h  (chi_max=81)
+    D=4: chi=[6, 8, 12, 16, 20, 24]  budget=9999.90 h  (chi_max=80)
+    D=5: chi=[8, 10, 15, 20, 25, 30, 35]  budget=9999.90 h  (chi_max=9999)
+    D=6: chi=[12, 18, 24, 30, 36, 42, 48]  budget=9999.90 h  (chi_max=9999)
+    D=7: chi=[14, 21, 28, 35, 42, 49, 56, 63]  budget=9999.90 h  (chi_max=9999)
+    D=8: chi=[24, 32, 40, 48, 56, 64, 72, 80]  budget=9999.90 h  (chi_max=9999)
+    D=9: chi=[27, 36, 45, 54, 63, 72, 81, 90, 99]  budget=9999.90 h  (chi_max=9999)
+    D=10: chi=[1, 10, 100, 1000, 9999]  budget=9999.90 h  (chi_max=9999)
+    D=11: chi=[1, 10, 100, 1000, 9999]  budget=9999.90 h  (chi_max=9999)
+  Output dir   : /home/chye/6ADctmrg/data/raw/6tensors_20260408_151459
+  Started      : 2026-04-08 15:14:59
+============================================================================
+
+════════════════════════════════════════════════════════════════════════════
+  D_bond = 2   D²=4  D⁴=16  chi_max=16  budget=9999.90 h
+  chi schedule: [2, 3, 4, 6, 8]  (5 levels, equal time split)
+════════════════════════════════════════════════════════════════════════════
+
+  ┌── D=2  chi=2  budget=7199928s=119998.8min  [2026-04-08 15:14:59]
+    step     0  ctm=  3  loss=+0.0102676361  Δ=+inf  19/7199928s
+    step     1  ctm=  4  loss=-2.8892156629  Δ=-2.899e+00  33/7199928s
+    step     2  ctm=  3  loss=-2.9053266734  Δ=-1.611e-02  38/7199928s
+    step     3  ctm=  3  loss=-2.9056579286  Δ=-3.313e-04  48/7199928s
+    step     4  ctm=  3  loss=-2.9056923828  Δ=-3.445e-05  57/7199928s
+    step     5  ctm=  3  loss=-2.9056962864  Δ=-3.904e-06  57/7199928s
+    step     6  ctm=  3  loss=-2.9056962864  Δ=+0.000e+00  58/7199928s
+    Outer convergence at step 6 (Δ=0.00e+00)
+  │  Evaluating energy at (D=2, chi=2) ...
+  └── E=-2.9056962864  E/site=-0.4842827144  wall=0.02h
+  │  [Lookahead] evaluating (D=2, chi=6) with current tensors ...
+  │  [Lookahead] chi=2: E=-2.9056962864 │ chi=6: E=-2.9070431291 │ |ΔE|=1.347e-03  [thr=6.0e-06]
+
+  ┌── D=2  chi=3  budget=7199928s=119998.8min  [2026-04-08 15:15:57]
+    step     6  ctm=  3  loss=-2.9070281330  Δ=+inf  6/7199928s
+    step     7  ctm=  3  loss=-2.9070870870  Δ=-5.895e-05  11/7199928s
+    step     8  ctm=  3  loss=-2.9070904273  Δ=-3.340e-06  12/7199928s
+    step     9  ctm=  3  loss=-2.9070904273  Δ=+0.000e+00  12/7199928s
+    Outer convergence at step 9 (Δ=0.00e+00)
+  │  Evaluating energy at (D=2, chi=3) ...
+  └── E=-2.9070904273  E/site=-0.4845150712  wall=0.02h
+  │  [Lookahead] evaluating (D=2, chi=7) with current tensors ...
+  │  [Lookahead] chi=3: E=-2.9070904273 │ chi=7: E=-2.9071053180 │ |ΔE|=1.489e-05  [thr=6.0e-06]
+
+  ┌── D=2  chi=4  budget=7199928s=119998.8min  [2026-04-08 15:16:10]
+    step     9  ctm=  3  loss=-2.9071052655  Δ=+inf  1/7199928s
+    step    10  ctm=  3  loss=-2.9071052655  Δ=+0.000e+00  1/7199928s
+    Outer convergence at step 10 (Δ=0.00e+00)
+  │  Evaluating energy at (D=2, chi=4) ...
+  └── E=-2.9071052655  E/site=-0.4845175442  wall=0.02h
+  │  [Lookahead] evaluating (D=2, chi=8) with current tensors ...
+  │  [Lookahead] chi=4: E=-2.9071052655 │ chi=8: E=-2.9071053178 │ |ΔE|=5.231e-08  [thr=6.0e-06]
+  │  [CHI-CONV] |ΔE|=5.231e-08 < 6.0e-06 → chi converged at chi=4; skipping remaining chi levels for D=2. D_next will start from chi > 4.
+
+  D=2 complete in 0.02 h
+  [CHI-FILTER] Prev D finished at chi=4 (early chi-convergence); filtering D=3 schedule to chi > 4: [6, 9, 12, 15]
+
+════════════════════════════════════════════════════════════════════════════
+  D_bond = 3   D²=9  D⁴=81  chi_max=81  budget=9999.90 h
+  chi schedule: [6, 9, 12, 15]  (4 levels, equal time split)
+════════════════════════════════════════════════════════════════════════════
+  Warm-starting from D=2 tensors (padding 2→3, noise=0.2)
+
+  ┌── D=3  chi=6  budget=8999910s=149998.5min  [2026-04-08 15:16:12]
+    step    11  ctm=  4  loss=-2.7589800624  Δ=+inf  15/8999910s
+    step    12  ctm=  4  loss=-2.9238915766  Δ=-1.649e-01  32/8999910s
+    step    13  ctm=  4  loss=-2.9450193999  Δ=-2.113e-02  42/8999910s
+    step    14  ctm=  4  loss=-2.9513161435  Δ=-6.297e-03  57/8999910s
+    step    15  ctm=  4  loss=-2.9522217250  Δ=-9.056e-04  74/8999910s
+    step    16  ctm=  4  loss=-2.9525003957  Δ=-2.787e-04  86/8999910s
+    step    17  ctm=  4  loss=-2.9526025800  Δ=-1.022e-04  102/8999910s
+    step    18  ctm=  4  loss=-2.9526402883  Δ=-3.771e-05  120/8999910s
+    step    19  ctm=  4  loss=-2.9526529590  Δ=-1.267e-05  136/8999910s
+    step    20  ctm=  4  loss=-2.9526593657  Δ=-6.407e-06  148/8999910s
+    step    21  ctm=  4  loss=-2.9526642391  Δ=-4.873e-06  158/8999910s
+    step    22  ctm=  4  loss=-2.9526671169  Δ=-2.878e-06  159/8999910s
+    step    23  ctm=  4  loss=-2.9526671169  Δ=+0.000e+00  159/8999910s
+    Outer convergence at step 23 (Δ=0.00e+00)
+  │  Evaluating energy at (D=3, chi=6) ...
+  └── E=-2.9526671169  E/site=-0.4921111861  wall=0.06h
+  │  [Lookahead] evaluating (D=3, chi=12) with current tensors ...
+  │  [Lookahead] chi=6: E=-2.9526671169 │ chi=12: E=-2.9526665447 │ |ΔE|=5.721e-07  [thr=6.0e-06]
+  │  [CHI-CONV] |ΔE|=5.721e-07 < 6.0e-06 → chi converged at chi=6; skipping remaining chi levels for D=3. D_next will start from chi > 6.
+
+  D=3 complete in 0.04 h
+  [CHI-FILTER] Prev D finished at chi=6 (early chi-convergence); filtering D=4 schedule to chi > 6: [8, 12, 16, 20, 24]
+
+════════════════════════════════════════════════════════════════════════════
+  D_bond = 4   D²=16  D⁴=256  chi_max=80  budget=9999.90 h
+  chi schedule: [8, 12, 16, 20, 24]  (5 levels, equal time split)
+════════════════════════════════════════════════════════════════════════════
+  Warm-starting from D=3 tensors (padding 3→4, noise=0.2)
+
+  ┌── D=4  chi=8  budget=7199928s=119998.8min  [2026-04-08 15:18:52]
+    step    24  ctm=  4  loss=-2.8807306460  Δ=+inf  30/7199928s
+    step    25  ctm=  4  loss=-2.9523138654  Δ=-7.158e-02  65/7199928s
+    step    26  ctm=  5  loss=-2.9585316254  Δ=-6.218e-03  95/7199928s
+    step    27  ctm=  5  loss=-2.9618165772  Δ=-3.285e-03  126/7199928s
+^CTraceback (most recent call last):
+  File "/home/chye/6ADctmrg/6-AD-CTMRG/src_code/scripts/main_unrestricted.py", line 1421, in <module>
+    main()
+  File "/home/chye/6ADctmrg/6-AD-CTMRG/src_code/scripts/main_unrestricted.py", line 1225, in main
+    *out, best_loss, global_step = optimize_at_chi(
+                                   ^^^^^^^^^^^^^^^^
+  File "/home/chye/6ADctmrg/6-AD-CTMRG/src_code/scripts/main_unrestricted.py", line 793, in optimize_at_chi
+    loss_val  = _lbfgs.step(closure)
+                ^^^^^^^^^^^^^^^^^^^^
+  File "/home/chye/venvs/6adctmrg/lib/python3.11/site-packages/torch/optim/optimizer.py", line 487, in wrapper
+    out = func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chye/venvs/6adctmrg/lib/python3.11/site-packages/torch/utils/_contextlib.py", line 116, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chye/venvs/6adctmrg/lib/python3.11/site-packages/torch/optim/lbfgs.py", line 330, in step
+    orig_loss = closure()
+                ^^^^^^^^^
+  File "/home/chye/venvs/6adctmrg/lib/python3.11/site-packages/torch/utils/_contextlib.py", line 116, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chye/6ADctmrg/6-AD-CTMRG/src_code/scripts/main_unrestricted.py", line 762, in closure
+    loss.backward()
+  File "/home/chye/venvs/6adctmrg/lib/python3.11/site-packages/torch/_tensor.py", line 581, in backward
+    torch.autograd.backward(
+  File "/home/chye/venvs/6adctmrg/lib/python3.11/site-packages/torch/autograd/__init__.py", line 347, in backward
+    _engine_run_backward(
+  File "/home/chye/venvs/6adctmrg/lib/python3.11/site-packages/torch/autograd/graph.py", line 825, in _engine_run_backward
+    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chye/venvs/6adctmrg/lib/python3.11/site-packages/torch/utils/checkpoint.py", line 1125, in unpack_hook
+    frame.recompute_fn(*args)
+  File "/home/chye/venvs/6adctmrg/lib/python3.11/site-packages/torch/utils/checkpoint.py", line 1519, in recompute_fn
+    fn(*args, **kwargs)
+  File "/home/chye/6ADctmrg/6-AD-CTMRG/src_code/scripts/../src/core_unrestricted.py", line 1499, in update_environmentCTs_1to2
+    V2A, C21EB, U1F, V3C, C32AD, U2B, V1E, C13CF, U3D = trunc_rhoCCC(
+                                                        ^^^^^^^^^^^^^
+  File "/home/chye/6ADctmrg/6-AD-CTMRG/src_code/scripts/../src/core_unrestricted.py", line 892, in trunc_rhoCCC
+    U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chye/6ADctmrg/6-AD-CTMRG/src_code/scripts/../src/core_unrestricted.py", line 625, in truncated_svd_propack
+    U, S, V = SVD_PROPACK.apply(M, chi, 0, torch.as_tensor([rel_cutoff], dtype=_rdtype, device=M.device), v0, _USE_FULL_SVD)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chye/venvs/6adctmrg/lib/python3.11/site-packages/torch/autograd/function.py", line 575, in apply
+    return super().apply(*args, **kwargs)  # type: ignore[misc]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/chye/6ADctmrg/6-AD-CTMRG/src_code/scripts/../src/core_unrestricted.py", line 425, in forward
+    U, S, V = torch.linalg.svd(A.detach(), full_matrices=False)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt
+
+(6adctmrg) chye@ctmc-B110873L:~/6ADctmrg/6-AD-CTMRG/src_code$ source /home/chye/venvs/6adctmrg/bin/activate; cd /home/chye/6ADctmrg/6-AD-CTMRG/src_code; python scripts/main_unrestricted.py
+  RNG seeding disabled — results will NOT be reproducible.
+tensor([[0., 1.],
+        [0., 0.]], dtype=torch.float64) tensor([[0., 0.],
+        [1., 0.]], dtype=torch.float64) tensor([[ 0.5000,  0.0000],
+        [ 0.0000, -0.5000]], dtype=torch.float64)
+/home/chye/6ADctmrg/6-AD-CTMRG/src_code/scripts/../src/core_unrestricted.py:2607: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.clone().detach() or sourceTensor.clone().detach().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  SdotS = torch.tensor(oe.contract("ij,kl->ijkl", Splus, Sminus) * 0.5
+tensor([[0., 1.],
+        [0., 0.]], dtype=torch.float64) tensor([[0., 0.],
+        [1., 0.]], dtype=torch.float64) tensor([[ 0.5000,  0.0000],
+        [ 0.0000, -0.5000]], dtype=torch.float64)
+============================================================================
+  iPEPS sweep  —  AD-CTMRG  —  J1-J2 Heisenberg on 6-site honeycomb
+  J1=1.0  J2=0.3  d_phys=2  Total budget: 99999.0 h
+  Device       : cpu
+  D_bond sweep : [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    D=2: chi=[2, 3, 4, 6, 8]  budget=9999.90 h  (chi_max=16)
+    D=3: chi=[3, 4, 6, 9, 12, 15]  budget=9999.90 h  (chi_max=81)
+    D=4: chi=[6, 8, 12, 16, 20, 24]  budget=9999.90 h  (chi_max=80)
+    D=5: chi=[8, 10, 15, 20, 25, 30, 35]  budget=9999.90 h  (chi_max=9999)
+    D=6: chi=[12, 18, 24, 30, 36, 42, 48]  budget=9999.90 h  (chi_max=9999)
+    D=7: chi=[14, 21, 28, 35, 42, 49, 56, 63]  budget=9999.90 h  (chi_max=9999)
+    D=8: chi=[24, 32, 40, 48, 56, 64, 72, 80]  budget=9999.90 h  (chi_max=9999)
+    D=9: chi=[27, 36, 45, 54, 63, 72, 81, 90, 99]  budget=9999.90 h  (chi_max=9999)
+    D=10: chi=[1, 10, 100, 1000, 9999]  budget=9999.90 h  (chi_max=9999)
+    D=11: chi=[1, 10, 100, 1000, 9999]  budget=9999.90 h  (chi_max=9999)
+  Output dir   : /home/chye/6ADctmrg/data/raw/6tensors_20260408_152106
+  Started      : 2026-04-08 15:21:06
+============================================================================
+
+════════════════════════════════════════════════════════════════════════════
+  D_bond = 2   D²=4  D⁴=16  chi_max=16  budget=9999.90 h
+  chi schedule: [2, 3, 4, 6, 8]  (5 levels, equal time split)
+════════════════════════════════════════════════════════════════════════════
+
+  ┌── D=2  chi=2  budget=7199928s=119998.8min  [2026-04-08 15:21:06]
+    step     0  ctm=  3  loss=+0.9594938656  Δ=+inf  13/7199928s
+    step     1  ctm=  4  loss=-2.2893545969  Δ=-3.249e+00  22/7199928s
+    step     2  ctm=  4  loss=-2.3602932694  Δ=-7.094e-02  31/7199928s
+    step     3  ctm=  4  loss=-2.3672812526  Δ=-6.988e-03  38/7199928s
+    step     4  ctm=  4  loss=-2.3673177004  Δ=-3.645e-05  46/7199928s
+    step     5  ctm=  4  loss=-2.3673277793  Δ=-1.008e-05  54/7199928s
+    step     6  ctm=  4  loss=-2.3673394910  Δ=-1.171e-05  61/7199928s
+    step     7  ctm=  4  loss=-2.3673621163  Δ=-2.263e-05  69/7199928s
+    step     8  ctm=  4  loss=-2.3673873929  Δ=-2.528e-05  77/7199928s
+    step     9  ctm=  4  loss=-2.3674084142  Δ=-2.102e-05  84/7199928s
+    step    10  ctm=  4  loss=-2.3674327336  Δ=-2.432e-05  90/7199928s
+    step    11  ctm=  4  loss=-2.3674636124  Δ=-3.088e-05  97/7199928s
+    step    12  ctm=  4  loss=-2.3674973122  Δ=-3.370e-05  114/7199928s
+    step    13  ctm=  4  loss=-2.3675335283  Δ=-3.622e-05  122/7199928s
+    step    14  ctm=  4  loss=-2.3675910396  Δ=-5.751e-05  128/7199928s
+    step    15  ctm=  4  loss=-2.3676565020  Δ=-6.546e-05  135/7199928s
+    step    16  ctm=  4  loss=-2.3677153795  Δ=-5.888e-05  142/7199928s
+    step    17  ctm=  4  loss=-2.3677717760  Δ=-5.640e-05  150/7199928s
+    step    18  ctm=  4  loss=-2.3678110891  Δ=-3.931e-05  156/7199928s
+    step    19  ctm=  4  loss=-2.3678529861  Δ=-4.190e-05  163/7199928s
+    step    20  ctm=  4  loss=-2.3678846701  Δ=-3.168e-05  168/7199928s
+    step    21  ctm=  4  loss=-2.3679176663  Δ=-3.300e-05  174/7199928s
+    step    22  ctm=  4  loss=-2.3679543974  Δ=-3.673e-05  181/7199928s
+    step    23  ctm=  4  loss=-2.3679873152  Δ=-3.292e-05  187/7199928s
+    step    24  ctm=  4  loss=-2.3680160408  Δ=-2.873e-05  193/7199928s
+    step    25  ctm=  4  loss=-2.3680512712  Δ=-3.523e-05  198/7199928s
+    step    26  ctm=  4  loss=-2.3680742068  Δ=-2.294e-05  204/7199928s
+    step    27  ctm=  4  loss=-2.3680966259  Δ=-2.242e-05  210/7199928s
+    step    28  ctm=  4  loss=-2.3681188009  Δ=-2.217e-05  216/7199928s
+    step    29  ctm=  4  loss=-2.3681412685  Δ=-2.247e-05  222/7199928s
+    step    30  ctm=  4  loss=-2.3681600058  Δ=-1.874e-05  228/7199928s
+    step    31  ctm=  4  loss=-2.3681793090  Δ=-1.930e-05  236/7199928s
+    step    32  ctm=  4  loss=-2.3681980683  Δ=-1.876e-05  244/7199928s
+    step    33  ctm=  4  loss=-2.3682200404  Δ=-2.197e-05  250/7199928s
+    step    34  ctm=  4  loss=-2.3682422885  Δ=-2.225e-05  259/7199928s
+    step    35  ctm=  4  loss=-2.3682617666  Δ=-1.948e-05  269/7199928s
+    step    36  ctm=  4  loss=-2.3682825243  Δ=-2.076e-05  276/7199928s
+    step    37  ctm=  4  loss=-2.3683024155  Δ=-1.989e-05  284/7199928s
+    step    38  ctm=  4  loss=-2.3683094058  Δ=-6.990e-06  294/7199928s
+    step    39  ctm=  4  loss=-2.3683184040  Δ=-8.998e-06  307/7199928s
+    step    40  ctm=  4  loss=-2.3683276289  Δ=-9.225e-06  322/7199928s
+    step    41  ctm=  4  loss=-2.3683391114  Δ=-1.148e-05  330/7199928s
+    step    42  ctm=  4  loss=-2.3683486631  Δ=-9.552e-06  339/7199928s
+    step    43  ctm=  4  loss=-2.3683556798  Δ=-7.017e-06  350/7199928s
+    step    44  ctm=  4  loss=-2.3683614967  Δ=-5.817e-06  358/7199928s
+    step    45  ctm=  4  loss=-2.3683682186  Δ=-6.722e-06  369/7199928s
+    step    46  ctm=  4  loss=-2.3683742356  Δ=-6.017e-06  379/7199928s
+    step    47  ctm=  4  loss=-2.3683800879  Δ=-5.852e-06  387/7199928s
+    step    48  ctm=  4  loss=-2.3683864601  Δ=-6.372e-06  397/7199928s
+    step    49  ctm=  4  loss=-2.3683909953  Δ=-4.535e-06  407/7199928s
+    step    50  ctm=  4  loss=-2.3683968683  Δ=-5.873e-06  416/7199928s
+    step    51  ctm=  4  loss=-2.3684017776  Δ=-4.909e-06  424/7199928s
+    step    52  ctm=  4  loss=-2.3684064961  Δ=-4.718e-06  435/7199928s
+    step    53  ctm=  4  loss=-2.3684117714  Δ=-5.275e-06  444/7199928s
+    step    54  ctm=  4  loss=-2.3684171757  Δ=-5.404e-06  453/7199928s
+    step    55  ctm=  4  loss=-2.3684219769  Δ=-4.801e-06  464/7199928s
+    step    56  ctm=  4  loss=-2.3684260670  Δ=-4.090e-06  474/7199928s
+    step    57  ctm=  4  loss=-2.3684307722  Δ=-4.705e-06  486/7199928s
+    step    58  ctm=  4  loss=-2.3684363936  Δ=-5.621e-06  495/7199928s
+    step    59  ctm=  4  loss=-2.3684411772  Δ=-4.784e-06  497/7199928s
+    step    60  ctm=  4  loss=-2.3684412302  Δ=-5.301e-08  497/7199928s
+    Outer convergence at step 60 (Δ=-5.30e-08)
+  │  Evaluating energy at (D=2, chi=2) ...
+  └── E=-2.3684412400  E/site=-0.3947402067  wall=0.14h
+  │  [Lookahead] evaluating (D=2, chi=6) with current tensors ...
+  │  [Lookahead] chi=2: E=-2.3684412400 │ chi=6: E=-2.3702085647 │ |ΔE|=1.767e-03  [thr=6.0e-06]
+
+  ┌── D=2  chi=3  budget=7199928s=119998.8min  [2026-04-08 15:29:24]
+    step    60  ctm=  4  loss=-2.3713869840  Δ=+inf  6/7199928s
+    step    61  ctm=  4  loss=-2.3714454982  Δ=-5.851e-05  13/7199928s
+    step    62  ctm=  4  loss=-2.3714651400  Δ=-1.964e-05  19/7199928s
+    step    63  ctm=  4  loss=-2.3714803226  Δ=-1.518e-05  28/7199928s
+    step    64  ctm=  4  loss=-2.3714871411  Δ=-6.819e-06  39/7199928s
+    step    65  ctm=  4  loss=-2.3714918266  Δ=-4.685e-06  46/7199928s
+    step    66  ctm=  4  loss=-2.3714974805  Δ=-5.654e-06  54/7199928s
+    step    67  ctm=  4  loss=-2.3715024896  Δ=-5.009e-06  61/7199928s
+    step    68  ctm=  4  loss=-2.3715059083  Δ=-3.419e-06  68/7199928s
+    step    69  ctm=  4  loss=-2.3715099069  Δ=-3.999e-06  80/7199928s
+    step    70  ctm=  4  loss=-2.3715140616  Δ=-4.155e-06  89/7199928s
+    step    71  ctm=  4  loss=-2.3715172627  Δ=-3.201e-06  96/7199928s
+    step    72  ctm=  4  loss=-2.3715242167  Δ=-6.954e-06  106/7199928s
+    step    73  ctm=  4  loss=-2.3715294697  Δ=-5.253e-06  110/7199928s
+    step    74  ctm=  4  loss=-2.3715297534  Δ=-2.837e-07  112/7199928s
+    step    75  ctm=  4  loss=-2.3715298505  Δ=-9.713e-08  113/7199928s
+    Outer convergence at step 75 (Δ=-9.71e-08)
+  │  Evaluating energy at (D=2, chi=3) ...
+  └── E=-2.3715298804  E/site=-0.3952549801  wall=0.17h
+  │  [Lookahead] evaluating (D=2, chi=7) with current tensors ...
+  │  [Lookahead] chi=3: E=-2.3715298804 │ chi=7: E=-2.3702466299 │ |ΔE|=1.283e-03  [thr=6.0e-06]
+
+  ┌── D=2  chi=4  budget=7199928s=119998.8min  [2026-04-08 15:31:18]
+    step    75  ctm=  4  loss=-2.3702512676  Δ=+inf  9/7199928s
+    step    76  ctm=  4  loss=-2.3702634618  Δ=-1.219e-05  11/7199928s
+    step    77  ctm=  4  loss=-2.3702634834  Δ=-2.160e-08  11/7199928s
+    Outer convergence at step 77 (Δ=-2.16e-08)
+  │  Evaluating energy at (D=2, chi=4) ...
+  └── E=-2.3702634834  E/site=-0.3950439139  wall=0.17h
+  │  [Lookahead] evaluating (D=2, chi=8) with current tensors ...
+  │  [Lookahead] chi=4: E=-2.3702634834 │ chi=8: E=-2.3702592938 │ |ΔE|=4.190e-06  [thr=6.0e-06]
+  │  [CHI-CONV] |ΔE|=4.190e-06 < 6.0e-06 → chi converged at chi=4; skipping remaining chi levels for D=2. D_next will start from chi > 4.
+
+  D=2 complete in 0.17 h
+  [CHI-FILTER] Prev D finished at chi=4 (early chi-convergence); filtering D=3 schedule to chi > 4: [6, 9, 12, 15]
+
+════════════════════════════════════════════════════════════════════════════
+  D_bond = 3   D²=9  D⁴=81  chi_max=81  budget=9999.90 h
+  chi schedule: [6, 9, 12, 15]  (4 levels, equal time split)
+════════════════════════════════════════════════════════════════════════════
+  Warm-starting from D=2 tensors (padding 2→3, noise=0.2)
+
+  ┌── D=3  chi=6  budget=8999910s=149998.5min  [2026-04-08 15:31:29]
+    step    78  ctm=  4  loss=-0.5997692605  Δ=+inf  11/8999910s
+    step    79  ctm=  5  loss=-2.3777992622  Δ=-1.778e+00  26/8999910s
+    step    80  ctm=  6  loss=-2.4334642294  Δ=-5.566e-02  45/8999910s
+    step    81  ctm=  8  loss=-2.4620527363  Δ=-2.859e-02  65/8999910s
+    step    82  ctm= 10  loss=-2.4767080275  Δ=-1.466e-02  90/8999910s
+    step    83  ctm= 11  loss=-2.4870366855  Δ=-1.033e-02  121/8999910s
+    step    84  ctm= 11  loss=-2.4918002103  Δ=-4.764e-03  154/8999910s
+    step    85  ctm= 11  loss=-2.4936874053  Δ=-1.887e-03  185/8999910s
+    step    86  ctm= 11  loss=-2.4949597165  Δ=-1.272e-03  226/8999910s
+    step    87  ctm= 12  loss=-2.4960964653  Δ=-1.137e-03  255/8999910s
+    step    88  ctm= 12  loss=-2.4974017804  Δ=-1.305e-03  285/8999910s
+    step    89  ctm= 11  loss=-2.4989139294  Δ=-1.512e-03  316/8999910s
+    step    90  ctm= 11  loss=-2.5001211759  Δ=-1.207e-03  348/8999910s
+    step    91  ctm= 12  loss=-2.5008256671  Δ=-7.045e-04  393/8999910s
+    step    92  ctm= 11  loss=-2.5010811336  Δ=-2.555e-04  421/8999910s
+    step    93  ctm= 12  loss=-2.5011823702  Δ=-1.012e-04  451/8999910s
+    step    94  ctm= 11  loss=-2.5012341499  Δ=-5.178e-05  490/8999910s
+    step    95  ctm= 12  loss=-2.5012988438  Δ=-6.469e-05  524/8999910s
+    step    96  ctm= 10  loss=-2.5013584418  Δ=-5.960e-05  560/8999910s
+    step    97  ctm= 11  loss=-2.5014496484  Δ=-9.121e-05  593/8999910s
+    step    98  ctm= 12  loss=-2.5015608810  Δ=-1.112e-04  634/8999910s
+    step    99  ctm= 13  loss=-2.5016930710  Δ=-1.322e-04  675/8999910s
+    step   100  ctm= 15  loss=-2.5019995176  Δ=-3.064e-04  721/8999910s
+    step   101  ctm= 16  loss=-2.5025475380  Δ=-5.480e-04  759/8999910s
+    step   102  ctm= 18  loss=-2.5033737690  Δ=-8.262e-04  790/8999910s
+    step   103  ctm= 36  loss=-2.5049846013  Δ=-1.611e-03  856/8999910s
+    step   104  ctm= 40  loss=-2.5093710452  Δ=-4.386e-03  994/8999910s
+    step   105  ctm= 40  loss=-2.5356647675  Δ=-2.629e-02  1102/8999910s
+    step   106  ctm= 40  loss=-2.5419610043  Δ=-6.296e-03  1201/8999910s
+    step   107  ctm= 40  loss=-2.5478045080  Δ=-5.844e-03  1290/8999910s
+    step   108  ctm= 40  loss=-2.5547748616  Δ=-6.970e-03  1342/8999910s
+    step   109  ctm= 40  loss=-2.5547753656  Δ=-5.040e-07  1377/8999910s
+    step   110  ctm= 40  loss=-2.5547758608  Δ=-4.952e-07  1413/8999910s
+    step   111  ctm= 40  loss=-2.5547763265  Δ=-4.657e-07  1442/8999910s
+    step   112  ctm= 40  loss=-2.5547767845  Δ=-4.580e-07  1475/8999910s
+    step   113  ctm= 40  loss=-2.5547772152  Δ=-4.307e-07  1511/8999910s
+    step   114  ctm= 40  loss=-2.5547776389  Δ=-4.237e-07  1565/8999910s
+    step   115  ctm= 40  loss=-2.5547780397  Δ=-4.008e-07  1617/8999910s
+    step   116  ctm= 40  loss=-2.5547784340  Δ=-3.943e-07  1669/8999910s
+    step   117  ctm= 40  loss=-2.5547788111  Δ=-3.771e-07  1704/8999910s
+    step   118  ctm= 40  loss=-2.5547791832  Δ=-3.721e-07  1754/8999910s
+    step   119  ctm= 40  loss=-2.5547795423  Δ=-3.591e-07  1790/8999910s
+    step   120  ctm= 40  loss=-2.5547798930  Δ=-3.507e-07  1828/8999910s
+    step   121  ctm= 40  loss=-2.5547802347  Δ=-3.417e-07  1887/8999910s
+    step   122  ctm= 40  loss=-2.5547805689  Δ=-3.342e-07  1923/8999910s
+    step   123  ctm= 40  loss=-2.5547807854  Δ=-2.165e-07  1966/8999910s
+    step   124  ctm= 40  loss=-2.5547809929  Δ=-2.076e-07  2006/8999910s
+    step   125  ctm= 40  loss=-2.5547813682  Δ=-3.753e-07  2046/8999910s
+    step   126  ctm= 40  loss=-2.5547817686  Δ=-4.004e-07  2097/8999910s
+    step   127  ctm= 40  loss=-2.5547821547  Δ=-3.861e-07  2135/8999910s
+    step   128  ctm= 40  loss=-2.5547823859  Δ=-2.313e-07  2202/8999910s
+    step   129  ctm= 40  loss=-2.5547995423  Δ=-1.716e-05  2254/8999910s
+    step   130  ctm= 40  loss=-2.5547995520  Δ=-9.783e-09  2288/8999910s
+    Outer convergence at step 130 (Δ=-9.78e-09)
+  │  Evaluating energy at (D=3, chi=6) ...
+  └── E=-2.5547995615  E/site=-0.4257999269  wall=0.81h
+  │  [Lookahead] evaluating (D=3, chi=12) with current tensors ...
+  │  [Lookahead] chi=6: E=-2.5547995615 │ chi=12: E=-2.4765031291 │ |ΔE|=7.830e-02  [thr=6.0e-06]
+
+  ┌── D=3  chi=9  budget=8999910s=149998.5min  [2026-04-08 16:09:41]
+    step   130  ctm= 40  loss=-2.4918942547  Δ=+inf  126/8999910s
+    step   131  ctm= 18  loss=-2.4947062784  Δ=-2.812e-03  216/8999910s
+    step   132  ctm= 18  loss=-2.5078820673  Δ=-1.318e-02  305/8999910s
+    step   133  ctm= 40  loss=-2.5081196779  Δ=-2.376e-04  384/8999910s
+    step   134  ctm= 40  loss=-2.5081196931  Δ=-1.527e-08  428/8999910s
+    Outer convergence at step 134 (Δ=-1.53e-08)
+  │  Evaluating energy at (D=3, chi=9) ...
+  └── E=-2.5081196931  E/site=-0.4180199489  wall=0.93h
+  │  [Lookahead] evaluating (D=3, chi=15) with current tensors ...
+  │  [Lookahead] chi=9: E=-2.5081196931 │ chi=15: E=-2.4868980316 │ |ΔE|=2.122e-02  [thr=6.0e-06]
+
+  ┌── D=3  chi=12  budget=8999910s=149998.5min  [2026-04-08 16:16:51]
+    step   134  ctm= 14  loss=-2.4905093178  Δ=+inf  39/8999910s
+    step   135  ctm= 14  loss=-2.5000129511  Δ=-9.504e-03  78/8999910s
+    step   136  ctm= 14  loss=-2.5007741196  Δ=-7.612e-04  120/8999910s
+    step   137  ctm= 14  loss=-2.5010373022  Δ=-2.632e-04  163/8999910s
+    step   138  ctm= 15  loss=-2.5011682678  Δ=-1.310e-04  206/8999910s
+    step   139  ctm= 15  loss=-2.5012874154  Δ=-1.191e-04  254/8999910s
+    step   140  ctm= 15  loss=-2.5013657169  Δ=-7.830e-05  298/8999910s
+    step   141  ctm= 15  loss=-2.5014613161  Δ=-9.560e-05  344/8999910s
+    step   142  ctm= 16  loss=-2.5015301691  Δ=-6.885e-05  389/8999910s
+    step   143  ctm= 16  loss=-2.5015883539  Δ=-5.818e-05  438/8999910s
+    step   144  ctm= 16  loss=-2.5016325024  Δ=-4.415e-05  484/8999910s
+    step   145  ctm= 16  loss=-2.5016770620  Δ=-4.456e-05  531/8999910s
+    step   146  ctm= 16  loss=-2.5017137497  Δ=-3.669e-05  570/8999910s
+    step   147  ctm= 16  loss=-2.5017587114  Δ=-4.496e-05  603/8999910s
+    step   148  ctm= 16  loss=-2.5017980978  Δ=-3.939e-05  639/8999910s
+    step   149  ctm= 16  loss=-2.5018301658  Δ=-3.207e-05  679/8999910s
+    step   150  ctm= 16  loss=-2.5018580074  Δ=-2.784e-05  749/8999910s
+    step   151  ctm= 16  loss=-2.5018856305  Δ=-2.762e-05  819/8999910s
+    step   152  ctm= 16  loss=-2.5019110821  Δ=-2.545e-05  881/8999910s
+    step   153  ctm= 16  loss=-2.5019340353  Δ=-2.295e-05  923/8999910s
+    step   154  ctm= 16  loss=-2.5019567367  Δ=-2.270e-05  959/8999910s
+    step   155  ctm= 16  loss=-2.5019800102  Δ=-2.327e-05  998/8999910s
+    step   156  ctm= 16  loss=-2.5019987278  Δ=-1.872e-05  1029/8999910s
+    step   157  ctm= 16  loss=-2.5020244326  Δ=-2.570e-05  1061/8999910s
+    step   158  ctm= 16  loss=-2.5020468910  Δ=-2.246e-05  1122/8999910s
+    step   159  ctm= 16  loss=-2.5020674986  Δ=-2.061e-05  1166/8999910s
+    step   160  ctm= 16  loss=-2.5020864797  Δ=-1.898e-05  1231/8999910s
+    step   161  ctm= 16  loss=-2.5021096925  Δ=-2.321e-05  1316/8999910s
+    step   162  ctm= 16  loss=-2.5021304723  Δ=-2.078e-05  1373/8999910s
+    step   163  ctm= 16  loss=-2.5021513862  Δ=-2.091e-05  1435/8999910s
+    step   164  ctm= 16  loss=-2.5021700234  Δ=-1.864e-05  1490/8999910s
+    step   165  ctm= 16  loss=-2.5021861481  Δ=-1.612e-05  1551/8999910s
+    step   166  ctm= 16  loss=-2.5021994343  Δ=-1.329e-05  1608/8999910s
