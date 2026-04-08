@@ -71,7 +71,7 @@ J1_COUPLING = 1.0
 #   The nn Hamiltonian is  H_nn = J1 Σ_{<i,j>} S_i · S_j
 #   summed over all 9 nearest-neighbour pairs in the 6-site honeycomb unit cell.
 
-J2_COUPLING = 0.0
+J2_COUPLING = 0.3
 #   Next-nearest-neighbour (nnn) Heisenberg exchange coupling constant.
 #   J2 > 0 = frustrated AFM.  Set to 0 to recover the pure J1 model.
 #   The nnn Hamiltonian is  H_nnn = J2 Σ_{<<i,j>>} S_i · S_j
@@ -148,6 +148,8 @@ import time
 # Detected at import time using os.environ CUDA_VISIBLE_DEVICES and USE_GPU flag.
 # Override at runtime: OMP_NUM_THREADS=N python scripts/main_unrestricted.py
 #
+
+
 
 _CUDA_DISABLED = os.environ.get("CUDA_VISIBLE_DEVICES", None) == ""
 # Use the USE_GPU flag (defined above) PLUS the CUDA_VISIBLE_DEVICES heuristic.
@@ -431,7 +433,6 @@ SAVE_EVERY = 10
 #   is written.  The "best" checkpoint is written immediately whenever a new
 #   minimum energy is found, independently of SAVE_EVERY.  Lower = more I/O
 #   but safer against crashes; higher = less I/O.
-
 
 D_PHYS = 2
 #   Physical Hilbert-space dimension per lattice site.
@@ -818,6 +819,19 @@ def _save_observables_file(filepath: str, D_bond: int, chi: int,
                 fp.write(f"mag_env{env_idx+1}_{s}  "
                          f"Sx={mx:+.12e}  Sy={my:+.12e}  Sz={mz:+.12e}\n")
             fp.write("\n")
+
+        fp.write("# ── Local magnetization |m|=sqrt(Sx²+Sy²+Sz²)  "
+                 "(18 values: 6 sites × 3 envs) ──────────────\n")
+        for env_idx in range(3):
+            fp.write(f"# env{env_idx+1}\n")
+            for s_idx, s in enumerate(_SITE_LABELS):
+                base = env_idx * 18 + s_idx * 3
+                mx_ = magnetizations[base]
+                my_ = magnetizations[base + 1]
+                mz_ = magnetizations[base + 2]
+                loc_mag = (mx_**2 + my_**2 + mz_**2) ** 0.5
+                fp.write(f"localmag_env{env_idx+1}_{s}  |m|={loc_mag:+.12e}\n")
+            fp.write("\n")
     print(f"  │  Observables saved → {filepath}")
 
 
@@ -848,6 +862,28 @@ def _print_observables_summary(tag: str, D_bond: int, chi: int,
     _sy_note = "  (=0 for real iPEPS)" if all(abs(v) < 1e-12 for v in all_my) else ""
     print(f"  │    <Sy>      ({len(all_my):>2d}): {_stat(all_my)}{_sy_note}")
     print(f"  │    <Sz>      ({len(all_mz):>2d}): {_stat(all_mz)}")
+
+    # ── Local magnetization |m| per site, mean±SE over 3 environments ────
+    def _site_localmag(s_idx):
+        vals = []
+        for env_idx in range(3):
+            base = env_idx * 18 + s_idx * 3
+            mx_ = magnetizations[base]
+            my_ = magnetizations[base + 1]
+            mz_ = magnetizations[base + 2]
+            vals.append((mx_**2 + my_**2 + mz_**2) ** 0.5)
+        avg = sum(vals) / 3
+        se  = (sum((v - avg)**2 for v in vals) / 3 / 3) ** 0.5
+        return avg, se
+
+    ace_parts, bdf_parts = [], []
+    for s_idx, s in enumerate(_SITE_LABELS):  # A B C D E F
+        avg, se = _site_localmag(s_idx)
+        entry = f"{s}:{avg:.6f}±{se:.2e}"
+        (ace_parts if s in ('A', 'C', 'E') else bdf_parts).append(entry)
+    print(f"  │    |m| mean±se/env:")
+    print(f"  │      ACE  {' | '.join(ace_parts)}")
+    print(f"  │      BDF  {' | '.join(bdf_parts)}")
 
 
 def save_checkpoint(path: str, abcdef: tuple, D_bond: int, chi: int,

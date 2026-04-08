@@ -4,8 +4,9 @@
 
 
 #NOTE:N_cores, USE_GPU (LINE UNDER TOO!!!!!)
-# _default_outdir = os.path.join('/scratch/chye/1stTrialRun',   # for izar is ...atch/izar/chye/...
-#  f'6tensors_{run_ts}')
+# _default_outdir = os.path.join('/scratch/chye/1stTrialRun',   
+#!!!! for IZAR is ...atch/izar/chye/...
+
 
 # # sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 # sys.stdout.flush()*3
@@ -177,7 +178,7 @@ os.environ.setdefault("KMP_AFFINITY", "granularity=fine,compact,1,0")
 # On GPU runs with 1 thread, this has no effect but is harmless.
 os.environ.setdefault("KMP_BLOCKTIME", "0")
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+# sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 import matplotlib
 matplotlib.use('Agg')
@@ -828,6 +829,19 @@ def _save_observables_file(filepath: str, D_bond: int, chi: int,
                 fp.write(f"mag_env{env_idx+1}_{s}  "
                          f"Sx={mx:+.12e}  Sy={my:+.12e}  Sz={mz:+.12e}\n")
             fp.write("\n")
+
+        fp.write("# ── Local magnetization |m|=sqrt(Sx²+Sy²+Sz²)  "
+                 "(18 values: 6 sites × 3 envs) ──────────────\n")
+        for env_idx in range(3):
+            fp.write(f"# env{env_idx+1}\n")
+            for s_idx, s in enumerate(_SITE_LABELS):
+                base = env_idx * 18 + s_idx * 3
+                mx_ = magnetizations[base]
+                my_ = magnetizations[base + 1]
+                mz_ = magnetizations[base + 2]
+                loc_mag = (mx_**2 + my_**2 + mz_**2) ** 0.5
+                fp.write(f"localmag_env{env_idx+1}_{s}  |m|={loc_mag:+.12e}\n")
+            fp.write("\n")
     print(f"  │  Observables saved → {filepath}")
 
 
@@ -858,6 +872,28 @@ def _print_observables_summary(tag: str, D_bond: int, chi: int,
     _sy_note = "  (=0 for real iPEPS)" if all(abs(v) < 1e-12 for v in all_my) else ""
     print(f"  │    <Sy>      ({len(all_my):>2d}): {_stat(all_my)}{_sy_note}")
     print(f"  │    <Sz>      ({len(all_mz):>2d}): {_stat(all_mz)}")
+
+    # ── Local magnetization |m| per site, mean±SE over 3 environments ────
+    def _site_localmag(s_idx):
+        vals = []
+        for env_idx in range(3):
+            base = env_idx * 18 + s_idx * 3
+            mx_ = magnetizations[base]
+            my_ = magnetizations[base + 1]
+            mz_ = magnetizations[base + 2]
+            vals.append((mx_**2 + my_**2 + mz_**2) ** 0.5)
+        avg = sum(vals) / 3
+        se  = (sum((v - avg)**2 for v in vals) / 3 / 3) ** 0.5
+        return avg, se
+
+    ace_parts, bdf_parts = [], []
+    for s_idx, s in enumerate(_SITE_LABELS):  # A B C D E F
+        avg, se = _site_localmag(s_idx)
+        entry = f"{s}:{avg:.6f}±{se:.2e}"
+        (ace_parts if s in ('A', 'C', 'E') else bdf_parts).append(entry)
+    print(f"  │    |m| mean±se/env:")
+    print(f"  │      ACE  {' | '.join(ace_parts)}")
+    print(f"  │      BDF  {' | '.join(bdf_parts)}")
 
 
 def save_checkpoint(path: str, abcdef: tuple, D_bond: int, chi: int,
@@ -1114,7 +1150,7 @@ def optimize_at_chi(
 
         print(f"    step {step:5d}  ctm={ctm_steps:3d}  loss={loss_item:+.10f}"
               f"  Δ={delta:+.3e}  {elapsed:.0f}/{budget_seconds:.0f}s")
-        # sys.stdout.flush()
+        sys.stdout.flush()
         loss_log.append({'step': step, 'ctm_steps': ctm_steps, 'loss': loss_item,
                          'D_bond': D_bond, 'chi': chi,
                          'elapsed': round(elapsed, 1)})
@@ -1314,7 +1350,7 @@ def main():
 
     # ── output directory ──────────────────────────────────────────────────────
     run_ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    _default_outdir = os.path.join('/home/chye/6ADctmrg/data/raw',
+    _default_outdir = os.path.join('/scratch/chye/1stTrialRun',
                                    f'6tensors_{run_ts}')
     output_dir = args.output_dir or _default_outdir
     os.makedirs(output_dir, exist_ok=True)
@@ -1513,7 +1549,7 @@ def main():
             print(f"\n  ┌── D={D_bond}  chi={chi}"
                   f"  budget={chi_budget:.0f}s={chi_budget/60:.1f}min"
                   f"  [{timestamp()}]")
-            # sys.stdout.flush()
+            sys.stdout.flush()
 
             best_path   = os.path.join(output_dir,
                                        f"sweep_D{D_bond}_chi{chi}_best.pt")
