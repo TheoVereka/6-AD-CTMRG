@@ -59,30 +59,6 @@ main_sweep.py
 growing chi (inner loop) for the AFM Heisenberg model on the 6-site
 honeycomb unit cell, using AD-CTMRG.
 
-Structure
----------
-  for D_bond in [2, 3, 4]:          ← outer loop
-      for chi in chi_schedule(D):    ← inner loop
-          optimise until chi-budget exhausted
-
-  Each (D, chi) level is warm-started from the previous one.
-  D → D+1 warm-start: best tensors padded to new bond dimension.
-
-Default chi schedules:
-  D=2: [4, 6, 8]
-  D=3: [6, 9, 12, 15]
-  D=4: [12, 16, 20, 24]
-
-Default time budget fractions (of wall-clock total):
-  D=2:  3 %    (~20 min for 11 h run)
-  D=3: 52 %    (~ 5.7 h — main workhorse)
-  D=4: 45 %    (~ 5.0 h — best physical result)
-
-Within each D budget:
-  all chi levels receive equal time  (D_budget / num_chi_levels each).
-  Every chi level uses the same L-BFGS hyper-parameters, so results are
-  directly comparable across chi values.
-
 Usage
 -----
   python scripts/main_sweep.py                       # all defaults (11 h)
@@ -101,6 +77,10 @@ Outputs (all in log/)
   sweep_energy_vs_D.pdf          E/bond vs D at chi_max (convergence in D)
 """
 
+
+# ── GPU/CPU intent — declared here (before threading) so _GPU_LIKELY can read it ──
+# Duplicated below in the TUNABLE PARAMETERS section with full comments.
+USE_GPU = False
 
 # ── glibc malloc tuning (MUST be before any heavy imports) ────────────────────
 # Without this, freed intermediate tensors stay in glibc arenas and RSS
@@ -128,32 +108,44 @@ import time
 # ── CPU threading ─────────────────────────────────────────────────────────────
 # MUST be set BEFORE importing NumPy / PyTorch / MKL — they read these at init.
 #
-# Hardware: Intel Core i7-8665U — 4 physical cores × 2 HT = 8 logical CPUs.
-# PyTorch is built with Intel MKL (BLAS/LAPACK) + OpenMP.
+# GPU run (USE_GPU=True and CUDA available):
+#   All heavy computation (einsums, SVD, matmul) is dispatched to the GPU by a
+#   single CUDA host thread.  CPU intra-op threads are mostly idle but still
+#   spin-wait, consuming CPU cache bandwidth and competing with the CUDA driver
+#   thread for L3 cache and CPU cycles.  Setting intra-op threads to 1 eliminates
+#   this contention and lets the host thread submit CUDA kernels faster.
+#   → torch.set_num_threads(1) on GPU is typically faster end-to-end.
 #
-# Use 4 = physical core count.  Hyperthreading does NOT help SVD / dense
-# matmul: both HTs on the same core share the same FPU and L1/L2 cache, so
-# using 8 threads starves each other rather than doubling throughput.
+# CPU run (USE_GPU=False):
+#   Use all physical cores; hyperthreading does NOT help SVD / dense matmul.
+#   Hardware: Intel Core i7-8665U — 4 physical cores × 2 HT = 8 logical CPUs.
+#   → torch.set_num_threads(4) on CPU (4 physical cores).
 #
-# Use os.environ.setdefault so a user can still override from the shell:
-#   OMP_NUM_THREADS=2 python scripts/main_sweep_CPU.py   ← respected
+# Detected at import time using os.environ CUDA_VISIBLE_DEVICES and USE_GPU flag.
+# Override at runtime: OMP_NUM_THREADS=N python scripts/main_unrestricted.py
+#
 _N_PHYSICAL_CORES = 4
-os.environ.setdefault("OMP_NUM_THREADS", str(_N_PHYSICAL_CORES))
-os.environ.setdefault("MKL_NUM_THREADS", str(_N_PHYSICAL_CORES))
+# Detect GPU intent: check os.environ for CUDA_VISIBLE_DEVICES="" (explicitly
+# disabled) as the only reliable heuristic before torch is imported.
+# The USE_GPU flag is defined later in the "TUNABLE PARAMETERS" section (below
+# torch import), so we cannot use it here.  Default assumption: GPU is used
+# because USE_GPU=True is the default and the cluster has a GPU.
+# Override: set CUDA_VISIBLE_DEVICES="" in the shell to force CPU threading.
+_CUDA_DISABLED = os.environ.get("CUDA_VISIBLE_DEVICES", None) == ""
+# Use the USE_GPU flag (defined above) PLUS the CUDA_VISIBLE_DEVICES heuristic.
+# This correctly sets 1 thread when USE_GPU=True (GPU run) and _N_PHYSICAL_CORES
+# when USE_GPU=False (CPU run), without needing torch.cuda.is_available().
+_GPU_LIKELY = USE_GPU and not _CUDA_DISABLED
+_N_THREADS_FOR_OMP = 1 if _GPU_LIKELY else _N_PHYSICAL_CORES
+os.environ.setdefault("OMP_NUM_THREADS", str(_N_THREADS_FOR_OMP))
+os.environ.setdefault("MKL_NUM_THREADS", str(_N_THREADS_FOR_OMP))
 # Prevent MKL from silently reducing thread count when it detects nested
-# parallelism or high system load — we always want the full 4 threads.
+# parallelism or high system load.
 os.environ.setdefault("MKL_DYNAMIC", "FALSE")
-# Pin each OpenMP thread to a distinct physical core (not a hyperthread sibling).
-# granularity=fine  → thread-level pinning (finest possible)
-# compact           → pack onto as few sockets as possible (single-socket here)
-# 1                 → permute: fill one HT per core before doubling up (with
-#                     4 threads on 4 cores this has no effect, but future-proofs)
-# 0                 → offset: start from logical CPU 0
-# Result: threads 0-3 map to cores 0-3, no migration between iterations.
+# Pin each OpenMP thread to a distinct physical core (only meaningful for CPU runs).
 os.environ.setdefault("KMP_AFFINITY", "granularity=fine,compact,1,0")
-# After a parallel region the OpenMP workers normally spin-wait for ~200 ms
-# before going to sleep, burning a whole core.  Set to 0 so they yield
-# immediately — the outer L-BFGS loop is sequential so this saves real time.
+# Spin-wait time: 0 so workers yield immediately between parallel regions.
+# On GPU runs with 1 thread, this has no effect but is harmless.
 os.environ.setdefault("KMP_BLOCKTIME", "0")
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -170,11 +162,13 @@ from torch.utils.checkpoint import checkpoint as _ckpt
 if os.environ.get("CTMRG_ANOMALY", "0") == "1":
     torch.autograd.set_detect_anomaly(True)
 
-# Tell PyTorch's own dispatcher to use all physical cores for intra-op
-# parallelism (matrix multiply, SVD, etc.) and only 1 thread for the
-# inter-op pool — our outer loop is serial, extra inter-op threads just
-# compete with the intra-op pool for the same physical cores.
-torch.set_num_threads(_N_PHYSICAL_CORES)
+# Tell PyTorch's own dispatcher about intra-op parallelism.
+# GPU run: 1 thread — the CUDA host thread submits all kernels; extra CPU
+#          threads spin-wait and waste cache bandwidth + thermal budget.
+# CPU run: all physical cores — MKL/BLAS benefits from multi-threading.
+# inter-op pool always 1: our outer loop is serial, extra inter-op threads
+# just compete for the same physical cores.
+torch.set_num_threads(_N_THREADS_FOR_OMP)
 torch.set_num_interop_threads(1)
 
 import core_unrestricted as _core
@@ -213,7 +207,12 @@ TENSORDTYPE: torch.dtype = torch.float64
 
 # ── Precision ─────────────────────────────────────────────────────────────────
 
-USE_GPU = True
+# USE_GPU is already declared above the threading section (needed for thread
+# count selection before torch is imported).  It is re-documented here for
+# clarity; changing the value here has NO EFFECT — edit the declaration above.
+#
+# USE_GPU = True   ← already set above
+#
 #   True  → use CUDA GPU when available; automatically falls back to CPU
 #            if  torch.cuda.is_available()  returns False.
 #   False → always use CPU.
@@ -227,7 +226,7 @@ USE_DOUBLE_PRECISION = True
 #            CUDA: 2–4× slower on consumer GPUs (no fp64 tensor cores).
 #   Overrideable at runtime: --double CLI flag takes precedence.
 
-USE_REAL_TENSORS = True
+USE_REAL_TENSORS = False
 #   True  → TENSORDTYPE = RDTYPE  (real iPEPS tensors, S+/S- Hamiltonian).
 #   False → TENSORDTYPE = CDTYPE  (complex iPEPS tensors, Sx/Sy/Sz Hamiltonian).
 #   Overrideable at runtime: --complex CLI flag sets this to False.
@@ -756,7 +755,14 @@ def optimize_at_chi(
                         raise FloatingPointError(f"Non-finite loss: {loss}")
                     last_ctm_steps = _ctm_steps
                     loss.backward()
-                    gc.collect()  # free cyclic refs in backward graph immediately
+                    # NOTE: gc.collect() removed from the GPU hot path.
+                    # On CUDA, loss.backward() dispatches kernels asynchronously;
+                    # gc.collect() acquires the GIL and traverses the Python heap
+                    # for milliseconds, stalling CUDA kernel submission and leaving
+                    # the GPU idle.  PyTorch's autograd engine already frees the
+                    # backward graph nodes as it processes them — no manual GC
+                    # needed here.  GC runs are still called between outer steps
+                    # (at the chi-level boundary) where the cost is acceptable.
                     #print("gradient example:", a.grad.view(-1)[:5])
                     # Guard against NaN/Inf gradients.
                     for p in (a, b, c, d, e, f):

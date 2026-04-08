@@ -264,25 +264,33 @@ def normalize_single_layer_tensor_for_double_layer(
     Scaling rule:
       DL(t) = contract(t, conj(t)) so ||DL(α t)||_F = |α|^2 ||DL(t)||_F.
       Choose α = 1/sqrt(||DL(t)||_F) ⇒ ||DL(α t)||_F = 1.
-    """
-    # Compute the unnormalized double-layer tensor DL(t) (rank-6), then fuse
-    # the three (D,D) virtual index pairs into (D^2,D^2,D^2) like abcdef_to_ABCDEF.
-    dl = oe.contract(
-        "uvwp,xyzp->uxvywz",
-        tensor,
-        tensor.conj(),
-        optimize=[(0, 1)],
-        backend="torch",
-    )
-    D_bond = int(tensor.shape[0])
-    D_squared = D_bond * D_bond
-    dl = dl.reshape(D_squared, D_squared, D_squared)
 
-    dl_norm = torch.linalg.norm(dl)
+    Fast formula for ||DL||_F:
+      DL[ux,vy,wz] = Σ_p t[u,v,w,p] * t*[x,y,z,p]
+      ||DL||_F² = Σ_{ux,vy,wz} |DL[ux,vy,wz]|²
+                = Σ_{p,q} (Σ_{uvw} t[u,v,w,p]·t*[u,v,w,q])·(Σ_{xyz} t*[x,y,z,p]·t[x,y,z,q])
+                = Σ_{p,q} |M†M[p,q]|²  =  ||M†M||_F²
+      where M[i,p] = t[u,v,w,p] (i = flattened virtual index).
+
+      Cost: O(D³·d²) vs O(D⁶·d²) for the explicit contraction.
+      For D=5, d=2: 50 vs 62,500 multiplications — 1,250× cheaper.
+
+    GPU-friendly: no GPU→CPU sync.
+    """
+    # Reshape tensor (D,D,D,d) → M of shape (D³, d)
+    M = tensor.reshape(-1, tensor.shape[-1])  # (D^3, d)
+    # M†M is (d, d) — small matrix, O(D^3 * d^2) cost
+    MtM = M.conj().t() @ M  # (d, d)
+    # ||DL||_F = ||M†M||_F.
+    # Use torch.linalg.norm: returns a REAL scalar for both real and complex
+    # input, with correct Wirtinger gradients for complex.  Avoids the fragile
+    # (.real) trick which only passes gradient through the real component of a
+    # complex tensor — safe here because (MtM * MtM†) is analytically purely
+    # real, but breaks silently under floating-point noise in complex runs.
+    dl_norm = torch.linalg.norm(MtM)  # real scalar, ≥ 0, correct for real+complex
 
     # GPU-friendly: clamp dl_norm to a safe minimum to avoid division-by-zero
-    # and sqrt(0).  No GPU→CPU sync — no .item(), no Python ``if`` on a CUDA
-    # scalar.  For NaN/Inf/zero norms the clamp produces a safe denominator.
+    # and sqrt(0).  No GPU→CPU sync.
     safe_dl_norm = dl_norm.clamp(min=1e-30)
     return tensor / torch.sqrt(safe_dl_norm)
 
