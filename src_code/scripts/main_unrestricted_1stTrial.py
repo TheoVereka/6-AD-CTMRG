@@ -4,7 +4,7 @@
 
 
 #NOTE:N_cores, USE_GPU (LINE UNDER TOO!!!!!)
-# _default_outdir = os.path.join('/scratch/chye/1stTrialRun', # for izar is ...atch/izar/chye/...
+# _default_outdir = os.path.join('/scratch/chye/1stTrialRun',   # for izar is ...atch/izar/chye/...
 #  f'6tensors_{run_ts}')
 
 # # sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -32,22 +32,20 @@ DEFAULT_D_BUDGET_FRACS = {2: 0.1, 3: 0.1, 4: 0.1, 5:0.1, 6:0.1, 7:0.1, 8:0.1, 9:
 #   Within each D, every chi level gets equal time (see below).
 
 DEFAULT_CHI_MAX = {2: 16, 3: 81, 4: 80, 5:9999, 6:9999, 7:9999, 8:9999, 9:9999, 10:9999, 11:9999}
-#   Largest chi to attempt for each D_bond.  Hard upper bound is D⁴
-#   (gives 16, 81, 256 for D=2,3,4).  We cap D=4 at 80 because chi >> 80
-#   requires too much RAM on a typical workstation and adds negligible accuracy.
+#   Largest chi to attempt for each D_bond.
 #   Increase if you have more memory; decrease if you hit OOM.
 
 DEFAULT_CHI_SCHEDULES = {
-    2: [ 3,  4,  6,  8],
-    3: [ 4,  6,  9, 12, 15],
-    4: [ 8, 12, 16, 20, 24], 
-    5: [10, 15, 20, 25, 30, 35],
-    6: [18, 24, 30, 36, 42, 48],
-    7: [21, 28, 35, 42, 49, 56, 63],
-    8: [32, 40, 48, 56, 64, 72, 80],
-    9: [36, 45, 54, 63, 72, 81, 90, 99],
-    #10:[50, 60, 70, 80, 90,100,110,120],
-    #11:[55, 66, 77, 88, 99,110,121,132,143],
+    2: [ 2,  3,  4,  6,  8],
+    3: [ 3,  4,  6,  9, 12, 15],
+    4: [ 6,  8, 12, 16, 20, 24], 
+    5: [ 8, 10, 15, 20, 25, 30, 35],
+    6: [12, 18, 24, 30, 36, 42, 48],
+    7: [14, 21, 28, 35, 42, 49, 56, 63],
+    8: [24, 32, 40, 48, 56, 64, 72, 80],
+    9: [27, 36, 45, 54, 63, 72, 81, 90, 99],
+    #10:[40, 50, 60, 70, 80, 90,100,110,120],
+    #11:[44, 55, 66, 77, 88, 99,110,121,132,143],
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -55,6 +53,39 @@ DEFAULT_CHI_SCHEDULES = {
 # ══════════════════════════════════════════════════════════════════════════════
 
 TOTAL_BUDGET_HOURS = 99999
+
+# ── GPU/CPU intent — declared here (before threading) so _GPU_LIKELY can read it ──
+# Duplicated below in the TUNABLE PARAMETERS section with full comments.
+
+USE_GPU = False
+# ── glibc malloc tuning (MUST be before any heavy imports) ────────────────────
+# Without this, freed intermediate tensors stay in glibc arenas and RSS
+# grows 10-100× larger than the actual live tensors.  These mallopt calls
+# force allocations ≥ 64 KB to use mmap (returned to OS on free) and limit
+# arenas to 2 (less fragmentation).
+
+_N_PHYSICAL_CORES = 35
+# Detect GPU intent: check os.environ for CUDA_VISIBLE_DEVICES="" (explicitly
+# disabled) as the only reliable heuristic before torch is imported.
+# The USE_GPU flag is defined later in the "TUNABLE PARAMETERS" section (below
+# torch import), so we cannot use it here.  Default assumption: GPU is used
+# because USE_GPU=True is the default and the cluster has a GPU.
+# Override: set CUDA_VISIBLE_DEVICES="" in the shell to force CPU threading.
+
+# ── Physical model ────────────────────────────────────────────────────────────
+
+J1_COUPLING = 1.0
+#   Nearest-neighbour (nn) Heisenberg exchange coupling constant.
+#   J1 > 0 = antiferromagnetic (AFM).
+#   The nn Hamiltonian is  H_nn = J1 Σ_{<i,j>} S_i · S_j
+#   summed over all 9 nearest-neighbour pairs in the 6-site honeycomb unit cell.
+
+J2_COUPLING = 0.3
+#   Next-nearest-neighbour (nnn) Heisenberg exchange coupling constant.
+#   J2 > 0 = frustrated AFM.  Set to 0 to recover the pure J1 model.
+#   The nnn Hamiltonian is  H_nnn = J2 Σ_{<<i,j>>} S_i · S_j
+#   summed over all 18 next-nearest-neighbour pairs in the 6-site honeycomb
+#   unit cell.
 
 
 
@@ -84,20 +115,11 @@ Outputs (all in log/)
   sweep_D{D}_chi{chi}_latest.pt  last checkpoint for each (D,chi)
   sweep_results.json             JSON table of all energies
   sweep_loss_D{D}.pdf            loss curve per D
-  sweep_energy_vs_chi.pdf        E/bond vs chi for each D
-  sweep_energy_vs_D.pdf          E/bond vs D at chi_max (convergence in D)
+  sweep_energy_vs_chi.pdf        E/site vs chi for each D
+  sweep_energy_vs_D.pdf          E/site vs D at chi_max (convergence in D)
 """
 
 
-# ── GPU/CPU intent — declared here (before threading) so _GPU_LIKELY can read it ──
-# Duplicated below in the TUNABLE PARAMETERS section with full comments.
-USE_GPU = True
-
-# ── glibc malloc tuning (MUST be before any heavy imports) ────────────────────
-# Without this, freed intermediate tensors stay in glibc arenas and RSS
-# grows 10-100× larger than the actual live tensors.  These mallopt calls
-# force allocations ≥ 64 KB to use mmap (returned to OS on free) and limit
-# arenas to 2 (less fragmentation).
 import ctypes as _ctypes
 _libc = _ctypes.CDLL(None)
 _libc.mallopt(_ctypes.c_int(-3), _ctypes.c_int(65536))   # M_MMAP_THRESHOLD  = 64 KB
@@ -135,13 +157,9 @@ import time
 # Detected at import time using os.environ CUDA_VISIBLE_DEVICES and USE_GPU flag.
 # Override at runtime: OMP_NUM_THREADS=N python scripts/main_unrestricted.py
 #
-_N_PHYSICAL_CORES = 35
-# Detect GPU intent: check os.environ for CUDA_VISIBLE_DEVICES="" (explicitly
-# disabled) as the only reliable heuristic before torch is imported.
-# The USE_GPU flag is defined later in the "TUNABLE PARAMETERS" section (below
-# torch import), so we cannot use it here.  Default assumption: GPU is used
-# because USE_GPU=True is the default and the cluster has a GPU.
-# Override: set CUDA_VISIBLE_DEVICES="" in the shell to force CPU threading.
+
+
+
 _CUDA_DISABLED = os.environ.get("CUDA_VISIBLE_DEVICES", None) == ""
 # Use the USE_GPU flag (defined above) PLUS the CUDA_VISIBLE_DEVICES heuristic.
 # This correctly sets 1 thread when USE_GPU=True (GPU run) and _N_PHYSICAL_CORES
@@ -159,7 +177,7 @@ os.environ.setdefault("KMP_AFFINITY", "granularity=fine,compact,1,0")
 # On GPU runs with 1 thread, this has no effect but is harmless.
 os.environ.setdefault("KMP_BLOCKTIME", "0")
 
-# sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 import matplotlib
 matplotlib.use('Agg')
@@ -193,6 +211,11 @@ from core_unrestricted import (
     energy_expectation_nearest_neighbor_3ebadcf_bonds,
     energy_expectation_nearest_neighbor_3afcbed_bonds,
     energy_expectation_nearest_neighbor_other_3_bonds,
+    build_open_closed_env1,
+    build_open_closed_env2,
+    build_open_closed_env3,
+    _build_nn_rho,
+    _build_nnn_rho,
     set_dtype,
     set_device,
 )
@@ -334,7 +357,7 @@ OPT_CONV_THRESHOLD = 1e-7
 #   next (D, chi) level.  Set to 0 to disable early stopping and always
 #   run until the time budget is exhausted.
 
-CHI_CONVERGENCE_THRESHOLD = 7e-5
+CHI_CONVERGENCE_THRESHOLD = 3e-5
 #   Chi-level early-exit criterion (lookahead).
 #   After optimisation at (D, chi) is complete and a clean energy evaluation
 #   is done, also evaluate the energy at (D, chi_next) using the SAME (already
@@ -392,13 +415,14 @@ ENV_IDENTITY_INIT = False
 
 
 
-CTM_MAX_STEPS = 40
+CTM_MAX_STEPS = 90
 #   Hard cap on CTMRG iterations per environment convergence call.
 #   With the singular-value convergence criterion and CTM_CONV_THR=1e-3,
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
 #   ansatz ~4 steps, 6-tensor ~40 steps).  90 is a safe upper bound.
 
-CTM_CONV_THR = 3e-7
+CTM_CONV_THR = 9e-7
+# TODO: Weighted and softer
 CTM_CONV_THR_FLOAT32_MIN = 1e-5
 #   CTMRG convergence threshold: stop iterating when the max change in
 #   normalised corner singular values between consecutive steps is below
@@ -419,24 +443,14 @@ SAVE_EVERY = 10
 #   minimum energy is found, independently of SAVE_EVERY.  Lower = more I/O
 #   but safer against crashes; higher = less I/O.
 
-# ── Physical model ────────────────────────────────────────────────────────────
-
-J_COUPLING = 1.0
-#   Isotropic Heisenberg exchange coupling constant.  J > 0 = antiferromagnetic
-#   (AFM), ground state is a singlet.  The Hamiltonian is
-#   H = J Σ_{<i,j>} S_i · S_j  summed over all nearest-neighbour pairs on the
-#   honeycomb.  For the AFM sign convention the optimal iPEPS energy is
-#   E/bond ≈ −0.3630 J in the D→∞ limit (QMC reference).
-
 D_PHYS = 2
 #   Physical Hilbert-space dimension per lattice site.
 #   d=2 for spin-1/2 (default), d=3 for spin-1, d=4 for two-site, etc.
 
-N_BONDS = 9
-#   Number of nearest-neighbour bonds in the 6-site honeycomb unit cell.
-#   Breakdown: 6 bonds of the primary type (connecting sub-lattices A–D–C–F–B–E
-#   cyclically) + 3 bonds of the secondary type = 9 total.
-#   Used only to compute the reported E/bond = E_total / N_BONDS.
+N_SITES = 6
+#   Number of sites in the honeycomb unit cell.
+#   The unit cell has 9 nn bonds + 18 nnn bonds = 27 total bonds.
+#   Energy per site = E_total / N_SITES.
 
 
 # ── Tensor initialisation & padding ──────────────────────────────────────────
@@ -529,7 +543,7 @@ def pad_tensor(t: torch.Tensor, old_D: int, new_D: int,
 
 
 def evaluate_energy_clean(a, b, c, d, e, f,
-                          Hs, chi: int, D_bond: int, d_PHYS: int) -> float:
+                          Js, SdotS, chi: int, D_bond: int, d_PHYS: int) -> float:
     """Re-converge environment from scratch and return total energy (float).
 
     IMPORTANT: CTMRG consumes *double-layer* site tensors which are normalised
@@ -551,22 +565,299 @@ def evaluate_energy_clean(a, b, c, d, e, f,
                 A, B, C, Dt, E, F, chi, D_sq, CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT)
         E3ebadcf = energy_expectation_nearest_neighbor_3ebadcf_bonds(
             aN, bN, cN, dN, eN, fN,
-                Hs[0],Hs[1],Hs[2],
+                *Js[0:9],
+                SdotS,
                 chi, D_bond, d_PHYS, 
                 *all27[:9])
         E3afcbed = energy_expectation_nearest_neighbor_3afcbed_bonds(
             aN, bN, cN, dN, eN, fN,
-                Hs[3],Hs[4],Hs[5], 
+                *Js[9:18],
+                SdotS,
                 chi, D_bond, d_PHYS, 
                 *all27[9:18])
             
         E3 = energy_expectation_nearest_neighbor_other_3_bonds(
             aN, bN, cN, dN, eN, fN,
-            Hs[6], Hs[7], Hs[8],
+            *Js[18:27],
+            SdotS,
             chi, D_bond, d_PHYS, 
             *all27[18:27])
         return (E3ebadcf + E3afcbed + E3).item()
 
+
+def evaluate_observables(a, b, c, d, e, f,
+                         Js, SdotS, chi: int, D_bond: int, d_PHYS: int,
+                         out_dir: str | None = None):
+    """Compute energy, 27 bond correlations <Si·Sj>, and 54 site magnetizations.
+
+    This is a diagnostic function called ONCE per (D, chi) level after
+    optimization.  It re-converges CTMRG from scratch (same as
+    evaluate_energy_clean), then extracts observables from the two-site
+    reduced density matrices that are already computed for the energy.
+
+    Returns:
+        energy (float): Total energy (same value as evaluate_energy_clean).
+        correlations (list[float]): 27 values of <Si·Sj> (unit SdotS, no J)
+            ordered as env1 (9: eb,ad,cf,ae,ec,ca,db,bf,fd)
+                      env2 (9: cb,af,ed,ca,ae,ec,bf,fd,db)
+                      env3 (9: ef,ab,cd,ec,ca,ae,fd,db,bf).
+        magnetizations (list[float]): 54 values of <Sα> for each of the
+            6 sites × 3 envs × 3 spin dirs (Sx, Sy, Sz).
+            <Sy> is computed via iSy_op = (S+-S-)/2 = i·Sy_phys:
+              Real iPEPS:    <Sy> = Re(Tr(ρ·iSy_op)) = 0.0 exactly
+                             (real-symmetric ρ × real-antisymmetric iSy → 0).
+                             Saved as informational sanity check.
+              Complex iPEPS: <Sy> = Im(Tr(ρ·iSy_op)) — full physical value.
+            Ordered: env1 site A (Sx, Sy, Sz), env1 site B, ..., env1 site F,
+                     env2 site A, ..., env3 site F.
+    """
+    D_sq = D_bond ** 2
+
+    # ── Build single-site spin operators ──────────────────────────────────
+    spin = (d_PHYS - 1) / 2.0
+    Splus = torch.zeros(d_PHYS, d_PHYS, dtype=SdotS.dtype, device=SdotS.device)
+    Sminus = torch.zeros(d_PHYS, d_PHYS, dtype=SdotS.dtype, device=SdotS.device)
+    Sz_op = torch.zeros(d_PHYS, d_PHYS, dtype=SdotS.dtype, device=SdotS.device)
+    for i in range(d_PHYS):
+        m_val = spin - i
+        Sz_op[i, i] = m_val
+        if i < d_PHYS - 1:
+            cs = (spin * (spin + 1) - m_val * (m_val - 1)) ** 0.5
+            Splus[i, i + 1] = cs
+            Sminus[i + 1, i] = cs
+    Sx_op = (Splus + Sminus) / 2.0    # real matrix
+    # iSy_op = (S+ - S-)/2 = i·Sy_phys — real antisymmetric matrix.
+    # Used to extract <Sy> in both real and complex cases (see _mag below).
+    iSy_op = (Splus - Sminus) / 2.0   # real antisymmetric (= i·Sy_phys)
+
+    def _corr(rho_4d):
+        """<Si·Sj> = Tr(rho * SdotS) — unit correlation, no J factor."""
+        return torch.real(oe.contract("ikjl,ijkl->", rho_4d, SdotS,
+                                      backend="torch")).item()
+
+    def _mag(rho_4d, site_idx):
+        """Single-site magnetization from 2-site rho via partial trace.
+
+        site_idx: 0 = first site in the pair (partial-trace second),
+                  1 = second site in the pair (partial-trace first).
+        Returns (mx, my, mz).
+        """
+        if site_idx == 0:
+            rho_1 = oe.contract("ikjk->ij", rho_4d, backend="torch")
+        else:
+            rho_1 = oe.contract("ikil->kl", rho_4d, backend="torch")
+        # Normalize
+        tr = torch.real(torch.trace(rho_1)).clamp(min=1e-30)
+        rho_1 = rho_1 / tr
+        mx = torch.real(oe.contract("ij,ji->", rho_1, Sx_op, backend="torch")).item()
+        # <Sy> via iSy_op = (S+-S-)/2 = i·Sy_phys (real antisymmetric).
+        # Real rho:    Tr(rho · iSy_op) is real,  = 0.0 exactly (sym × antisym).
+        # Complex rho: Tr(rho · iSy_op) = i·<Sy> (purely imaginary)
+        #              → take Im(...) to recover the physical <Sy>.
+        if rho_1.is_complex():
+            my = torch.imag(oe.contract("ij,ji->", rho_1,
+                                        iSy_op.to(rho_1.dtype),
+                                        backend="torch")).item()
+        else:
+            # real case: result is exactly 0.0; computed explicitly for information
+            my = torch.real(oe.contract("ij,ji->", rho_1, iSy_op,
+                                        backend="torch")).item()
+        mz = torch.real(oe.contract("ij,ji->", rho_1, Sz_op, backend="torch")).item()
+        return (mx, my, mz)
+
+    correlations = []
+    magnetizations = []
+
+    with torch.no_grad():
+        aN = normalize_single_layer_tensor_for_double_layer(a)
+        bN = normalize_single_layer_tensor_for_double_layer(b)
+        cN = normalize_single_layer_tensor_for_double_layer(c)
+        dN = normalize_single_layer_tensor_for_double_layer(d)
+        eN = normalize_single_layer_tensor_for_double_layer(e)
+        fN = normalize_single_layer_tensor_for_double_layer(f)
+
+        A, B, C, Dt, E, F = abcdef_to_ABCDEF(aN, bN, cN, dN, eN, fN, D_sq)
+        all27 = CTMRG_from_init_to_stop(
+                A, B, C, Dt, E, F, chi, D_sq,
+                CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT)
+
+        # ═══════════════════ Environment 1 (ebadcf) ═══════════════════════
+        o1, c1 = build_open_closed_env1(
+            aN, bN, cN, dN, eN, fN, chi, D_bond, d_PHYS, *all27[:9])
+        AD = torch.mm(c1['A'], c1['D'])
+        CF = torch.mm(c1['C'], c1['F'])
+        EB = torch.mm(c1['E'], c1['B'])
+        # nn rhos
+        rho_AD = _build_nn_rho(o1['A'], o1['D'], EB, CF, d_PHYS)
+        rho_CF = _build_nn_rho(o1['C'], o1['F'], AD, EB, d_PHYS)
+        rho_EB = _build_nn_rho(o1['E'], o1['B'], CF, AD, d_PHYS)
+        # nnn rhos
+        rho_AE = _build_nnn_rho(o1['A'], c1['D'], o1['E'], c1['B'], CF, d_PHYS)
+        rho_EC = _build_nnn_rho(o1['E'], c1['B'], o1['C'], c1['F'], AD, d_PHYS)
+        rho_CA = _build_nnn_rho(o1['C'], c1['F'], o1['A'], c1['D'], EB, d_PHYS)
+        rho_DB = _build_nnn_rho(o1['D'], c1['E'], o1['B'], c1['C'], torch.mm(c1['F'], c1['A']), d_PHYS)
+        rho_BF = _build_nnn_rho(o1['B'], c1['C'], o1['F'], c1['A'], torch.mm(c1['D'], c1['E']), d_PHYS)
+        rho_FD = _build_nnn_rho(o1['F'], c1['A'], o1['D'], c1['E'], torch.mm(c1['B'], c1['C']), d_PHYS)
+        # correlations (9 values, same order as energy function)
+        correlations += [_corr(r) for r in [rho_EB, rho_AD, rho_CF,
+                                            rho_AE, rho_EC, rho_CA,
+                                            rho_DB, rho_BF, rho_FD]]
+        # magnetizations: from nn rhos, all 6 sites
+        # AD → site A (idx 0), site D (idx 1)
+        # CF → site C (idx 0), site F (idx 1)
+        # EB → site E (idx 0), site B (idx 1)
+        mag1 = {}
+        mag1['A'] = _mag(rho_AD, 0)
+        mag1['D'] = _mag(rho_AD, 1)
+        mag1['C'] = _mag(rho_CF, 0)
+        mag1['F'] = _mag(rho_CF, 1)
+        mag1['E'] = _mag(rho_EB, 0)
+        mag1['B'] = _mag(rho_EB, 1)
+        for s in ['A','B','C','D','E','F']:
+            magnetizations.extend(mag1[s])
+        del o1, c1
+
+        # ═══════════════════ Environment 2 (afcbed) ═══════════════════════
+        o2, c2 = build_open_closed_env2(
+            aN, bN, cN, dN, eN, fN, chi, D_bond, d_PHYS, *all27[9:18])
+        CB = torch.mm(c2['C'], c2['B'])
+        ED = torch.mm(c2['E'], c2['D'])
+        AF = torch.mm(c2['A'], c2['F'])
+        rho_CB = _build_nn_rho(o2['C'], o2['B'], AF, ED, d_PHYS)
+        rho_AF = _build_nn_rho(o2['A'], o2['F'], ED, CB, d_PHYS)
+        rho_ED = _build_nn_rho(o2['E'], o2['D'], CB, AF, d_PHYS)
+        rho_CA = _build_nnn_rho(o2['C'], c2['B'], o2['A'], c2['F'], ED, d_PHYS)
+        rho_AE = _build_nnn_rho(o2['A'], c2['F'], o2['E'], c2['D'], CB, d_PHYS)
+        rho_EC = _build_nnn_rho(o2['E'], c2['D'], o2['C'], c2['B'], AF, d_PHYS)
+        rho_BF = _build_nnn_rho(o2['B'], c2['A'], o2['F'], c2['E'], torch.mm(c2['D'], c2['C']), d_PHYS)
+        rho_FD = _build_nnn_rho(o2['F'], c2['E'], o2['D'], c2['C'], torch.mm(c2['B'], c2['A']), d_PHYS)
+        rho_DB = _build_nnn_rho(o2['D'], c2['C'], o2['B'], c2['A'], torch.mm(c2['F'], c2['E']), d_PHYS)
+        correlations += [_corr(r) for r in [rho_CB, rho_AF, rho_ED,
+                                            rho_CA, rho_AE, rho_EC,
+                                            rho_BF, rho_FD, rho_DB]]
+        mag2 = {}
+        mag2['C'] = _mag(rho_CB, 0)
+        mag2['B'] = _mag(rho_CB, 1)
+        mag2['A'] = _mag(rho_AF, 0)
+        mag2['F'] = _mag(rho_AF, 1)
+        mag2['E'] = _mag(rho_ED, 0)
+        mag2['D'] = _mag(rho_ED, 1)
+        for s in ['A','B','C','D','E','F']:
+            magnetizations.extend(mag2[s])
+        del o2, c2
+
+        # ═══════════════════ Environment 3 (cdefab) ═══════════════════════
+        o3, c3 = build_open_closed_env3(
+            aN, bN, cN, dN, eN, fN, chi, D_bond, d_PHYS, *all27[18:27])
+        EF_ = torch.mm(c3['E'], c3['F'])
+        AB_ = torch.mm(c3['A'], c3['B'])
+        CD_ = torch.mm(c3['C'], c3['D'])
+        rho_EF = _build_nn_rho(o3['E'], o3['F'], CD_, AB_, d_PHYS)
+        rho_AB = _build_nn_rho(o3['A'], o3['B'], EF_, CD_, d_PHYS)
+        rho_CD = _build_nn_rho(o3['C'], o3['D'], AB_, EF_, d_PHYS)
+        rho_EC = _build_nnn_rho(o3['E'], c3['F'], o3['C'], c3['D'], AB_, d_PHYS)
+        rho_CA = _build_nnn_rho(o3['C'], c3['D'], o3['A'], c3['B'], EF_, d_PHYS)
+        rho_AE = _build_nnn_rho(o3['A'], c3['B'], o3['E'], c3['F'], CD_, d_PHYS)
+        rho_FD = _build_nnn_rho(o3['F'], c3['C'], o3['D'], c3['A'], torch.mm(c3['B'], c3['E']), d_PHYS)
+        rho_DB = _build_nnn_rho(o3['D'], c3['A'], o3['B'], c3['E'], torch.mm(c3['F'], c3['C']), d_PHYS)
+        rho_BF = _build_nnn_rho(o3['B'], c3['E'], o3['F'], c3['C'], torch.mm(c3['D'], c3['A']), d_PHYS)
+        correlations += [_corr(r) for r in [rho_EF, rho_AB, rho_CD,
+                                            rho_EC, rho_CA, rho_AE,
+                                            rho_FD, rho_DB, rho_BF]]
+        mag3 = {}
+        mag3['E'] = _mag(rho_EF, 0)
+        mag3['F'] = _mag(rho_EF, 1)
+        mag3['A'] = _mag(rho_AB, 0)
+        mag3['B'] = _mag(rho_AB, 1)
+        mag3['C'] = _mag(rho_CD, 0)
+        mag3['D'] = _mag(rho_CD, 1)
+        for s in ['A','B','C','D','E','F']:
+            magnetizations.extend(mag3[s])
+        del o3, c3
+
+        # ── Compute energy from correlations + J values ───────────────────
+        energy = sum(J * corr for J, corr in zip(Js, correlations))
+
+    return energy, correlations, magnetizations
+
+
+# ── Bond labels matching the order returned by evaluate_observables ───────────
+_ENV_BOND_LABELS = [
+    # env1 (ebadcf)
+    'EB', 'AD', 'CF', 'AE', 'EC', 'CA', 'DB', 'BF', 'FD',
+    # env2 (afcbed)
+    'CB', 'AF', 'ED', 'CA', 'AE', 'EC', 'BF', 'FD', 'DB',
+    # env3 (cdefab)
+    'EF', 'AB', 'CD', 'EC', 'CA', 'AE', 'FD', 'DB', 'BF',
+]
+_SITE_LABELS = ['A', 'B', 'C', 'D', 'E', 'F']
+
+
+def _save_observables_file(filepath: str, D_bond: int, chi: int,
+                           energy: float, correlations: list,
+                           magnetizations: list) -> None:
+    """Write energy / correlations / magnetizations to a human-readable file."""
+    n_sites = 6
+    with open(filepath, 'w') as fp:
+        fp.write(f"# D={D_bond}  chi={chi}  timestamp={timestamp()}\n\n")
+        fp.write(f"energy           = {energy:+.12e}\n")
+        fp.write(f"energy_per_site  = {energy / n_sites:+.12e}\n\n")
+
+        fp.write("# ── Bond correlations <Si·Sj>  (27 values) "
+                 "──────────────────────\n")
+        for env_idx in range(3):
+            fp.write(f"# env{env_idx+1}\n")
+            for j in range(9):
+                idx = env_idx * 9 + j
+                label = _ENV_BOND_LABELS[idx]
+                fp.write(f"corr_env{env_idx+1}_{label:>2s} = {correlations[idx]:+.12e}\n")
+            fp.write("\n")
+
+        fp.write("# ── Site magnetizations <Sx> <Sy> <Sz>  (54 values) "
+                 "──────────────\n")
+        fp.write("# <Sy> via iSy_op=(S+-S-)/2=i·Sy_phys:\n")
+        fp.write("#   Real iPEPS:    Sy = Re(Tr(rho·iSy_op)) = 0.0 exactly\n")
+        fp.write("#   Complex iPEPS: Sy = Im(Tr(rho·iSy_op)) = physical <Sy>\n")
+        for env_idx in range(3):
+            fp.write(f"# env{env_idx+1}\n")
+            for s_idx, s in enumerate(_SITE_LABELS):
+                base = env_idx * 18 + s_idx * 3
+                mx = magnetizations[base]
+                my = magnetizations[base + 1]
+                mz = magnetizations[base + 2]
+                fp.write(f"mag_env{env_idx+1}_{s}  "
+                         f"Sx={mx:+.12e}  Sy={my:+.12e}  Sz={mz:+.12e}\n")
+            fp.write("\n")
+    print(f"  │  Observables saved → {filepath}")
+
+
+def _print_observables_summary(tag: str, D_bond: int, chi: int,
+                               energy: float, correlations: list,
+                               magnetizations: list) -> None:
+    """Print a compact summary of observables to stdout."""
+    n_sites = 6
+    nn_corrs  = [correlations[i] for i in range(27) if (i % 9) < 3]
+    nnn_corrs = [correlations[i] for i in range(27) if (i % 9) >= 3]
+    all_mx = [magnetizations[i*3]     for i in range(18)]
+    all_my = [magnetizations[i*3 + 1] for i in range(18)]
+    all_mz = [magnetizations[i*3 + 2] for i in range(18)]
+
+    def _stat(vals):
+        mn, mx = min(vals), max(vals)
+        n   = len(vals)
+        avg = sum(vals) / n
+        var = sum((v - avg)**2 for v in vals) / n
+        se  = (var / n) ** 0.5   # standard error = std / sqrt(n)
+        return f"min={mn:+.6f} max={mx:+.6f} mean={avg:+.6f} se={se:.2e}"
+
+    print(f"  │  [{tag}] D={D_bond} chi={chi}  E={energy:+.10f}  "
+          f"E/site={energy/n_sites:+.10f}")
+    print(f"  │    nn  <S·S> ({len(nn_corrs):>2d}): {_stat(nn_corrs)}")
+    print(f"  │    nnn <S·S> ({len(nnn_corrs):>2d}): {_stat(nnn_corrs)}")
+    print(f"  │    <Sx>      ({len(all_mx):>2d}): {_stat(all_mx)}")
+    _sy_note = "  (=0 for real iPEPS)" if all(abs(v) < 1e-12 for v in all_my) else ""
+    print(f"  │    <Sy>      ({len(all_my):>2d}): {_stat(all_my)}{_sy_note}")
+    print(f"  │    <Sz>      ({len(all_mz):>2d}): {_stat(all_mz)}")
 
 
 def save_checkpoint(path: str, abcdef: tuple, D_bond: int, chi: int,
@@ -587,7 +878,7 @@ def save_checkpoint(path: str, abcdef: tuple, D_bond: int, chi: int,
 # ══════════════════════════════════════════════════════════════════════════════
 
 def optimize_at_chi(
-        Hs, D_bond: int, chi: int, d_PHYS: int,
+        Js, SdotS, D_bond: int, chi: int, d_PHYS: int,
         budget_seconds: float,
         lbfgs_max_iter: int,
         init_abcdef=None,
@@ -707,21 +998,24 @@ def optimize_at_chi(
         loss = (
             _ckpt(energy_expectation_nearest_neighbor_3ebadcf_bonds,
                   aN, bN, cN, dN, eN, fN,
-                  Hs[0], Hs[1], Hs[2],
+                  *Js[0:9],
+                  SdotS,
                   chi, D_bond, d_PHYS,
                   C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E,
                   use_reentrant=False)
             +
             _ckpt(energy_expectation_nearest_neighbor_3afcbed_bonds,
                   aN, bN, cN, dN, eN, fN,
-                  Hs[3], Hs[4], Hs[5],
+                  *Js[9:18],
+                  SdotS,
                   chi, D_bond, d_PHYS,
                   C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A,
                   use_reentrant=False)
             +
             _ckpt(energy_expectation_nearest_neighbor_other_3_bonds,
                   aN, bN, cN, dN, eN, fN,
-                  Hs[6], Hs[7], Hs[8],
+                  *Js[18:27],
+                  SdotS,
                   chi, D_bond, d_PHYS,
                   C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C,
                   use_reentrant=False)
@@ -820,7 +1114,7 @@ def optimize_at_chi(
 
         print(f"    step {step:5d}  ctm={ctm_steps:3d}  loss={loss_item:+.10f}"
               f"  Δ={delta:+.3e}  {elapsed:.0f}/{budget_seconds:.0f}s")
-        sys.stdout.flush()
+        # sys.stdout.flush()
         loss_log.append({'step': step, 'ctm_steps': ctm_steps, 'loss': loss_item,
                          'D_bond': D_bond, 'chi': chi,
                          'elapsed': round(elapsed, 1)})
@@ -874,8 +1168,12 @@ def main():
         '--d-phys', type=int, default=D_PHYS,
         help='Physical Hilbert-space dimension (d=2 for spin-1/2).')
     parser.add_argument(
-        '--J', type=float, default=J_COUPLING,
-        help='Isotropic Heisenberg coupling J (positive = AFM).')
+        '--J', '--J1', type=float, default=J1_COUPLING, dest='J1',
+        help='Nearest-neighbour Heisenberg coupling J1 (positive = AFM).')
+    parser.add_argument(
+        '--J2', type=float, default=J2_COUPLING,
+        help='Next-nearest-neighbour Heisenberg coupling J2 (positive = frustrated AFM). '
+             'Set to 0 for pure J1 model.')
     parser.add_argument(
         '--output-dir', default=None,
         help='Directory for checkpoints + plots (default: src_code/log/).')
@@ -1016,7 +1314,7 @@ def main():
 
     # ── output directory ──────────────────────────────────────────────────────
     run_ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    _default_outdir = os.path.join('/scratch/izar/chye/1stTrialRun',
+    _default_outdir = os.path.join('/home/chye/6ADctmrg/data/raw',
                                    f'6tensors_{run_ts}')
     output_dir = args.output_dir or _default_outdir
     os.makedirs(output_dir, exist_ok=True)
@@ -1048,9 +1346,10 @@ def main():
         geo_schedule_steps = GEO_SCHEDULE_STEPS,
 
         # ── physical model ─────────────────────────────────────────────────
-        J                  = args.J,
+        J1                 = args.J1,
+        J2                 = args.J2,
         d_phys             = d_PHYS,
-        n_bonds            = N_BONDS,
+        n_sites            = N_SITES,
 
         # ── optimiser ──────────────────────────────────────────────────────
         optimizer          = OPTIMIZER,
@@ -1093,14 +1392,20 @@ def main():
         with open(os.path.join(output_dir, 'hyperparams.yaml'), 'w') as _fp:
             _json.dump(_hp, _fp, indent=2)
 
-    # ── Hamiltonians (isotropic; all 9 bonds equal) ───────────────────────────
-    H  = build_heisenberg_H(args.J, d_PHYS)
-    Hs = [H] * 9  # the order defined as 0~8 as Heb,Had,Hcf, Haf,Hcb,Hed, Hcd,Hef,Hab
+    # ── Hamiltonians (J1-J2 model) ────────────────────────────────────────────
+    # Each energy function takes 9 coupling constants (3 nn + 6 nnn) plus the
+    # unit spin-spin operator SdotS.  Js is a flat list of 27 = 3 × (3+6):
+    #   Js[ 0: 9] → energy_fn_1:  Jeb,Jad,Jcf (nn)  + Jae,Jec,Jca,Jdb,Jbf,Jfd (nnn)
+    #   Js[ 9:18] → energy_fn_2:  Jaf,Jcb,Jed (nn)  + Jca,Jae,Jec,Jbf,Jfd,Jdb (nnn)
+    #   Js[18:27] → energy_fn_3:  Jcd,Jef,Jab (nn)  + Jec,Jca,Jae,Jfd,Jdb,Jbf (nnn)
+    SdotS = build_heisenberg_H(1.0, d_PHYS)         # unit S·S operator (J=1)
+    J1, J2 = args.J1, args.J2
+    Js = ([J1]*3 + [J2]*6) * 3                       # 27 J-values total
 
     # ── Banner ────────────────────────────────────────────────────────────────
     print("=" * 76)
-    print("  iPEPS sweep  —  AD-CTMRG  —  AFM Heisenberg on 6-site honeycomb")
-    print(f"  J={args.J}  d_phys={d_PHYS}  Total budget: {args.hours:.1f} h")
+    print("  iPEPS sweep  —  AD-CTMRG  —  J1-J2 Heisenberg on 6-site honeycomb")
+    print(f"  J1={args.J1}  J2={args.J2}  d_phys={d_PHYS}  Total budget: {args.hours:.1f} h")
     print(f"  Device       : {_core.DEVICE}")
     print(f"  D_bond sweep : {D_bond_list}")
     for D in D_bond_list:
@@ -1208,7 +1513,7 @@ def main():
             print(f"\n  ┌── D={D_bond}  chi={chi}"
                   f"  budget={chi_budget:.0f}s={chi_budget/60:.1f}min"
                   f"  [{timestamp()}]")
-            sys.stdout.flush()
+            # sys.stdout.flush()
 
             best_path   = os.path.join(output_dir,
                                        f"sweep_D{D_bond}_chi{chi}_best.pt")
@@ -1218,7 +1523,7 @@ def main():
             all_loss_logs[(D_bond, chi)] = loss_log
 
             *out, best_loss, global_step = optimize_at_chi(
-                Hs, D_bond, chi, d_PHYS,
+                Js, SdotS, D_bond, chi, d_PHYS,
                 budget_seconds=chi_budget,
                 lbfgs_max_iter=lbfgs_iters,
                 init_abcdef=cur_abcdef,
@@ -1245,11 +1550,18 @@ def main():
             except Exception:
                 pass  # non-Linux systems: silently skip
 
-            # Clean energy evaluation
-            print(f"  │  Evaluating energy at (D={D_bond}, chi={chi}) ...")
-            energy = evaluate_energy_clean(
-                *cur_abcdef, Hs, chi, D_bond, d_PHYS)
-            energy_per_bond = energy / N_BONDS
+            # Clean energy evaluation + observables
+            print(f"  │  Evaluating energy & observables at (D={D_bond}, chi={chi}) ...")
+            energy, correlations, magnetizations = evaluate_observables(
+                *cur_abcdef, Js, SdotS, chi, D_bond, d_PHYS)
+            energy_per_site = energy / N_SITES
+            _save_observables_file(
+                os.path.join(output_dir,
+                             f"D_{D_bond}_chi_{chi}"
+                             f"_energy_magnetization_correlation.txt"),
+                D_bond, chi, energy, correlations, magnetizations)
+            _print_observables_summary(
+                'OBS', D_bond, chi, energy, correlations, magnetizations)
 
             # Save final checkpoint for this (D, chi)
             save_checkpoint(best_path, cur_abcdef, D_bond, chi,
@@ -1259,13 +1571,13 @@ def main():
             record = {
                 'D_bond': D_bond, 'chi': chi,
                 'best_loss': best_loss, 'energy': energy,
-                'energy_per_bond': energy_per_bond,
+                'energy_per_site': energy_per_site,
                 'steps': len(loss_log),
                 'timestamp': timestamp(),
             }
             energy_table.append(record)
             wall = time.perf_counter() - t_global_start
-            print(f"  └── E={energy:+.10f}  E/bond={energy_per_bond:+.10f}"
+            print(f"  └── E={energy:+.10f}  E/site={energy_per_site:+.10f}"
                   f"  wall={wall/3600:.2f}h")
 
             # ── Chi-convergence lookahead ─────────────────────────────────────
@@ -1280,8 +1592,15 @@ def main():
                 print(f"  │  [Lookahead] evaluating (D={D_bond}, chi={chi_la}) "
                       f"with current tensors ...")
                 with torch.no_grad():
-                    energy_la = evaluate_energy_clean(
-                        *cur_abcdef, Hs, chi_la, D_bond, d_PHYS)
+                    energy_la, corr_la, mag_la = evaluate_observables(
+                        *cur_abcdef, Js, SdotS, chi_la, D_bond, d_PHYS)
+                _save_observables_file(
+                    os.path.join(output_dir,
+                                 f"D_{D_bond}_chi_{chi}+2D={chi_la}"
+                                 f"_energy_magnetization_correlation.txt"),
+                    D_bond, chi_la, energy_la, corr_la, mag_la)
+                _print_observables_summary(
+                    'LA ', D_bond, chi_la, energy_la, corr_la, mag_la)
                 delta_la = abs(energy - energy_la)
                 print(f"  │  [Lookahead] chi={chi}: E={energy:+.10f} │ "
                       f"chi={chi_la}: E={energy_la:+.10f} │ "
@@ -1321,16 +1640,15 @@ def main():
     print("  RESULTS SUMMARY")
     print("=" * 76)
     print(f"  {'D':>2}  {'chi':>5}  {'steps':>6}  "
-          f"{'E_total':>18}  {'E/bond':>14}")
+          f"{'E_total':>18}  {'E/site':>14}")
     print(f"  {'─'*2}  {'─'*5}  {'─'*6}  {'─'*18}  {'─'*14}")
     for row in energy_table:
         print(f"  {row['D_bond']:2d}  {row['chi']:5d}  {row['steps']:6d}  "
-              f"{row['energy']:+18.10f}  {row['energy_per_bond']:+14.10f}")
+              f"{row['energy']:+18.10f}  {row['energy_per_site']:+14.10f}")
     print()
-    best_overall = min(energy_table, key=lambda r: r['energy_per_bond'])
-    print(f"  Best E/bond = {best_overall['energy_per_bond']:+.10f}  "
+    best_overall = min(energy_table, key=lambda r: r['energy_per_site'])
+    print(f"  Best E/site = {best_overall['energy_per_site']:+.10f}  "
           f"(D={best_overall['D_bond']}, chi={best_overall['chi']})")
-    print(f"  QMC reference (D→∞): E/bond ≈ −0.3630")
     print(f"  Total wall time: {total_elapsed/3600:.2f} h ({total_elapsed:.0f} s)")
     print(f"  Finished: {timestamp()}")
     print("=" * 76)
@@ -1341,7 +1659,7 @@ def main():
         'D_bond_list': D_bond_list,
         'chi_max_map': {str(k): v for k, v in chi_max_map.items()},
         'schedules':   {str(k): v for k, v in schedules.items()},
-        'J': args.J, 'd_phys': d_PHYS,
+        'J1': args.J1, 'J2': args.J2, 'd_phys': d_PHYS,
         'hours_budget': args.hours,
         'total_elapsed_h': round(total_elapsed / 3600, 3),
         'total_steps': global_step,
@@ -1352,40 +1670,38 @@ def main():
         json.dump(json_out, fp, indent=2)
     print(f"\n  Results JSON → {results_path}")
 
-    # ── Plot 1: E/bond vs chi for each D ─────────────────────────────────────
+    # ── Plot 1: E/site vs chi for each D ──────────────────────────────────────
     fig, ax = plt.subplots(figsize=(9, 5))
     for D in D_bond_list:
         rows = [r for r in energy_table if r['D_bond'] == D]
         if not rows:
             continue
         x = [r['chi'] for r in rows]
-        y = [r['energy_per_bond'] for r in rows]
+        y = [r['energy_per_site'] for r in rows]
         ax.plot(x, y, 'o-', label=f'D={D}', markerfacecolor='white',
                 markersize=7)
-    ax.axhline(-0.3630, color='grey', ls='--', lw=1, label='QMC (D→∞) ≈ −0.3630')
     ax.set_xlabel(r'Environment bond dimension $\chi$', fontsize=12)
-    ax.set_ylabel(r'Energy per bond $E/J$', fontsize=12)
-    ax.set_title('iPEPS ground-state energy — AFM Heisenberg (honeycomb)', fontsize=12)
+    ax.set_ylabel(r'Energy per site $E/N_{\mathrm{sites}}$', fontsize=12)
+    ax.set_title('iPEPS ground-state energy — J1-J2 Heisenberg (honeycomb)', fontsize=12)
     ax.legend(); ax.grid(True, alpha=0.3)
     fig.tight_layout()
     fig.savefig(os.path.join(output_dir, 'sweep_energy_vs_chi.pdf'))
     plt.close(fig)
 
-    # ── Plot 2: E/bond vs D at largest chi each D ─────────────────────────────
+    # ── Plot 2: E/site vs D at largest chi each D ─────────────────────────────
     D_vals, E_best = [], []
     for D in D_bond_list:
         rows = [r for r in energy_table if r['D_bond'] == D]
         if rows:
-            best_row = min(rows, key=lambda r: r['energy_per_bond'])
+            best_row = min(rows, key=lambda r: r['energy_per_site'])
             D_vals.append(D)
-            E_best.append(best_row['energy_per_bond'])
+            E_best.append(best_row['energy_per_site'])
     if len(D_vals) > 1:
         fig2, ax2 = plt.subplots(figsize=(6, 4))
         ax2.plot(D_vals, E_best, 's-', color='tab:red', markersize=9,
                  markerfacecolor='white')
-        ax2.axhline(-0.3630, color='grey', ls='--', lw=1, label='QMC')
         ax2.set_xlabel(r'Bond dimension $D$', fontsize=12)
-        ax2.set_ylabel(r'Best $E/\text{bond}$', fontsize=12)
+        ax2.set_ylabel(r'Best $E/\text{site}$', fontsize=12)
         ax2.set_title('iPEPS convergence in D')
         ax2.legend(); ax2.grid(True, alpha=0.3)
         fig2.tight_layout()

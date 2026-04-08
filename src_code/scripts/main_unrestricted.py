@@ -45,6 +45,39 @@ DEFAULT_CHI_SCHEDULES = {
 
 TOTAL_BUDGET_HOURS = 99999
 
+# ── GPU/CPU intent — declared here (before threading) so _GPU_LIKELY can read it ──
+# Duplicated below in the TUNABLE PARAMETERS section with full comments.
+
+USE_GPU = False
+# ── glibc malloc tuning (MUST be before any heavy imports) ────────────────────
+# Without this, freed intermediate tensors stay in glibc arenas and RSS
+# grows 10-100× larger than the actual live tensors.  These mallopt calls
+# force allocations ≥ 64 KB to use mmap (returned to OS on free) and limit
+# arenas to 2 (less fragmentation).
+
+_N_PHYSICAL_CORES = 4
+# Detect GPU intent: check os.environ for CUDA_VISIBLE_DEVICES="" (explicitly
+# disabled) as the only reliable heuristic before torch is imported.
+# The USE_GPU flag is defined later in the "TUNABLE PARAMETERS" section (below
+# torch import), so we cannot use it here.  Default assumption: GPU is used
+# because USE_GPU=True is the default and the cluster has a GPU.
+# Override: set CUDA_VISIBLE_DEVICES="" in the shell to force CPU threading.
+
+# ── Physical model ────────────────────────────────────────────────────────────
+
+J1_COUPLING = 1.0
+#   Nearest-neighbour (nn) Heisenberg exchange coupling constant.
+#   J1 > 0 = antiferromagnetic (AFM).
+#   The nn Hamiltonian is  H_nn = J1 Σ_{<i,j>} S_i · S_j
+#   summed over all 9 nearest-neighbour pairs in the 6-site honeycomb unit cell.
+
+J2_COUPLING = 0.0
+#   Next-nearest-neighbour (nnn) Heisenberg exchange coupling constant.
+#   J2 > 0 = frustrated AFM.  Set to 0 to recover the pure J1 model.
+#   The nnn Hamiltonian is  H_nnn = J2 Σ_{<<i,j>>} S_i · S_j
+#   summed over all 18 next-nearest-neighbour pairs in the 6-site honeycomb
+#   unit cell.
+
 
 
 
@@ -78,15 +111,6 @@ Outputs (all in log/)
 """
 
 
-# ── GPU/CPU intent — declared here (before threading) so _GPU_LIKELY can read it ──
-# Duplicated below in the TUNABLE PARAMETERS section with full comments.
-USE_GPU = False
-
-# ── glibc malloc tuning (MUST be before any heavy imports) ────────────────────
-# Without this, freed intermediate tensors stay in glibc arenas and RSS
-# grows 10-100× larger than the actual live tensors.  These mallopt calls
-# force allocations ≥ 64 KB to use mmap (returned to OS on free) and limit
-# arenas to 2 (less fragmentation).
 import ctypes as _ctypes
 _libc = _ctypes.CDLL(None)
 _libc.mallopt(_ctypes.c_int(-3), _ctypes.c_int(65536))   # M_MMAP_THRESHOLD  = 64 KB
@@ -124,13 +148,7 @@ import time
 # Detected at import time using os.environ CUDA_VISIBLE_DEVICES and USE_GPU flag.
 # Override at runtime: OMP_NUM_THREADS=N python scripts/main_unrestricted.py
 #
-_N_PHYSICAL_CORES = 4
-# Detect GPU intent: check os.environ for CUDA_VISIBLE_DEVICES="" (explicitly
-# disabled) as the only reliable heuristic before torch is imported.
-# The USE_GPU flag is defined later in the "TUNABLE PARAMETERS" section (below
-# torch import), so we cannot use it here.  Default assumption: GPU is used
-# because USE_GPU=True is the default and the cluster has a GPU.
-# Override: set CUDA_VISIBLE_DEVICES="" in the shell to force CPU threading.
+
 _CUDA_DISABLED = os.environ.get("CUDA_VISIBLE_DEVICES", None) == ""
 # Use the USE_GPU flag (defined above) PLUS the CUDA_VISIBLE_DEVICES heuristic.
 # This correctly sets 1 thread when USE_GPU=True (GPU run) and _N_PHYSICAL_CORES
@@ -414,20 +432,6 @@ SAVE_EVERY = 10
 #   minimum energy is found, independently of SAVE_EVERY.  Lower = more I/O
 #   but safer against crashes; higher = less I/O.
 
-# ── Physical model ────────────────────────────────────────────────────────────
-
-J1_COUPLING = 1.0
-#   Nearest-neighbour (nn) Heisenberg exchange coupling constant.
-#   J1 > 0 = antiferromagnetic (AFM).
-#   The nn Hamiltonian is  H_nn = J1 Σ_{<i,j>} S_i · S_j
-#   summed over all 9 nearest-neighbour pairs in the 6-site honeycomb unit cell.
-
-J2_COUPLING = 0.0
-#   Next-nearest-neighbour (nnn) Heisenberg exchange coupling constant.
-#   J2 > 0 = frustrated AFM.  Set to 0 to recover the pure J1 model.
-#   The nnn Hamiltonian is  H_nnn = J2 Σ_{<<i,j>>} S_i · S_j
-#   summed over all 18 next-nearest-neighbour pairs in the 6-site honeycomb
-#   unit cell.
 
 D_PHYS = 2
 #   Physical Hilbert-space dimension per lattice site.
@@ -589,6 +593,11 @@ def evaluate_observables(a, b, c, d, e, f,
                       env3 (9: ef,ab,cd,ec,ca,ae,fd,db,bf).
         magnetizations (list[float]): 54 values of <Sα> for each of the
             6 sites × 3 envs × 3 spin dirs (Sx, Sy, Sz).
+            <Sy> is computed via iSy_op = (S+-S-)/2 = i·Sy_phys:
+              Real iPEPS:    <Sy> = Re(Tr(ρ·iSy_op)) = 0.0 exactly
+                             (real-symmetric ρ × real-antisymmetric iSy → 0).
+                             Saved as informational sanity check.
+              Complex iPEPS: <Sy> = Im(Tr(ρ·iSy_op)) — full physical value.
             Ordered: env1 site A (Sx, Sy, Sz), env1 site B, ..., env1 site F,
                      env2 site A, ..., env3 site F.
     """
@@ -607,8 +616,9 @@ def evaluate_observables(a, b, c, d, e, f,
             Splus[i, i + 1] = cs
             Sminus[i + 1, i] = cs
     Sx_op = (Splus + Sminus) / 2.0    # real matrix
-    # Sy = -i (S+ - S-) / 2  → for real iPEPS rho, <Sy> = 0 always.
-    # We store 0.0 for Sy instead of constructing a complex operator.
+    # iSy_op = (S+ - S-)/2 = i·Sy_phys — real antisymmetric matrix.
+    # Used to extract <Sy> in both real and complex cases (see _mag below).
+    iSy_op = (Splus - Sminus) / 2.0   # real antisymmetric (= i·Sy_phys)
 
     def _corr(rho_4d):
         """<Si·Sj> = Tr(rho * SdotS) — unit correlation, no J factor."""
@@ -630,7 +640,18 @@ def evaluate_observables(a, b, c, d, e, f,
         tr = torch.real(torch.trace(rho_1)).clamp(min=1e-30)
         rho_1 = rho_1 / tr
         mx = torch.real(oe.contract("ij,ji->", rho_1, Sx_op, backend="torch")).item()
-        my = 0.0   # identically zero for real iPEPS
+        # <Sy> via iSy_op = (S+-S-)/2 = i·Sy_phys (real antisymmetric).
+        # Real rho:    Tr(rho · iSy_op) is real,  = 0.0 exactly (sym × antisym).
+        # Complex rho: Tr(rho · iSy_op) = i·<Sy> (purely imaginary)
+        #              → take Im(...) to recover the physical <Sy>.
+        if rho_1.is_complex():
+            my = torch.imag(oe.contract("ij,ji->", rho_1,
+                                        iSy_op.to(rho_1.dtype),
+                                        backend="torch")).item()
+        else:
+            # real case: result is exactly 0.0; computed explicitly for information
+            my = torch.real(oe.contract("ij,ji->", rho_1, iSy_op,
+                                        backend="torch")).item()
         mz = torch.real(oe.contract("ij,ji->", rho_1, Sz_op, backend="torch")).item()
         return (mx, my, mz)
 
@@ -783,7 +804,10 @@ def _save_observables_file(filepath: str, D_bond: int, chi: int,
             fp.write("\n")
 
         fp.write("# ── Site magnetizations <Sx> <Sy> <Sz>  (54 values) "
-                 "────────────\n")
+                 "──────────────\n")
+        fp.write("# <Sy> via iSy_op=(S+-S-)/2=i·Sy_phys:\n")
+        fp.write("#   Real iPEPS:    Sy = Re(Tr(rho·iSy_op)) = 0.0 exactly\n")
+        fp.write("#   Complex iPEPS: Sy = Im(Tr(rho·iSy_op)) = physical <Sy>\n")
         for env_idx in range(3):
             fp.write(f"# env{env_idx+1}\n")
             for s_idx, s in enumerate(_SITE_LABELS):
@@ -795,6 +819,35 @@ def _save_observables_file(filepath: str, D_bond: int, chi: int,
                          f"Sx={mx:+.12e}  Sy={my:+.12e}  Sz={mz:+.12e}\n")
             fp.write("\n")
     print(f"  │  Observables saved → {filepath}")
+
+
+def _print_observables_summary(tag: str, D_bond: int, chi: int,
+                               energy: float, correlations: list,
+                               magnetizations: list) -> None:
+    """Print a compact summary of observables to stdout."""
+    n_sites = 6
+    nn_corrs  = [correlations[i] for i in range(27) if (i % 9) < 3]
+    nnn_corrs = [correlations[i] for i in range(27) if (i % 9) >= 3]
+    all_mx = [magnetizations[i*3]     for i in range(18)]
+    all_my = [magnetizations[i*3 + 1] for i in range(18)]
+    all_mz = [magnetizations[i*3 + 2] for i in range(18)]
+
+    def _stat(vals):
+        mn, mx = min(vals), max(vals)
+        n   = len(vals)
+        avg = sum(vals) / n
+        var = sum((v - avg)**2 for v in vals) / n
+        se  = (var / n) ** 0.5   # standard error = std / sqrt(n)
+        return f"min={mn:+.6f} max={mx:+.6f} mean={avg:+.6f} se={se:.2e}"
+
+    print(f"  │  [{tag}] D={D_bond} chi={chi}  E={energy:+.10f}  "
+          f"E/site={energy/n_sites:+.10f}")
+    print(f"  │    nn  <S·S> ({len(nn_corrs):>2d}): {_stat(nn_corrs)}")
+    print(f"  │    nnn <S·S> ({len(nnn_corrs):>2d}): {_stat(nnn_corrs)}")
+    print(f"  │    <Sx>      ({len(all_mx):>2d}): {_stat(all_mx)}")
+    _sy_note = "  (=0 for real iPEPS)" if all(abs(v) < 1e-12 for v in all_my) else ""
+    print(f"  │    <Sy>      ({len(all_my):>2d}): {_stat(all_my)}{_sy_note}")
+    print(f"  │    <Sz>      ({len(all_mz):>2d}): {_stat(all_mz)}")
 
 
 def save_checkpoint(path: str, abcdef: tuple, D_bond: int, chi: int,
@@ -1497,6 +1550,8 @@ def main():
                              f"D_{D_bond}_chi_{chi}"
                              f"_energy_magnetization_correlation.txt"),
                 D_bond, chi, energy, correlations, magnetizations)
+            _print_observables_summary(
+                'OBS', D_bond, chi, energy, correlations, magnetizations)
 
             # Save final checkpoint for this (D, chi)
             save_checkpoint(best_path, cur_abcdef, D_bond, chi,
@@ -1534,6 +1589,8 @@ def main():
                                  f"D_{D_bond}_chi_{chi}+2D={chi_la}"
                                  f"_energy_magnetization_correlation.txt"),
                     D_bond, chi_la, energy_la, corr_la, mag_la)
+                _print_observables_summary(
+                    'LA ', D_bond, chi_la, energy_la, corr_la, mag_la)
                 delta_la = abs(energy - energy_la)
                 print(f"  │  [Lookahead] chi={chi}: E={energy:+.10f} │ "
                       f"chi={chi_la}: E={energy_la:+.10f} │ "
