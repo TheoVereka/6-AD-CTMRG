@@ -951,3 +951,16 @@ tensor([[0., 1.],
 [MEM-C] RSS=1663.1MB, step=380 free=510874MB
     step   380  ctm= 17  loss=-3.2668433710  Δ=-3.723e-08  70306/1199880s
 [MEM-C] RSS=1666.5MB, step=381 free=510859MB
+
+
+What to do next 1
+I already write the correct function for calculating energies for J1J2 model, the energy function name is not changed. Your job is to make the J1J2 implementation complete.
+You need to change the Hamiltonian definition from just 9 nn bonds to 9 nnbonds+ 18 nnnbonds (which is [H_nn]*9 concat [H_nnn]*18, and H_nn=build_H(J1), H_nnn=build_H(J2)).
+All the clean energy evaluation should also change accordingly, no more per bond energy, but only per-site (9 nnbonds+18 nnnbonds)/6 , no more 0.3630 QMC limit that is just in the past, etc, all such things limited to J1 case.
+And make sure this change from J1 to J1J2 model is correctly and smoothly running and NOT IMPACT ANY OTHER PART OF THE CODE WE HAD!!!!!!!!!!!!!!!!!! Test thoughoutly!
+
+What to do next 2
+Everytime the optimize for one chi stops, just after the evaluation of clean energy, you should store both clean energy, all the 6sites*3environment*3direction on-site magnetization Tr(open_ABCDEF S_i) and all the (9nnbonds+18nnnbinds) on-site spin correlation <S_sitei dot S_sitej> (which is basically the bond energy divided by J1 or J2). I look forward to seeing you write a independent function that capture all these calculation inside the manually written clean_eval function.  (better first copy, then modify) because I don't trust your abitlity of handling this messy index, you're here to reuse the tensors that are extremely close to magnetization and correlation.
+Store in a file named "D_X_chi_XXX_energy_magnetization_correlation.txt" and "D_X_chi_XXX+2D=XXX_energy_magnetization_correlation.txt" (XXX is the chi value, e.g., chi_256). 
+Besides, if you think the Hamiltonian definition including J makes the nnbonds and nnnbonds correlation redundant(first *J then /J), then change all the energy_eval function and the clean_eval ones to make the Hamiltonian to be nothing but J values, s.t. every env's eval only has 3 J1 and 6 J2 values. And the tensor are all calculated using the S_i dot S_j unit Hamiltonian, only the return energies are weighted at the end of return.
+And make sure this change is correctly and smoothly running and NOT IMPACT ANY OTHER PART OF THE CODE WE HAD!!!!!!!!!!!!!!!!!! Test thoughoutly!

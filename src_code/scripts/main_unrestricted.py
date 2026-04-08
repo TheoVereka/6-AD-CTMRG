@@ -27,16 +27,16 @@ DEFAULT_CHI_MAX = {2: 16, 3: 81, 4: 80, 5:9999, 6:9999, 7:9999, 8:9999, 9:9999, 
 #   Increase if you have more memory; decrease if you hit OOM.
 
 DEFAULT_CHI_SCHEDULES = {
-    2: [ 3,  4,  6,  8],
-    3: [ 4,  6,  9, 12, 15],
-    4: [ 8, 12, 16, 20, 24], 
-    5: [10, 15, 20, 25, 30, 35],
-    6: [18, 24, 30, 36, 42, 48],
-    7: [21, 28, 35, 42, 49, 56, 63],
-    8: [32, 40, 48, 56, 64, 72, 80],
-    9: [36, 45, 54, 63, 72, 81, 90, 99],
-    #10:[50, 60, 70, 80, 90,100,110,120],
-    #11:[55, 66, 77, 88, 99,110,121,132,143],
+    2: [ 2,  3,  4,  6,  8],
+    3: [ 3,  4,  6,  9, 12, 15],
+    4: [ 6,  8, 12, 16, 20, 24], 
+    5: [ 8, 10, 15, 20, 25, 30, 35],
+    6: [12, 18, 24, 30, 36, 42, 48],
+    7: [14, 21, 28, 35, 42, 49, 56, 63],
+    8: [24, 32, 40, 48, 56, 64, 72, 80],
+    9: [27, 36, 45, 54, 63, 72, 81, 90, 99],
+    #10:[40, 50, 60, 70, 80, 90,100,110,120],
+    #11:[44, 55, 66, 77, 88, 99,110,121,132,143],
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -73,14 +73,14 @@ Outputs (all in log/)
   sweep_D{D}_chi{chi}_latest.pt  last checkpoint for each (D,chi)
   sweep_results.json             JSON table of all energies
   sweep_loss_D{D}.pdf            loss curve per D
-  sweep_energy_vs_chi.pdf        E/bond vs chi for each D
-  sweep_energy_vs_D.pdf          E/bond vs D at chi_max (convergence in D)
+  sweep_energy_vs_chi.pdf        E/site vs chi for each D
+  sweep_energy_vs_D.pdf          E/site vs D at chi_max (convergence in D)
 """
 
 
 # ── GPU/CPU intent — declared here (before threading) so _GPU_LIKELY can read it ──
 # Duplicated below in the TUNABLE PARAMETERS section with full comments.
-USE_GPU = True
+USE_GPU = False
 
 # ── glibc malloc tuning (MUST be before any heavy imports) ────────────────────
 # Without this, freed intermediate tensors stay in glibc arenas and RSS
@@ -124,7 +124,7 @@ import time
 # Detected at import time using os.environ CUDA_VISIBLE_DEVICES and USE_GPU flag.
 # Override at runtime: OMP_NUM_THREADS=N python scripts/main_unrestricted.py
 #
-_N_PHYSICAL_CORES = 35
+_N_PHYSICAL_CORES = 4
 # Detect GPU intent: check os.environ for CUDA_VISIBLE_DEVICES="" (explicitly
 # disabled) as the only reliable heuristic before torch is imported.
 # The USE_GPU flag is defined later in the "TUNABLE PARAMETERS" section (below
@@ -410,22 +410,27 @@ SAVE_EVERY = 10
 
 # ── Physical model ────────────────────────────────────────────────────────────
 
-J_COUPLING = 1.0
-#   Isotropic Heisenberg exchange coupling constant.  J > 0 = antiferromagnetic
-#   (AFM), ground state is a singlet.  The Hamiltonian is
-#   H = J Σ_{<i,j>} S_i · S_j  summed over all nearest-neighbour pairs on the
-#   honeycomb.  For the AFM sign convention the optimal iPEPS energy is
-#   E/bond ≈ −0.3630 J in the D→∞ limit (QMC reference).
+J1_COUPLING = 1.0
+#   Nearest-neighbour (nn) Heisenberg exchange coupling constant.
+#   J1 > 0 = antiferromagnetic (AFM).
+#   The nn Hamiltonian is  H_nn = J1 Σ_{<i,j>} S_i · S_j
+#   summed over all 9 nearest-neighbour pairs in the 6-site honeycomb unit cell.
+
+J2_COUPLING = 0.1
+#   Next-nearest-neighbour (nnn) Heisenberg exchange coupling constant.
+#   J2 > 0 = frustrated AFM.  Set to 0 to recover the pure J1 model.
+#   The nnn Hamiltonian is  H_nnn = J2 Σ_{<<i,j>>} S_i · S_j
+#   summed over all 18 next-nearest-neighbour pairs in the 6-site honeycomb
+#   unit cell.
 
 D_PHYS = 2
 #   Physical Hilbert-space dimension per lattice site.
 #   d=2 for spin-1/2 (default), d=3 for spin-1, d=4 for two-site, etc.
 
-N_BONDS = 9
-#   Number of nearest-neighbour bonds in the 6-site honeycomb unit cell.
-#   Breakdown: 6 bonds of the primary type (connecting sub-lattices A–D–C–F–B–E
-#   cyclically) + 3 bonds of the secondary type = 9 total.
-#   Used only to compute the reported E/bond = E_total / N_BONDS.
+N_SITES = 6
+#   Number of sites in the honeycomb unit cell.
+#   The unit cell has 9 nn bonds + 18 nnn bonds = 27 total bonds.
+#   Energy per site = E_total / N_SITES.
 
 
 # ── Tensor initialisation & padding ──────────────────────────────────────────
@@ -540,18 +545,18 @@ def evaluate_energy_clean(a, b, c, d, e, f,
                 A, B, C, Dt, E, F, chi, D_sq, CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT)
         E3ebadcf = energy_expectation_nearest_neighbor_3ebadcf_bonds(
             aN, bN, cN, dN, eN, fN,
-                Hs[0],Hs[1],Hs[2],
+                *Hs[0:9],
                 chi, D_bond, d_PHYS, 
                 *all27[:9])
         E3afcbed = energy_expectation_nearest_neighbor_3afcbed_bonds(
             aN, bN, cN, dN, eN, fN,
-                Hs[3],Hs[4],Hs[5], 
+                *Hs[9:18],
                 chi, D_bond, d_PHYS, 
                 *all27[9:18])
             
         E3 = energy_expectation_nearest_neighbor_other_3_bonds(
             aN, bN, cN, dN, eN, fN,
-            Hs[6], Hs[7], Hs[8],
+            *Hs[18:27],
             chi, D_bond, d_PHYS, 
             *all27[18:27])
         return (E3ebadcf + E3afcbed + E3).item()
@@ -696,21 +701,21 @@ def optimize_at_chi(
         loss = (
             _ckpt(energy_expectation_nearest_neighbor_3ebadcf_bonds,
                   aN, bN, cN, dN, eN, fN,
-                  Hs[0], Hs[1], Hs[2],
+                  *Hs[0:9],
                   chi, D_bond, d_PHYS,
                   C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E,
                   use_reentrant=False)
             +
             _ckpt(energy_expectation_nearest_neighbor_3afcbed_bonds,
                   aN, bN, cN, dN, eN, fN,
-                  Hs[3], Hs[4], Hs[5],
+                  *Hs[9:18],
                   chi, D_bond, d_PHYS,
                   C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A,
                   use_reentrant=False)
             +
             _ckpt(energy_expectation_nearest_neighbor_other_3_bonds,
                   aN, bN, cN, dN, eN, fN,
-                  Hs[6], Hs[7], Hs[8],
+                  *Hs[18:27],
                   chi, D_bond, d_PHYS,
                   C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C,
                   use_reentrant=False)
@@ -863,8 +868,12 @@ def main():
         '--d-phys', type=int, default=D_PHYS,
         help='Physical Hilbert-space dimension (d=2 for spin-1/2).')
     parser.add_argument(
-        '--J', type=float, default=J_COUPLING,
-        help='Isotropic Heisenberg coupling J (positive = AFM).')
+        '--J', '--J1', type=float, default=J1_COUPLING, dest='J1',
+        help='Nearest-neighbour Heisenberg coupling J1 (positive = AFM).')
+    parser.add_argument(
+        '--J2', type=float, default=J2_COUPLING,
+        help='Next-nearest-neighbour Heisenberg coupling J2 (positive = frustrated AFM). '
+             'Set to 0 for pure J1 model.')
     parser.add_argument(
         '--output-dir', default=None,
         help='Directory for checkpoints + plots (default: src_code/log/).')
@@ -1037,9 +1046,10 @@ def main():
         geo_schedule_steps = GEO_SCHEDULE_STEPS,
 
         # ── physical model ─────────────────────────────────────────────────
-        J                  = args.J,
+        J1                 = args.J1,
+        J2                 = args.J2,
         d_phys             = d_PHYS,
-        n_bonds            = N_BONDS,
+        n_sites            = N_SITES,
 
         # ── optimiser ──────────────────────────────────────────────────────
         optimizer          = OPTIMIZER,
@@ -1082,14 +1092,20 @@ def main():
         with open(os.path.join(output_dir, 'hyperparams.yaml'), 'w') as _fp:
             _json.dump(_hp, _fp, indent=2)
 
-    # ── Hamiltonians (isotropic; all 9 bonds equal) ───────────────────────────
-    H  = build_heisenberg_H(args.J, d_PHYS)
-    Hs = [H] * 9  # the order defined as 0~8 as Heb,Had,Hcf, Haf,Hcb,Hed, Hcd,Hef,Hab
+    # ── Hamiltonians (J1-J2 model) ────────────────────────────────────────────
+    # Each energy function takes 9 Hamiltonians: 3 nn bonds + 6 nnn bonds.
+    # Hs is a flat list of 27 = 3 × (3 nn + 6 nnn):
+    #   Hs[ 0: 9] → energy_fn_1:  Heb,Had,Hcf (nn)  + Hae,Hec,Hca,Hdb,Hbf,Hfd (nnn)
+    #   Hs[ 9:18] → energy_fn_2:  Haf,Hcb,Hed (nn)  + Hca,Hae,Hec,Hbf,Hfd,Hdb (nnn)
+    #   Hs[18:27] → energy_fn_3:  Hcd,Hef,Hab (nn)  + Hec,Hca,Hae,Hfd,Hdb,Hbf (nnn)
+    H_nn  = build_heisenberg_H(args.J1, d_PHYS)   # nearest-neighbour
+    H_nnn = build_heisenberg_H(args.J2, d_PHYS)   # next-nearest-neighbour
+    Hs = ([H_nn]*3 + [H_nnn]*6) * 3               # 27 Hamiltonians total
 
     # ── Banner ────────────────────────────────────────────────────────────────
     print("=" * 76)
-    print("  iPEPS sweep  —  AD-CTMRG  —  AFM Heisenberg on 6-site honeycomb")
-    print(f"  J={args.J}  d_phys={d_PHYS}  Total budget: {args.hours:.1f} h")
+    print("  iPEPS sweep  —  AD-CTMRG  —  J1-J2 Heisenberg on 6-site honeycomb")
+    print(f"  J1={args.J1}  J2={args.J2}  d_phys={d_PHYS}  Total budget: {args.hours:.1f} h")
     print(f"  Device       : {_core.DEVICE}")
     print(f"  D_bond sweep : {D_bond_list}")
     for D in D_bond_list:
@@ -1238,7 +1254,7 @@ def main():
             print(f"  │  Evaluating energy at (D={D_bond}, chi={chi}) ...")
             energy = evaluate_energy_clean(
                 *cur_abcdef, Hs, chi, D_bond, d_PHYS)
-            energy_per_bond = energy / N_BONDS
+            energy_per_site = energy / N_SITES
 
             # Save final checkpoint for this (D, chi)
             save_checkpoint(best_path, cur_abcdef, D_bond, chi,
@@ -1248,13 +1264,13 @@ def main():
             record = {
                 'D_bond': D_bond, 'chi': chi,
                 'best_loss': best_loss, 'energy': energy,
-                'energy_per_bond': energy_per_bond,
+                'energy_per_site': energy_per_site,
                 'steps': len(loss_log),
                 'timestamp': timestamp(),
             }
             energy_table.append(record)
             wall = time.perf_counter() - t_global_start
-            print(f"  └── E={energy:+.10f}  E/bond={energy_per_bond:+.10f}"
+            print(f"  └── E={energy:+.10f}  E/site={energy_per_site:+.10f}"
                   f"  wall={wall/3600:.2f}h")
 
             # ── Chi-convergence lookahead ─────────────────────────────────────
@@ -1310,16 +1326,15 @@ def main():
     print("  RESULTS SUMMARY")
     print("=" * 76)
     print(f"  {'D':>2}  {'chi':>5}  {'steps':>6}  "
-          f"{'E_total':>18}  {'E/bond':>14}")
+          f"{'E_total':>18}  {'E/site':>14}")
     print(f"  {'─'*2}  {'─'*5}  {'─'*6}  {'─'*18}  {'─'*14}")
     for row in energy_table:
         print(f"  {row['D_bond']:2d}  {row['chi']:5d}  {row['steps']:6d}  "
-              f"{row['energy']:+18.10f}  {row['energy_per_bond']:+14.10f}")
+              f"{row['energy']:+18.10f}  {row['energy_per_site']:+14.10f}")
     print()
-    best_overall = min(energy_table, key=lambda r: r['energy_per_bond'])
-    print(f"  Best E/bond = {best_overall['energy_per_bond']:+.10f}  "
+    best_overall = min(energy_table, key=lambda r: r['energy_per_site'])
+    print(f"  Best E/site = {best_overall['energy_per_site']:+.10f}  "
           f"(D={best_overall['D_bond']}, chi={best_overall['chi']})")
-    print(f"  QMC reference (D→∞): E/bond ≈ −0.3630")
     print(f"  Total wall time: {total_elapsed/3600:.2f} h ({total_elapsed:.0f} s)")
     print(f"  Finished: {timestamp()}")
     print("=" * 76)
@@ -1330,7 +1345,7 @@ def main():
         'D_bond_list': D_bond_list,
         'chi_max_map': {str(k): v for k, v in chi_max_map.items()},
         'schedules':   {str(k): v for k, v in schedules.items()},
-        'J': args.J, 'd_phys': d_PHYS,
+        'J1': args.J1, 'J2': args.J2, 'd_phys': d_PHYS,
         'hours_budget': args.hours,
         'total_elapsed_h': round(total_elapsed / 3600, 3),
         'total_steps': global_step,
@@ -1341,40 +1356,38 @@ def main():
         json.dump(json_out, fp, indent=2)
     print(f"\n  Results JSON → {results_path}")
 
-    # ── Plot 1: E/bond vs chi for each D ─────────────────────────────────────
+    # ── Plot 1: E/site vs chi for each D ──────────────────────────────────────
     fig, ax = plt.subplots(figsize=(9, 5))
     for D in D_bond_list:
         rows = [r for r in energy_table if r['D_bond'] == D]
         if not rows:
             continue
         x = [r['chi'] for r in rows]
-        y = [r['energy_per_bond'] for r in rows]
+        y = [r['energy_per_site'] for r in rows]
         ax.plot(x, y, 'o-', label=f'D={D}', markerfacecolor='white',
                 markersize=7)
-    ax.axhline(-0.3630, color='grey', ls='--', lw=1, label='QMC (D→∞) ≈ −0.3630')
     ax.set_xlabel(r'Environment bond dimension $\chi$', fontsize=12)
-    ax.set_ylabel(r'Energy per bond $E/J$', fontsize=12)
-    ax.set_title('iPEPS ground-state energy — AFM Heisenberg (honeycomb)', fontsize=12)
+    ax.set_ylabel(r'Energy per site $E/N_{\mathrm{sites}}$', fontsize=12)
+    ax.set_title('iPEPS ground-state energy — J1-J2 Heisenberg (honeycomb)', fontsize=12)
     ax.legend(); ax.grid(True, alpha=0.3)
     fig.tight_layout()
     fig.savefig(os.path.join(output_dir, 'sweep_energy_vs_chi.pdf'))
     plt.close(fig)
 
-    # ── Plot 2: E/bond vs D at largest chi each D ─────────────────────────────
+    # ── Plot 2: E/site vs D at largest chi each D ─────────────────────────────
     D_vals, E_best = [], []
     for D in D_bond_list:
         rows = [r for r in energy_table if r['D_bond'] == D]
         if rows:
-            best_row = min(rows, key=lambda r: r['energy_per_bond'])
+            best_row = min(rows, key=lambda r: r['energy_per_site'])
             D_vals.append(D)
-            E_best.append(best_row['energy_per_bond'])
+            E_best.append(best_row['energy_per_site'])
     if len(D_vals) > 1:
         fig2, ax2 = plt.subplots(figsize=(6, 4))
         ax2.plot(D_vals, E_best, 's-', color='tab:red', markersize=9,
                  markerfacecolor='white')
-        ax2.axhline(-0.3630, color='grey', ls='--', lw=1, label='QMC')
         ax2.set_xlabel(r'Bond dimension $D$', fontsize=12)
-        ax2.set_ylabel(r'Best $E/\text{bond}$', fontsize=12)
+        ax2.set_ylabel(r'Best $E/\text{site}$', fontsize=12)
         ax2.set_title('iPEPS convergence in D')
         ax2.legend(); ax2.grid(True, alpha=0.3)
         fig2.tight_layout()
