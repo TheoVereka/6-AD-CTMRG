@@ -45,7 +45,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 import core_unrestricted as cu
 from core_unrestricted import (SVD_PROPACK, set_rsvd_mode,
                                _solve_fifth_term_svd,
-                               _solve_fifth_term_neumann)
+                               _solve_fifth_term_neumann,
+                               _adaptive_power_iters)
 
 DTYPE  = torch.float64
 CDTYPE = torch.complex128
@@ -112,10 +113,34 @@ def test_default_mode_is_full_svd():
 
 
 def test_set_rsvd_mode_updates_globals():
-    set_rsvd_mode('neumann', neumann_terms=3, augment_extra=7)
+    # integer override
+    set_rsvd_mode('neumann', neumann_terms=3, power_iters=5)
     assert cu._RSVD_BACKWARD_MODE == 'neumann'
     assert cu._RSVD_NEUMANN_TERMS == 3
-    assert cu._RSVD_AUGMENT_EXTRA == 7
+    assert cu._RSVD_POWER_ITERS == 5
+    # reset to adaptive (None)
+    set_rsvd_mode('neumann', neumann_terms=2, power_iters=None)
+    assert cu._RSVD_POWER_ITERS is None
+
+
+@pytest.mark.parametrize("k,N,expected", [
+    # k/N < 2%  (D≥7, e.g. D=8: k/N=1/64≈1.56%)  → 1
+    (80,  5120, 1),   # D=8, chi=80
+    (100, 6400, 1),   # D=8, chi=100
+    (25,  4900, 1),   # D=7, chi=25
+    # k/N 2–5%  (D=5–6, e.g. D=5: k/N=1/25=4%)  → 2
+    (25,   625, 2),   # D=5, chi=25
+    (40,  1296, 2),   # D=6, chi=40 (1/36≈2.78%)
+    # k/N 5–10% (D=4: k/N=1/16=6.25%)           → 3
+    (16,   256, 3),   # D=4, chi=16
+    (25,   400, 3),   # D=4 approx (k/N=6.25%)
+    # k/N ≥10% (D≤3: 1/9≥11%)                   → 4
+    (10,    90, 4),   # D=3, chi=10 (k/N=11.1%)
+    (5,     20, 4),   # D=2, chi=5  (k/N=25%)
+])
+def test_adaptive_power_iters(k, N, expected):
+    """_adaptive_power_iters returns niter consistent with the k/N table."""
+    assert _adaptive_power_iters(k, N) == expected
 
 
 def test_set_rsvd_mode_invalid_raises():
@@ -457,7 +482,7 @@ def test_full_svd_matches_numerical(m, n, k, decay):
 @pytest.mark.parametrize("m,n,k", [(20, 20, 5), (25, 20, 6)])
 def test_smoke_finite(mode, nt, ae, m, n, k):
     """All modes → finite, non-NaN gradients."""
-    set_rsvd_mode(mode, neumann_terms=nt, augment_extra=ae)
+    set_rsvd_mode(mode, neumann_terms=nt)
     A = _make_mat(m, n, k).requires_grad_(True)
     rng = torch.Generator(); rng.manual_seed(9)
     C   = torch.randn(m, n, dtype=DTYPE, generator=rng)
@@ -479,7 +504,7 @@ def test_smoke_finite(mode, nt, ae, m, n, k):
 ])
 def test_smoke_complex(mode, nt, ae):
     """Complex float64 inputs: all modes remain finite."""
-    set_rsvd_mode(mode, neumann_terms=nt, augment_extra=ae)
+    set_rsvd_mode(mode, neumann_terms=nt)
     m, n, k = 16, 16, 4
     A  = _make_complex_mat(m, n).requires_grad_(True)
     rng = torch.Generator(); rng.manual_seed(11)
@@ -518,7 +543,7 @@ def test_near_degenerate_all_modes():
         ('augmented',  4,  3),
         ('none',       4,  0),
     ]:
-        set_rsvd_mode(mode, neumann_terms=nt, augment_extra=ae)
+        set_rsvd_mode(mode, neumann_terms=nt)
         A2  = A.detach().requires_grad_(True)
         U, S, V = SVD_PROPACK.apply(A2, k, 0, rc_, None, False)
         rc  = U @ torch.diag(S.to(U.dtype)) @ V.mH

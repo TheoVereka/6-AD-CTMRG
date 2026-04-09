@@ -324,6 +324,14 @@ RSVD_NEUMANN_TERMS = 2
 #   Timing: L=1 → 37.2ms, L=2 → 38.0ms at N=400 — negligible cost.
 #   For ρ ≥ 0.80 Neumann doesn't converge; use 'full_svd' instead.
 
+RSVD_POWER_ITERS = None
+#   Power iterations for the rSVD range-finder.  None (default) = adaptive:
+#   core._adaptive_power_iters(k, N) chooses from the k/N ratio per call.
+#   In CTMRG: N = chi·D², k = chi, so k/N = 1/D² (independent of chi).
+#     k/N < 2%  (D≥7): niter=1   k/N 2–5%  (D=5–6): niter=2
+#     k/N 5–10% (D=4): niter=3   k/N ≥10% (D≤3): niter=4
+#   Set to an integer to override (e.g. 4 for conservative testing).
+
 
 # ── L-BFGS optimiser ─────────────────────────────────────────────────────────
 #
@@ -1314,7 +1322,8 @@ def main():
     set_device(_dev)   # propagates DEVICE into core_unrestricted globals
     _core._SVD_CPU_OFFLOAD_THRESHOLD = SVD_CPU_OFFLOAD_THRESHOLD
     _core.set_rsvd_mode(RSVD_MODE,
-                        neumann_terms=RSVD_NEUMANN_TERMS)
+                        neumann_terms=RSVD_NEUMANN_TERMS,
+                        power_iters=RSVD_POWER_ITERS)
 
     # ── parse D_bond list ─────────────────────────────────────────────────────
     D_bond_list: list[int] = [int(x) for x in args.D_bonds.split(',')]
@@ -1432,6 +1441,7 @@ def main():
         svd_cpu_offload_threshold = SVD_CPU_OFFLOAD_THRESHOLD,
         rsvd_mode          = RSVD_MODE,
         rsvd_neumann_terms = RSVD_NEUMANN_TERMS,
+        rsvd_power_iters   = RSVD_POWER_ITERS,
 
         # ── CTMRG ──────────────────────────────────────────────────────────
         ctm_max_steps      = CTM_MAX_STEPS,

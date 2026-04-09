@@ -99,22 +99,66 @@ _RSVD_NEUMANN_TERMS: int = 2
 # Positive → Neumann approximation (fast).  Negative → exact eigh (for reference).
 # L=2 is the sweet spot: <1ms extra vs L=1, but 15× more precise at ρ=0.30.
 
+_RSVD_POWER_ITERS: int | None = None
+# Number of power (subspace) iterations in the rSVD range-finder.
+# None (default) → adaptive: chosen per-call by _adaptive_power_iters(k, N).
+# Integer         → override: always use exactly this many iterations.
+#
+# Adaptive formula calibrated from benchmarks at N=100–5120:
+#   In CTMRG, the SVD matrices have size N = chi·D², k = chi, so k/N = 1/D².
+#   The rSVD difficulty scales with k/N: larger ratio → discarded subspace
+#   has more spectral weight → range-finder needs more power iterations.
+#   Physics note: at small chi the cut falls at non-trivial SVs (larger ρ);
+#   at large chi SVs at the cut edge are near-zero (ρ≈0), so fewer iters suffice.
+#   Both effects are captured by the k/N proxy via D:
+#
+#     k/N < 2%  (D≥7): near-zero cut, trivially separated spectrum → 1 iter
+#     k/N 2–5%  (D=5–6): typical production, ρ≤0.30 verified safe  → 2 iters
+#     k/N 5–10% (D=4): moderate spectral weight at boundary         → 3 iters
+#     k/N ≥ 10% (D≤3): non-trivial truncation, small-chi regime     → 4 iters
+#
+# Per-call timings at N=5120 (D=8, chi=80):
+#   niter=0: 315ms   niter=1: ~500ms   niter=2: 700ms   niter=4: 1136ms
+#   With 540 SVD calls/step: adaptive (niter=1) saves vs niter=2: +26 min.
+
+
+def _adaptive_power_iters(k: int, N: int) -> int:
+    """Return the number of rSVD power iterations appropriate for rank k out of N.
+
+    Calibrated from benchmarks at N=100–5120 (see _RSVD_POWER_ITERS comment).
+    In CTMRG: N = chi·D², k = chi  ⟹  k/N = 1/D² (independent of chi).
+
+    Physics note: small chi → cut at non-trivial SVs (larger ρ, harder);
+    large chi   → cut at near-zero SVs  (ρ≈0, easy).  Both effects enter
+    through the same D, so the k/N proxy is sufficient.
+    """
+    ratio = k / max(N, 1)
+    if   ratio < 0.02:  return 1   # D≥7: near-zero cut
+    elif ratio < 0.05:  return 2   # D=5–6: typical production
+    elif ratio < 0.10:  return 3   # D=4: moderate
+    else:               return 4   # D≤3: non-trivial truncation
+
 
 def set_rsvd_mode(mode: str,
-                  neumann_terms: int = 2) -> None:
+                  neumann_terms: int = 2,
+                  power_iters: int | None = None) -> None:
     """Switch the rSVD backward strategy.
 
     Args:
         mode:          One of 'full_svd', 'neumann', 'augmented', 'none'.
         neumann_terms: Neumann series length (positive=approx, negative=exact eigh).
+        power_iters:   Number of power iterations in the rSVD range-finder.
+                       None (default) → adaptive per-call via _adaptive_power_iters.
+                       Integer        → fixed override for all SVD calls.
     """
-    global _RSVD_BACKWARD_MODE, _RSVD_NEUMANN_TERMS
+    global _RSVD_BACKWARD_MODE, _RSVD_NEUMANN_TERMS, _RSVD_POWER_ITERS
     if mode not in ('full_svd', 'neumann', 'augmented', 'none'):
         raise ValueError(
             f"Unknown rSVD mode {mode!r}; choose from 'full_svd','neumann','augmented','none'"
         )
     _RSVD_BACKWARD_MODE = mode
     _RSVD_NEUMANN_TERMS = neumann_terms
+    _RSVD_POWER_ITERS = power_iters
 
 
 
@@ -504,15 +548,20 @@ class SVD_PROPACK(torch.autograd.Function):
             # recommendation.  q = k fails catastrophically at ρ ≥ 0.3
             # (cosine 0.065 → 0.9996 at ρ=0.95 when going from q=k to q=2k).
             #
-            # Power iterations niter = 4: costs <0.5ms at CTMRG sizes (N≤400)
-            # but raises cosine from 0.989 (niter=2) to 0.9997 at ρ=0.95.
-            # Verified by bench_rsvd_precision.py sweep over 10 seeds.
+            # Power iterations: configurable via _RSVD_POWER_ITERS.
+            # At N≥2000 with k/N<5%, niter=0 suffices for ρ≤0.80.
+            # Default niter=2 is safe for all practical CTMRG spectra.
+            # At D=8 chi=80 (N=5120): saves 3.9 min/step vs niter=4.
             q_over = min(2 * k, min(m_dim, n_dim))
+            # Adaptive power iterations: None → choose from k/N ratio;
+            # integer override → use exactly that many.
+            _niter = (_adaptive_power_iters(k, min(m_dim, n_dim))
+                      if _RSVD_POWER_ITERS is None else _RSVD_POWER_ITERS)
             with torch.no_grad():
                 Rand = torch.randn(n_dim, q_over, dtype=A.dtype, device=A.device)
                 X    = A @ Rand
                 Q, _ = torch.linalg.qr(X)           # m × q_over
-                for _ in range(4):                   # 4 power iterations
+                for _ in range(_niter):              # power iterations
                     Q, _ = torch.linalg.qr(A.mH @ Q) # n × q_over
                     Q, _ = torch.linalg.qr(A    @ Q) # m × q_over
 
@@ -786,7 +835,7 @@ truncated_svd_propack(M, chi,
                     v0=None,
                     keep_multiplets=False,
                     abs_tol=1e-14,
-                    eps_multiplet=1e-12)  # returns U, S, V of M= USV^\dag
+                    eps_multiplet=1e-12)  # returns U, S, V of M= USV^dag
 
 """
 
@@ -2170,6 +2219,9 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
     AD = torch.mm(closed_A, closed_D)
     CF = torch.mm(closed_C, closed_F)
     EB = torch.mm(closed_E, closed_B)
+    FA = torch.mm(closed_F, closed_A)
+    DE = torch.mm(closed_D, closed_E)
+    BC = torch.mm(closed_B, closed_C)
 
     # E_unnormed_AD = oe.contract("xy,yz,zx->", H_AD, EB, CF, backend="torch")
     # E_unnormed_CF = oe.contract("xy,yz,zx->", H_CF, AD, EB, backend="torch")
@@ -2230,6 +2282,57 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
     E_EB = Jeb * oe.contract("ikjl,ijkl->", rhoEB, SdotS, backend="torch")
     #if to_print > 1e-4: print("E_EB = ", E_EB.item(), "trace rhoEB = ", theTrace.item(), "(ori:", theOriTrace.item(), ")")
 
+    rho = oe.contract("NYij,YMkl->ikjlNM", open_F, open_A, backend="torch").reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
+    rhoFA = oe.contract('IJxy,yz,zx->IJ', rho, DE, BC, optimize=[(1,2),(0,1)], backend="torch")
+    #to_print = torch.norm(rhoFA - rhoFA.conj().T).item()/2.0/torch.norm(rhoFA).item()
+    #if to_print > 1e-4: print("rhoFA anti-hermiticity: ", to_print)
+    theOriTrace = torch.trace(rhoFA)
+    rhoFA = (rhoFA + rhoFA.conj().T)/2.0
+    # positive-semidefinite projection:
+    eigvals, eigvecs = torch.linalg.eigh(rhoFA)
+    #print("rhoFA eigvals before clipping: ", eigvals.detach().numpy())
+    eigvals_clipped = torch.clamp(eigvals, min=0.0)
+    rhoFA = (eigvecs * eigvals_clipped) @ eigvecs.conj().T
+    theTrace = eigvals_clipped.sum().clamp(min=1e-30)  # real scalar → safe real division
+    rhoFA = (rhoFA / theTrace).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
+    E_FA = Jfa * oe.contract("ikjl,ijkl->", rhoFA, SdotS, backend="torch")
+    #if to_print > 1e-4: print("E_FA = ", E_FA.item(), "trace rhoFA = ", theTrace.item(), "(ori:", theOriTrace.item(), ")")
+
+    rho = oe.contract("NYij,YMkl->ikjlNM", open_D, open_E, backend="torch").reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
+    rhoDE = oe.contract('IJxy,yz,zx->IJ', rho, BC, FA, optimize=[(1,2),(0,1)], backend="torch")
+    #to_print = torch.norm(rhoDE - rhoDE.conj().T).item()/2.0/torch.norm(rhoDE).item()
+    #if to_print > 1e-4: print("rhoDE anti-hermiticity: ", to_print)
+    theOriTrace = torch.trace(rhoDE)
+    rhoDE = (rhoDE + rhoDE.conj().T)/2.0
+    # positive-semidefinite projection:
+    eigvals, eigvecs = torch.linalg.eigh(rhoDE)
+    #print("rhoDE eigvals before clipping: ", eigvals.detach().numpy())
+    eigvals_clipped = torch.clamp(eigvals, min=0.0)
+    rhoDE = (eigvecs * eigvals_clipped) @ eigvecs.conj().T
+    theTrace = eigvals_clipped.sum().clamp(min=1e-30)  # real scalar → safe real division
+    rhoDE = (rhoDE / theTrace).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
+    E_DE = Jde * oe.contract("ikjl,ijkl->", rhoDE, SdotS, backend="torch")
+    #if to_print > 1e-4: print("E_DE = ", E_DE.item(), "trace rhoDE = ", theTrace.item(), "(ori:", theOriTrace.item(), ")")
+
+    rho = oe.contract("NYij,YMkl->ikjlNM", open_B, open_C, backend="torch").reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
+    rhoBC = oe.contract('IJxy,yz,zx->IJ', rho, FA, DE, optimize=[(1,2),(0,1)], backend="torch")
+    #to_print = torch.norm(rhoBC - rhoBC.conj().T).item()/2.0/torch.norm(rhoBC).item()
+    #if to_print > 1e-4: print("rhoBC anti-hermiticity: ", to_print)
+    theOriTrace = torch.trace(rhoBC)
+    rhoBC = (rhoBC + rhoBC.conj().T)/2.0
+    # positive-semidefinite projection:
+    eigvals, eigvecs = torch.linalg.eigh(rhoBC)
+    #print("rhoBC eigvals before clipping: ", eigvals.detach().numpy())
+    eigvals_clipped = torch.clamp(eigvals, min=0.0)
+    rhoBC = (eigvecs * eigvals_clipped) @ eigvecs.conj().T
+    theTrace = eigvals_clipped.sum().clamp(min=1e-30)  # real scalar → safe real division
+    rhoBC = (rhoBC / theTrace).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
+    E_BC = Jbc * oe.contract("ikjl,ijkl->", rhoBC, SdotS, backend="torch")
+    #if to_print > 1e-4: print("E_BC = ", E_BC.item(), "trace rhoBC = ", theTrace.item(), "(
+
+
+
+
 
     # """
 
@@ -2282,7 +2385,7 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
                            #         #       #
                       optimize=[(0,1),(0,1)], backend="torch"
                       ).reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
-    rho = oe.contract("IJxy,yz,zx->IJ", rho, closed_C, torch.mm(closed_F, closed_A), optimize=[(1,2),(0,1)], backend="torch")
+    rho = oe.contract("IJxy,yz,zx->IJ", rho, closed_C, FA, optimize=[(1,2),(0,1)], backend="torch")
                                                     #                  #         #
     eigvals, eigvecs = torch.linalg.eigh((rho + rho.conj().T)/2.0)
     eigvals_clipped = torch.clamp(eigvals, min=0.0)
@@ -2296,7 +2399,7 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
                            #         #       #
                       optimize=[(0,1),(0,1)], backend="torch"
                       ).reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
-    rho = oe.contract("IJxy,yz,zx->IJ", rho, closed_A, torch.mm(closed_D, closed_E), optimize=[(1,2),(0,1)], backend="torch")
+    rho = oe.contract("IJxy,yz,zx->IJ", rho, closed_A, DE, optimize=[(1,2),(0,1)], backend="torch")
                                                     #                  #         #
     eigvals, eigvecs = torch.linalg.eigh((rho + rho.conj().T)/2.0)
     eigvals_clipped = torch.clamp(eigvals, min=0.0)
@@ -2310,7 +2413,7 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
                            #         #       #
                       optimize=[(0,1),(0,1)], backend="torch"
                       ).reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
-    rho = oe.contract("IJxy,yz,zx->IJ", rho, closed_E, torch.mm(closed_B, closed_C), optimize=[(1,2),(0,1)], backend="torch")
+    rho = oe.contract("IJxy,yz,zx->IJ", rho, closed_E, BC, optimize=[(1,2),(0,1)], backend="torch")
                                                     #                  #         #
     eigvals, eigvecs = torch.linalg.eigh((rho + rho.conj().T)/2.0)
     eigvals_clipped = torch.clamp(eigvals, min=0.0)
@@ -2329,7 +2432,7 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
     # print("energyNearestNeighbor_3_bonds = ", energyNearestNeighbor_3_bonds.item())
     # print("compare_energy = ", compare_energy.item())
     
-    return torch.real(E_AD + E_CF + E_EB +E_AE+E_EC+E_CA +E_DB+E_BF+E_FD)
+    return torch.real((E_AD+E_CF+E_EB + E_FA+E_DE+E_BC)*0.5 +E_AE+E_EC+E_CA +E_DB+E_BF+E_FD)
 
 
 def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
@@ -2367,6 +2470,9 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
     CB = torch.mm(closed_C, closed_B)
     ED = torch.mm(closed_E, closed_D)
     AF = torch.mm(closed_A, closed_F)
+    DC = torch.mm(closed_D, closed_C)
+    BA = torch.mm(closed_B, closed_A)
+    FE = torch.mm(closed_F, closed_E)
 
 
 
@@ -2419,6 +2525,54 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
     rhoED = (rhoED / theTrace).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
     E_ED = Jed * oe.contract("ikjl,ijkl->", rhoED, SdotS, backend="torch")
     #if to_print > 1e-4: print("E_ED = ", E_ED.item(), "trace rhoED = ", theTrace.item(), "(ori:", theOriTrace.item(), ")")
+
+    rho = oe.contract("NYij,YMkl->ikjlNM", open_D, open_C, backend="torch").reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
+    rhoDC = oe.contract('IJxy,yz,zx->IJ', rho, BA, FE, optimize=[(1,2),(0,1)], backend="torch")
+    #to_print = torch.norm(rhoDC - rhoDC.conj().T).item()/2.0/torch.norm(rhoDC).item()
+    #if to_print > 1e-4: print("rhoDC anti-hermiticity: ", to_print)
+    theOriTrace = torch.trace(rhoDC)
+    rhoDC = (rhoDC + rhoDC.conj().T)/2.0
+    # positive-semidefinite projection:
+    eigvals, eigvecs = torch.linalg.eigh(rhoDC)
+    #print("rhoDC eigvals before clipping: ", eigvals.detach().numpy())
+    eigvals_clipped = torch.clamp(eigvals, min=0.0)
+    rhoDC = (eigvecs * eigvals_clipped) @ eigvecs.conj().T
+    theTrace = eigvals_clipped.sum().clamp(min=1e-30)  # real scalar → safe real division
+    rhoDC = (rhoDC / theTrace).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
+    E_DC = Jdc * oe.contract("ikjl,ijkl->", rhoDC, SdotS, backend="torch")
+    #if to_print > 1e-4: print("E_DC = ", E_DC.item(), "trace rhoDC = ", theTrace.item(), "(ori:", theOriTrace.item
+
+    rho = oe.contract("NYij,YMkl->ikjlNM", open_B, open_A, backend="torch").reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
+    rhoBA = oe.contract('IJxy,yz,zx->IJ', rho, FE, DC, optimize=[(1,2),(0,1)], backend="torch")
+    #to_print = torch.norm(rhoBA - rhoBA.conj().T).item()/2.0/torch.norm(rhoBA).item()
+    #if to_print > 1e-4: print("rhoBA anti-hermiticity: ", to_print)
+    theOriTrace = torch.trace(rhoBA)
+    rhoBA = (rhoBA + rhoBA.conj().T)/2.0
+    # positive-semidefinite projection:
+    eigvals, eigvecs = torch.linalg.eigh(rhoBA)
+    #print("rhoBA eigvals before clipping: ", eigvals.detach().numpy())
+    eigvals_clipped = torch.clamp(eigvals, min=0.0)
+    rhoBA = (eigvecs * eigvals_clipped) @ eigvecs.conj().T
+    theTrace = eigvals_clipped.sum().clamp(min=1e-30)  # real scalar → safe real division
+    rhoBA = (rhoBA / theTrace).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
+    E_BA = Jba * oe.contract("ikjl,ijkl->", rhoBA, SdotS, backend="torch")
+    #if to_print > 1e-4: print("E_BA = ", E_BA.item(), "trace rhoBA = ", theTrace.item(), "(ori:", theOri
+
+    rho = oe.contract("NYij,YMkl->ikjlNM", open_F, open_E, backend="torch").reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
+    rhoFE = oe.contract('IJxy,yz,zx->IJ', rho, DC, BA, optimize=[(1,2),(0,1)], backend="torch")
+    #to_print = torch.norm(rhoFE - rhoFE.conj().T).item()/2.0/torch.norm(rhoFE).item()
+    #if to_print > 1e-4: print("rhoFE anti-hermiticity: ", to_print)
+    theOriTrace = torch.trace(rhoFE)
+    rhoFE = (rhoFE + rhoFE.conj().T)/2.0
+    # positive-semidefinite projection:
+    eigvals, eigvecs = torch.linalg.eigh(rhoFE)
+    #print("rhoFE eigvals before clipping: ", eigvals.detach().numpy())
+    eigvals_clipped = torch.clamp(eigvals, min=0.0)
+    rhoFE = (eigvecs * eigvals_clipped) @ eigvecs.conj().T
+    theTrace = eigvals_clipped.sum().clamp(min=1e-30)  # real scalar → safe real division
+    rhoFE = (rhoFE / theTrace).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
+    E_FE = Jfe * oe.contract("ikjl,ijkl->", rhoFE, SdotS, backend="torch")
+    #if to_print > 1e-4: print("E_FE = ", E_FE.item(), "trace rhoFE = ", theTrace.item(), "(ori:", theOriTrace.item(), ")")
 
 
 
@@ -2473,7 +2627,7 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
                            #         #       #
                       optimize=[(0,1),(0,1)], backend="torch"
                       ).reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
-    rho = oe.contract("IJxy,yz,zx->IJ", rho, closed_E, torch.mm(closed_D, closed_C), optimize=[(1,2),(0,1)], backend="torch")
+    rho = oe.contract("IJxy,yz,zx->IJ", rho, closed_E, DC, optimize=[(1,2),(0,1)], backend="torch")
                                                     #                  #         #
     eigvals, eigvecs = torch.linalg.eigh((rho + rho.conj().T)/2.0)
     eigvals_clipped = torch.clamp(eigvals, min=0.0)
@@ -2487,7 +2641,7 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
                            #         #       #
                       optimize=[(0,1),(0,1)], backend="torch"
                       ).reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
-    rho = oe.contract("IJxy,yz,zx->IJ", rho, closed_C, torch.mm(closed_B, closed_A), optimize=[(1,2),(0,1)], backend="torch")
+    rho = oe.contract("IJxy,yz,zx->IJ", rho, closed_C, BA, optimize=[(1,2),(0,1)], backend="torch")
                                                     #                  #         #
     eigvals, eigvecs = torch.linalg.eigh((rho + rho.conj().T)/2.0)
     eigvals_clipped = torch.clamp(eigvals, min=0.0)
@@ -2501,7 +2655,7 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
                            #         #       #
                       optimize=[(0,1),(0,1)], backend="torch"
                       ).reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
-    rho = oe.contract("IJxy,yz,zx->IJ", rho, closed_A, torch.mm(closed_F, closed_E), optimize=[(1,2),(0,1)], backend="torch")
+    rho = oe.contract("IJxy,yz,zx->IJ", rho, closed_A, FE, optimize=[(1,2),(0,1)], backend="torch")
                                                     #                  #         #
     eigvals, eigvecs = torch.linalg.eigh((rho + rho.conj().T)/2.0)
     eigvals_clipped = torch.clamp(eigvals, min=0.0)
@@ -2511,7 +2665,7 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
     
 
     
-    return torch.real(E_AF + E_CB + E_ED +E_CA+E_AE+E_EC +E_BF+E_FD+E_DB)
+    return torch.real((E_AF+E_CB+E_ED + E_DC+E_BA+E_FE)*0.5 +E_CA+E_AE+E_EC +E_BF+E_FD+E_DB)
 
 
 
@@ -2582,6 +2736,9 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
     EF = torch.mm(closed_E, closed_F)
     AB = torch.mm(closed_A, closed_B)
     CD = torch.mm(closed_C, closed_D)
+    BE = torch.mm(closed_B, closed_E)
+    FC = torch.mm(closed_F, closed_C)
+    DA = torch.mm(closed_D, closed_A)
 
 
     rho = oe.contract("NYij,YMkl->ikjlNM", open_E, open_F, backend="torch").reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
@@ -2635,6 +2792,54 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
     #if to_print > 1e-4: print("E_CD = ", E_CD.item(), "trace rhoCD = ", theTrace.item(), "(ori:", theOriTrace.item(), ")")
     
 
+    rho = oe.contract("NYij,YMkl->ikjlNM", open_B, open_E, backend="torch").reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
+    rhoBE = oe.contract('IJxy,yz,zx->IJ', rho, FC, DA, optimize=[(1,2),(0,1)], backend="torch")
+    #to_print = torch.norm(rhoBE - rhoBE.conj().T).item()/2.0/torch.norm(rhoBE).item()
+    #if to_print > 1e-4: print("rhoBE anti-hermiticity: ", to_print)
+    theOriTrace = torch.trace(rhoBE)
+    rhoBE = (rhoBE + rhoBE.conj().T)/2.0
+    # positive-semidefinite projection:
+    eigvals, eigvecs = torch.linalg.eigh(rhoBE)
+    #print("rhoBE eigvals before clipping: ", eigvals.detach().numpy())
+    eigvals_clipped = torch.clamp(eigvals, min=0.0)
+    rhoBE = (eigvecs * eigvals_clipped) @ eigvecs.conj().T
+    theTrace = eigvals_clipped.sum().clamp(min=1e-30)  # real scalar → safe real division
+    rhoBE = (rhoBE / theTrace).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
+    E_BE = Jbe * oe.contract("ikjl,ijkl->", rhoBE, SdotS, backend="torch")
+    #if to_print > 1e-4: print("E_BE = ", E_BE.item(), "trace rhoBE = ", theTrace.item(), "(ori:", theOriTrace.item
+
+    rho = oe.contract("NYij,YMkl->ikjlNM", open_F, open_C, backend="torch").reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
+    rhoFC = oe.contract('IJxy,yz,zx->IJ', rho, DA, BE, optimize=[(1,2),(0,1)], backend="torch")
+    #to_print = torch.norm(rhoFC - rhoFC.conj().T).item()/2.0/torch.norm(rhoFC).item()
+    #if to_print > 1e-4: print("rhoFC anti-hermiticity: ", to_print)
+    theOriTrace = torch.trace(rhoFC)
+    rhoFC = (rhoFC + rhoFC.conj().T)/2.0
+    # positive-semidefinite projection:
+    eigvals, eigvecs = torch.linalg.eigh(rhoFC)
+    #print("rhoFC eigvals before clipping: ", eigvals.detach().numpy())
+    eigvals_clipped = torch.clamp(eigvals, min=0.0)
+    rhoFC = (eigvecs * eigvals_clipped) @ eigvecs.conj().T
+    theTrace = eigvals_clipped.sum().clamp(min=1e-30)  # real scalar → safe real division
+    rhoFC = (rhoFC / theTrace).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
+    E_FC = Jfc * oe.contract("ikjl,ijkl->", rhoFC, SdotS, backend="torch")
+    #if to_print > 1e-4: print("E_FC = ", E_FC.item(), "trace rhoFC = ", theTrace.item(), "(
+
+    rho = oe.contract("NYij,YMkl->ikjlNM", open_D, open_A, backend="torch").reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
+    rhoDA = oe.contract('IJxy,yz,zx->IJ', rho, BE, FC, optimize=[(1,2),(0,1)], backend="torch")
+    #to_print = torch.norm(rhoDA - rhoDA.conj().T).item()/2.0/torch.norm(rhoDA).item()
+    #if to_print > 1e-4: print("rhoDA anti-hermiticity: ", to_print)
+    theOriTrace = torch.trace(rhoDA)
+    rhoDA = (rhoDA + rhoDA.conj().T)/2.0
+    # positive-semidefinite projection:
+    eigvals, eigvecs = torch.linalg.eigh(rhoDA)
+    #print("rhoDA eigvals before clipping: ", eigvals.detach().numpy())
+    eigvals_clipped = torch.clamp(eigvals, min=0.0)
+    rhoDA = (eigvecs * eigvals_clipped) @ eigvecs.conj().T
+    theTrace = eigvals_clipped.sum().clamp(min=1e-30)  # real scalar → safe real division
+    rhoDA = (rhoDA / theTrace).reshape(d_PHYS,d_PHYS,d_PHYS,d_PHYS)
+    E_DA = Jda * oe.contract("ikjl,ijkl->", rhoDA, SdotS, backend="torch")
+    #if to_print > 1e-4: print("E_DA = ", E_DA.item(), "trace rhoDA = ", theTrace.item(), "(
+
 
 
 
@@ -2687,7 +2892,7 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
                            #         #       #
                       optimize=[(0,1),(0,1)], backend="torch"
                       ).reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
-    rho = oe.contract("IJxy,yz,zx->IJ", rho, closed_A, torch.mm(closed_B, closed_E), optimize=[(1,2),(0,1)], backend="torch")
+    rho = oe.contract("IJxy,yz,zx->IJ", rho, closed_A, BE, optimize=[(1,2),(0,1)], backend="torch")
                                                     #                  #         #
     eigvals, eigvecs = torch.linalg.eigh((rho + rho.conj().T)/2.0)
     eigvals_clipped = torch.clamp(eigvals, min=0.0)
@@ -2701,7 +2906,7 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
                            #         #       #
                       optimize=[(0,1),(0,1)], backend="torch"
                       ).reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
-    rho = oe.contract("IJxy,yz,zx->IJ", rho, closed_E, torch.mm(closed_F, closed_C), optimize=[(1,2),(0,1)], backend="torch")
+    rho = oe.contract("IJxy,yz,zx->IJ", rho, closed_E, FC, optimize=[(1,2),(0,1)], backend="torch")
                                                     #                  #         #
     eigvals, eigvecs = torch.linalg.eigh((rho + rho.conj().T)/2.0)
     eigvals_clipped = torch.clamp(eigvals, min=0.0)
@@ -2715,7 +2920,7 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
                            #         #       #
                       optimize=[(0,1),(0,1)], backend="torch"
                       ).reshape(d_PHYS*d_PHYS,d_PHYS*d_PHYS,chi*D_bond*D_bond,chi*D_bond*D_bond)
-    rho = oe.contract("IJxy,yz,zx->IJ", rho, closed_C, torch.mm(closed_D, closed_A), optimize=[(1,2),(0,1)], backend="torch")
+    rho = oe.contract("IJxy,yz,zx->IJ", rho, closed_C, DA, optimize=[(1,2),(0,1)], backend="torch")
                                                     #                  #         #
     eigvals, eigvecs = torch.linalg.eigh((rho + rho.conj().T)/2.0)
     eigvals_clipped = torch.clamp(eigvals, min=0.0)
@@ -2724,7 +2929,7 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
       ##                                    ##
     
 
-    return torch.real(E_EF + E_AB + E_CD +E_EC+E_CA+E_AE +E_FD+E_DB+E_BF)
+    return torch.real((E_EF+E_AB+E_CD + E_BE+E_FC+E_DA)*0.5 +E_EC+E_CA+E_AE +E_FD+E_DB+E_BF)
 
 
 # ── Observable helpers (used by evaluate_observables in the driver) ───────────

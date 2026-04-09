@@ -1485,3 +1485,136 @@ tensor([[0., 1.],
     step   164  ctm= 16  loss=-2.5021700234  Δ=-1.864e-05  1490/8999910s
     step   165  ctm= 16  loss=-2.5021861481  Δ=-1.612e-05  1551/8999910s
     step   166  ctm= 16  loss=-2.5021994343  Δ=-1.329e-05  1608/8999910s
+
+
+
+
+
+
+
+==========================================================================================
+LARGE-SCALE rSVD BENCHMARK
+Target: D=8, chi=80 → N = chi × D² = 5120,  k = chi = 80,  q = 2k = 160
+==========================================================================================
+
+Building 5120×5120 test matrices...
+  fast-decay ρ=0.001 (large chi, SVs≈0): built in 93.3s
+  fast-decay ρ=0.01: built in 85.2s
+  moderate ρ=0.10 (small chi regime): built in 84.2s
+  moderate ρ=0.30 (early optimization): built in 85.9s
+
+Computing full SVD reference for N=5120 (this may take a while)...
+  Full SVD time per call: 88142ms
+
+==========================================================================================
+BENCHMARK 1: Power iterations (niter) — forward timing
+  N=5120, k=80, q=2k=160
+==========================================================================================
+
+niter      time/call   vs full_svd
+-----------------------------------
+  0          315.1ms        0.00×
+  1          480.8ms        0.01×
+  2          700.3ms        0.01×
+  3          920.9ms        0.01×
+  4         1136.4ms        0.01×
+  6         1580.3ms        0.02×
+  full     88142.1ms        1.00×
+
+niter        cosine(U)     |S_err|/|S|
+----------------------------------------
+  0         1.00000000        5.85e-16
+  1         1.00000000        5.76e-16
+  2         1.00000000        6.67e-16
+  3         1.00000000        7.06e-16
+  4         1.00000000        7.10e-16
+  6         1.00000000        7.70e-16
+
+==========================================================================================
+BENCHMARK 2: Neumann terms (L) — 5th-term backward timing + precision
+  N=5120, k=80, using exact U,S,V from full SVD
+==========================================================================================
+
+  Exact eigh 5th-term time: 23828.3ms
+
+L      time/call    vs eigh     rel error
+------------------------------------------
+  1      453.3ms     0.02×      4.32e-07
+  2      552.4ms     0.02×      3.01e-11
+  3      660.3ms     0.03×      2.69e-15
+  4      755.2ms     0.03×      1.38e-15
+
+==========================================================================================
+BENCHMARK 3: Full forward+backward time — (niter, L) grid
+  N=5120, k=80, loss = ||USVh - C||², 3 repeats, median
+==========================================================================================
+
+niter   L     fwd+bwd   vs full_svd   speedup
+------------------------------------------------
+  full svd   86571.2ms        1.00×  baseline
+  ni=4 L=1    2443.8ms        0.03×   35.42×
+  ni=4 L=2    2545.3ms        0.03×   34.01×
+  ni=4 L=3    2652.9ms        0.03×   32.63×
+  ni=4 L=4    2759.2ms        0.03×   31.38×
+
+==========================================================================================
+BENCHMARK 4: Theoretical FLOP breakdown
+  N=5120, k=80, q=2k=160
+==========================================================================================
+
+  Full SVD:        O(N³) = 134.2 GFLOP
+
+  rSVD forward base (no power iter):
+    A @ Rand:      O(N²q)     = 4.19 GFLOP
+    QR(N×q):       O(Nq²)     = 0.1311 GFLOP
+    Q†A:           O(qN²)     = 4.19 GFLOP  (through autograd)
+    small SVD(q×N):O(q²N)     = 131.1 MFLOP
+    TOTAL base:                 12.58 GFLOP
+
+  Per power iteration:
+    A†Q + QR:      O(N²q)     = 4.19 GFLOP
+    AQ + QR:       O(N²q)     = 4.19 GFLOP
+    TOTAL per iter:             8.39 GFLOP
+
+  Per Neumann term (backward):
+    B @ rhs:       O(Nnk)     = 2.10 GFLOP
+    B†@ ...:       O(Nnk)     = 2.10 GFLOP
+    TOTAL per L:                4.19 GFLOP
+
+  ┌─────────────────────────────────────────────────────────
+  │  Comparison at N=5120, k=80:
+  │  full_svd fwd:             134.2 GFLOP
+  │  rSVD fwd (niter=2):       29.4 GFLOP  (21.9% of full)
+  │  rSVD fwd (niter=4):       46.1 GFLOP  (34.4% of full)
+  │  Neumann L=1 bwd:          4.2 GFLOP  (3.1% of full)
+  │  Neumann L=2 bwd:          8.4 GFLOP  (6.2% of full)
+  │
+  │  Total rSVD (niter=2, L=1): 33.6 GFLOP  (25.0%)
+  │  Total rSVD (niter=2, L=2): 37.7 GFLOP  (28.1%)
+  │  Total rSVD (niter=4, L=2): 54.5 GFLOP  (40.6%)
+  └─────────────────────────────────────────────────────────
+
+==========================================================================================
+BENCHMARK 5: Precision trade-off analysis
+  How many optimizer steps does imprecise gradient waste?
+==========================================================================================
+
+  The key insight: each CTMRG+gradient step at D=8 chi=80 takes ~minutes.
+  If imprecise gradient causes L-BFGS to take 1 extra line search eval,
+  that costs the SAME as the full_svd overhead you're trying to avoid.
+
+  Gradient cosine similarity with full_svd reference:
+  (measured at N=80 in previous benchmark, scales to large N)
+
+    ρ=0.01:  L=1 → cos≈0.99999,  L=2 → cos≈1.0         — both fine
+    ρ=0.30:  L=1 → cos≈0.995,    L=2 → cos≈0.9997       — L=2 helps
+    ρ=0.10:  L=1 → cos≈0.9993,   L=2 → cos≈0.999999     — L=2 helps
+
+  At D=8, chi=80 (large chi), the practical ρ is almost certainly < 0.01.
+  The discarded SVs at chi=80 are negligible.
+  
+  ⇒ At large chi: L=1 is fine, niter=2 likely sufficient.
+  ⇒ At small chi (early sweep): L=2 is safer, niter=4 barely costs more.
+
+
+Done.
