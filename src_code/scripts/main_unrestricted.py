@@ -49,11 +49,6 @@ TOTAL_BUDGET_HOURS = 99999
 # Duplicated below in the TUNABLE PARAMETERS section with full comments.
 
 USE_GPU = True
-# ── glibc malloc tuning (MUST be before any heavy imports) ────────────────────
-# Without this, freed intermediate tensors stay in glibc arenas and RSS
-# grows 10-100× larger than the actual live tensors.  These mallopt calls
-# force allocations ≥ 64 KB to use mmap (returned to OS on free) and limit
-# arenas to 2 (less fragmentation).
 
 _N_PHYSICAL_CORES = 9
 # Detect GPU intent: check os.environ for CUDA_VISIBLE_DEVICES="" (explicitly
@@ -109,14 +104,6 @@ Outputs (all in log/)
   sweep_energy_vs_chi.pdf        E/site vs chi for each D
   sweep_energy_vs_D.pdf          E/site vs D at chi_max (convergence in D)
 """
-
-
-import ctypes as _ctypes
-_libc = _ctypes.CDLL(None)
-_libc.mallopt(_ctypes.c_int(-3), _ctypes.c_int(65536))   # M_MMAP_THRESHOLD  = 64 KB
-_libc.mallopt(_ctypes.c_int(-1), _ctypes.c_int(0))       # M_TRIM_THRESHOLD  = 0 (trim eagerly)
-_libc.mallopt(_ctypes.c_int(-8), _ctypes.c_int(2))       # M_ARENA_MAX       = 2
-del _libc
 
 
 import argparse
@@ -175,7 +162,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import opt_einsum as oe
 import torch
-from torch.utils.checkpoint import checkpoint as _ckpt
+
 
 # Optional debugging aid: if set, PyTorch will print the forward op trace that
 # produced a backward error (e.g. complex SVD phase-gauge issues).
@@ -596,20 +583,20 @@ def evaluate_energy_clean(a, b, c, d, e, f,
                 A, B, C, Dt, E, F, chi, D_sq, CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT)
         E3ebadcf = energy_expectation_nearest_neighbor_3ebadcf_bonds(
             aN, bN, cN, dN, eN, fN,
-                *Js[0:9],
+                *Js[0:12],
                 SdotS,
                 chi, D_bond, d_PHYS, 
                 *all27[:9])
         E3afcbed = energy_expectation_nearest_neighbor_3afcbed_bonds(
             aN, bN, cN, dN, eN, fN,
-                *Js[9:18],
+                *Js[12:24],
                 SdotS,
                 chi, D_bond, d_PHYS, 
                 *all27[9:18])
             
         E3 = energy_expectation_nearest_neighbor_other_3_bonds(
             aN, bN, cN, dN, eN, fN,
-            *Js[18:27],
+            *Js[24:36],
             SdotS,
             chi, D_bond, d_PHYS, 
             *all27[18:27])
@@ -807,7 +794,15 @@ def evaluate_observables(a, b, c, d, e, f,
         del o3, c3
 
         # ── Compute energy from correlations + J values ───────────────────
-        energy = sum(J * corr for J, corr in zip(Js, correlations))
+        # Js is 36-element (12 per env: 6 nn + 6 nnn) but evaluate_observables
+        # only computes 27 correlations (9 per env: 3 primary nn + 6 nnn).
+        # Extract the matching 27 J-values from the 36-element layout.
+        Js_diag = []
+        for _i in range(3):
+            _b = _i * 12
+            Js_diag.extend(Js[_b:_b+3])        # primary nn
+            Js_diag.extend(Js[_b+6:_b+12])     # nnn
+        energy = sum(J * corr for J, corr in zip(Js_diag, correlations))
 
     return energy, correlations, magnetizations
 
@@ -1053,38 +1048,27 @@ def optimize_at_chi(
          C21AF, C32CB, C13ED, T1B,  T2E,  T2D,  T3A,  T3F,  T1C,
          ctm_steps) = all28
 
-        # ── Checkpoint the three energy-function calls. ────────────────────
-        # Why: each energy_expectation call creates large intermediate tensors
-        # (6 open_* tensors ≈ 4.4 MB each, 3 rho tensors ≈ 17 MB each at
-        # chi=29, D=3) that would all be retained in the autograd graph for
-        # the backward pass.  At D=3, chi=29 that is ~88 MB per function, or
-        # ~265 MB total — the dominant source of backward peak memory.
-        # These functions are purely deterministic (no randomness), so the
-        # checkpoint recompute is bit-identical to the original forward.
         loss = (
-            _ckpt(energy_expectation_nearest_neighbor_3ebadcf_bonds,
+            energy_expectation_nearest_neighbor_3ebadcf_bonds(
                   aN, bN, cN, dN, eN, fN,
-                  *Js[0:9],
+                  *Js[0:12],
                   SdotS,
                   chi, D_bond, d_PHYS,
-                  C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E,
-                  use_reentrant=False)
+                  C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E)
             +
-            _ckpt(energy_expectation_nearest_neighbor_3afcbed_bonds,
+            energy_expectation_nearest_neighbor_3afcbed_bonds(
                   aN, bN, cN, dN, eN, fN,
-                  *Js[9:18],
+                  *Js[12:24],
                   SdotS,
                   chi, D_bond, d_PHYS,
-                  C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A,
-                  use_reentrant=False)
+                  C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A)
             +
-            _ckpt(energy_expectation_nearest_neighbor_other_3_bonds,
+            energy_expectation_nearest_neighbor_other_3_bonds(
                   aN, bN, cN, dN, eN, fN,
-                  *Js[18:27],
+                  *Js[24:36],
                   SdotS,
                   chi, D_bond, d_PHYS,
-                  C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C,
-                  use_reentrant=False)
+                  C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C)
         )
 
         return loss, int(ctm_steps)
@@ -1468,14 +1452,14 @@ def main():
             _json.dump(_hp, _fp, indent=2)
 
     # ── Hamiltonians (J1-J2 model) ────────────────────────────────────────────
-    # Each energy function takes 9 coupling constants (3 nn + 6 nnn) plus the
-    # unit spin-spin operator SdotS.  Js is a flat list of 27 = 3 × (3+6):
-    #   Js[ 0: 9] → energy_fn_1:  Jeb,Jad,Jcf (nn)  + Jae,Jec,Jca,Jdb,Jbf,Jfd (nnn)
-    #   Js[ 9:18] → energy_fn_2:  Jaf,Jcb,Jed (nn)  + Jca,Jae,Jec,Jbf,Jfd,Jdb (nnn)
-    #   Js[18:27] → energy_fn_3:  Jcd,Jef,Jab (nn)  + Jec,Jca,Jae,Jfd,Jdb,Jbf (nnn)
+    # Each energy function takes 12 coupling constants (6 nn + 6 nnn) plus the
+    # unit spin-spin operator SdotS.  Js is a flat list of 36 = 3 × (6+6):
+    #   Js[ 0:12] → energy_fn_1:  Jeb,Jad,Jcf,Jfa,Jde,Jbc (nn)  + Jae,Jec,Jca,Jdb,Jbf,Jfd (nnn)
+    #   Js[12:24] → energy_fn_2:  Jaf,Jcb,Jed,Jdc,Jba,Jfe (nn)  + Jca,Jae,Jec,Jbf,Jfd,Jdb (nnn)
+    #   Js[24:36] → energy_fn_3:  Jcd,Jef,Jab,Jbe,Jfc,Jda (nn)  + Jec,Jca,Jae,Jfd,Jdb,Jbf (nnn)
     SdotS = build_heisenberg_H(1.0, d_PHYS)         # unit S·S operator (J=1)
     J1, J2 = args.J1, args.J2
-    Js = ([J1]*3 + [J2]*6) * 3                       # 27 J-values total
+    Js = ([J1]*6 + [J2]*6) * 3                       # 36 J-values total
 
     # ── Banner ────────────────────────────────────────────────────────────────
     print("=" * 76)
@@ -1612,18 +1596,7 @@ def main():
             cur_abcdef = _new_tensors_from_data(tuple(out[:6]))
             del out
             gc.collect()  # free old optimizer state + CTMRG envs + graph
-            # ── Return fragmented heap pages to the OS. ──────────────────────
-            # glibc's ptmalloc2 does not automatically shrink the heap after
-            # freeing large tensors; RSS keeps accumulating across chi levels
-            # even after gc.collect().  malloc_trim(0) asks glibc to release
-            # all releasable pages immediately, resetting RSS close to the
-            # actual live-data footprint.  This is the primary cause of the
-            # 600+ MB baseline seen at the start of large (D, chi) levels.
-            try:
-                import ctypes
-                ctypes.CDLL(None).malloc_trim(0)
-            except Exception:
-                pass  # non-Linux systems: silently skip
+
 
             # Clean energy evaluation + observables
             print(f"  │  Evaluating energy & observables at (D={D_bond}, chi={chi}) ...")
@@ -1696,11 +1669,6 @@ def main():
             else None)
         del cur_abcdef
         gc.collect()
-        try:
-            import ctypes
-            ctypes.CDLL(None).malloc_trim(0)
-        except Exception:
-            pass
 
         D_elapsed = time.perf_counter() - D_start_time
         print(f"\n  D={D_bond} complete in {D_elapsed/3600:.2f} h")

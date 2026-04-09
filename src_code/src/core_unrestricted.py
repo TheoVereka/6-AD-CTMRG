@@ -2185,6 +2185,7 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
 def energy_expectation_nearest_neighbor_3ebadcf_bonds(
                 a,b,c,d,e,f, 
                 Jeb,Jad,Jcf,
+                Jfa,Jde,Jbc,
                 Jae,Jec,Jca,Jdb,Jbf,Jfd,
                 SdotS,
                 chi, D_bond, d_PHYS, 
@@ -2437,6 +2438,7 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
 
 def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
                 Jaf,Jcb,Jed, 
+                Jdc,Jba,Jfe,
                 Jca,Jae,Jec,Jbf,Jfd,Jdb,
                 SdotS,
                 chi, D_bond, d_PHYS, 
@@ -2673,6 +2675,7 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
 
 def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f, 
                     Jcd,Jef,Jab,
+                    Jbe,Jfc,Jda,
                     Jec,Jca,Jae,Jfd,Jdb,Jbf,
                     SdotS,
                     chi, D_bond, d_PHYS,
