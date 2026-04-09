@@ -45,18 +45,12 @@ DEFAULT_CHI_SCHEDULES = {
 
 TOTAL_BUDGET_HOURS = 99999
 
-# ── GPU/CPU intent — declared here (before threading) so _GPU_LIKELY can read it ──
+# ── GPU/CPU intent ────────────────────────────────────────────────────────────
 # Duplicated below in the TUNABLE PARAMETERS section with full comments.
 
 USE_GPU = False
 
 _N_PHYSICAL_CORES = 4
-# Detect GPU intent: check os.environ for CUDA_VISIBLE_DEVICES="" (explicitly
-# disabled) as the only reliable heuristic before torch is imported.
-# The USE_GPU flag is defined later in the "TUNABLE PARAMETERS" section (below
-# torch import), so we cannot use it here.  Default assumption: GPU is used
-# because USE_GPU=True is the default and the cluster has a GPU.
-# Override: set CUDA_VISIBLE_DEVICES="" in the shell to force CPU threading.
 
 # ── Physical model ────────────────────────────────────────────────────────────
 
@@ -119,32 +113,17 @@ import time
 # ── CPU threading ─────────────────────────────────────────────────────────────
 # MUST be set BEFORE importing NumPy / PyTorch / MKL — they read these at init.
 #
-# GPU run (USE_GPU=True and CUDA available):
-#   All heavy computation (einsums, SVD, matmul) is dispatched to the GPU by a
-#   single CUDA host thread.  CPU intra-op threads are mostly idle but still
-#   spin-wait, consuming CPU cache bandwidth and competing with the CUDA driver
-#   thread for L3 cache and CPU cycles.  Setting intra-op threads to 1 eliminates
-#   this contention and lets the host thread submit CUDA kernels faster.
-#   → torch.set_num_threads(1) on GPU is typically faster end-to-end.
+# We always default to _N_PHYSICAL_CORES here (safe for CPU).
+# After torch is imported and the actual device is determined in main(),
+# torch.set_num_threads(1) is called for GPU runs — this overrides both the
+# PyTorch and MKL thread pools at runtime, so the env-var default is harmless.
 #
-# CPU run (USE_GPU=False):
-#   Use all physical cores; hyperthreading does NOT help SVD / dense matmul.
-#   Hardware: Intel Core i7-8665U — 4 physical cores × 2 HT = 8 logical CPUs.
-#   → torch.set_num_threads(4) on CPU (4 physical cores).
-#
-# Detected at import time using os.environ CUDA_VISIBLE_DEVICES and USE_GPU flag.
-# Override at runtime: OMP_NUM_THREADS=N python scripts/main_unrestricted.py
+# GPU run: 1 intra-op thread — avoids spin-wait contention with CUDA driver.
+# CPU run: all physical cores — MKL/BLAS benefits from multi-threading.
+#   Hardware: adjust _N_PHYSICAL_CORES above to match your machine.
 
-
-
-_CUDA_DISABLED = os.environ.get("CUDA_VISIBLE_DEVICES", None) == ""
-# Use the USE_GPU flag (defined above) PLUS the CUDA_VISIBLE_DEVICES heuristic.
-# This correctly sets 1 thread when USE_GPU=True (GPU run) and _N_PHYSICAL_CORES
-# when USE_GPU=False (CPU run), without needing torch.cuda.is_available().
-_GPU_LIKELY = USE_GPU and not _CUDA_DISABLED
-_N_THREADS_FOR_OMP = 1 if _GPU_LIKELY else _N_PHYSICAL_CORES
-os.environ.setdefault("OMP_NUM_THREADS", str(_N_THREADS_FOR_OMP))
-os.environ.setdefault("MKL_NUM_THREADS", str(_N_THREADS_FOR_OMP))
+os.environ.setdefault("OMP_NUM_THREADS", str(_N_PHYSICAL_CORES))
+os.environ.setdefault("MKL_NUM_THREADS", str(_N_PHYSICAL_CORES))
 # Prevent MKL from silently reducing thread count when it detects nested
 # parallelism or high system load.
 os.environ.setdefault("MKL_DYNAMIC", "FALSE")
@@ -153,8 +132,8 @@ os.environ.setdefault("KMP_AFFINITY", "granularity=fine,compact,1,0")
 # Spin-wait time: 0 so workers yield immediately between parallel regions.
 # On GPU runs with 1 thread, this has no effect but is harmless.
 os.environ.setdefault("KMP_BLOCKTIME", "0")
-print("OMP_NUM_THREADS =", os.environ["OMP_NUM_THREADS"])
-print("MKL_NUM_THREADS =", os.environ["MKL_NUM_THREADS"])
+#print("OMP_NUM_THREADS =", os.environ["OMP_NUM_THREADS"])
+#print("MKL_NUM_THREADS =", os.environ["MKL_NUM_THREADS"])
 
 
 
@@ -173,12 +152,10 @@ if os.environ.get("CTMRG_ANOMALY", "0") == "1":
     torch.autograd.set_detect_anomaly(True)
 
 # Tell PyTorch's own dispatcher about intra-op parallelism.
-# GPU run: 1 thread — the CUDA host thread submits all kernels; extra CPU
-#          threads spin-wait and waste cache bandwidth + thermal budget.
-# CPU run: all physical cores — MKL/BLAS benefits from multi-threading.
-# inter-op pool always 1: our outer loop is serial, extra inter-op threads
-# just compete for the same physical cores.
-torch.set_num_threads(_N_THREADS_FOR_OMP)
+# The env vars above set the safe default (_N_PHYSICAL_CORES).
+# The final decision (1 for GPU, _N_PHYSICAL_CORES for CPU) is made
+# in main() after torch.cuda.is_available() is checked.
+torch.set_num_threads(_N_PHYSICAL_CORES)
 torch.set_num_interop_threads(1)
 
 import core_unrestricted as _core
@@ -1310,11 +1287,13 @@ def main():
                   "falling back to CPU.")
         _dev = torch.device('cpu')
     set_device(_dev)   # propagates DEVICE into core_unrestricted globals
-    # If we fell back to CPU, fix thread count (the pre-import heuristic may
-    # have assumed GPU mode because CUDA_VISIBLE_DEVICES was unset).
-    if _dev.type == 'cpu' and _GPU_LIKELY:
-        torch.set_num_threads(_N_PHYSICAL_CORES)
-        print(f"  Threads corrected to {_N_PHYSICAL_CORES} (CPU fallback)")
+    # GPU mode: reduce to 1 CPU thread to avoid spin-wait contention.
+    # CPU mode: keep _N_PHYSICAL_CORES (already set above).
+    if _dev.type == 'cuda':
+        torch.set_num_threads(1)
+        print("  Threads set to 1 (GPU mode)")
+    else:
+        print(f"  Threads: {torch.get_num_threads()} (CPU mode)")
     _core._SVD_CPU_OFFLOAD_THRESHOLD = SVD_CPU_OFFLOAD_THRESHOLD
     _core.set_rsvd_mode(RSVD_MODE,
                         neumann_terms=RSVD_NEUMANN_TERMS,

@@ -55,23 +55,12 @@ DEFAULT_CHI_SCHEDULES = {
 
 TOTAL_BUDGET_HOURS = 99999
 
-# ── GPU/CPU intent — declared here (before threading) so _GPU_LIKELY can read it ──
+# ── GPU/CPU intent ────────────────────────────────────────────────────────────
 # Duplicated below in the TUNABLE PARAMETERS section with full comments.
 
-USE_GPU = True
-# ── glibc malloc tuning (MUST be before any heavy imports) ────────────────────
-# Without this, freed intermediate tensors stay in glibc arenas and RSS
-# grows 10-100× larger than the actual live tensors.  These mallopt calls
-# force allocations ≥ 64 KB to use mmap (returned to OS on free) and limit
-# arenas to 2 (less fragmentation).
+USE_GPU = False
 
 _N_PHYSICAL_CORES = 35
-# Detect GPU intent: check os.environ for CUDA_VISIBLE_DEVICES="" (explicitly
-# disabled) as the only reliable heuristic before torch is imported.
-# The USE_GPU flag is defined later in the "TUNABLE PARAMETERS" section (below
-# torch import), so we cannot use it here.  Default assumption: GPU is used
-# because USE_GPU=True is the default and the cluster has a GPU.
-# Override: set CUDA_VISIBLE_DEVICES="" in the shell to force CPU threading.
 
 # ── Physical model ────────────────────────────────────────────────────────────
 
@@ -81,7 +70,7 @@ J1_COUPLING = 1.0
 #   The nn Hamiltonian is  H_nn = J1 Σ_{<i,j>} S_i · S_j
 #   summed over all 9 nearest-neighbour pairs in the 6-site honeycomb unit cell.
 
-J2_COUPLING = 0.0
+J2_COUPLING = 0.3
 #   Next-nearest-neighbour (nnn) Heisenberg exchange coupling constant.
 #   J2 > 0 = frustrated AFM.  Set to 0 to recover the pure J1 model.
 #   The nnn Hamiltonian is  H_nnn = J2 Σ_{<<i,j>>} S_i · S_j
@@ -121,14 +110,6 @@ Outputs (all in log/)
 """
 
 
-import ctypes as _ctypes
-_libc = _ctypes.CDLL(None)
-_libc.mallopt(_ctypes.c_int(-3), _ctypes.c_int(65536))   # M_MMAP_THRESHOLD  = 64 KB
-_libc.mallopt(_ctypes.c_int(-1), _ctypes.c_int(0))       # M_TRIM_THRESHOLD  = 0 (trim eagerly)
-_libc.mallopt(_ctypes.c_int(-8), _ctypes.c_int(2))       # M_ARENA_MAX       = 2
-del _libc
-
-
 import argparse
 import collections
 import datetime
@@ -142,33 +123,17 @@ import time
 # ── CPU threading ─────────────────────────────────────────────────────────────
 # MUST be set BEFORE importing NumPy / PyTorch / MKL — they read these at init.
 #
-# GPU run (USE_GPU=True and CUDA available):
-#   All heavy computation (einsums, SVD, matmul) is dispatched to the GPU by a
-#   single CUDA host thread.  CPU intra-op threads are mostly idle but still
-#   spin-wait, consuming CPU cache bandwidth and competing with the CUDA driver
-#   thread for L3 cache and CPU cycles.  Setting intra-op threads to 1 eliminates
-#   this contention and lets the host thread submit CUDA kernels faster.
-#   → torch.set_num_threads(1) on GPU is typically faster end-to-end.
+# We always default to _N_PHYSICAL_CORES here (safe for CPU).
+# After torch is imported and the actual device is determined in main(),
+# torch.set_num_threads(1) is called for GPU runs — this overrides both the
+# PyTorch and MKL thread pools at runtime, so the env-var default is harmless.
 #
-# CPU run (USE_GPU=False):
-#   Use all physical cores; hyperthreading does NOT help SVD / dense matmul.
-#   Hardware: Intel Core i7-8665U — 4 physical cores × 2 HT = 8 logical CPUs.
-#   → torch.set_num_threads(4) on CPU (4 physical cores).
-#
-# Detected at import time using os.environ CUDA_VISIBLE_DEVICES and USE_GPU flag.
-# Override at runtime: OMP_NUM_THREADS=N python scripts/main_unrestricted.py
-#
+# GPU run: 1 intra-op thread — avoids spin-wait contention with CUDA driver.
+# CPU run: all physical cores — MKL/BLAS benefits from multi-threading.
+#   Hardware: adjust _N_PHYSICAL_CORES above to match your machine.
 
-
-
-_CUDA_DISABLED = os.environ.get("CUDA_VISIBLE_DEVICES", None) == ""
-# Use the USE_GPU flag (defined above) PLUS the CUDA_VISIBLE_DEVICES heuristic.
-# This correctly sets 1 thread when USE_GPU=True (GPU run) and _N_PHYSICAL_CORES
-# when USE_GPU=False (CPU run), without needing torch.cuda.is_available().
-_GPU_LIKELY = USE_GPU and not _CUDA_DISABLED
-_N_THREADS_FOR_OMP = 1 if _GPU_LIKELY else _N_PHYSICAL_CORES
-os.environ.setdefault("OMP_NUM_THREADS", str(_N_THREADS_FOR_OMP))
-os.environ.setdefault("MKL_NUM_THREADS", str(_N_THREADS_FOR_OMP))
+os.environ.setdefault("OMP_NUM_THREADS", str(_N_PHYSICAL_CORES))
+os.environ.setdefault("MKL_NUM_THREADS", str(_N_PHYSICAL_CORES))
 # Prevent MKL from silently reducing thread count when it detects nested
 # parallelism or high system load.
 os.environ.setdefault("MKL_DYNAMIC", "FALSE")
@@ -177,6 +142,10 @@ os.environ.setdefault("KMP_AFFINITY", "granularity=fine,compact,1,0")
 # Spin-wait time: 0 so workers yield immediately between parallel regions.
 # On GPU runs with 1 thread, this has no effect but is harmless.
 os.environ.setdefault("KMP_BLOCKTIME", "0")
+#print("OMP_NUM_THREADS =", os.environ["OMP_NUM_THREADS"])
+#print("MKL_NUM_THREADS =", os.environ["MKL_NUM_THREADS"])
+
+
 
 # sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
@@ -185,7 +154,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import opt_einsum as oe
 import torch
-from torch.utils.checkpoint import checkpoint as _ckpt
+
 
 # Optional debugging aid: if set, PyTorch will print the forward op trace that
 # produced a backward error (e.g. complex SVD phase-gauge issues).
@@ -193,12 +162,10 @@ if os.environ.get("CTMRG_ANOMALY", "0") == "1":
     torch.autograd.set_detect_anomaly(True)
 
 # Tell PyTorch's own dispatcher about intra-op parallelism.
-# GPU run: 1 thread — the CUDA host thread submits all kernels; extra CPU
-#          threads spin-wait and waste cache bandwidth + thermal budget.
-# CPU run: all physical cores — MKL/BLAS benefits from multi-threading.
-# inter-op pool always 1: our outer loop is serial, extra inter-op threads
-# just compete for the same physical cores.
-torch.set_num_threads(_N_THREADS_FOR_OMP)
+# The env vars above set the safe default (_N_PHYSICAL_CORES).
+# The final decision (1 for GPU, _N_PHYSICAL_CORES for CPU) is made
+# in main() after torch.cuda.is_available() is checked.
+torch.set_num_threads(_N_PHYSICAL_CORES)
 torch.set_num_interop_threads(1)
 
 import core_unrestricted as _core
@@ -302,7 +269,7 @@ SVD_CPU_OFFLOAD_THRESHOLD = 0
 #
 #   Default 0 → always GPU (correct for cluster; change to 99999 on laptop).
 
-RSVD_MODE = 'full_svd'
+RSVD_MODE = 'neumann'
 #   rSVD backward mode.  Controls how the truncated-SVD 5th-term correction
 #   (arXiv:2311.11894v3) is computed in the backward pass.
 #
@@ -606,20 +573,20 @@ def evaluate_energy_clean(a, b, c, d, e, f,
                 A, B, C, Dt, E, F, chi, D_sq, CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT)
         E3ebadcf = energy_expectation_nearest_neighbor_3ebadcf_bonds(
             aN, bN, cN, dN, eN, fN,
-                *Js[0:9],
+                *Js[0:12],
                 SdotS,
                 chi, D_bond, d_PHYS, 
                 *all27[:9])
         E3afcbed = energy_expectation_nearest_neighbor_3afcbed_bonds(
             aN, bN, cN, dN, eN, fN,
-                *Js[9:18],
+                *Js[12:24],
                 SdotS,
                 chi, D_bond, d_PHYS, 
                 *all27[9:18])
             
         E3 = energy_expectation_nearest_neighbor_other_3_bonds(
             aN, bN, cN, dN, eN, fN,
-            *Js[18:27],
+            *Js[24:36],
             SdotS,
             chi, D_bond, d_PHYS, 
             *all27[18:27])
@@ -817,7 +784,15 @@ def evaluate_observables(a, b, c, d, e, f,
         del o3, c3
 
         # ── Compute energy from correlations + J values ───────────────────
-        energy = sum(J * corr for J, corr in zip(Js, correlations))
+        # Js is 36-element (12 per env: 6 nn + 6 nnn) but evaluate_observables
+        # only computes 27 correlations (9 per env: 3 primary nn + 6 nnn).
+        # Extract the matching 27 J-values from the 36-element layout.
+        Js_diag = []
+        for _i in range(3):
+            _b = _i * 12
+            Js_diag.extend(Js[_b:_b+3])        # primary nn
+            Js_diag.extend(Js[_b+6:_b+12])     # nnn
+        energy = sum(J * corr for J, corr in zip(Js_diag, correlations))
 
     return energy, correlations, magnetizations
 
@@ -1063,38 +1038,27 @@ def optimize_at_chi(
          C21AF, C32CB, C13ED, T1B,  T2E,  T2D,  T3A,  T3F,  T1C,
          ctm_steps) = all28
 
-        # ── Checkpoint the three energy-function calls. ────────────────────
-        # Why: each energy_expectation call creates large intermediate tensors
-        # (6 open_* tensors ≈ 4.4 MB each, 3 rho tensors ≈ 17 MB each at
-        # chi=29, D=3) that would all be retained in the autograd graph for
-        # the backward pass.  At D=3, chi=29 that is ~88 MB per function, or
-        # ~265 MB total — the dominant source of backward peak memory.
-        # These functions are purely deterministic (no randomness), so the
-        # checkpoint recompute is bit-identical to the original forward.
         loss = (
-            _ckpt(energy_expectation_nearest_neighbor_3ebadcf_bonds,
+            energy_expectation_nearest_neighbor_3ebadcf_bonds(
                   aN, bN, cN, dN, eN, fN,
-                  *Js[0:9],
+                  *Js[0:12],
                   SdotS,
                   chi, D_bond, d_PHYS,
-                  C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E,
-                  use_reentrant=False)
+                  C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E)
             +
-            _ckpt(energy_expectation_nearest_neighbor_3afcbed_bonds,
+            energy_expectation_nearest_neighbor_3afcbed_bonds(
                   aN, bN, cN, dN, eN, fN,
-                  *Js[9:18],
+                  *Js[12:24],
                   SdotS,
                   chi, D_bond, d_PHYS,
-                  C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A,
-                  use_reentrant=False)
+                  C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A)
             +
-            _ckpt(energy_expectation_nearest_neighbor_other_3_bonds,
+            energy_expectation_nearest_neighbor_other_3_bonds(
                   aN, bN, cN, dN, eN, fN,
-                  *Js[18:27],
+                  *Js[24:36],
                   SdotS,
                   chi, D_bond, d_PHYS,
-                  C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C,
-                  use_reentrant=False)
+                  C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C)
         )
 
         return loss, int(ctm_steps)
@@ -1324,12 +1288,22 @@ def main():
     _use_gpu = getattr(args, 'gpu', USE_GPU)
     if _use_gpu and torch.cuda.is_available():
         _dev = torch.device('cuda')
+        print(f"  Using GPU: {_dev} ({torch.cuda.get_device_name(_dev)})")
+        print("    GPU detected; setted threads to 1 to avoid oversubscription.")
+        torch.set_num_threads(1)
     else:
         if _use_gpu:
             print("  Warning: --gpu requested but torch.cuda.is_available()=False; "
                   "falling back to CPU.")
         _dev = torch.device('cpu')
     set_device(_dev)   # propagates DEVICE into core_unrestricted globals
+    # GPU mode: reduce to 1 CPU thread to avoid spin-wait contention.
+    # CPU mode: keep _N_PHYSICAL_CORES (already set above).
+    if _dev.type == 'cuda':
+        torch.set_num_threads(1)
+        print("  Threads set to 1 (GPU mode)")
+    else:
+        print(f"  Threads: {torch.get_num_threads()} (CPU mode)")
     _core._SVD_CPU_OFFLOAD_THRESHOLD = SVD_CPU_OFFLOAD_THRESHOLD
     _core.set_rsvd_mode(RSVD_MODE,
                         neumann_terms=RSVD_NEUMANN_TERMS,
@@ -1478,14 +1452,14 @@ def main():
             _json.dump(_hp, _fp, indent=2)
 
     # ── Hamiltonians (J1-J2 model) ────────────────────────────────────────────
-    # Each energy function takes 9 coupling constants (3 nn + 6 nnn) plus the
-    # unit spin-spin operator SdotS.  Js is a flat list of 27 = 3 × (3+6):
-    #   Js[ 0: 9] → energy_fn_1:  Jeb,Jad,Jcf (nn)  + Jae,Jec,Jca,Jdb,Jbf,Jfd (nnn)
-    #   Js[ 9:18] → energy_fn_2:  Jaf,Jcb,Jed (nn)  + Jca,Jae,Jec,Jbf,Jfd,Jdb (nnn)
-    #   Js[18:27] → energy_fn_3:  Jcd,Jef,Jab (nn)  + Jec,Jca,Jae,Jfd,Jdb,Jbf (nnn)
+    # Each energy function takes 12 coupling constants (6 nn + 6 nnn) plus the
+    # unit spin-spin operator SdotS.  Js is a flat list of 36 = 3 × (6+6):
+    #   Js[ 0:12] → energy_fn_1:  Jeb,Jad,Jcf,Jfa,Jde,Jbc (nn)  + Jae,Jec,Jca,Jdb,Jbf,Jfd (nnn)
+    #   Js[12:24] → energy_fn_2:  Jaf,Jcb,Jed,Jdc,Jba,Jfe (nn)  + Jca,Jae,Jec,Jbf,Jfd,Jdb (nnn)
+    #   Js[24:36] → energy_fn_3:  Jcd,Jef,Jab,Jbe,Jfc,Jda (nn)  + Jec,Jca,Jae,Jfd,Jdb,Jbf (nnn)
     SdotS = build_heisenberg_H(1.0, d_PHYS)         # unit S·S operator (J=1)
     J1, J2 = args.J1, args.J2
-    Js = ([J1]*3 + [J2]*6) * 3                       # 27 J-values total
+    Js = ([J1]*6 + [J2]*6) * 3                       # 36 J-values total
 
     # ── Banner ────────────────────────────────────────────────────────────────
     print("=" * 76)
@@ -1622,18 +1596,7 @@ def main():
             cur_abcdef = _new_tensors_from_data(tuple(out[:6]))
             del out
             gc.collect()  # free old optimizer state + CTMRG envs + graph
-            # ── Return fragmented heap pages to the OS. ──────────────────────
-            # glibc's ptmalloc2 does not automatically shrink the heap after
-            # freeing large tensors; RSS keeps accumulating across chi levels
-            # even after gc.collect().  malloc_trim(0) asks glibc to release
-            # all releasable pages immediately, resetting RSS close to the
-            # actual live-data footprint.  This is the primary cause of the
-            # 600+ MB baseline seen at the start of large (D, chi) levels.
-            try:
-                import ctypes
-                ctypes.CDLL(None).malloc_trim(0)
-            except Exception:
-                pass  # non-Linux systems: silently skip
+
 
             # Clean energy evaluation + observables
             print(f"  │  Evaluating energy & observables at (D={D_bond}, chi={chi}) ...")
@@ -1681,7 +1644,7 @@ def main():
                         *cur_abcdef, Js, SdotS, chi_la, D_bond, d_PHYS)
                 _save_observables_file(
                     os.path.join(output_dir,
-                                 f"D_{D_bond}_chi_{chi}+2D_equal_{chi_la}"
+                                 f"D_{D_bond}_chi_{chi}+2D={chi_la}"
                                  f"_energy_magnetization_correlation.txt"),
                     D_bond, chi_la, energy_la, corr_la, mag_la)
                 _print_observables_summary(
@@ -1706,11 +1669,6 @@ def main():
             else None)
         del cur_abcdef
         gc.collect()
-        try:
-            import ctypes
-            ctypes.CDLL(None).malloc_trim(0)
-        except Exception:
-            pass
 
         D_elapsed = time.perf_counter() - D_start_time
         print(f"\n  D={D_bond} complete in {D_elapsed/3600:.2f} h")
