@@ -27,14 +27,14 @@ DEFAULT_CHI_MAX = {2: 16, 3: 81, 4: 80, 5:9999, 6:9999, 7:9999, 8:9999, 9:9999, 
 #   Increase if you have more memory; decrease if you hit OOM.
 
 DEFAULT_CHI_SCHEDULES = {
-    2: [ 2,  3,  4,  6,  8],
-    3: [ 3,  4,  6,  9, 12, 15],
-    4: [ 6,  8, 12, 16, 20, 24], 
-    5: [ 8, 10, 15, 20, 25, 30, 35],
-    6: [12, 18, 24, 30, 36, 42, 48],
-    7: [14, 21, 28, 35, 42, 49, 56, 63],
-    8: [24, 32, 40, 48, 56, 64, 72, 80],
-    9: [27, 36, 45, 54, 63, 72, 81, 90, 99],
+    2: [ 3,  4,  6,  8],
+    3: [ 4,  6,  9, 12, 15],
+    4: [ 8, 12, 16, 20, 24], 
+    5: [10, 15, 20, 25, 30, 35],
+    6: [18, 24, 30, 36, 42, 48],
+    7: [21, 28, 35, 42, 49, 56, 63],
+    8: [32, 40, 48, 56, 64, 72, 80],
+    9: [36, 45, 54, 63, 72, 81, 90, 99],
     #10:[40, 50, 60, 70, 80, 90,100,110,120],
     #11:[44, 55, 66, 77, 88, 99,110,121,132,143],
 }
@@ -48,14 +48,14 @@ TOTAL_BUDGET_HOURS = 99999
 # ── GPU/CPU intent — declared here (before threading) so _GPU_LIKELY can read it ──
 # Duplicated below in the TUNABLE PARAMETERS section with full comments.
 
-USE_GPU = False
+USE_GPU = True
 # ── glibc malloc tuning (MUST be before any heavy imports) ────────────────────
 # Without this, freed intermediate tensors stay in glibc arenas and RSS
 # grows 10-100× larger than the actual live tensors.  These mallopt calls
 # force allocations ≥ 64 KB to use mmap (returned to OS on free) and limit
 # arenas to 2 (less fragmentation).
 
-_N_PHYSICAL_CORES = 4
+_N_PHYSICAL_CORES = 9
 # Detect GPU intent: check os.environ for CUDA_VISIBLE_DEVICES="" (explicitly
 # disabled) as the only reliable heuristic before torch is imported.
 # The USE_GPU flag is defined later in the "TUNABLE PARAMETERS" section (below
@@ -292,33 +292,41 @@ SVD_CPU_OFFLOAD_THRESHOLD = 0
 #
 #   Default 0 → always GPU (correct for cluster; change to 99999 on laptop).
 
-RSVD_MODE = 'neumann'
+RSVD_MODE = 'full_svd'
 #   rSVD backward mode.  Controls how the truncated-SVD 5th-term correction
 #   (arXiv:2311.11894v3) is computed in the backward pass.
 #
 #   'full_svd'  — keep full thin SVD (safe reference, no rSVD, ~O(N·min(m,n))).
 #   'neumann'   — Neumann series for 5th term: O(2·L·mnk) per call, avoids
-#                 the O(N³) eigh.  Exact when discarded SVs ≈ 0 (L=1 suffices).
+#                 the O(N³) eigh.  Exact when discarded SVs ≈ 0.
 #   'augmented' — save k+k_extra rSVD triples; zero-padding captures 5th term
-#                 implicitly via F,G cross-coupling.  Needs large k_extra to
-#                 approach full accuracy.
+#                 implicitly via F,G cross-coupling.  NOT recommended:
+#                 benchmarks show ~85-90% gradient error even with k_aug=2k
+#                 because only 2k of N modes are captured.  Neumann L=2 is
+#                 orders of magnitude more precise at the same cost.
 #   'none'      — skip 5th term entirely (wrong for projector-type losses).
 #
-#   Recommendation for CTMRG (SVs drop sharply to ≈0 at truncation chi):
-#     RSVD_MODE = 'neumann', RSVD_NEUMANN_TERMS = 1
-#   Because B†B ≈ 0 → 1 Neumann iteration is exact, zero eigh cost.
+#   Recommendation for CTMRG:
+#     RSVD_MODE = 'neumann', RSVD_NEUMANN_TERMS = 2
+#   L=2 costs <1ms extra vs L=1 but gives 15× better gradient at ρ=0.30
+#   (i.e. when chi is small and discarded weight is non-negligible).
+#   L=1 suffices only when discarded SVs are truly ≈ 0 (large chi).
 
-RSVD_NEUMANN_TERMS = 1
+RSVD_NEUMANN_TERMS = 2
 #   Number of Neumann series iterations in 'neumann' mode.
 #     positive N  → N-term approximation  (O(2·N·mnk))
 #     negative N  → exact eigh (O(N³)), for validation only
 #     0           → skip 5th term (same as RSVD_MODE='none')
-#   For CTMRG spectra where discarded SVs ≈ 0, 1 term is exact.
-#   For slower-decaying spectra (σ_{k+1}/σ_k ≈ 0.5), use 4–8 terms.
+#   Benchmarked 5th-term relative error (exact U,S,V):
+#     ρ=0.01:  L=1 → 7e-6,   L=2 → 6e-10  (both excellent)
+#     ρ=0.30:  L=1 → 8e-3,   L=2 → 6e-4   (L=2 is 13× better)
+#     ρ=0.50:  L=1 → 3e-2,   L=2 → 7e-3   (L=2 is 5× better)
+#   Timing: L=1 → 37.2ms, L=2 → 38.0ms at N=400 — negligible cost.
+#   For ρ ≥ 0.80 Neumann doesn't converge; use 'full_svd' instead.
 
 RSVD_AUGMENT_EXTRA = 0
 #   Extra singular triples saved beyond k in 'augmented' mode.
-#   Unused when RSVD_MODE != 'augmented'.  Set to chi for moderate accuracy.
+#   Unused when RSVD_MODE != 'augmented'.  Not recommended (see above).
 
 
 # ── L-BFGS optimiser ─────────────────────────────────────────────────────────
@@ -492,7 +500,7 @@ GEO_SCHEDULE_STEPS = 5
 
 # ── Reproducibility ──────────────────────────────────────────────────────────
 
-RANDOM_SEED_FIX = False
+RANDOM_SEED_FIX = True
 #   True  → fix all RNGs (Python random, NumPy, PyTorch CPU + CUDA) to
 #            RANDOM_SEED before any tensor is allocated.  Guarantees
 #            bit-identical initialisation, padding noise, and rSVD random
@@ -500,7 +508,7 @@ RANDOM_SEED_FIX = False
 #   False → non-reproducible (random initialisation differs each run).
 #   Overrideable at runtime: --no-seed CLI flag sets this to False.
 
-RANDOM_SEED = 42
+RANDOM_SEED = 4242
 #   Integer seed used when RANDOM_SEED_FIX = True.
 #   Override at runtime: --seed <int>
 

@@ -94,9 +94,10 @@ _SVD_CPU_OFFLOAD_THRESHOLD: int = 0
 #
 _RSVD_BACKWARD_MODE: str = 'full_svd'
 
-_RSVD_NEUMANN_TERMS: int = 4
+_RSVD_NEUMANN_TERMS: int = 2
 # Number of Neumann series terms (L) for 'neumann' mode.
 # Positive → Neumann approximation (fast).  Negative → exact eigh (for reference).
+# L=2 is the sweet spot: <1ms extra vs L=1, but 15× more precise at ρ=0.30.
 
 _RSVD_AUGMENT_EXTRA: int = 0
 # Extra singular triples beyond k for 'augmented' mode.
@@ -209,7 +210,11 @@ def _solve_fifth_term_svd(A, U, S, V, gu, gv, eps):
     gamma_tilde = Q @ (Qh @ RHS * invDenom_reg)
 
     # γ_j = (gu_j + B·γ̃_j) / s_j   (m×k)
-    gamma = (gu + B @ gamma_tilde) / S.to(A.dtype).unsqueeze(0)
+    # Guard: clamp S so near-zero retained singular values don't produce inf/NaN
+    eps_s  = S[0].abs().clamp(min=float(torch.finfo(S.dtype).tiny)) \
+             * torch.finfo(S.dtype).eps
+    S_safe = S.clamp(min=eps_s)
+    gamma = (gu + B @ gamma_tilde) / S_safe.to(A.dtype).unsqueeze(0)
 
     # 5th term:  (I−UU†)γ V†  +  U γ̃†(I−VV†)
     PU_gamma      = gamma - U @ (Uh @ gamma)            # (I−UU†)γ : m×k
@@ -258,17 +263,32 @@ def _solve_fifth_term_neumann(A, U, S, V, gu, gv, n_terms: int):
     # ── Neumann series ────────────────────────────────────────────────────────
     # γ̃ = Σ_{l=0}^{L-1}  (B†B)^l RHS / s_j^{2(l+1)}
     # Recurrence: rhs ← (B†B / s_j²) · rhs,  accumulate into γ̃.
-    S2   = (S ** 2).unsqueeze(0)    # (1, k) — broadcast over n rows
-    rhs  = RHS / S2                  # l=0 term: RHS / s_j²
+    #
+    # Guard: clamp S so that near-zero retained singular values (e.g. from
+    # pad+noise initialisation or rank-deficient matrices) don't produce
+    # inf/NaN in the 1/s² or 1/s divisions.  Threshold = S[0]·eps_machine,
+    # matching _safe_sqrt_inv_diag convention.
+    eps_s  = S[0].abs().clamp(min=float(torch.finfo(S.dtype).tiny)) \
+             * torch.finfo(S.dtype).eps
+    S_safe = S.clamp(min=eps_s)
+    S2     = (S_safe ** 2).unsqueeze(0)   # (1, k) — broadcast over n rows
+    S2_inv = 1.0 / S2                     # precompute reciprocal (used L times)
+
+    rhs  = RHS * S2_inv                   # l=0 term: RHS / s_j²
     gamma_tilde = rhs.clone()
 
     for _ in range(n_terms - 1):
-        rhs = Bh @ (B @ rhs)         # apply B†B (cost: O(2mnk))
-        rhs = rhs / S2               # divide by s_j² — rhs = (B†B/s²)^{l+1} RHS/s²
-        gamma_tilde = gamma_tilde + rhs   # accumulate
+        rhs_prev_norm = rhs.norm()
+        rhs = Bh @ (B @ rhs)             # apply B†B  (cost: O(2mnk))
+        rhs = rhs * S2_inv               # rhs = (B†B/s²)^{l+1} RHS/s²
+        # Divergence guard: if this term is larger than the previous one
+        # the spectral ratio ρ ≥ 1 and the series won't converge — stop.
+        if rhs.norm() > rhs_prev_norm:
+            break
+        gamma_tilde = gamma_tilde + rhs  # accumulate
 
     # Back-substitute: γ_j = (gu_j + B γ̃_j) / s_j
-    gamma = (gu + B @ gamma_tilde) / S.to(A.dtype).unsqueeze(0)   # m×k
+    gamma = (gu + B @ gamma_tilde) / S_safe.to(A.dtype).unsqueeze(0)   # m×k
 
     # Assemble: Γ_A^{trunc} = (I−UU†)γ V†  +  U γ̃†(I−VV†)
     PU_gamma      = gamma - U @ (Uh @ gamma)
@@ -476,8 +496,8 @@ class SVD_PROPACK(torch.autograd.Function):
         _rdtype = torch.float64 if A.dtype in (torch.complex128, torch.float64) else torch.float32
 
         m_dim, n_dim = A.shape
-        k_total = min(k + k_extra, min(m_dim, n_dim))
-        q = max(k_total, 1)
+        #k_total = min(k + k_extra, min(m_dim, n_dim))
+        #q = max(k_total, 1)
 
         # print(f"Performing SVD with k={k}, k_extra={k_extra}, rel_cutoff={rel_cutoff.item()}, m_dim={m_dim}, n_dim={n_dim}, k_total={k_total}")
 
@@ -486,9 +506,15 @@ class SVD_PROPACK(torch.autograd.Function):
             # ── Stable randomised SVD forward ──────────────────────────────────
             # Range-finder runs under no_grad (Q is treated as constant).
             # Gradient flows only through  B_proj = Q†A  (q×n, differentiable).
-            # Oversampling 2×q + 4 power iterations → cosine ≥ 0.9999 on
-            # near-degenerate configs (verified by 2400-config stress test).
-            q_over = min(2 * q, min(m_dim, n_dim))
+            #
+            # Oversampling q = 2k: standard Halko-Martinsson-Tropp (2011)
+            # recommendation.  q = k fails catastrophically at ρ ≥ 0.3
+            # (cosine 0.065 → 0.9996 at ρ=0.95 when going from q=k to q=2k).
+            #
+            # Power iterations niter = 4: costs <0.5ms at CTMRG sizes (N≤400)
+            # but raises cosine from 0.989 (niter=2) to 0.9997 at ρ=0.95.
+            # Verified by bench_rsvd_precision.py sweep over 10 seeds.
+            q_over = min(2 * k, min(m_dim, n_dim))
             with torch.no_grad():
                 Rand = torch.randn(n_dim, q_over, dtype=A.dtype, device=A.device)
                 X    = A @ Rand
@@ -516,7 +542,7 @@ class SVD_PROPACK(torch.autograd.Function):
                 # Save k_aug > k triples; zero-padding backward captures
                 # cross-coupling between modes 1..k and k+1..k_aug.
                 k_extra_aug = _RSVD_AUGMENT_EXTRA
-                if k_extra_aug < 0:
+                if k_extra_aug <= 0:
                     k_extra_aug = k_extra          # use chi_extra from caller
                 k_aug = min(k + k_extra_aug, q_over)
                 k_aug = max(k_aug, k)              # at least k
@@ -752,10 +778,7 @@ def truncated_svd_propack(M, chi, chi_extra, rel_cutoff, v0=None,
     abs_tol       = max(abs_tol,       _eps_dtype)
     eps_multiplet = max(eps_multiplet, _eps_dtype)
 
-    U, S, V = SVD_PROPACK.apply(M, chi, 0, torch.as_tensor([rel_cutoff], dtype=_rdtype, device=M.device), v0, _USE_FULL_SVD)
-
-
-
+    U, S, V = SVD_PROPACK.apply(M, chi, chi_extra, torch.as_tensor([rel_cutoff], dtype=_rdtype, device=M.device), v0, _USE_FULL_SVD)
 
 
     # estimate the chi_new 
