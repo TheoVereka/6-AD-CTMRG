@@ -58,9 +58,9 @@ TOTAL_BUDGET_HOURS = 99999
 # ── GPU/CPU intent ────────────────────────────────────────────────────────────
 # Duplicated below in the TUNABLE PARAMETERS section with full comments.
 
-USE_GPU = False
+USE_GPU = True
 
-_N_PHYSICAL_CORES = 35
+_N_PHYSICAL_CORES = 1
 
 # ── Physical model ────────────────────────────────────────────────────────────
 
@@ -269,7 +269,7 @@ SVD_CPU_OFFLOAD_THRESHOLD = 0
 #
 #   Default 0 → always GPU (correct for cluster; change to 99999 on laptop).
 
-RSVD_MODE = 'neumann'
+RSVD_MODE = 'full_svd'
 #   rSVD backward mode.  Controls how the truncated-SVD 5th-term correction
 #   (arXiv:2311.11894v3) is computed in the backward pass.
 #
@@ -1367,7 +1367,7 @@ def main():
 
     # ── output directory ──────────────────────────────────────────────────────
     run_ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    _default_outdir = os.path.join('/scratch/chye/1stTrialRun',
+    _default_outdir = os.path.join('/scratch/izar/chye/1stTrialRun',
                                    f'6tensors_{run_ts}')
     output_dir = args.output_dir or _default_outdir
     os.makedirs(output_dir, exist_ok=True)
