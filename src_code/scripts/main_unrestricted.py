@@ -48,9 +48,9 @@ TOTAL_BUDGET_HOURS = 99999
 # ── GPU/CPU intent — declared here (before threading) so _GPU_LIKELY can read it ──
 # Duplicated below in the TUNABLE PARAMETERS section with full comments.
 
-USE_GPU = True
+USE_GPU = False
 
-_N_PHYSICAL_CORES = 9
+_N_PHYSICAL_CORES = 4
 # Detect GPU intent: check os.environ for CUDA_VISIBLE_DEVICES="" (explicitly
 # disabled) as the only reliable heuristic before torch is imported.
 # The USE_GPU flag is defined later in the "TUNABLE PARAMETERS" section (below
@@ -66,7 +66,7 @@ J1_COUPLING = 1.0
 #   The nn Hamiltonian is  H_nn = J1 Σ_{<i,j>} S_i · S_j
 #   summed over all 9 nearest-neighbour pairs in the 6-site honeycomb unit cell.
 
-J2_COUPLING = 0.0
+J2_COUPLING = 0.3
 #   Next-nearest-neighbour (nnn) Heisenberg exchange coupling constant.
 #   J2 > 0 = frustrated AFM.  Set to 0 to recover the pure J1 model.
 #   The nnn Hamiltonian is  H_nnn = J2 Σ_{<<i,j>>} S_i · S_j
@@ -134,7 +134,6 @@ import time
 #
 # Detected at import time using os.environ CUDA_VISIBLE_DEVICES and USE_GPU flag.
 # Override at runtime: OMP_NUM_THREADS=N python scripts/main_unrestricted.py
-#
 
 
 
@@ -154,6 +153,10 @@ os.environ.setdefault("KMP_AFFINITY", "granularity=fine,compact,1,0")
 # Spin-wait time: 0 so workers yield immediately between parallel regions.
 # On GPU runs with 1 thread, this has no effect but is harmless.
 os.environ.setdefault("KMP_BLOCKTIME", "0")
+print("OMP_NUM_THREADS =", os.environ["OMP_NUM_THREADS"])
+print("MKL_NUM_THREADS =", os.environ["MKL_NUM_THREADS"])
+
+
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
@@ -1298,12 +1301,20 @@ def main():
     _use_gpu = getattr(args, 'gpu', USE_GPU)
     if _use_gpu and torch.cuda.is_available():
         _dev = torch.device('cuda')
+        print(f"  Using GPU: {_dev} ({torch.cuda.get_device_name(_dev)})")
+        print("    GPU detected; setted threads to 1 to avoid oversubscription.")
+        torch.set_num_threads(1)
     else:
         if _use_gpu:
             print("  Warning: --gpu requested but torch.cuda.is_available()=False; "
                   "falling back to CPU.")
         _dev = torch.device('cpu')
     set_device(_dev)   # propagates DEVICE into core_unrestricted globals
+    # If we fell back to CPU, fix thread count (the pre-import heuristic may
+    # have assumed GPU mode because CUDA_VISIBLE_DEVICES was unset).
+    if _dev.type == 'cpu' and _GPU_LIKELY:
+        torch.set_num_threads(_N_PHYSICAL_CORES)
+        print(f"  Threads corrected to {_N_PHYSICAL_CORES} (CPU fallback)")
     _core._SVD_CPU_OFFLOAD_THRESHOLD = SVD_CPU_OFFLOAD_THRESHOLD
     _core.set_rsvd_mode(RSVD_MODE,
                         neumann_terms=RSVD_NEUMANN_TERMS,

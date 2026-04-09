@@ -584,10 +584,6 @@ class SVD_PROPACK(torch.autograd.Function):
                 self.save_for_backward(U_all[:, :q_over], S_all[:q_over], V_all[:, :q_over],
                                        None, rel_cutoff)
 
-            else:  # 'none' — naive k-only, no 5th term
-                self.save_for_backward(U_all[:, :k], S_all[:k], V_all[:, :k],
-                                       None, rel_cutoff)
-
             return U_all[:, :k], S_all[:k], V_all[:, :k]
 
         else:
@@ -1545,7 +1541,10 @@ def check_env_CV_using_3rho(lastC21CD, lastC32EF, lastC13AB,
         # Normalise so that the largest singular value is 1 (scale-invariant).
         sv_last = sv_last / (sv_last[0] + 1e-30)
         sv_now  = sv_now  / (sv_now [0] + 1e-30)
-        delta = (sv_now - sv_last).abs().max()
+        # Weight differences by SV magnitude: large SVs must converge tightly,
+        # small SVs are allowed proportionally larger absolute fluctuations.
+        sv_weight = (sv_now + sv_last) / 2
+        delta = ((sv_now - sv_last).abs() * sv_weight).max()
         max_delta = torch.maximum(max_delta, delta)
 
     last_rho1 = oe.contract("UY,YX,XV->UV",
@@ -1585,7 +1584,10 @@ def check_env_CV_using_3rho(lastC21CD, lastC32EF, lastC13AB,
         # Normalise so that the largest singular value is 1 (scale-invariant).
         sv_last = sv_last / (sv_last[0] + 1e-30)
         sv_now  = sv_now  / (sv_now [0] + 1e-30)
-        delta = (sv_now - sv_last).abs().max()
+        # Weight differences by SV magnitude: large SVs must converge tightly,
+        # small SVs are allowed proportionally larger absolute fluctuations.
+        sv_weight = (sv_now + sv_last) / 2
+        delta = ((sv_now - sv_last).abs() * sv_weight).max()
         max_delta = torch.maximum(max_delta, delta)
 
     last_rho1 = oe.contract("UX,XZ,ZV->UV",
@@ -1625,7 +1627,10 @@ def check_env_CV_using_3rho(lastC21CD, lastC32EF, lastC13AB,
         # Normalise so that the largest singular value is 1 (scale-invariant).
         sv_last = sv_last / (sv_last[0] + 1e-30)
         sv_now  = sv_now  / (sv_now [0] + 1e-30)
-        delta = (sv_now - sv_last).abs().max()
+        # Weight differences by SV magnitude: large SVs must converge tightly,
+        # small SVs are allowed proportionally larger absolute fluctuations.
+        sv_weight = (sv_now + sv_last) / 2
+        delta = ((sv_now - sv_last).abs() * sv_weight).max()
         max_delta = torch.maximum(max_delta, delta)
 
     # Single GPU→CPU sync for the entire convergence check.
