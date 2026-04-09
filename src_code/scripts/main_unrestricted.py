@@ -292,7 +292,7 @@ SVD_CPU_OFFLOAD_THRESHOLD = 0
 #
 #   Default 0 → always GPU (correct for cluster; change to 99999 on laptop).
 
-RSVD_MODE = 'full_svd'
+RSVD_MODE = 'neumann'
 #   rSVD backward mode.  Controls how the truncated-SVD 5th-term correction
 #   (arXiv:2311.11894v3) is computed in the backward pass.
 #
@@ -323,10 +323,6 @@ RSVD_NEUMANN_TERMS = 2
 #     ρ=0.50:  L=1 → 3e-2,   L=2 → 7e-3   (L=2 is 5× better)
 #   Timing: L=1 → 37.2ms, L=2 → 38.0ms at N=400 — negligible cost.
 #   For ρ ≥ 0.80 Neumann doesn't converge; use 'full_svd' instead.
-
-RSVD_AUGMENT_EXTRA = 0
-#   Extra singular triples saved beyond k in 'augmented' mode.
-#   Unused when RSVD_MODE != 'augmented'.  Not recommended (see above).
 
 
 # ── L-BFGS optimiser ─────────────────────────────────────────────────────────
@@ -1318,8 +1314,7 @@ def main():
     set_device(_dev)   # propagates DEVICE into core_unrestricted globals
     _core._SVD_CPU_OFFLOAD_THRESHOLD = SVD_CPU_OFFLOAD_THRESHOLD
     _core.set_rsvd_mode(RSVD_MODE,
-                        neumann_terms=RSVD_NEUMANN_TERMS,
-                        augment_extra=RSVD_AUGMENT_EXTRA)
+                        neumann_terms=RSVD_NEUMANN_TERMS)
 
     # ── parse D_bond list ─────────────────────────────────────────────────────
     D_bond_list: list[int] = [int(x) for x in args.D_bonds.split(',')]
@@ -1437,7 +1432,6 @@ def main():
         svd_cpu_offload_threshold = SVD_CPU_OFFLOAD_THRESHOLD,
         rsvd_mode          = RSVD_MODE,
         rsvd_neumann_terms = RSVD_NEUMANN_TERMS,
-        rsvd_augment_extra = RSVD_AUGMENT_EXTRA,
 
         # ── CTMRG ──────────────────────────────────────────────────────────
         ctm_max_steps      = CTM_MAX_STEPS,

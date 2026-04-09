@@ -1677,7 +1677,7 @@ def main():
                         *cur_abcdef, Js, SdotS, chi_la, D_bond, d_PHYS)
                 _save_observables_file(
                     os.path.join(output_dir,
-                                 f"D_{D_bond}_chi_{chi}+2D={chi_la}"
+                                 f"D_{D_bond}_chi_{chi}+2D_equal_{chi_la}"
                                  f"_energy_magnetization_correlation.txt"),
                     D_bond, chi_la, energy_la, corr_la, mag_la)
                 _print_observables_summary(

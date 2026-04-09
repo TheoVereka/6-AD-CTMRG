@@ -99,29 +99,22 @@ _RSVD_NEUMANN_TERMS: int = 2
 # Positive → Neumann approximation (fast).  Negative → exact eigh (for reference).
 # L=2 is the sweet spot: <1ms extra vs L=1, but 15× more precise at ρ=0.30.
 
-_RSVD_AUGMENT_EXTRA: int = 0
-# Extra singular triples beyond k for 'augmented' mode.
-# 0 = same as 'none'. Set to k (= chi) for doubling. -1 = use chi_extra from call.
-
 
 def set_rsvd_mode(mode: str,
-                  neumann_terms: int = 4,
-                  augment_extra: int = 0) -> None:
+                  neumann_terms: int = 2) -> None:
     """Switch the rSVD backward strategy.
 
     Args:
         mode:          One of 'full_svd', 'neumann', 'augmented', 'none'.
         neumann_terms: Neumann series length (positive=approx, negative=exact eigh).
-        augment_extra: Extra singular triples in 'augmented' mode.
     """
-    global _RSVD_BACKWARD_MODE, _RSVD_NEUMANN_TERMS, _RSVD_AUGMENT_EXTRA
+    global _RSVD_BACKWARD_MODE, _RSVD_NEUMANN_TERMS
     if mode not in ('full_svd', 'neumann', 'augmented', 'none'):
         raise ValueError(
             f"Unknown rSVD mode {mode!r}; choose from 'full_svd','neumann','augmented','none'"
         )
     _RSVD_BACKWARD_MODE = mode
     _RSVD_NEUMANN_TERMS = neumann_terms
-    _RSVD_AUGMENT_EXTRA = augment_extra
 
 
 
@@ -539,14 +532,7 @@ class SVD_PROPACK(torch.autograd.Function):
                                        A.detach(), rel_cutoff)
 
             elif _RSVD_BACKWARD_MODE == 'augmented':
-                # Save k_aug > k triples; zero-padding backward captures
-                # cross-coupling between modes 1..k and k+1..k_aug.
-                k_extra_aug = _RSVD_AUGMENT_EXTRA
-                if k_extra_aug <= 0:
-                    k_extra_aug = k_extra          # use chi_extra from caller
-                k_aug = min(k + k_extra_aug, q_over)
-                k_aug = max(k_aug, k)              # at least k
-                self.save_for_backward(U_all[:, :k_aug], S_all[:k_aug], V_all[:, :k_aug],
+                self.save_for_backward(U_all[:, :q_over], S_all[:q_over], V_all[:, :q_over],
                                        None, rel_cutoff)
 
             else:  # 'none' — naive k-only, no 5th term
