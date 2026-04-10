@@ -35,8 +35,8 @@ DEFAULT_CHI_SCHEDULES = {
     7: [21, 28, 35, 42, 49, 56, 63],
     8: [32, 40, 48, 56, 64, 72, 80],
     9: [36, 45, 54, 63, 72, 81, 90, 99],
-    #10:[40, 50, 60, 70, 80, 90,100,110,120],
-    #11:[44, 55, 66, 77, 88, 99,110,121,132,143],
+    10:[40, 50, 60, 70, 80, 90,100,110,120],
+    11:[44, 55, 66, 77, 88, 99,110,121,132,143],
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -595,10 +595,10 @@ def evaluate_observables(a, b, c, d, e, f,
 
     Returns:
         energy (float): Total energy (same value as evaluate_energy_clean).
-        correlations (list[float]): 27 values of <Si·Sj> (unit SdotS, no J)
-            ordered as env1 (9: eb,ad,cf,ae,ec,ca,db,bf,fd)
-                      env2 (9: cb,af,ed,ca,ae,ec,bf,fd,db)
-                      env3 (9: ef,ab,cd,ec,ca,ae,fd,db,bf).
+        correlations (list[float]): 36 values of <Si·Sj> (unit SdotS, no J)
+            ordered as env1 (12: eb,ad,cf,fa,de,bc + ae,ec,ca,db,bf,fd)
+                      env2 (12: cb,af,ed,dc,ba,fe + ca,ae,ec,bf,fd,db)
+                      env3 (12: ef,ab,cd,be,fc,da + ec,ca,ae,fd,db,bf).
         magnetizations (list[float]): 54 values of <Sα> for each of the
             6 sites × 3 envs × 3 spin dirs (Sx, Sy, Sz).
             <Sy> is computed via iSy_op = (S+-S-)/2 = i·Sy_phys:
@@ -685,19 +685,27 @@ def evaluate_observables(a, b, c, d, e, f,
         AD = torch.mm(c1['A'], c1['D'])
         CF = torch.mm(c1['C'], c1['F'])
         EB = torch.mm(c1['E'], c1['B'])
-        # nn rhos
+        FA = torch.mm(c1['F'], c1['A'])
+        DE = torch.mm(c1['D'], c1['E'])
+        BC = torch.mm(c1['B'], c1['C'])
+        # primary nn rhos
         rho_AD = _build_nn_rho(o1['A'], o1['D'], EB, CF, d_PHYS)
         rho_CF = _build_nn_rho(o1['C'], o1['F'], AD, EB, d_PHYS)
         rho_EB = _build_nn_rho(o1['E'], o1['B'], CF, AD, d_PHYS)
+        # duplicate nn rhos (same physical bonds, other orientation in env)
+        rho_FA = _build_nn_rho(o1['F'], o1['A'], DE, BC, d_PHYS)
+        rho_DE = _build_nn_rho(o1['D'], o1['E'], BC, FA, d_PHYS)
+        rho_BC = _build_nn_rho(o1['B'], o1['C'], FA, DE, d_PHYS)
         # nnn rhos
         rho_AE = _build_nnn_rho(o1['A'], c1['D'], o1['E'], c1['B'], CF, d_PHYS)
         rho_EC = _build_nnn_rho(o1['E'], c1['B'], o1['C'], c1['F'], AD, d_PHYS)
         rho_CA = _build_nnn_rho(o1['C'], c1['F'], o1['A'], c1['D'], EB, d_PHYS)
-        rho_DB = _build_nnn_rho(o1['D'], c1['E'], o1['B'], c1['C'], torch.mm(c1['F'], c1['A']), d_PHYS)
-        rho_BF = _build_nnn_rho(o1['B'], c1['C'], o1['F'], c1['A'], torch.mm(c1['D'], c1['E']), d_PHYS)
-        rho_FD = _build_nnn_rho(o1['F'], c1['A'], o1['D'], c1['E'], torch.mm(c1['B'], c1['C']), d_PHYS)
-        # correlations (9 values, same order as energy function)
+        rho_DB = _build_nnn_rho(o1['D'], c1['E'], o1['B'], c1['C'], FA, d_PHYS)
+        rho_BF = _build_nnn_rho(o1['B'], c1['C'], o1['F'], c1['A'], DE, d_PHYS)
+        rho_FD = _build_nnn_rho(o1['F'], c1['A'], o1['D'], c1['E'], BC, d_PHYS)
+        # correlations (12 values: 3 primary nn + 3 dup nn + 6 nnn)
         correlations += [_corr(r) for r in [rho_EB, rho_AD, rho_CF,
+                                            rho_FA, rho_DE, rho_BC,
                                             rho_AE, rho_EC, rho_CA,
                                             rho_DB, rho_BF, rho_FD]]
         # magnetizations: from nn rhos, all 6 sites
@@ -721,16 +729,27 @@ def evaluate_observables(a, b, c, d, e, f,
         CB = torch.mm(c2['C'], c2['B'])
         ED = torch.mm(c2['E'], c2['D'])
         AF = torch.mm(c2['A'], c2['F'])
+        DC = torch.mm(c2['D'], c2['C'])
+        BA = torch.mm(c2['B'], c2['A'])
+        FE = torch.mm(c2['F'], c2['E'])
+        # primary nn rhos
         rho_CB = _build_nn_rho(o2['C'], o2['B'], AF, ED, d_PHYS)
         rho_AF = _build_nn_rho(o2['A'], o2['F'], ED, CB, d_PHYS)
         rho_ED = _build_nn_rho(o2['E'], o2['D'], CB, AF, d_PHYS)
+        # duplicate nn rhos (same physical bonds, other orientation in env)
+        rho_DC = _build_nn_rho(o2['D'], o2['C'], BA, FE, d_PHYS)
+        rho_BA = _build_nn_rho(o2['B'], o2['A'], FE, DC, d_PHYS)
+        rho_FE = _build_nn_rho(o2['F'], o2['E'], DC, BA, d_PHYS)
+        # nnn rhos
         rho_CA = _build_nnn_rho(o2['C'], c2['B'], o2['A'], c2['F'], ED, d_PHYS)
         rho_AE = _build_nnn_rho(o2['A'], c2['F'], o2['E'], c2['D'], CB, d_PHYS)
         rho_EC = _build_nnn_rho(o2['E'], c2['D'], o2['C'], c2['B'], AF, d_PHYS)
-        rho_BF = _build_nnn_rho(o2['B'], c2['A'], o2['F'], c2['E'], torch.mm(c2['D'], c2['C']), d_PHYS)
-        rho_FD = _build_nnn_rho(o2['F'], c2['E'], o2['D'], c2['C'], torch.mm(c2['B'], c2['A']), d_PHYS)
-        rho_DB = _build_nnn_rho(o2['D'], c2['C'], o2['B'], c2['A'], torch.mm(c2['F'], c2['E']), d_PHYS)
+        rho_BF = _build_nnn_rho(o2['B'], c2['A'], o2['F'], c2['E'], DC, d_PHYS)
+        rho_FD = _build_nnn_rho(o2['F'], c2['E'], o2['D'], c2['C'], BA, d_PHYS)
+        rho_DB = _build_nnn_rho(o2['D'], c2['C'], o2['B'], c2['A'], FE, d_PHYS)
+        # correlations (12 values: 3 primary nn + 3 dup nn + 6 nnn)
         correlations += [_corr(r) for r in [rho_CB, rho_AF, rho_ED,
+                                            rho_DC, rho_BA, rho_FE,
                                             rho_CA, rho_AE, rho_EC,
                                             rho_BF, rho_FD, rho_DB]]
         mag2 = {}
@@ -750,16 +769,27 @@ def evaluate_observables(a, b, c, d, e, f,
         EF_ = torch.mm(c3['E'], c3['F'])
         AB_ = torch.mm(c3['A'], c3['B'])
         CD_ = torch.mm(c3['C'], c3['D'])
+        BE_ = torch.mm(c3['B'], c3['E'])
+        FC_ = torch.mm(c3['F'], c3['C'])
+        DA_ = torch.mm(c3['D'], c3['A'])
+        # primary nn rhos
         rho_EF = _build_nn_rho(o3['E'], o3['F'], CD_, AB_, d_PHYS)
         rho_AB = _build_nn_rho(o3['A'], o3['B'], EF_, CD_, d_PHYS)
         rho_CD = _build_nn_rho(o3['C'], o3['D'], AB_, EF_, d_PHYS)
+        # duplicate nn rhos (same physical bonds, other orientation in env)
+        rho_BE = _build_nn_rho(o3['B'], o3['E'], FC_, DA_, d_PHYS)
+        rho_FC = _build_nn_rho(o3['F'], o3['C'], DA_, BE_, d_PHYS)
+        rho_DA = _build_nn_rho(o3['D'], o3['A'], BE_, FC_, d_PHYS)
+        # nnn rhos
         rho_EC = _build_nnn_rho(o3['E'], c3['F'], o3['C'], c3['D'], AB_, d_PHYS)
         rho_CA = _build_nnn_rho(o3['C'], c3['D'], o3['A'], c3['B'], EF_, d_PHYS)
         rho_AE = _build_nnn_rho(o3['A'], c3['B'], o3['E'], c3['F'], CD_, d_PHYS)
-        rho_FD = _build_nnn_rho(o3['F'], c3['C'], o3['D'], c3['A'], torch.mm(c3['B'], c3['E']), d_PHYS)
-        rho_DB = _build_nnn_rho(o3['D'], c3['A'], o3['B'], c3['E'], torch.mm(c3['F'], c3['C']), d_PHYS)
-        rho_BF = _build_nnn_rho(o3['B'], c3['E'], o3['F'], c3['C'], torch.mm(c3['D'], c3['A']), d_PHYS)
+        rho_FD = _build_nnn_rho(o3['F'], c3['C'], o3['D'], c3['A'], BE_, d_PHYS)
+        rho_DB = _build_nnn_rho(o3['D'], c3['A'], o3['B'], c3['E'], FC_, d_PHYS)
+        rho_BF = _build_nnn_rho(o3['B'], c3['E'], o3['F'], c3['C'], DA_, d_PHYS)
+        # correlations (12 values: 3 primary nn + 3 dup nn + 6 nnn)
         correlations += [_corr(r) for r in [rho_EF, rho_AB, rho_CD,
+                                            rho_BE, rho_FC, rho_DA,
                                             rho_EC, rho_CA, rho_AE,
                                             rho_FD, rho_DB, rho_BF]]
         mag3 = {}
@@ -774,27 +804,21 @@ def evaluate_observables(a, b, c, d, e, f,
         del o3, c3
 
         # ── Compute energy from correlations + J values ───────────────────
-        # Js is 36-element (12 per env: 6 nn + 6 nnn) but evaluate_observables
-        # only computes 27 correlations (9 per env: 3 primary nn + 6 nnn).
-        # Extract the matching 27 J-values from the 36-element layout.
-        Js_diag = []
-        for _i in range(3):
-            _b = _i * 12
-            Js_diag.extend(Js[_b:_b+3])        # primary nn
-            Js_diag.extend(Js[_b+6:_b+12])     # nnn
-        energy = sum(J * corr for J, corr in zip(Js_diag, correlations))
+        # correlations is now 36 values (12 per env: 6 nn + 6 nnn),
+        # matching Js[0:36] exactly.
+        energy = sum(J * corr for J, corr in zip(Js, correlations))
 
     return energy, correlations, magnetizations
 
 
 # ── Bond labels matching the order returned by evaluate_observables ───────────
 _ENV_BOND_LABELS = [
-    # env1 (ebadcf)
-    'EB', 'AD', 'CF', 'AE', 'EC', 'CA', 'DB', 'BF', 'FD',
-    # env2 (afcbed)
-    'CB', 'AF', 'ED', 'CA', 'AE', 'EC', 'BF', 'FD', 'DB',
-    # env3 (cdefab)
-    'EF', 'AB', 'CD', 'EC', 'CA', 'AE', 'FD', 'DB', 'BF',
+    # env1 (ebadcf): 3 primary nn + 3 dup nn + 6 nnn
+    'EB', 'AD', 'CF', 'FA', 'DE', 'BC', 'AE', 'EC', 'CA', 'DB', 'BF', 'FD',
+    # env2 (afcbed): 3 primary nn + 3 dup nn + 6 nnn
+    'CB', 'AF', 'ED', 'DC', 'BA', 'FE', 'CA', 'AE', 'EC', 'BF', 'FD', 'DB',
+    # env3 (cdefab): 3 primary nn + 3 dup nn + 6 nnn
+    'EF', 'AB', 'CD', 'BE', 'FC', 'DA', 'EC', 'CA', 'AE', 'FD', 'DB', 'BF',
 ]
 _SITE_LABELS = ['A', 'B', 'C', 'D', 'E', 'F']
 
@@ -809,12 +833,12 @@ def _save_observables_file(filepath: str, D_bond: int, chi: int,
         fp.write(f"energy           = {energy:+.12e}\n")
         fp.write(f"energy_per_site  = {energy / n_sites:+.12e}\n\n")
 
-        fp.write("# ── Bond correlations <Si·Sj>  (27 values) "
+        fp.write("# ── Bond correlations <Si·Sj>  (36 values) "
                  "──────────────────────\n")
         for env_idx in range(3):
             fp.write(f"# env{env_idx+1}\n")
-            for j in range(9):
-                idx = env_idx * 9 + j
+            for j in range(12):
+                idx = env_idx * 12 + j
                 label = _ENV_BOND_LABELS[idx]
                 fp.write(f"corr_env{env_idx+1}_{label:>2s} = {correlations[idx]:+.12e}\n")
             fp.write("\n")
@@ -855,8 +879,8 @@ def _print_observables_summary(tag: str, D_bond: int, chi: int,
                                magnetizations: list) -> None:
     """Print a compact summary of observables to stdout."""
     n_sites = 6
-    nn_corrs  = [correlations[i] for i in range(27) if (i % 9) < 3]
-    nnn_corrs = [correlations[i] for i in range(27) if (i % 9) >= 3]
+    nn_corrs  = [correlations[i] for i in range(36) if (i % 12) < 6]
+    nnn_corrs = [correlations[i] for i in range(36) if (i % 12) >= 6]
     all_mx = [magnetizations[i*3]     for i in range(18)]
     all_my = [magnetizations[i*3 + 1] for i in range(18)]
     all_mz = [magnetizations[i*3 + 2] for i in range(18)]

@@ -315,27 +315,27 @@ def _solve_fifth_term_neumann(A, U, S, V, gu, gv, n_terms: int):
     # Estimate ρ = ||B†B||₂ / s_k² ≈ (σ_{k+1}/σ_k)² via one mat-vec product.
     # If ρ ≥ 0.5 the Neumann series converges too slowly (truncation error
     # ≥ ρ^L ≥ 25% at L=2) — fall back to exact eigh Sylvester solver.
-    _probe = Bh @ (B @ RHS[:, -1:])       # n×1, cost O(2mn) — negligible
-    rho_est = _probe.norm() / (RHS[:, -1:].norm().clamp(min=1e-30) * S2[0, -1])
-    if rho_est > 0.5:
-        return _solve_fifth_term_svd(A, U, S, V, gu, gv,
-                                     S[0].abs().clamp(min=float(torch.finfo(S.dtype).tiny))
-                                     * torch.finfo(S.dtype).eps)
+    #_probe = Bh @ (B @ RHS[:, -1:])       # n×1, cost O(2mn) — negligible
+    #rho_est = _probe.norm() / (RHS[:, -1:].norm().clamp(min=1e-30) * S2[0, -1])
+    #if rho_est > 0.5:
+    #    return _solve_fifth_term_svd(A, U, S, V, gu, gv,
+    #                                 S[0].abs().clamp(min=float(torch.finfo(S.dtype).tiny))
+    #                                 * torch.finfo(S.dtype).eps)
 
     rhs  = RHS * S2_inv                   # l=0 term: RHS / s_j²
     gamma_tilde = rhs.clone()
 
     for _ in range(n_terms - 1):
-        rhs_prev_norm = rhs.norm()
+        #rhs_prev_norm = rhs.norm()
         rhs = Bh @ (B @ rhs)             # apply B†B  (cost: O(2mnk))
         rhs = rhs * S2_inv               # rhs = (B†B/s²)^{l+1} RHS/s²
         # Divergence guard: if this term is larger than the previous one
         # the spectral ratio ρ ≥ 1 and the series won't converge — stop.
         # Fall back to exact eigh solver instead of using bad partial sum.
-        if rhs.norm() > rhs_prev_norm:
-            return _solve_fifth_term_svd(A, U, S, V, gu, gv,
-                                         S[0].abs().clamp(min=float(torch.finfo(S.dtype).tiny))
-                                         * torch.finfo(S.dtype).eps)
+        #if rhs.norm() > rhs_prev_norm:
+        #    return _solve_fifth_term_svd(A, U, S, V, gu, gv,
+        #                                 S[0].abs().clamp(min=float(torch.finfo(S.dtype).tiny))
+        #                                 * torch.finfo(S.dtype).eps)
         gamma_tilde = gamma_tilde + rhs  # accumulate
 
     # Back-substitute: γ_j = (gu_j + B γ̃_j) / s_j
