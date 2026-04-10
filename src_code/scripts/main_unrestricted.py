@@ -580,6 +580,13 @@ def evaluate_energy_clean(a, b, c, d, e, f,
         A, B, C, Dt, E, F = abcdef_to_ABCDEF(aN, bN, cN, dN, eN, fN, D_sq)
         all27 = CTMRG_from_init_to_stop(
                 A, B, C, Dt, E, F, chi, D_sq, CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT)
+
+        # ── Last-resort zero guard (CTMRG already retried with escalating noise) ──
+        _corner_indices = (0, 1, 2, 9, 10, 11, 18, 19, 20)
+        if all(torch.linalg.norm(all27[i]).item() < 1e-30 for i in _corner_indices):
+            print(f"  │  [WARN] CTMRG env still zero at chi={chi} after all internal retries")
+            return float('nan')
+
         E3ebadcf = energy_expectation_nearest_neighbor_3ebadcf_bonds(
             aN, bN, cN, dN, eN, fN,
                 *Js[0:12],
@@ -697,6 +704,12 @@ def evaluate_observables(a, b, c, d, e, f,
         all27 = CTMRG_from_init_to_stop(
                 A, B, C, Dt, E, F, chi, D_sq,
                 CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT)
+
+        # ── Last-resort zero guard (CTMRG already retried with escalating noise) ──
+        _corner_indices = (0, 1, 2, 9, 10, 11, 18, 19, 20)
+        if all(torch.linalg.norm(all27[i]).item() < 1e-30 for i in _corner_indices):
+            print(f"  │  [WARN] CTMRG env still zero at chi={chi} after all internal retries; observables = NaN")
+            return float('nan'), [float('nan')]*36, [float('nan')]*54
 
         # ═══════════════════ Environment 1 (ebadcf) ═══════════════════════
         o1, c1 = build_open_closed_env1(
@@ -1167,6 +1180,17 @@ def optimize_at_chi(
          C21AF, C32CB, C13ED, T1B,  T2E,  T2D,  T3A,  T3F,  T1C,
          ctm_steps) = all28
 
+        # ── Last-resort zero-env guard (gradient path) ────────────────────
+        # CTMRG already retried with escalating noise internally.
+        # If it STILL returned zero, skip the expensive energy computation
+        # and raise so the closure handler returns a penalty loss.
+        _env_corners = (C21CD, C32EF, C13AB,
+                        C21EB, C32AD, C13CF,
+                        C21AF, C32CB, C13ED)
+        if all(torch.linalg.norm(c).item() < 1e-30 for c in _env_corners):
+            raise FloatingPointError(
+                "CTMRG env collapsed to zero after all internal retries")
+
         # ── Compute the three energy expectations (checkpointed, optionally multi-GPU) ─
         # _three_env_energy_loss_parallel wraps each energy call in
         # _ckpt(use_reentrant=False), saving ~5 GB (D=7) / ~15 GB (D=8) of
@@ -1277,6 +1301,24 @@ def optimize_at_chi(
         loss_log.append({'step': step, 'ctm_steps': ctm_steps, 'loss': loss_item,
                          'D_bond': D_bond, 'chi': chi,
                          'elapsed': round(elapsed, 1)})
+
+        # ── Last-resort collapsed-loss guard ──────────────────────────────
+        # If CTMRG exhausted all noise restarts AND the FloatingPointError
+        # was not raised (e.g. near-zero but not exactly zero env → loss ≈ 0),
+        # do not let this corrupt best_loss.  Restore best tensors and skip.
+        _loss_is_collapsed = (loss_item >= -1e-12 and best_loss < -0.5)
+        if _loss_is_collapsed:
+            print(f"    [ZERO-GUARD] loss={loss_item:+.10f} ≈ 0 "
+                  f"(env likely near-collapsed); restoring best tensors "
+                  f"(best_loss={best_loss:+.10f})")
+            if best_abcdef is not None:
+                with torch.no_grad():
+                    for p, b_val in zip((a, b, c, d, e, f), best_abcdef):
+                        p.data.copy_(b_val)
+            if OPTIMIZER == 'lbfgs' and _lbfgs is not None:
+                _lbfgs_reset_history()
+            step += 1
+            continue
 
         if loss_item < best_loss:
             best_loss   = loss_item

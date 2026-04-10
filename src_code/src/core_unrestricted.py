@@ -1647,6 +1647,24 @@ def check_env_CV_using_3rho(lastC21CD, lastC32EF, lastC13AB,
         delta = ((sv_now - sv_last).abs() * sv_weight).max()
         max_delta = torch.maximum(max_delta, delta)
 
+    # ── Zero-environment guard ────────────────────────────────────────────
+    # If every current rho has near-zero leading SV, the environment has
+    # collapsed to the zero fixed point.  Return False so CTMRG keeps
+    # iterating (or hits max_iterations) instead of falsely declaring
+    # convergence.  The threshold 1e-30 matches the additive 1e-30 already
+    # used above for SV normalization — any genuine environment will have
+    # leading SVs many OOM above this.
+    _ZERO_NORM_THR = 1e-30
+    all_now_rhos_zero = True
+    for nc in (nowC21CD, nowC32EF, nowC13AB,
+               nowC21EB, nowC32AD, nowC13CF,
+               nowC21AF, nowC32CB, nowC13ED):
+        if torch.linalg.norm(nc).item() > _ZERO_NORM_THR:
+            all_now_rhos_zero = False
+            break
+    if all_now_rhos_zero:
+        return False   # collapsed environment — NOT converged
+
     # Single GPU→CPU sync for the entire convergence check.
     return (max_delta < env_conv_threshold).item()
 
@@ -2116,76 +2134,128 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
         A tuple of 28 elements: the 27 final environment tensors followed by
         ctm_steps (int) — the number of CTMRG iterations actually performed.
     """
-    # Initialize the environment corner and edge transfer tensors
+    # ── Auto-restart with escalating random noise on zero-collapse ──────
+    #
+    # First-principle analysis of zero-fixed-point collapse:
+    #
+    #   The CTMRG map T(env; A..F) has TWO fixed points:
+    #     (1)  env = 0   — trivial, always stable.
+    #     (2)  env = env* — physical, represents the infinite-lattice environment.
+    #
+    #   The zero fixed point is a basin attractor: once env drifts into its
+    #   basin (corners all near zero), the update steps T contract it further
+    #   toward zero (zero × anything = zero).  Different initialisations probe
+    #   different basins of attraction.
+    #
+    #   Identity / ones init alone is NOT guaranteed to escape zero — the
+    #   double-layer contractions can produce cancellations or near-zero
+    #   results from specific tensor configurations, pulling the deterministic
+    #   identity start toward the zero basin.
+    #
+    #   HIGH-INTENSITY RANDOM NOISE is what breaks the symmetry: it perturbs
+    #   the environment into a generic direction that is unlikely to lie in the
+    #   zero basin.  The stronger the noise, the more aggressively we escape.
+    #
+    #   Strategy: escalating restart schedule (up to 4 attempts):
+    #     restart 0 — caller's choice (contraction-based or identity_init)
+    #     restart 1 — identity_init + 10% Gaussian noise
+    #     restart 2 — identity_init + 100% noise  (random dominates structure)
+    #     restart 3 — identity_init + 1000% noise (essentially pure random)
+    #
+    #   Noise is injected under torch.no_grad() → does not affect gradients.
+    #   Gradients flow only through the converged CTMRG update steps.
+    #
+    _ZERO_COLLAPSE_THR = 1e-30
+    _NOISE_SCALES = (0.0, 0.1, 1.0, 10.0)       # per-restart noise fractions
 
-    lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E = None, None, None, None, None, None, None, None, None
-    lastC21EB, lastC32AD, lastC13CF, lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A = None, None, None, None, None, None, None, None, None
-    lastC21AF, lastC32CB, lastC13ED, lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C = None, None, None, None, None, None, None, None, None
-    # ── Initialization under torch.no_grad() ─────────────────────────────
-    # The init only sets the starting point for the iterative CTMRG loop.
-    # Gradients flow through the converged update steps, not the init.
-    # Running under no_grad prevents the (D²×D², D²×D²) SVD intermediates
-    # from being kept alive in the autograd graph (saves ~75 MB for D=5).
-    with torch.no_grad():
-        nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E = initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=identity_init)
-    nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A = None, None, None, None, None, None, None, None, None
-    nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C = None, None, None, None, None, None, None, None, None
+    for _restart in range(len(_NOISE_SCALES)):
+        _use_identity = identity_init if _restart == 0 else True
 
+        lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E = None, None, None, None, None, None, None, None, None
+        lastC21EB, lastC32AD, lastC13CF, lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A = None, None, None, None, None, None, None, None, None
+        lastC21AF, lastC32CB, lastC13ED, lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C = None, None, None, None, None, None, None, None, None
+        # ── Initialization under torch.no_grad() ─────────────────────────
+        # The init only sets the starting point for the iterative CTMRG loop.
+        # Gradients flow through the converged update steps, not the init.
+        # Running under no_grad prevents the (D²×D², D²×D²) SVD intermediates
+        # from being kept alive in the autograd graph (saves ~75 MB for D=5).
+        with torch.no_grad():
+            nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E = initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=_use_identity)
+            # ── Inject escalating random noise for restarts ──────────────
+            _ns = _NOISE_SCALES[_restart]
+            if _ns > 0.0:
+                for _t in (nowC21CD, nowC32EF, nowC13AB,
+                           nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E):
+                    _tn = torch.linalg.norm(_t).clamp(min=1.0).item()
+                    _t.add_(_ns * _tn * torch.randn_like(_t))
+        nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A = None, None, None, None, None, None, None, None, None
+        nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C = None, None, None, None, None, None, None, None, None
 
+        # Perform the CTMRG iterations until convergence
+        _collapsed = False
+        ctm_steps = a_third_max_iterations  # will be overwritten on early convergence
+        for iteration in range(a_third_max_iterations):
 
+            if not (lastC21CD is None or lastC21EB is None or lastC21AF is None):
+                if check_env_CV_using_3rho(lastC21CD.detach(), lastC32EF.detach(), lastC13AB.detach(), #lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E, 
+                                        nowC21CD.detach(), nowC32EF.detach(), nowC13AB.detach(), #nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, 
+                                        lastC21EB.detach(), lastC32AD.detach(), lastC13CF.detach(), #lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A, 
+                                        nowC21EB.detach(), nowC32AD.detach(), nowC13CF.detach(), #nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A, 
+                                        lastC21AF.detach(), lastC32CB.detach(), lastC13ED.detach(), #lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C, 
+                                        nowC21AF.detach(), nowC32CB.detach(), nowC13ED.detach(), #nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C, 
+                                        env_conv_threshold):
+                    ctm_steps = iteration + 1
+                    break
 
+            # Update the environment corner and edge transfer tensors
+            # match iteration % 3 :
+            #     case 0 : 
+            lastC21EB, lastC32AD, lastC13CF, lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A = \
+            nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A
+            nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A = _ckpt(
+                update_environmentCTs_1to2,
+                nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E,
+                A, B, C, D, E, F, chi, D_squared,
+                use_reentrant=False)
+                
+            #     case 1 : 
+            lastC21AF, lastC32CB, lastC13ED, lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C = \
+            nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C
 
-    # Perform the CTMRG iterations until convergence
-    ctm_steps = a_third_max_iterations  # will be overwritten on early convergence
-    for iteration in range(a_third_max_iterations):
+            nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C = _ckpt(
+                update_environmentCTs_2to3,
+                nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A,
+                A, B, C, D, E, F, chi, D_squared,
+                use_reentrant=False)
+                
+            #     case 2 : 
+            lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E = \
+            nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E
 
-        if not (lastC21CD is None or lastC21EB is None or lastC21AF is None):
-            if check_env_CV_using_3rho(lastC21CD.detach(), lastC32EF.detach(), lastC13AB.detach(), #lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E, 
-                                    nowC21CD.detach(), nowC32EF.detach(), nowC13AB.detach(), #nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, 
-                                    lastC21EB.detach(), lastC32AD.detach(), lastC13CF.detach(), #lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A, 
-                                    nowC21EB.detach(), nowC32AD.detach(), nowC13CF.detach(), #nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A, 
-                                    lastC21AF.detach(), lastC32CB.detach(), lastC13ED.detach(), #lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C, 
-                                    nowC21AF.detach(), nowC32CB.detach(), nowC13ED.detach(), #nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C, 
-                                    env_conv_threshold):
-                ctm_steps = iteration + 1
+            nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E = _ckpt(
+                update_environmentCTs_3to1,
+                nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C,
+                A, B, C, D, E, F, chi, D_squared,
+                use_reentrant=False)
+
+            # ── Zero-collapse detection ───────────────────────────────────
+            # Check on EVERY restart (not just the first).  If collapsed and
+            # more restarts remain, the outer loop retries with stronger noise.
+            if (    torch.linalg.norm(nowC21CD).item() < _ZERO_COLLAPSE_THR
+                    and torch.linalg.norm(nowC21EB).item() < _ZERO_COLLAPSE_THR
+                    and torch.linalg.norm(nowC21AF).item() < _ZERO_COLLAPSE_THR):
+                _collapsed = True
                 break
 
-        # Update the environment corner and edge transfer tensors
-        # match iteration % 3 :
-        #     case 0 : 
-        lastC21EB, lastC32AD, lastC13CF, lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A = \
-        nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A
-        nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A = _ckpt(
-            update_environmentCTs_1to2,
-            nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E,
-            A, B, C, D, E, F, chi, D_squared,
-            use_reentrant=False)
-            
-        #     case 1 : 
-        lastC21AF, lastC32CB, lastC13ED, lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C = \
-        nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C
+        # Release Python references to stale last-iteration env tensors so the
+        # autograd engine can GC them as soon as the backward pass processes them.
+        del lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E
+        del lastC21EB, lastC32AD, lastC13CF, lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A
+        del lastC21AF, lastC32CB, lastC13ED, lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C
 
-        nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C = _ckpt(
-            update_environmentCTs_2to3,
-            nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A,
-            A, B, C, D, E, F, chi, D_squared,
-            use_reentrant=False)
-            
-        #     case 2 : 
-        lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E = \
-        nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E
-
-        nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E = _ckpt(
-            update_environmentCTs_3to1,
-            nowC21AF, nowC32CB, nowC13ED, nowT1B, nowT2E, nowT2D, nowT3A, nowT3F, nowT1C,
-            A, B, C, D, E, F, chi, D_squared,
-            use_reentrant=False)
-    
-    # Release Python references to stale last-iteration env tensors so the
-    # autograd engine can GC them as soon as the backward pass processes them.
-    del lastC21CD, lastC32EF, lastC13AB, lastT1F, lastT2A, lastT2B, lastT3C, lastT3D, lastT1E
-    del lastC21EB, lastC32AD, lastC13CF, lastT1D, lastT2C, lastT2F, lastT3E, lastT3B, lastT1A
-    del lastC21AF, lastC32CB, lastC13ED, lastT1B, lastT2E, lastT2D, lastT3A, lastT3F, lastT1C
+        if not _collapsed:
+            break   # success — exit restart loop
+        # else: escalate noise and retry
 
     return  nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, \
             nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A, \
