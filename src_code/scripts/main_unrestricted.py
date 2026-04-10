@@ -48,7 +48,7 @@ TOTAL_BUDGET_HOURS = 99999
 # ── GPU/CPU intent ────────────────────────────────────────────────────────────
 # Duplicated below in the TUNABLE PARAMETERS section with full comments.
 
-USE_GPU = True
+USE_GPU = False
 
 # ── Multi-GPU (optional, CUDA only) ──────────────────────────────────────────
 
@@ -65,7 +65,7 @@ N_GPUS = 1
 #   Set automatically in main() from --ngpu or torch.cuda.device_count().
 #   Override at runtime:  --ngpu N
 
-_N_PHYSICAL_CORES = 1
+_N_PHYSICAL_CORES = 4
 
 ########################
 # ── Physical model ── # ────────────────────────────────────────────────────────────
@@ -1443,8 +1443,8 @@ def main():
         print(f"  Multi-GPU: {N_GPUS} GPUs detected — energy functions will run "
               f"concurrently on cuda:0..cuda:{N_GPUS-1}")
     else:
-        print(f"  Single-GPU / CPU: energy functions run sequentially "
-              f"({'use --ngpu 2+ to enable multi-GPU' if _avail_gpus >= 2 else 'only 1 GPU available'})")
+        print(f"  CPU / Single-GPU : energy functions run sequentially "
+              f"({'use --ngpu 2+ to enable multi-GPU' if _avail_gpus >= 2 else 'only CPUs / 1 GPU available'})")
         N_GPUS = 1  # ensure scalar is exactly 1 for the branch check
     _core._SVD_CPU_OFFLOAD_THRESHOLD = SVD_CPU_OFFLOAD_THRESHOLD
     _core.set_rsvd_mode(RSVD_MODE,
@@ -1788,7 +1788,7 @@ def main():
                         *cur_abcdef, Js, SdotS, chi_la, D_bond, d_PHYS)
                 _save_observables_file(
                     os.path.join(output_dir,
-                                 f"D_{D_bond}_chi_{chi}+2D={chi_la}"
+                                 f"D_{D_bond}_chi_{chi}+2D_equals_chi_{chi_la}"
                                  f"_energy_magnetization_correlation.txt"),
                     D_bond, chi_la, energy_la, corr_la, mag_la)
                 _print_observables_summary(
