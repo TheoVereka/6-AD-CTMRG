@@ -288,7 +288,7 @@ SVD_CPU_OFFLOAD_THRESHOLD = 0
 #
 #   Default 0 → always GPU (correct for cluster; change to 99999 on laptop).
 
-RSVD_MODE = 'neumann'
+RSVD_MODE = 'augmented'
 #   rSVD backward mode.  Controls how the truncated-SVD 5th-term correction
 #   (arXiv:2311.11894v3) is computed in the backward pass.
 #
@@ -442,14 +442,14 @@ ENV_IDENTITY_INIT = False
 
 
 
-CTM_MAX_STEPS = 60
+CTM_MAX_STEPS = 50
 #   Hard cap on CTMRG iterations per environment convergence call.
 #   With the singular-value convergence criterion and CTM_CONV_THR=1e-3,
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
 #   ansatz ~4 steps, 6-tensor ~40 steps).  90 is a safe upper bound.
 
-CTM_CONV_THR = 9e-7
-# TODO: Weighted and softer
+CTM_CONV_THR = 2e-6
+
 CTM_CONV_THR_FLOAT32_MIN = 1e-5
 #   CTMRG convergence threshold: stop iterating when the max change in
 #   normalised corner singular values between consecutive steps is below
@@ -500,7 +500,7 @@ GEO_SCHEDULE_STEPS = 5
 
 # ── Reproducibility ──────────────────────────────────────────────────────────
 
-RANDOM_SEED_FIX = True
+RANDOM_SEED_FIX = False
 #   True  → fix all RNGs (Python random, NumPy, PyTorch CPU + CUDA) to
 #            RANDOM_SEED before any tensor is allocated.  Guarantees
 #            bit-identical initialisation, padding noise, and rSVD random
@@ -508,7 +508,7 @@ RANDOM_SEED_FIX = True
 #   False → non-reproducible (random initialisation differs each run).
 #   Overrideable at runtime: --no-seed CLI flag sets this to False.
 
-RANDOM_SEED = 4242
+RANDOM_SEED = 42
 #   Integer seed used when RANDOM_SEED_FIX = True.
 #   Override at runtime: --seed <int>
 
@@ -846,9 +846,20 @@ def evaluate_observables(a, b, c, d, e, f,
         del o3, c3
 
         # ── Compute energy from correlations + J values ───────────────────
-        # correlations is now 36 values (12 per env: 6 nn + 6 nnn),
-        # matching Js[0:36] exactly.
-        energy = sum(J * corr for J, corr in zip(Js, correlations))
+        # correlations is 36 values (12 per env: 6 nn + 6 nnn).
+        # Each nn bond appears in exactly 2 of the 3 environments, so a naive
+        # sum double-counts nn.  The energy functions apply *0.5 to their 6-nn
+        # block before returning; replicate that here so that
+        # evaluate_observables gives the same energy as evaluate_energy_clean.
+        # Each nnn bond appears in all 3 environments (no compensating factor,
+        # consistent with the energy-function return convention).
+        energy = 0.0
+        for _blk in range(3):
+            _b = _blk * 12
+            energy += 0.5 * sum(Js[_b + _i] * correlations[_b + _i]
+                                for _i in range(6))    # nn  × ½
+            energy +=       sum(Js[_b + 6 + _i] * correlations[_b + 6 + _i]
+                                for _i in range(6))    # nnn × 1
 
     return energy, correlations, magnetizations
 
