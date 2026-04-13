@@ -1294,6 +1294,14 @@ def optimize_at_chi(
             del loss_val          # release the 0-dim tensor + its dead graph
             if last_ctm_steps is not None:
                 ctm_steps = last_ctm_steps
+            # ── GPU memory cleanup after L-BFGS step ─────────────────────
+            # PyTorch's CUDA caching allocator retains freed blocks from
+            # CTMRG + energy backward intermediates.  Without this, the
+            # cached segments accumulate across the 15 closure calls inside
+            # _lbfgs.step(), growing the resident set until OOM.
+            if _dev.type == 'cuda':
+                gc.collect()
+                torch.cuda.empty_cache()
         else:  # adam — persistent state, ADAM_STEPS_PER_CTM micro-steps per env refresh
             if _adam is None:
                 raise RuntimeError("Adam optimizer requested but was not initialized")
@@ -1303,6 +1311,10 @@ def optimize_at_chi(
                 _loss.backward()
                 _adam.step()
             loss_item = _loss.detach().item()
+            # ── GPU memory cleanup after Adam micro-steps ────────────────
+            if _dev.type == 'cuda':
+                gc.collect()
+                torch.cuda.empty_cache()
         delta     = (loss_item - prev_loss) if prev_loss is not None else float('inf')
         elapsed   = time.perf_counter() - t_start
 
