@@ -2208,7 +2208,26 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
         # Running under no_grad prevents the (D²×D², D²×D²) SVD intermediates
         # from being kept alive in the autograd graph (saves ~75 MB for D=5).
         with torch.no_grad():
-            nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E = initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=_use_identity)
+            # CPU-offload for initialize_envCTs_1:
+            # The `else` branch builds pre-truncation T tensors of shape
+            # (D²·D², D²·D², D²) = (D^4, D^4, D^2).  At D=8 this is
+            # (4096, 4096, 64) × 8 bytes = 8.0 GiB — exactly the OOM error.
+            # Since this runs under no_grad and is a one-time call per restart,
+            # we offload it to CPU (128 GB RAM) and move only the small
+            # chi-truncated outputs (≤ chi×chi×D² each) back to the GPU.
+            _gpu_dev = A.device
+            _D_bond = round(D_squared ** 0.5)
+            if _gpu_dev.type == 'cuda' and not _use_identity and _D_bond >= 8:
+                _cpu = torch.device('cpu')
+                _init_out = initialize_envCTs_1(
+                    A.to(_cpu), B.to(_cpu), C.to(_cpu),
+                    D.to(_cpu), E.to(_cpu), F.to(_cpu),
+                    chi, D_squared, identity_init=_use_identity)
+                nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E = \
+                    tuple(t.to(_gpu_dev) for t in _init_out)
+                del _init_out
+            else:
+                nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E = initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=_use_identity)
             # ── Inject escalating random noise for restarts ──────────────
             _ns = _NOISE_SCALES[_restart]
             if _ns > 0.0:
@@ -2314,32 +2333,39 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
                 SdotS,
                 chi, D_bond, d_PHYS, 
                 C21CD,C32EF,C13AB,T1F,T2A,T2B,T3C,T3D,T1E):
-    
-    T1F = T1F.reshape(chi,chi,D_bond,D_bond)
-    T2A = T2A.reshape(chi,chi,D_bond,D_bond)
-    T2B = T2B.reshape(chi,chi,D_bond,D_bond)
-    T3C = T3C.reshape(chi,chi,D_bond,D_bond)
-    T3D = T3D.reshape(chi,chi,D_bond,D_bond)
-    T1E = T1E.reshape(chi,chi,D_bond,D_bond)
+    """Energy for 3 ebadcf bonds.
 
-    open_E = oe.contract("YX,MYar,abci,rstj->MbsXctij", C21CD, T1F, e, e.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond, chi*D_bond*D_bond, d_PHYS, d_PHYS)
-    open_D = oe.contract("MYct,abci,rstj->YarMbsij", T3C, d, d.conj(), optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond, chi*D_bond*D_bond, d_PHYS, d_PHYS)
-    open_A = oe.contract("ZY,NZbs,abci,rstj->NctYarij", C32EF, T2B, a, a.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond, chi*D_bond*D_bond, d_PHYS, d_PHYS)
-    open_F = oe.contract("NZar,abci,rstj->ZbsNctij", T1E, f, f.conj(), optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond, chi*D_bond*D_bond, d_PHYS, d_PHYS)
-    open_C = oe.contract("XZ,LXct,abci,rstj->LarZbsij", C13AB, T3D, c, c.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond, chi*D_bond*D_bond, d_PHYS, d_PHYS)
-    open_B = oe.contract("LXbs,abci,rstj->XctLarij", T2A, b, b.conj(), optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond, chi*D_bond*D_bond, d_PHYS, d_PHYS)
-                              
-    closed_E = oe.contract("MXii->MX", open_E, backend="torch")#.reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_D = oe.contract("YMii->YM", open_D, backend="torch")#.reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_A = oe.contract("NYii->NY", open_A, backend="torch")#.reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_F = oe.contract("ZNii->ZN", open_F, backend="torch")#.reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_C = oe.contract("LZii->LZ", open_C, backend="torch")#.reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_B = oe.contract("XLii->XL", open_B, backend="torch")#.reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    Memory strategy: open tensors (chi*D²)²×d² re 800 MB at D=8,chi=80.
+    OLD: 6 opens pre-built outside _ckpt → 18 opens × 800 MB = 14 GB resident.
+    NEW: each bond's _ckpt closure builds its OWN pair of opens internally → at
+         most 2 opens alive simultaneously → ~1.6 GB peak open-tensor usage.
+    """
+    T1F_r = T1F.reshape(chi,chi,D_bond,D_bond)
+    T2A_r = T2A.reshape(chi,chi,D_bond,D_bond)
+    T2B_r = T2B.reshape(chi,chi,D_bond,D_bond)
+    T3C_r = T3C.reshape(chi,chi,D_bond,D_bond)
+    T3D_r = T3D.reshape(chi,chi,D_bond,D_bond)
+    T1E_r = T1E.reshape(chi,chi,D_bond,D_bond)
 
-    # H_AD = oe.contract("NctYarij,ijkl,YarMbskl->NctMbs", open_A, Had, open_D, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    # H_CF = oe.contract("LarZbsij,ijkl,ZbsNctkl->LarNct", open_C, Hcf, open_F, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    # H_EB = oe.contract("MbsXctij,ijkl,XctLarkl->MbsLar", open_E, Heb, open_B, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-
+    # ── Build closed tensors from cheaply-constructed opens ──────────────
+    # Closed tensors (chi*D²)² are only 200 MB at D=8,chi=80 — affordable.
+    # They are computed once, kept as small tensors, and reused across bonds.
+    D2 = chi * D_bond * D_bond
+    _bop = lambda einstr, *args, opt: oe.contract(einstr, *args,
+                                                   optimize=opt, backend="torch")
+    # open tensors: built once for closeds, then immediately freed after trace.
+    _open_E = _bop("YX,MYar,abci,rstj->MbsXctij", C21CD, T1F_r, e, e.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+    closed_E = oe.contract("MXii->MX", _open_E, backend="torch"); del _open_E
+    _open_D = _bop("MYct,abci,rstj->YarMbsij",    T3C_r, d, d.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+    closed_D = oe.contract("YMii->YM", _open_D, backend="torch"); del _open_D
+    _open_A = _bop("ZY,NZbs,abci,rstj->NctYarij", C32EF, T2B_r, a, a.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+    closed_A = oe.contract("NYii->NY", _open_A, backend="torch"); del _open_A
+    _open_F = _bop("NZar,abci,rstj->ZbsNctij",    T1E_r, f, f.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+    closed_F = oe.contract("ZNii->ZN", _open_F, backend="torch"); del _open_F
+    _open_C = _bop("XZ,LXct,abci,rstj->LarZbsij", C13AB, T3D_r, c, c.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+    closed_C = oe.contract("LZii->LZ", _open_C, backend="torch"); del _open_C
+    _open_B = _bop("LXbs,abci,rstj->XctLarij",    T2A_r, b, b.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+    closed_B = oe.contract("XLii->XL", _open_B, backend="torch"); del _open_B
 
     AD = torch.mm(closed_A, closed_D)
     CF = torch.mm(closed_C, closed_F)
@@ -2348,24 +2374,74 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
     DE = torch.mm(closed_D, closed_E)
     BC = torch.mm(closed_B, closed_C)
 
-    # ── NN bonds (sub-checkpointed: only 1 rho tensor alive at a time) ──
-    # Before: 12 rho tensors (~800 MB each at D=8 chi=40) accumulated in
-    # the autograd graph during backward recompute → 9.6 GB peak.
-    # Now: each _ckpt wraps ONE bond → peak = 1 rho ≈ 0.8 GB.
-    E_AD = Jad * _ckpt(_compute_nn_bond_energy,  open_A, open_D, EB, CF, SdotS, use_reentrant=False)
-    E_CF = Jcf * _ckpt(_compute_nn_bond_energy,  open_C, open_F, AD, EB, SdotS, use_reentrant=False)
-    E_EB = Jeb * _ckpt(_compute_nn_bond_energy,  open_E, open_B, CF, AD, SdotS, use_reentrant=False)
-    E_FA = Jfa * _ckpt(_compute_nn_bond_energy,  open_F, open_A, DE, BC, SdotS, use_reentrant=False)
-    E_DE = Jde * _ckpt(_compute_nn_bond_energy,  open_D, open_E, BC, FA, SdotS, use_reentrant=False)
-    E_BC = Jbc * _ckpt(_compute_nn_bond_energy,  open_B, open_C, FA, DE, SdotS, use_reentrant=False)
+    # ── NN bonds — each _ckpt closure builds its own pair of open tensors ─
+    # The closure captures small tensors (corners, transfers, site tensors,
+    # pair products) and builds the two 800 MB open tensors INSIDE the ckpt.
+    # They are freed when the bond energy scalar is returned.
+    def _nn_AD(EB, CF, SdotS):
+        _oA = _bop("ZY,NZbs,abci,rstj->NctYarij", C32EF, T2B_r, a, a.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oD = _bop("MYct,abci,rstj->YarMbsij",    T3C_r, d, d.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nn_bond_energy(_oA, _oD, EB, CF, SdotS)
+    def _nn_CF(AD, EB, SdotS):
+        _oC = _bop("XZ,LXct,abci,rstj->LarZbsij", C13AB, T3D_r, c, c.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oF = _bop("NZar,abci,rstj->ZbsNctij",    T1E_r, f, f.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nn_bond_energy(_oC, _oF, AD, EB, SdotS)
+    def _nn_EB(CF, AD, SdotS):
+        _oE = _bop("YX,MYar,abci,rstj->MbsXctij", C21CD, T1F_r, e, e.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oB = _bop("LXbs,abci,rstj->XctLarij",    T2A_r, b, b.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nn_bond_energy(_oE, _oB, CF, AD, SdotS)
+    def _nn_FA(DE, BC, SdotS):
+        _oF = _bop("NZar,abci,rstj->ZbsNctij",    T1E_r, f, f.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oA = _bop("ZY,NZbs,abci,rstj->NctYarij", C32EF, T2B_r, a, a.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nn_bond_energy(_oF, _oA, DE, BC, SdotS)
+    def _nn_DE(BC, FA, SdotS):
+        _oD = _bop("MYct,abci,rstj->YarMbsij",    T3C_r, d, d.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oE = _bop("YX,MYar,abci,rstj->MbsXctij", C21CD, T1F_r, e, e.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nn_bond_energy(_oD, _oE, BC, FA, SdotS)
+    def _nn_BC(FA, DE, SdotS):
+        _oB = _bop("LXbs,abci,rstj->XctLarij",    T2A_r, b, b.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oC = _bop("XZ,LXct,abci,rstj->LarZbsij", C13AB, T3D_r, c, c.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nn_bond_energy(_oB, _oC, FA, DE, SdotS)
 
-    # ── NNN bonds (sub-checkpointed) ─────────────────────────────────────
-    E_AE = Jae * _ckpt(_compute_nnn_bond_energy, open_A, closed_D, open_E, closed_B, CF, SdotS, use_reentrant=False)
-    E_EC = Jec * _ckpt(_compute_nnn_bond_energy, open_E, closed_B, open_C, closed_F, AD, SdotS, use_reentrant=False)
-    E_CA = Jca * _ckpt(_compute_nnn_bond_energy, open_C, closed_F, open_A, closed_D, EB, SdotS, use_reentrant=False)
-    E_DB = Jdb * _ckpt(_compute_nnn_bond_energy, open_D, closed_E, open_B, closed_C, FA, SdotS, use_reentrant=False)
-    E_BF = Jbf * _ckpt(_compute_nnn_bond_energy, open_B, closed_C, open_F, closed_A, DE, SdotS, use_reentrant=False)
-    E_FD = Jfd * _ckpt(_compute_nnn_bond_energy, open_F, closed_A, open_D, closed_E, BC, SdotS, use_reentrant=False)
+    # ── NNN bonds ─────────────────────────────────────────────────────────
+    def _nnn_AE(closed_D, closed_B, CF, SdotS):
+        _oA = _bop("ZY,NZbs,abci,rstj->NctYarij", C32EF, T2B_r, a, a.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oE = _bop("YX,MYar,abci,rstj->MbsXctij", C21CD, T1F_r, e, e.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nnn_bond_energy(_oA, closed_D, _oE, closed_B, CF, SdotS)
+    def _nnn_EC(closed_B, closed_F, AD, SdotS):
+        _oE = _bop("YX,MYar,abci,rstj->MbsXctij", C21CD, T1F_r, e, e.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oC = _bop("XZ,LXct,abci,rstj->LarZbsij", C13AB, T3D_r, c, c.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nnn_bond_energy(_oE, closed_B, _oC, closed_F, AD, SdotS)
+    def _nnn_CA(closed_F, closed_D, EB, SdotS):
+        _oC = _bop("XZ,LXct,abci,rstj->LarZbsij", C13AB, T3D_r, c, c.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oA = _bop("ZY,NZbs,abci,rstj->NctYarij", C32EF, T2B_r, a, a.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nnn_bond_energy(_oC, closed_F, _oA, closed_D, EB, SdotS)
+    def _nnn_DB(closed_E, closed_C, FA, SdotS):
+        _oD = _bop("MYct,abci,rstj->YarMbsij",    T3C_r, d, d.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oB = _bop("LXbs,abci,rstj->XctLarij",    T2A_r, b, b.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nnn_bond_energy(_oD, closed_E, _oB, closed_C, FA, SdotS)
+    def _nnn_BF(closed_C, closed_A, DE, SdotS):
+        _oB = _bop("LXbs,abci,rstj->XctLarij",    T2A_r, b, b.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oF = _bop("NZar,abci,rstj->ZbsNctij",    T1E_r, f, f.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nnn_bond_energy(_oB, closed_C, _oF, closed_A, DE, SdotS)
+    def _nnn_FD(closed_A, closed_E, BC, SdotS):
+        _oF = _bop("NZar,abci,rstj->ZbsNctij",    T1E_r, f, f.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oD = _bop("MYct,abci,rstj->YarMbsij",    T3C_r, d, d.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nnn_bond_energy(_oF, closed_A, _oD, closed_E, BC, SdotS)
+
+    E_AD = Jad * _ckpt(_nn_AD, EB, CF, SdotS, use_reentrant=False)
+    E_CF = Jcf * _ckpt(_nn_CF, AD, EB, SdotS, use_reentrant=False)
+    E_EB = Jeb * _ckpt(_nn_EB, CF, AD, SdotS, use_reentrant=False)
+    E_FA = Jfa * _ckpt(_nn_FA, DE, BC, SdotS, use_reentrant=False)
+    E_DE = Jde * _ckpt(_nn_DE, BC, FA, SdotS, use_reentrant=False)
+    E_BC = Jbc * _ckpt(_nn_BC, FA, DE, SdotS, use_reentrant=False)
+
+    E_AE = Jae * _ckpt(_nnn_AE, closed_D, closed_B, CF,     SdotS, use_reentrant=False)
+    E_EC = Jec * _ckpt(_nnn_EC, closed_B, closed_F, AD,     SdotS, use_reentrant=False)
+    E_CA = Jca * _ckpt(_nnn_CA, closed_F, closed_D, EB,     SdotS, use_reentrant=False)
+    E_DB = Jdb * _ckpt(_nnn_DB, closed_E, closed_C, FA,     SdotS, use_reentrant=False)
+    E_BF = Jbf * _ckpt(_nnn_BF, closed_C, closed_A, DE,     SdotS, use_reentrant=False)
+    E_FD = Jfd * _ckpt(_nnn_FD, closed_A, closed_E, BC,     SdotS, use_reentrant=False)
 
     return torch.real((E_AD+E_CF+E_EB + E_FA+E_DE+E_BC)*0.5 +E_AE+E_EC+E_CA +E_DB+E_BF+E_FD)
 
@@ -2377,31 +2453,29 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
                 SdotS,
                 chi, D_bond, d_PHYS, 
                 C21EB, C32AD,C13CF,T1D,T2C,T2F,T3E,T3B,T1A):
+    """Energy for 3 afcbed bonds (same lazy-open strategy as 3ebadcf)."""
+    T1D_r = T1D.reshape(chi,chi,D_bond,D_bond)
+    T2C_r = T2C.reshape(chi,chi,D_bond,D_bond)
+    T2F_r = T2F.reshape(chi,chi,D_bond,D_bond)
+    T3E_r = T3E.reshape(chi,chi,D_bond,D_bond)
+    T3B_r = T3B.reshape(chi,chi,D_bond,D_bond)
+    T1A_r = T1A.reshape(chi,chi,D_bond,D_bond)
 
-    T1D = T1D.reshape(chi,chi,D_bond,D_bond)
-    T2C = T2C.reshape(chi,chi,D_bond,D_bond)
-    T2F = T2F.reshape(chi,chi,D_bond,D_bond)
-    T3E = T3E.reshape(chi,chi,D_bond,D_bond)
-    T3B = T3B.reshape(chi,chi,D_bond,D_bond)
-    T1A = T1A.reshape(chi,chi,D_bond,D_bond)
-
-    open_A = oe.contract("YX,MYar,abci,rstj->MbsXctij", C21EB, T1D, a, a.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond, chi*D_bond*D_bond, d_PHYS, d_PHYS)
-    open_B = oe.contract("MYct,abci,rstj->YarMbsij", T3E, b, b.conj(), optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond, chi*D_bond*D_bond, d_PHYS, d_PHYS)
-    open_C = oe.contract("ZY,NZbs,abci,rstj->NctYarij", C32AD, T2F, c, c.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond, chi*D_bond*D_bond, d_PHYS, d_PHYS)
-    open_D = oe.contract("NZar,abci,rstj->ZbsNctij", T1A, d, d.conj(), optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond, chi*D_bond*D_bond, d_PHYS, d_PHYS)
-    open_E = oe.contract("XZ,LXct,abci,rstj->LarZbsij", C13CF, T3B, e, e.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond, chi*D_bond*D_bond, d_PHYS, d_PHYS)
-    open_F = oe.contract("LXbs,abci,rstj->XctLarij", T2C, f, f.conj(), optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond, chi*D_bond*D_bond, d_PHYS, d_PHYS)
-                              
-    closed_A = oe.contract("MXii->MX", open_A, backend="torch")#.reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_B = oe.contract("YMii->YM", open_B, backend="torch")#.reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_C = oe.contract("NYii->NY", open_C, backend="torch")#.reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_D = oe.contract("ZNii->ZN", open_D, backend="torch")#.reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_E = oe.contract("LZii->LZ", open_E, backend="torch")#.reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_F = oe.contract("XLii->XL", open_F, backend="torch")#.reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-
-    #H_CB = oe.contract("NctYarij,ijkl,YarMbskl->NctMbs", open_C, Hcb, open_B, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    #H_ED = oe.contract("LarZbsij,ijkl,ZbsNctkl->LarNct", open_E, Hed, open_D, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    #H_AF = oe.contract("MbsXctij,ijkl,XctLarkl->MbsLar", open_A, Haf, open_F, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    D2 = chi * D_bond * D_bond
+    _bop = lambda einstr, *args, opt: oe.contract(einstr, *args,
+                                                   optimize=opt, backend="torch")
+    _open_A = _bop("YX,MYar,abci,rstj->MbsXctij", C21EB, T1D_r, a, a.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+    closed_A = oe.contract("MXii->MX", _open_A, backend="torch"); del _open_A
+    _open_B = _bop("MYct,abci,rstj->YarMbsij",    T3E_r, b, b.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+    closed_B = oe.contract("YMii->YM", _open_B, backend="torch"); del _open_B
+    _open_C = _bop("ZY,NZbs,abci,rstj->NctYarij", C32AD, T2F_r, c, c.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+    closed_C = oe.contract("NYii->NY", _open_C, backend="torch"); del _open_C
+    _open_D = _bop("NZar,abci,rstj->ZbsNctij",    T1A_r, d, d.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+    closed_D = oe.contract("ZNii->ZN", _open_D, backend="torch"); del _open_D
+    _open_E = _bop("XZ,LXct,abci,rstj->LarZbsij", C13CF, T3B_r, e, e.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+    closed_E = oe.contract("LZii->LZ", _open_E, backend="torch"); del _open_E
+    _open_F = _bop("LXbs,abci,rstj->XctLarij",    T2C_r, f, f.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+    closed_F = oe.contract("XLii->XL", _open_F, backend="torch"); del _open_F
 
     CB = torch.mm(closed_C, closed_B)
     ED = torch.mm(closed_E, closed_D)
@@ -2410,21 +2484,71 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
     BA = torch.mm(closed_B, closed_A)
     FE = torch.mm(closed_F, closed_E)
 
-    # ── NN bonds (sub-checkpointed) ──────────────────────────────────────
-    E_CB = Jcb * _ckpt(_compute_nn_bond_energy,  open_C, open_B, AF, ED, SdotS, use_reentrant=False)
-    E_AF = Jaf * _ckpt(_compute_nn_bond_energy,  open_A, open_F, ED, CB, SdotS, use_reentrant=False)
-    E_ED = Jed * _ckpt(_compute_nn_bond_energy,  open_E, open_D, CB, AF, SdotS, use_reentrant=False)
-    E_DC = Jdc * _ckpt(_compute_nn_bond_energy,  open_D, open_C, BA, FE, SdotS, use_reentrant=False)
-    E_BA = Jba * _ckpt(_compute_nn_bond_energy,  open_B, open_A, FE, DC, SdotS, use_reentrant=False)
-    E_FE = Jfe * _ckpt(_compute_nn_bond_energy,  open_F, open_E, DC, BA, SdotS, use_reentrant=False)
+    # ── NN bonds (each _ckpt closure builds its own pair of open tensors) ─
+    def _nn_CB(AF, ED, SdotS):
+        _oC = _bop("ZY,NZbs,abci,rstj->NctYarij", C32AD, T2F_r, c, c.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oB = _bop("MYct,abci,rstj->YarMbsij",    T3E_r, b, b.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nn_bond_energy(_oC, _oB, AF, ED, SdotS)
+    def _nn_AF(ED, CB, SdotS):
+        _oA = _bop("YX,MYar,abci,rstj->MbsXctij", C21EB, T1D_r, a, a.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oF = _bop("LXbs,abci,rstj->XctLarij",    T2C_r, f, f.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nn_bond_energy(_oA, _oF, ED, CB, SdotS)
+    def _nn_ED(CB, AF, SdotS):
+        _oE = _bop("XZ,LXct,abci,rstj->LarZbsij", C13CF, T3B_r, e, e.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oD = _bop("NZar,abci,rstj->ZbsNctij",    T1A_r, d, d.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nn_bond_energy(_oE, _oD, CB, AF, SdotS)
+    def _nn_DC(BA, FE, SdotS):
+        _oD = _bop("NZar,abci,rstj->ZbsNctij",    T1A_r, d, d.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oC = _bop("ZY,NZbs,abci,rstj->NctYarij", C32AD, T2F_r, c, c.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nn_bond_energy(_oD, _oC, BA, FE, SdotS)
+    def _nn_BA(FE, DC, SdotS):
+        _oB = _bop("MYct,abci,rstj->YarMbsij",    T3E_r, b, b.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oA = _bop("YX,MYar,abci,rstj->MbsXctij", C21EB, T1D_r, a, a.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nn_bond_energy(_oB, _oA, FE, DC, SdotS)
+    def _nn_FE(DC, BA, SdotS):
+        _oF = _bop("LXbs,abci,rstj->XctLarij",    T2C_r, f, f.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oE = _bop("XZ,LXct,abci,rstj->LarZbsij", C13CF, T3B_r, e, e.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nn_bond_energy(_oF, _oE, DC, BA, SdotS)
 
-    # ── NNN bonds (sub-checkpointed) ─────────────────────────────────────
-    E_CA = Jca * _ckpt(_compute_nnn_bond_energy, open_C, closed_B, open_A, closed_F, ED, SdotS, use_reentrant=False)
-    E_AE = Jae * _ckpt(_compute_nnn_bond_energy, open_A, closed_F, open_E, closed_D, CB, SdotS, use_reentrant=False)
-    E_EC = Jec * _ckpt(_compute_nnn_bond_energy, open_E, closed_D, open_C, closed_B, AF, SdotS, use_reentrant=False)
-    E_BF = Jbf * _ckpt(_compute_nnn_bond_energy, open_B, closed_A, open_F, closed_E, DC, SdotS, use_reentrant=False)
-    E_FD = Jfd * _ckpt(_compute_nnn_bond_energy, open_F, closed_E, open_D, closed_C, BA, SdotS, use_reentrant=False)
-    E_DB = Jdb * _ckpt(_compute_nnn_bond_energy, open_D, closed_C, open_B, closed_A, FE, SdotS, use_reentrant=False)
+    # ── NNN bonds ─────────────────────────────────────────────────────────
+    def _nnn_CA(closed_B, closed_F, ED, SdotS):
+        _oC = _bop("ZY,NZbs,abci,rstj->NctYarij", C32AD, T2F_r, c, c.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oA = _bop("YX,MYar,abci,rstj->MbsXctij", C21EB, T1D_r, a, a.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nnn_bond_energy(_oC, closed_B, _oA, closed_F, ED, SdotS)
+    def _nnn_AE(closed_F, closed_D, CB, SdotS):
+        _oA = _bop("YX,MYar,abci,rstj->MbsXctij", C21EB, T1D_r, a, a.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oE = _bop("XZ,LXct,abci,rstj->LarZbsij", C13CF, T3B_r, e, e.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nnn_bond_energy(_oA, closed_F, _oE, closed_D, CB, SdotS)
+    def _nnn_EC(closed_D, closed_B, AF, SdotS):
+        _oE = _bop("XZ,LXct,abci,rstj->LarZbsij", C13CF, T3B_r, e, e.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oC = _bop("ZY,NZbs,abci,rstj->NctYarij", C32AD, T2F_r, c, c.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nnn_bond_energy(_oE, closed_D, _oC, closed_B, AF, SdotS)
+    def _nnn_BF(closed_A, closed_E, DC, SdotS):
+        _oB = _bop("MYct,abci,rstj->YarMbsij",    T3E_r, b, b.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oF = _bop("LXbs,abci,rstj->XctLarij",    T2C_r, f, f.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nnn_bond_energy(_oB, closed_A, _oF, closed_E, DC, SdotS)
+    def _nnn_FD(closed_E, closed_C, BA, SdotS):
+        _oF = _bop("LXbs,abci,rstj->XctLarij",    T2C_r, f, f.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oD = _bop("NZar,abci,rstj->ZbsNctij",    T1A_r, d, d.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nnn_bond_energy(_oF, closed_E, _oD, closed_C, BA, SdotS)
+    def _nnn_DB(closed_C, closed_A, FE, SdotS):
+        _oD = _bop("NZar,abci,rstj->ZbsNctij",    T1A_r, d, d.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oB = _bop("MYct,abci,rstj->YarMbsij",    T3E_r, b, b.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nnn_bond_energy(_oD, closed_C, _oB, closed_A, FE, SdotS)
+
+    E_CB = Jcb * _ckpt(_nn_CB, AF, ED, SdotS, use_reentrant=False)
+    E_AF = Jaf * _ckpt(_nn_AF, ED, CB, SdotS, use_reentrant=False)
+    E_ED = Jed * _ckpt(_nn_ED, CB, AF, SdotS, use_reentrant=False)
+    E_DC = Jdc * _ckpt(_nn_DC, BA, FE, SdotS, use_reentrant=False)
+    E_BA = Jba * _ckpt(_nn_BA, FE, DC, SdotS, use_reentrant=False)
+    E_FE = Jfe * _ckpt(_nn_FE, DC, BA, SdotS, use_reentrant=False)
+
+    E_CA = Jca * _ckpt(_nnn_CA, closed_B, closed_F, ED, SdotS, use_reentrant=False)
+    E_AE = Jae * _ckpt(_nnn_AE, closed_F, closed_D, CB, SdotS, use_reentrant=False)
+    E_EC = Jec * _ckpt(_nnn_EC, closed_D, closed_B, AF, SdotS, use_reentrant=False)
+    E_BF = Jbf * _ckpt(_nnn_BF, closed_A, closed_E, DC, SdotS, use_reentrant=False)
+    E_FD = Jfd * _ckpt(_nnn_FD, closed_E, closed_C, BA, SdotS, use_reentrant=False)
+    E_DB = Jdb * _ckpt(_nnn_DB, closed_C, closed_A, FE, SdotS, use_reentrant=False)
 
     return torch.real((E_AF+E_CB+E_ED + E_DC+E_BA+E_FE)*0.5 +E_CA+E_AE+E_EC +E_BF+E_FD+E_DB)
 
@@ -2444,9 +2568,9 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
     in the type-3 environment.
 
     This function covers bonds C-D, E-F, A-B (the bonds not handled by
-    ``energy_expectation_nearest_neighbor_6_bonds``).  The same open/closed
-    tensor construction is used, but the environment here is the type-3 set
-    ``(C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C)``.
+    ``energy_expectation_nearest_neighbor_6_bonds``).  The same lazy-open
+    tensor construction is used: each bond's _ckpt closure builds its own
+    pair of open tensors internally to avoid pre-allocating all 6 × 800 MB.
 
     The energy is::
 
@@ -2470,30 +2594,28 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
     Returns:
         torch.Tensor: Scalar energy per bond (float32).
     """
-    T1B = T1B.reshape(chi,chi,D_bond,D_bond)
-    T2E = T2E.reshape(chi,chi,D_bond,D_bond)
-    T2D = T2D.reshape(chi,chi,D_bond,D_bond)
-    T3A = T3A.reshape(chi,chi,D_bond,D_bond)
-    T3F = T3F.reshape(chi,chi,D_bond,D_bond)
-    T1C = T1C.reshape(chi,chi,D_bond,D_bond)
+    T1B_r = T1B.reshape(chi,chi,D_bond,D_bond)
+    T2E_r = T2E.reshape(chi,chi,D_bond,D_bond)
+    T2D_r = T2D.reshape(chi,chi,D_bond,D_bond)
+    T3A_r = T3A.reshape(chi,chi,D_bond,D_bond)
+    T3F_r = T3F.reshape(chi,chi,D_bond,D_bond)
+    T1C_r = T1C.reshape(chi,chi,D_bond,D_bond)
 
-    open_C = oe.contract("YX,MYar,abci,rstj->MbsXctij", C21AF, T1B, c, c.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond, chi*D_bond*D_bond, d_PHYS, d_PHYS)
-    open_F = oe.contract("MYct,abci,rstj->YarMbsij", T3A, f, f.conj(), optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond, chi*D_bond*D_bond, d_PHYS, d_PHYS)
-    open_E = oe.contract("ZY,NZbs,abci,rstj->NctYarij", C32CB, T2D, e, e.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond, chi*D_bond*D_bond, d_PHYS, d_PHYS)
-    open_B = oe.contract("NZar,abci,rstj->ZbsNctij", T1C, b, b.conj(), optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond, chi*D_bond*D_bond, d_PHYS, d_PHYS)
-    open_A = oe.contract("XZ,LXct,abci,rstj->LarZbsij", C13ED, T3F, a, a.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond, chi*D_bond*D_bond, d_PHYS, d_PHYS)
-    open_D = oe.contract("LXbs,abci,rstj->XctLarij", T2E, d, d.conj(), optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond, chi*D_bond*D_bond, d_PHYS, d_PHYS)
-                              
-    closed_C = oe.contract("MXii->MX", open_C, backend="torch")#.reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_F = oe.contract("YMii->YM", open_F, backend="torch")#.reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_E = oe.contract("NYii->NY", open_E, backend="torch")#.reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_B = oe.contract("ZNii->ZN", open_B, backend="torch")#.reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_A = oe.contract("LZii->LZ", open_A, backend="torch")#.reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    closed_D = oe.contract("XLii->XL", open_D, backend="torch")#.reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-
-    #H_EF = oe.contract("NctYarij,ijkl,YarMbskl->NctMbs", open_E, Hef, open_F, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    #H_AB = oe.contract("LarZbsij,ijkl,ZbsNctkl->LarNct", open_A, Hab, open_B, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
-    #H_CD = oe.contract("MbsXctij,ijkl,XctLarkl->MbsLar", open_C, Hcd, open_D, optimize=[(0,1),(0,1)], backend="torch").reshape(chi*D_bond*D_bond,chi*D_bond*D_bond)
+    D2 = chi * D_bond * D_bond
+    _bop = lambda einstr, *args, opt: oe.contract(einstr, *args,
+                                                   optimize=opt, backend="torch")
+    _open_C = _bop("YX,MYar,abci,rstj->MbsXctij", C21AF, T1B_r, c, c.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+    closed_C = oe.contract("MXii->MX", _open_C, backend="torch"); del _open_C
+    _open_F = _bop("MYct,abci,rstj->YarMbsij",    T3A_r, f, f.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+    closed_F = oe.contract("YMii->YM", _open_F, backend="torch"); del _open_F
+    _open_E = _bop("ZY,NZbs,abci,rstj->NctYarij", C32CB, T2D_r, e, e.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+    closed_E = oe.contract("NYii->NY", _open_E, backend="torch"); del _open_E
+    _open_B = _bop("NZar,abci,rstj->ZbsNctij",    T1C_r, b, b.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+    closed_B = oe.contract("ZNii->ZN", _open_B, backend="torch"); del _open_B
+    _open_A = _bop("XZ,LXct,abci,rstj->LarZbsij", C13ED, T3F_r, a, a.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+    closed_A = oe.contract("LZii->LZ", _open_A, backend="torch"); del _open_A
+    _open_D = _bop("LXbs,abci,rstj->XctLarij",    T2E_r, d, d.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+    closed_D = oe.contract("XLii->XL", _open_D, backend="torch"); del _open_D
 
     EF = torch.mm(closed_E, closed_F)
     AB = torch.mm(closed_A, closed_B)
@@ -2502,21 +2624,71 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
     FC = torch.mm(closed_F, closed_C)
     DA = torch.mm(closed_D, closed_A)
 
-    # ── NN bonds (sub-checkpointed) ──────────────────────────────────────
-    E_EF = Jef * _ckpt(_compute_nn_bond_energy,  open_E, open_F, CD, AB, SdotS, use_reentrant=False)
-    E_AB = Jab * _ckpt(_compute_nn_bond_energy,  open_A, open_B, EF, CD, SdotS, use_reentrant=False)
-    E_CD = Jcd * _ckpt(_compute_nn_bond_energy,  open_C, open_D, AB, EF, SdotS, use_reentrant=False)
-    E_BE = Jbe * _ckpt(_compute_nn_bond_energy,  open_B, open_E, FC, DA, SdotS, use_reentrant=False)
-    E_FC = Jfc * _ckpt(_compute_nn_bond_energy,  open_F, open_C, DA, BE, SdotS, use_reentrant=False)
-    E_DA = Jda * _ckpt(_compute_nn_bond_energy,  open_D, open_A, BE, FC, SdotS, use_reentrant=False)
+    # ── NN bonds (each _ckpt closure builds its own pair of open tensors) ─
+    def _nn_EF(CD, AB, SdotS):
+        _oE = _bop("ZY,NZbs,abci,rstj->NctYarij", C32CB, T2D_r, e, e.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oF = _bop("MYct,abci,rstj->YarMbsij",    T3A_r, f, f.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nn_bond_energy(_oE, _oF, CD, AB, SdotS)
+    def _nn_AB(EF, CD, SdotS):
+        _oA = _bop("XZ,LXct,abci,rstj->LarZbsij", C13ED, T3F_r, a, a.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oB = _bop("NZar,abci,rstj->ZbsNctij",    T1C_r, b, b.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nn_bond_energy(_oA, _oB, EF, CD, SdotS)
+    def _nn_CD(AB, EF, SdotS):
+        _oC = _bop("YX,MYar,abci,rstj->MbsXctij", C21AF, T1B_r, c, c.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oD = _bop("LXbs,abci,rstj->XctLarij",    T2E_r, d, d.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nn_bond_energy(_oC, _oD, AB, EF, SdotS)
+    def _nn_BE(FC, DA, SdotS):
+        _oB = _bop("NZar,abci,rstj->ZbsNctij",    T1C_r, b, b.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oE = _bop("ZY,NZbs,abci,rstj->NctYarij", C32CB, T2D_r, e, e.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nn_bond_energy(_oB, _oE, FC, DA, SdotS)
+    def _nn_FC(DA, BE, SdotS):
+        _oF = _bop("MYct,abci,rstj->YarMbsij",    T3A_r, f, f.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oC = _bop("YX,MYar,abci,rstj->MbsXctij", C21AF, T1B_r, c, c.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nn_bond_energy(_oF, _oC, DA, BE, SdotS)
+    def _nn_DA(BE, FC, SdotS):
+        _oD = _bop("LXbs,abci,rstj->XctLarij",    T2E_r, d, d.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oA = _bop("XZ,LXct,abci,rstj->LarZbsij", C13ED, T3F_r, a, a.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nn_bond_energy(_oD, _oA, BE, FC, SdotS)
 
-    # ── NNN bonds (sub-checkpointed) ─────────────────────────────────────
-    E_EC = Jec * _ckpt(_compute_nnn_bond_energy, open_E, closed_F, open_C, closed_D, AB, SdotS, use_reentrant=False)
-    E_CA = Jca * _ckpt(_compute_nnn_bond_energy, open_C, closed_D, open_A, closed_B, EF, SdotS, use_reentrant=False)
-    E_AE = Jae * _ckpt(_compute_nnn_bond_energy, open_A, closed_B, open_E, closed_F, CD, SdotS, use_reentrant=False)
-    E_FD = Jfd * _ckpt(_compute_nnn_bond_energy, open_F, closed_C, open_D, closed_A, BE, SdotS, use_reentrant=False)
-    E_DB = Jdb * _ckpt(_compute_nnn_bond_energy, open_D, closed_A, open_B, closed_E, FC, SdotS, use_reentrant=False)
-    E_BF = Jbf * _ckpt(_compute_nnn_bond_energy, open_B, closed_E, open_F, closed_C, DA, SdotS, use_reentrant=False)
+    # ── NNN bonds ─────────────────────────────────────────────────────────
+    def _nnn_EC(closed_F, closed_D, AB, SdotS):
+        _oE = _bop("ZY,NZbs,abci,rstj->NctYarij", C32CB, T2D_r, e, e.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oC = _bop("YX,MYar,abci,rstj->MbsXctij", C21AF, T1B_r, c, c.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nnn_bond_energy(_oE, closed_F, _oC, closed_D, AB, SdotS)
+    def _nnn_CA(closed_D, closed_B, EF, SdotS):
+        _oC = _bop("YX,MYar,abci,rstj->MbsXctij", C21AF, T1B_r, c, c.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oA = _bop("XZ,LXct,abci,rstj->LarZbsij", C13ED, T3F_r, a, a.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nnn_bond_energy(_oC, closed_D, _oA, closed_B, EF, SdotS)
+    def _nnn_AE(closed_B, closed_F, CD, SdotS):
+        _oA = _bop("XZ,LXct,abci,rstj->LarZbsij", C13ED, T3F_r, a, a.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oE = _bop("ZY,NZbs,abci,rstj->NctYarij", C32CB, T2D_r, e, e.conj(), opt=[(0,1),(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nnn_bond_energy(_oA, closed_B, _oE, closed_F, CD, SdotS)
+    def _nnn_FD(closed_C, closed_A, BE, SdotS):
+        _oF = _bop("MYct,abci,rstj->YarMbsij",    T3A_r, f, f.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oD = _bop("LXbs,abci,rstj->XctLarij",    T2E_r, d, d.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nnn_bond_energy(_oF, closed_C, _oD, closed_A, BE, SdotS)
+    def _nnn_DB(closed_A, closed_E, FC, SdotS):
+        _oD = _bop("LXbs,abci,rstj->XctLarij",    T2E_r, d, d.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oB = _bop("NZar,abci,rstj->ZbsNctij",    T1C_r, b, b.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nnn_bond_energy(_oD, closed_A, _oB, closed_E, FC, SdotS)
+    def _nnn_BF(closed_E, closed_C, DA, SdotS):
+        _oB = _bop("NZar,abci,rstj->ZbsNctij",    T1C_r, b, b.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        _oF = _bop("MYct,abci,rstj->YarMbsij",    T3A_r, f, f.conj(), opt=[(0,1),(0,1)]).reshape(D2,D2,d_PHYS,d_PHYS)
+        return _compute_nnn_bond_energy(_oB, closed_E, _oF, closed_C, DA, SdotS)
+
+    E_EF = Jef * _ckpt(_nn_EF, CD, AB, SdotS, use_reentrant=False)
+    E_AB = Jab * _ckpt(_nn_AB, EF, CD, SdotS, use_reentrant=False)
+    E_CD = Jcd * _ckpt(_nn_CD, AB, EF, SdotS, use_reentrant=False)
+    E_BE = Jbe * _ckpt(_nn_BE, FC, DA, SdotS, use_reentrant=False)
+    E_FC = Jfc * _ckpt(_nn_FC, DA, BE, SdotS, use_reentrant=False)
+    E_DA = Jda * _ckpt(_nn_DA, BE, FC, SdotS, use_reentrant=False)
+
+    E_EC = Jec * _ckpt(_nnn_EC, closed_F, closed_D, AB, SdotS, use_reentrant=False)
+    E_CA = Jca * _ckpt(_nnn_CA, closed_D, closed_B, EF, SdotS, use_reentrant=False)
+    E_AE = Jae * _ckpt(_nnn_AE, closed_B, closed_F, CD, SdotS, use_reentrant=False)
+    E_FD = Jfd * _ckpt(_nnn_FD, closed_C, closed_A, BE, SdotS, use_reentrant=False)
+    E_DB = Jdb * _ckpt(_nnn_DB, closed_A, closed_E, FC, SdotS, use_reentrant=False)
+    E_BF = Jbf * _ckpt(_nnn_BF, closed_E, closed_C, DA, SdotS, use_reentrant=False)
 
     return torch.real((E_EF+E_AB+E_CD + E_BE+E_FC+E_DA)*0.5 +E_EC+E_CA+E_AE +E_FD+E_DB+E_BF)
 

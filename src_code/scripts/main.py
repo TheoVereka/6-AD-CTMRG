@@ -606,16 +606,16 @@ ANSATZ_REGISTRY: dict = {
         'yaml_name':   'neel_symmetrized',
         'description': 'Néel-symmetrized single-tensor ansatz (S3 virtual legs, π-rotation U=iσ_y)',
     },
-    # ── Plaquette single-tensor ansatz (C3 rotation, no leg symmetrization) ───
+    # ── Plaquette single-tensor ansatz (C3 rotation + intra-plaquette leg sym) ─
     'plaq': {
         'n_params':    1,
-        'symmetrize_fn': None,           # no virtual-leg symmetrization
+        'symmetrize_fn': symmetrize_plaq_legs,   # enforce a[i,j,k,s]=a[i,k,j,s]
         'derive_fn':   plaq_abcdef_from_a,
         'init_fn':     initialize_plaq,
         'ckpt_keys':   ['a_raw'],
         'dir_prefix':  'plaq_symmetrized',
         'yaml_name':   'plaq_symmetrized',
-        'description': 'Plaquette single-tensor ansatz (C3 virtual-leg rotation, no symmetrization)',
+        'description': 'Plaquette single-tensor ansatz (C3 virtual-leg rotation + intra-plaquette leg sym)',
     },
 }
 
