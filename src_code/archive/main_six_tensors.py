@@ -46,7 +46,7 @@ import opt_einsum as oe
 import torch
 
 
-from core_six_tensors import (
+from src_code.archive.core_six_tensors import (
     set_dtype,
 )
 

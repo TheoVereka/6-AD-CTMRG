@@ -913,27 +913,7 @@ def initialize_abcdef(initialize_way:str, D_bond:int, d_PHYS:int, noise_scale:fl
     return a,b,c,d,e,f
 
 
-# ── Néel-symmetrized ansatz utilities ─────────────────────────────────────────
-#
-# For the Néel state on the honeycomb lattice, the 6-site unit cell is
-# constrained to a single tensor `a` with totally symmetrized virtual legs:
-#   sublattice 1 (sites A, C, E): a_sym
-#   sublattice 2 (sites B, D, F): a_sym with physical spin index flipped
-#
-# The physical-index flip (b[i,j,k,s] = a[i,j,k, d−1−s]) maps spin-up ↔
-# spin-down on the B-sublattice, encoding the Néel alternation correctly.
-# NOTE: simply negating the tensor (b = -a) does NOT work — the sign cancels
-# in the double-layer (bra⊗ket), giving the same state as (a,a,a,a,a,a).
-# Only a transformation that changes the physical index can produce a
-# genuinely different double-layer tensor on the B sublattice.
-#
-# The total symmetrization of the 3 virtual (D-dimensional) legs means
-# a[i,j,k,s] = a[π(i,j,k),s] for all permutations π ∈ S₃.
-# Degrees of freedom: D*(D+1)*(D+2)/6  per physical index × d_PHYS
-#                    = D*(D+1)*(D+2)/3  total (for d_PHYS=2).
-#
-# Double-layer tensors A ≠ B in general, so CTMRG runs with 6 distinct tensors.
-# The existing code already handles this correctly (A,B,C,D,E,F are independent).
+# ── Néel-symmetrized ansatz ───────────────────────────────────────────────────
 
 def symmetrize_virtual_legs(a: torch.Tensor) -> torch.Tensor:
     """Symmetrize the 3 virtual legs of tensor a of shape (D, D, D, d_PHYS).
@@ -1001,6 +981,46 @@ def initialize_neel(D_bond: int, d_PHYS: int, noise_scale: float = 1.0) -> torch
     a = symmetrize_virtual_legs(a)
     _USE_FULL_SVD = True
     return a
+
+
+# ── Plaquette-symmetrized ansatz ──────────────────────────────────────────────
+
+def symmetrize_plaq_legs(a: torch.Tensor) -> torch.Tensor:
+    """Symmetrize the 2nd and 3rd virtual legs of a (D,D,D,d_PHYS) tensor.
+
+    Returns (a + a.permute(0,2,1,3)) / 2, which satisfies
+    result[i,j,k,s] == result[i,k,j,s].
+    """
+    return (a + a.permute(0, 2, 1, 3)) / 2.0
+
+
+def plaq_abcdef_from_a(a_sym: torch.Tensor) -> tuple:
+    """Derive (a, b, c, d, e, f) from a plaquette-symmetric tensor.
+
+    a = d = a_sym
+    b = e = a_sym.permute(1,2,0,3)
+    c = f = a_sym.permute(1,0,2,3)
+    """
+    b = a_sym.permute(1, 2, 0, 3)
+    c = a_sym.permute(1, 0, 2, 3)
+    return (a_sym, b, c, a_sym, b, c)
+
+
+def initialize_plaq(D_bond: int, d_PHYS: int,
+                    noise_scale: float = 1.0) -> torch.Tensor:
+    """Create a random plaquette-symmetric iPEPS tensor.
+
+    Returns a_raw of shape (D_bond, D_bond, D_bond, d_PHYS) with the 2nd
+    and 3rd virtual legs symmetrized.  Sets _USE_FULL_SVD = True so the
+    first L-BFGS step uses full deterministic SVD.
+    """
+    global _USE_FULL_SVD
+    a_raw = noise_scale * torch.randn(
+        D_bond, D_bond, D_bond, d_PHYS,
+        dtype=TENSORDTYPE, device=DEVICE)
+    a_raw = symmetrize_plaq_legs(a_raw)
+    _USE_FULL_SVD = True
+    return a_raw
 
 
 def abcdef_to_ABCDEF(a,b,c,d,e,f, D_squared:int):
