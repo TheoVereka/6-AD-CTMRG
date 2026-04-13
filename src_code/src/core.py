@@ -1028,6 +1028,7 @@ def plaq_abcdef_from_a(a_raw: torch.Tensor) -> tuple:
         FA1212 contracts F.leg2 ↔ A.leg2  →  a_raw.leg1 ↔ a_raw.leg2  ✓
     All three "hexagon edge" bonds are equivalent under C3 symmetry.
 
+    # TODO: Try symmetrization to see the difference!
     No virtual-leg symmetrization is applied — the optimizer can freely
     break leg isotropy, essential for plaquette VBS order.
 
@@ -1035,9 +1036,14 @@ def plaq_abcdef_from_a(a_raw: torch.Tensor) -> tuple:
     reflection (swap leg0↔leg1), not a C3² rotation — this broke the
     C3 symmetry and caused all bonds to appear equivalent.
     """
-    b = a_raw.permute(1, 2, 0, 3)   # C3  rotation
-    c = a_raw.permute(2, 0, 1, 3)   # C3² rotation
-    return (a_raw, b, c, a_raw, b, c)
+    if False:
+        a = symmetrize_plaq_legs(a_raw)
+    else:
+        a = a_raw
+        
+    b = a.permute(1, 2, 0, 3)   # C3  rotation
+    c = a.permute(2, 0, 1, 3)   # C3² rotation
+    return (a, b, c, a, b, c)
 
 
 def initialize_plaq(D_bond: int, d_PHYS: int,
