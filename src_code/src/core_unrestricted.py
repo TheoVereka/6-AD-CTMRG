@@ -2208,26 +2208,13 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
         # Running under no_grad prevents the (D²×D², D²×D²) SVD intermediates
         # from being kept alive in the autograd graph (saves ~75 MB for D=5).
         with torch.no_grad():
-            # CPU-offload for initialize_envCTs_1:
-            # The `else` branch builds pre-truncation T tensors of shape
-            # (D²·D², D²·D², D²) = (D^4, D^4, D^2).  At D=8 this is
-            # (4096, 4096, 64) × 8 bytes = 8.0 GiB — exactly the OOM error.
-            # Since this runs under no_grad and is a one-time call per restart,
-            # we offload it to CPU (128 GB RAM) and move only the small
-            # chi-truncated outputs (≤ chi×chi×D² each) back to the GPU.
-            _gpu_dev = A.device
             _D_bond = round(D_squared ** 0.5)
-            if _gpu_dev.type == 'cuda' and not _use_identity and _D_bond >= 8:
-                _cpu = torch.device('cpu')
-                _init_out = initialize_envCTs_1(
-                    A.to(_cpu), B.to(_cpu), C.to(_cpu),
-                    D.to(_cpu), E.to(_cpu), F.to(_cpu),
-                    chi, D_squared, identity_init=_use_identity)
-                nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E = \
-                    tuple(t.to(_gpu_dev) for t in _init_out)
-                del _init_out
-            else:
-                nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E = initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=_use_identity)
+            # D ≥ 8: pre-truncation T tensors are (D^4, D^4, D^2) ≥ 8 GiB — OOM on
+            # GPU even in no_grad.  Force identity_init so only (chi,chi) and
+            # (chi,chi,D²) tensors are allocated.  No CPU offload.
+            if _D_bond >= 8 and not _use_identity:
+                _use_identity = True
+            nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E = initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=_use_identity)
             # ── Inject escalating random noise for restarts ──────────────
             _ns = _NOISE_SCALES[_restart]
             if _ns > 0.0:
@@ -2335,11 +2322,33 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
                 C21CD,C32EF,C13AB,T1F,T2A,T2B,T3C,T3D,T1E):
     """Energy for 3 ebadcf bonds.
 
-    Memory strategy: open tensors (chi*D²)²×d² re 800 MB at D=8,chi=80.
-    OLD: 6 opens pre-built outside _ckpt → 18 opens × 800 MB = 14 GB resident.
-    NEW: each bond's _ckpt closure builds its OWN pair of opens internally → at
-         most 2 opens alive simultaneously → ~1.6 GB peak open-tensor usage.
+    Memory strategy: open tensors (chi*D²)²×d² are 800 MB at D=8,chi=80.
+    D ≤ 7 : open tensors ≤ 440 MB total → pre-build all 6 once, no _ckpt.
+    D ≥ 8 : each bond's _ckpt closure builds its OWN pair of opens internally →
+            at most 2 opens alive simultaneously → ~1.6 GB peak open-tensor usage.
     """
+    # ── Small-D fast path (D ≤ 7): pre-build once, no _ckpt ──────────────────
+    if D_bond < 8:
+        o, cl = build_open_closed_env1(a, b, c, d, e, f, chi, D_bond, d_PHYS,
+                                       C21CD, C32EF, C13AB,
+                                       T1F, T2A, T2B, T3C, T3D, T1E)
+        AD = torch.mm(cl['A'], cl['D']);  CF = torch.mm(cl['C'], cl['F'])
+        EB = torch.mm(cl['E'], cl['B']);  FA = torch.mm(cl['F'], cl['A'])
+        DE = torch.mm(cl['D'], cl['E']);  BC = torch.mm(cl['B'], cl['C'])
+        E_AD = Jad * _compute_nn_bond_energy(o['A'], o['D'], EB, CF, SdotS)
+        E_CF = Jcf * _compute_nn_bond_energy(o['C'], o['F'], AD, EB, SdotS)
+        E_EB = Jeb * _compute_nn_bond_energy(o['E'], o['B'], CF, AD, SdotS)
+        E_FA = Jfa * _compute_nn_bond_energy(o['F'], o['A'], DE, BC, SdotS)
+        E_DE = Jde * _compute_nn_bond_energy(o['D'], o['E'], BC, FA, SdotS)
+        E_BC = Jbc * _compute_nn_bond_energy(o['B'], o['C'], FA, DE, SdotS)
+        E_AE = Jae * _compute_nnn_bond_energy(o['A'], cl['D'], o['E'], cl['B'], CF, SdotS)
+        E_EC = Jec * _compute_nnn_bond_energy(o['E'], cl['B'], o['C'], cl['F'], AD, SdotS)
+        E_CA = Jca * _compute_nnn_bond_energy(o['C'], cl['F'], o['A'], cl['D'], EB, SdotS)
+        E_DB = Jdb * _compute_nnn_bond_energy(o['D'], cl['E'], o['B'], cl['C'], FA, SdotS)
+        E_BF = Jbf * _compute_nnn_bond_energy(o['B'], cl['C'], o['F'], cl['A'], DE, SdotS)
+        E_FD = Jfd * _compute_nnn_bond_energy(o['F'], cl['A'], o['D'], cl['E'], BC, SdotS)
+        return torch.real((E_AD+E_CF+E_EB + E_FA+E_DE+E_BC)*0.5 +E_AE+E_EC+E_CA +E_DB+E_BF+E_FD)
+    # ── Large-D lazy path: D ≥ 5 — checkpointed closures (open tensors ≥ 32 MB each) ──
     T1F_r = T1F.reshape(chi,chi,D_bond,D_bond)
     T2A_r = T2A.reshape(chi,chi,D_bond,D_bond)
     T2B_r = T2B.reshape(chi,chi,D_bond,D_bond)
@@ -2453,7 +2462,29 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
                 SdotS,
                 chi, D_bond, d_PHYS, 
                 C21EB, C32AD,C13CF,T1D,T2C,T2F,T3E,T3B,T1A):
-    """Energy for 3 afcbed bonds (same lazy-open strategy as 3ebadcf)."""
+    """Energy for 3 afcbed bonds.  D ≤ 7: pre-build path.  D ≥ 8: lazy-open+_ckpt."""
+    # ── Small-D fast path (D ≤ 7) ─────────────────────────────────────────────
+    if D_bond < 8:
+        o, cl = build_open_closed_env2(a, b, c, d, e, f, chi, D_bond, d_PHYS,
+                                       C21EB, C32AD, C13CF,
+                                       T1D, T2C, T2F, T3E, T3B, T1A)
+        CB = torch.mm(cl['C'], cl['B']);  ED = torch.mm(cl['E'], cl['D'])
+        AF = torch.mm(cl['A'], cl['F']);  DC = torch.mm(cl['D'], cl['C'])
+        BA = torch.mm(cl['B'], cl['A']);  FE = torch.mm(cl['F'], cl['E'])
+        E_CB = Jcb * _compute_nn_bond_energy(o['C'], o['B'], AF, ED, SdotS)
+        E_AF = Jaf * _compute_nn_bond_energy(o['A'], o['F'], ED, CB, SdotS)
+        E_ED = Jed * _compute_nn_bond_energy(o['E'], o['D'], CB, AF, SdotS)
+        E_DC = Jdc * _compute_nn_bond_energy(o['D'], o['C'], BA, FE, SdotS)
+        E_BA = Jba * _compute_nn_bond_energy(o['B'], o['A'], FE, DC, SdotS)
+        E_FE = Jfe * _compute_nn_bond_energy(o['F'], o['E'], DC, BA, SdotS)
+        E_CA = Jca * _compute_nnn_bond_energy(o['C'], cl['B'], o['A'], cl['F'], ED, SdotS)
+        E_AE = Jae * _compute_nnn_bond_energy(o['A'], cl['F'], o['E'], cl['D'], CB, SdotS)
+        E_EC = Jec * _compute_nnn_bond_energy(o['E'], cl['D'], o['C'], cl['B'], AF, SdotS)
+        E_BF = Jbf * _compute_nnn_bond_energy(o['B'], cl['A'], o['F'], cl['E'], DC, SdotS)
+        E_FD = Jfd * _compute_nnn_bond_energy(o['F'], cl['E'], o['D'], cl['C'], BA, SdotS)
+        E_DB = Jdb * _compute_nnn_bond_energy(o['D'], cl['C'], o['B'], cl['A'], FE, SdotS)
+        return torch.real((E_AF+E_CB+E_ED + E_DC+E_BA+E_FE)*0.5 +E_CA+E_AE+E_EC +E_BF+E_FD+E_DB)
+    # ── Large-D lazy path: D ≥ 5 ───────────────────────────────────────────────
     T1D_r = T1D.reshape(chi,chi,D_bond,D_bond)
     T2C_r = T2C.reshape(chi,chi,D_bond,D_bond)
     T2F_r = T2F.reshape(chi,chi,D_bond,D_bond)
@@ -2594,6 +2625,28 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
     Returns:
         torch.Tensor: Scalar energy per bond (float32).
     """
+    # ── Small-D fast path (D ≤ 7) ─────────────────────────────────────────────
+    if D_bond < 8:
+        o, cl = build_open_closed_env3(a, b, c, d, e, f, chi, D_bond, d_PHYS,
+                                       C21AF, C32CB, C13ED,
+                                       T1B, T2E, T2D, T3A, T3F, T1C)
+        EF = torch.mm(cl['E'], cl['F']);  AB = torch.mm(cl['A'], cl['B'])
+        CD = torch.mm(cl['C'], cl['D']);  BE = torch.mm(cl['B'], cl['E'])
+        FC = torch.mm(cl['F'], cl['C']);  DA = torch.mm(cl['D'], cl['A'])
+        E_EF = Jef * _compute_nn_bond_energy(o['E'], o['F'], CD, AB, SdotS)
+        E_AB = Jab * _compute_nn_bond_energy(o['A'], o['B'], EF, CD, SdotS)
+        E_CD = Jcd * _compute_nn_bond_energy(o['C'], o['D'], AB, EF, SdotS)
+        E_BE = Jbe * _compute_nn_bond_energy(o['B'], o['E'], FC, DA, SdotS)
+        E_FC = Jfc * _compute_nn_bond_energy(o['F'], o['C'], DA, BE, SdotS)
+        E_DA = Jda * _compute_nn_bond_energy(o['D'], o['A'], BE, FC, SdotS)
+        E_EC = Jec * _compute_nnn_bond_energy(o['E'], cl['F'], o['C'], cl['D'], AB, SdotS)
+        E_CA = Jca * _compute_nnn_bond_energy(o['C'], cl['D'], o['A'], cl['B'], EF, SdotS)
+        E_AE = Jae * _compute_nnn_bond_energy(o['A'], cl['B'], o['E'], cl['F'], CD, SdotS)
+        E_FD = Jfd * _compute_nnn_bond_energy(o['F'], cl['C'], o['D'], cl['A'], BE, SdotS)
+        E_DB = Jdb * _compute_nnn_bond_energy(o['D'], cl['A'], o['B'], cl['E'], FC, SdotS)
+        E_BF = Jbf * _compute_nnn_bond_energy(o['B'], cl['E'], o['F'], cl['C'], DA, SdotS)
+        return torch.real((E_EF+E_AB+E_CD + E_BE+E_FC+E_DA)*0.5 +E_EC+E_CA+E_AE +E_FD+E_DB+E_BF)
+    # ── Large-D lazy path: D ≥ 5 ───────────────────────────────────────────────
     T1B_r = T1B.reshape(chi,chi,D_bond,D_bond)
     T2E_r = T2E.reshape(chi,chi,D_bond,D_bond)
     T2D_r = T2D.reshape(chi,chi,D_bond,D_bond)
