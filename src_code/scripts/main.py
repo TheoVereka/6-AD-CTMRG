@@ -559,13 +559,16 @@ def _derive_abcdef(params_list: list, cfg: dict) -> tuple:
 
     For the unrestricted ansatz (cfg['n_params']==6) the params are already
     the 6 tensors, so they are returned directly.  For single-tensor ansätze
-    (cfg['n_params']==1) the single raw tensor is first symmetrized and then
-    the ansatz-specific derive function produces all 6 tensors.
+    (cfg['n_params']==1) the single raw tensor is optionally symmetrized
+    (if cfg['symmetrize_fn'] is not None) and then the ansatz-specific
+    derive function produces all 6 tensors.
     """
     if cfg['n_params'] == 6:
         return tuple(params_list)
-    a_sym = cfg['symmetrize_fn'](params_list[0])
-    return cfg['derive_fn'](a_sym)
+    raw = params_list[0]
+    if cfg['symmetrize_fn'] is not None:
+        raw = cfg['symmetrize_fn'](raw)
+    return cfg['derive_fn'](raw)
 
 
 # ── Ansatz registry ───────────────────────────────────────────────────────────
@@ -601,18 +604,18 @@ ANSATZ_REGISTRY: dict = {
         'ckpt_keys':   ['a_raw'],
         'dir_prefix':  'neel_symmetrized',
         'yaml_name':   'neel_symmetrized',
-        'description': 'Néel-symmetrized single-tensor ansatz (S3 virtual legs, physical-index flip)',
+        'description': 'Néel-symmetrized single-tensor ansatz (S3 virtual legs, π-rotation U=iσ_y)',
     },
-    # ── Plaquette-symmetrized single-tensor ansatz ────────────────────────────
+    # ── Plaquette single-tensor ansatz (C3 rotation, no leg symmetrization) ───
     'plaq': {
         'n_params':    1,
-        'symmetrize_fn': symmetrize_plaq_legs,
+        'symmetrize_fn': None,           # no virtual-leg symmetrization
         'derive_fn':   plaq_abcdef_from_a,
         'init_fn':     initialize_plaq,
         'ckpt_keys':   ['a_raw'],
         'dir_prefix':  'plaq_symmetrized',
         'yaml_name':   'plaq_symmetrized',
-        'description': 'Plaquette-symmetrized single-tensor ansatz (leg1↔leg2 symmetry)',
+        'description': 'Plaquette single-tensor ansatz (C3 virtual-leg rotation, no symmetrization)',
     },
 }
 

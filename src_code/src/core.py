@@ -937,25 +937,39 @@ def neel_abcdef_from_a(a_sym: torch.Tensor) -> tuple:
 
     Néel order on the honeycomb lattice:
         sublattice 1 (A, C, E): a_sym
-        sublattice 2 (B, D, F): a_sym with physical index reversed
-                                 b[i,j,k,s] = a_sym[i,j,k, d_PHYS−1−s]
+        sublattice 2 (B, D, F): π-rotated via U = iσ_y
 
-    Flipping the physical index maps spin-up ↔ spin-down on the B sublattice,
-    producing a genuine Néel double-layer (A ≠ B).  In contrast, negating the
-    tensor (b = -a) causes the sign to cancel in the double-layer bra⊗ket, so
-    the optimizer would see an identical state to (a,a,a,a,a,a) and could never
-    converge to Néel order.
+    The π-rotation matrix U acts on the physical leg:
+        b[i,j,k,s'] = Σ_s U[s',s] a_sym[i,j,k,s]
 
-    The flip commutes with S₃ virtual-leg symmetrization, so b retains the same
-    virtual-leg symmetry as a_sym.
+    For spin-1/2 (d_PHYS=2):
+        U = [[0, 1], [-1, 0]] = iσ_y
+
+    For general spin-S (d_PHYS = 2S+1):
+        U[s, d_PHYS-1-s] = (-1)^s   (all other entries zero)
+
+    Key properties:
+      • U is real and orthogonal (U^T U = I), so the double-layer tensor
+        B_DL = A_DL.  CTMRG sees a uniform state, but the open tensors
+        carry the physical rotation, giving correct Néel energy gradients.
+      • U S_z U^T = -S_z  ⟹  B-sublattice sites have opposite spin.
+      • Unlike .flip(-1) (permutation P with P^2=I, no sign), U has
+        essential minus signs that prevent the optimizer from collapsing
+        to b=a.  For any a=[α,β]: b=[β,-α] ≠ a unless a=0.
 
     Args:
         a_sym: Symmetrized tensor of shape (D, D, D, d_PHYS).
 
     Returns:
-        (a, b, c, d, e, f) where a=c=e=a_sym, b=d=f=a_sym.flip(-1).
+        (a, b, c, d, e, f) where a=c=e=a_sym, b=d=f=U·a_sym.
     """
-    b = a_sym.flip(-1)   # swap physical components: s → (d_PHYS − 1 − s)
+    d_PHYS = a_sym.shape[-1]
+    # Build the π-rotation matrix: U[s, d-1-s] = (-1)^s
+    U = torch.zeros(d_PHYS, d_PHYS, dtype=a_sym.dtype, device=a_sym.device)
+    for s in range(d_PHYS):
+        U[s, d_PHYS - 1 - s] = (-1.0) ** s
+    # Apply U on the physical (last) leg:  b[...,s'] = Σ_s U[s',s] a[...,s]
+    b = torch.einsum('ij,...j->...i', U, a_sym)
     return a_sym, b, a_sym, b, a_sym, b
 
 
@@ -994,31 +1008,51 @@ def symmetrize_plaq_legs(a: torch.Tensor) -> torch.Tensor:
     return (a + a.permute(0, 2, 1, 3)) / 2.0
 
 
-def plaq_abcdef_from_a(a_sym: torch.Tensor) -> tuple:
-    """Derive (a, b, c, d, e, f) from a plaquette-symmetric tensor.
+def plaq_abcdef_from_a(a_raw: torch.Tensor) -> tuple:
+    """Derive (a, b, c, d, e, f) from a single tensor using C3 lattice symmetry.
 
-    a = d = a_sym
-    b = e = a_sym.permute(1,2,0,3)
-    c = f = a_sym.permute(1,0,2,3)
+    The 6-site honeycomb unit cell labels a,b,c,d,e,f going anti-clockwise
+    around the hexagon.  The plaquette VBC ansatz enforces C3 (120°) symmetry:
+        a = d   (opposite vertices, position 0 and 3)
+        b = e   (opposite vertices, position 1 and 4)
+        c = f   (opposite vertices, position 2 and 5)
+
+    The three tensor types are related by cyclic leg permutation:
+        a = d = a_raw                          (base tensor)
+        b = e = a_raw.permute(1,2,0,3)        (C3: leg0→leg1→leg2→leg0)
+        c = f = a_raw.permute(2,0,1,3)        (C3²: leg0→leg2→leg1→leg0)
+
+    This choice is consistent with the corner-tensor connectivity:
+        BC2323 contracts B.leg0 ↔ C.leg0  →  a_raw.leg1 ↔ a_raw.leg2  ✓
+        DE3131 contracts D.leg1 ↔ E.leg1  →  a_raw.leg1 ↔ a_raw.leg2  ✓
+        FA1212 contracts F.leg2 ↔ A.leg2  →  a_raw.leg1 ↔ a_raw.leg2  ✓
+    All three "hexagon edge" bonds are equivalent under C3 symmetry.
+
+    No virtual-leg symmetrization is applied — the optimizer can freely
+    break leg isotropy, essential for plaquette VBS order.
+
+    Note: the original code used permute(1,0,2,3) for c, which is a
+    reflection (swap leg0↔leg1), not a C3² rotation — this broke the
+    C3 symmetry and caused all bonds to appear equivalent.
     """
-    b = a_sym.permute(1, 2, 0, 3)
-    c = a_sym.permute(1, 0, 2, 3)
-    return (a_sym, b, c, a_sym, b, c)
+    b = a_raw.permute(1, 2, 0, 3)   # C3  rotation
+    c = a_raw.permute(2, 0, 1, 3)   # C3² rotation
+    return (a_raw, b, c, a_raw, b, c)
 
 
 def initialize_plaq(D_bond: int, d_PHYS: int,
                     noise_scale: float = 1.0) -> torch.Tensor:
-    """Create a random plaquette-symmetric iPEPS tensor.
+    """Create a random tensor for the plaquette ansatz.
 
-    Returns a_raw of shape (D_bond, D_bond, D_bond, d_PHYS) with the 2nd
-    and 3rd virtual legs symmetrized.  Sets _USE_FULL_SVD = True so the
+    No virtual-leg symmetrization is applied — the raw tensor has full
+    D³×d_PHYS degrees of freedom, allowing the optimizer to break leg
+    isotropy for plaquette VBS order.  Sets _USE_FULL_SVD = True so the
     first L-BFGS step uses full deterministic SVD.
     """
     global _USE_FULL_SVD
     a_raw = noise_scale * torch.randn(
         D_bond, D_bond, D_bond, d_PHYS,
         dtype=TENSORDTYPE, device=DEVICE)
-    a_raw = symmetrize_plaq_legs(a_raw)
     _USE_FULL_SVD = True
     return a_raw
 
