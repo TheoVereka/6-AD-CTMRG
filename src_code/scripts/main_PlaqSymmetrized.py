@@ -77,7 +77,7 @@ J1_COUPLING = 1.0
 #   The nn Hamiltonian is  H_nn = J1 Σ_{<i,j>} S_i · S_j
 #   summed over all 9 nearest-neighbour pairs in the 6-site honeycomb unit cell.
 
-J2_COUPLING = 0.0
+J2_COUPLING = 0.3
 #   Next-nearest-neighbour (nnn) Heisenberg exchange coupling constant.
 #   J2 > 0 = frustrated AFM.  Set to 0 to recover the pure J1 model.
 #   The nnn Hamiltonian is  H_nnn = J2 Σ_{<<i,j>>} S_i · S_j
@@ -177,13 +177,13 @@ if os.environ.get("CTMRG_ANOMALY", "0") == "1":
 torch.set_num_threads(_N_PHYSICAL_CORES)
 torch.set_num_interop_threads(1)
 
-import core_NeelSymmetrized as _core
-from core_NeelSymmetrized import (
+import core_PlaqSymmetrized as _core
+from core_PlaqSymmetrized import (
     normalize_tensor,
     normalize_single_layer_tensor_for_double_layer,
-    symmetrize_virtual_legs,
-    neel_abcdef_from_a,
-    initialize_neel,
+    symmetrize_plaq_legs,
+    plaq_abcdef_from_a,
+    initialize_plaq,
     abcdef_to_ABCDEF,
     CTMRG_from_init_to_stop,
     build_heisenberg_H,
@@ -557,8 +557,7 @@ def pad_tensor(t: torch.Tensor, old_D: int, new_D: int,
     out = noise * torch.randn(new_D, new_D, new_D, d_PHYS, dtype=TENSORDTYPE,
                               device=_core.DEVICE)
     out[:old_D, :old_D, :old_D, :] += normalize_tensor(t.detach())*torch.sqrt(torch.tensor(old_D**3 * d_PHYS, dtype=TENSORDTYPE))
-    # Re-symmetrize the virtual legs to preserve the Néel constraint
-    out = symmetrize_virtual_legs(out)
+    out = symmetrize_plaq_legs(out)
     return out
 
 
@@ -566,13 +565,15 @@ def evaluate_energy_clean(a_raw,
                           Js, SdotS, chi: int, D_bond: int, d_PHYS: int) -> float:
     """Re-converge environment from scratch and return total energy (float).
 
-    Néel version: derives a,b,c,d,e,f from the single symmetric tensor a_raw.
+    IMPORTANT: CTMRG consumes *double-layer* site tensors which are normalised
+    inside ``abcdef_to_ABCDEF``. For consistency, we rescale the single-layer
+    tensors here in the same convention used inside the optimiser objective.
+    This keeps printed denominators like <iPEPS|iPEPS> close to real 1.
     """
     D_sq = D_bond ** 2
     with torch.no_grad():
-        a_sym = symmetrize_virtual_legs(a_raw)
-        a, b, c, d, e, f = neel_abcdef_from_a(a_sym)
-
+        a_sym = symmetrize_plaq_legs(a_raw)
+        a, b, c, d, e, f = plaq_abcdef_from_a(a_sym)
         aN = normalize_single_layer_tensor_for_double_layer(a)
         bN = normalize_single_layer_tensor_for_double_layer(b)
         cN = normalize_single_layer_tensor_for_double_layer(c)
@@ -616,8 +617,6 @@ def evaluate_observables(a_raw,
                          Js, SdotS, chi: int, D_bond: int, d_PHYS: int,
                          out_dir: str | None = None):
     """Compute energy, 27 bond correlations <Si·Sj>, and 54 site magnetizations.
-
-    Néel version: derives a,b,c,d,e,f from the single symmetric tensor a_raw.
 
     This is a diagnostic function called ONCE per (D, chi) level after
     optimization.  It re-converges CTMRG from scratch (same as
@@ -698,9 +697,8 @@ def evaluate_observables(a_raw,
     magnetizations = []
 
     with torch.no_grad():
-        a_sym = symmetrize_virtual_legs(a_raw)
-        a, b, c, d, e, f = neel_abcdef_from_a(a_sym)
-
+        a_sym = symmetrize_plaq_legs(a_raw)
+        a, b, c, d, e, f = plaq_abcdef_from_a(a_sym)
         aN = normalize_single_layer_tensor_for_double_layer(a)
         bN = normalize_single_layer_tensor_for_double_layer(b)
         cN = normalize_single_layer_tensor_for_double_layer(c)
@@ -1103,7 +1101,7 @@ def optimize_at_chi(
     Outer L-BFGS loop at fixed (D_bond, chi) until budget_seconds elapsed
     or opt_conv_threshold hit.
 
-    Optimises a single S3-symmetric tensor a_raw (Néel ansatz).
+    Optimises a single plaquette-symmetric tensor a_raw.
     Returns (best_a, best_loss, steps_done).
     """
     if loss_log is None:
@@ -1115,7 +1113,7 @@ def optimize_at_chi(
     if init_a is not None:
         a_raw = _new_tensors_from_data((init_a,))[0]
     else:
-        a_raw = initialize_neel(D_bond, d_PHYS, INIT_NOISE)
+        a_raw = initialize_plaq(D_bond, d_PHYS, INIT_NOISE)
     a_raw.requires_grad_(True)
 
 
@@ -1176,14 +1174,12 @@ def optimize_at_chi(
         function must be called fresh on every closure evaluation.
         Never reuse environment tensors across calls.
         """
-        # ── Néel symmetrisation: derive a,b,c,d,e,f from single a_raw ──
-        a_sym = symmetrize_virtual_legs(a_raw)
-        a, b, c, d, e, f = neel_abcdef_from_a(a_sym)
+        # ── Plaquette symmetrisation: derive a,b,c,d,e,f from single a_raw ──
+        a_sym = symmetrize_plaq_legs(a_raw)
+        a, b, c, d, e, f = plaq_abcdef_from_a(a_sym)
 
         # IMPORTANT: Make the single-layer tensors consistent with the CTMRG
-        # convention (double-layer tensors are Frobenius-normalized). Without
-        # this, the energy routines' printed <iPEPS|iPEPS> denominators can be
-        # far from 1 even when CTMRG normalization is correct.
+        # convention (double-layer tensors are Frobenius-normalized).
         aN = normalize_single_layer_tensor_for_double_layer(a)
         bN = normalize_single_layer_tensor_for_double_layer(b)
         cN = normalize_single_layer_tensor_for_double_layer(c)
@@ -1582,14 +1578,14 @@ def main():
     # ── output directory ──────────────────────────────────────────────────────
     run_ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     _default_outdir = os.path.join('/home/chye/6ADctmrg/data/raw',
-                                   f'neel_symmetrized_{run_ts}')
+                                   f'plaq_symmetrized_{run_ts}')
     output_dir = args.output_dir or _default_outdir
     os.makedirs(output_dir, exist_ok=True)
 
     # ── save hyperparameters to YAML (JSON fallback if PyYAML not installed) ──
     _hp = dict(
         # ── run identity ───────────────────────────────────────────────────
-        ansatz             = 'neel_symmetrized',
+        ansatz             = 'plaq_symmetrized',
         run_timestamp      = run_ts,
         output_dir         = output_dir,
 
@@ -1875,8 +1871,8 @@ def main():
                     _prev_D_finished_chi = chi
                     break   # exit chi loop early; cur_a stays at chi
 
-        # Store best tensors at this D for warm-starting next D
-        # (brand-new objects — old D's entire graph is released)
+        # Store best tensor at this D for warm-starting next D
+        # (brand-new object — old D's entire graph is released)
         best_a_by_D[D_bond] = (
             _new_tensors_from_data((cur_a,))[0] if cur_a is not None
             else None)
