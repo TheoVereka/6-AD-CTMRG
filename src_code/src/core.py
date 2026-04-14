@@ -1039,9 +1039,12 @@ def plaq_abcdef_from_a(a_raw: torch.Tensor) -> tuple:
     reflection (swap leg0↔leg1), not a C3² rotation — this broke the
     C3 symmetry and caused all bonds to appear equivalent.
     """
-    b = a_raw.permute(1, 2, 0, 3)   # C3  rotation
+    b = a_raw.permute(2, 1, 0, 3)   # C3  rotation
     c = a_raw.permute(2, 0, 1, 3)   # C3² rotation
-    return (a_raw, b, c, a_raw, b, c)
+    d = a_raw.permute(0, 2, 1, 3)
+    e = a_raw.permute(1, 2, 0, 3)
+    f = a_raw.permute(1, 0, 2, 3)
+    return (a_raw, b, c, d, e, f)
 
 
 def initialize_plaq(D_bond: int, d_PHYS: int,
