@@ -11,7 +11,7 @@ D_BOND_LIST = [2,3,4, 5, 6, 7, 8, 9, 10, 11]
 #   (zero-padded to the new size + PAD_NOISE Gaussian noise).
 
 
-DEFAULT_D_BUDGET_FRACS = {2:0.1, 3:0.1,4: 0.1, 5:0.1, 6:0.1, 7:0.1, 8:0.1, 9:0.1, 10:0.1, 11:0.1}
+DEFAULT_D_BUDGET_FRACS = {2:0.1,3:0.1,4: 0.1, 5:0.1, 6:0.1, 7:0.1, 8:0.1, 9:0.1, 10:0.1, 11:0.1}
 #   Fraction of the total wall-clock budget allocated to each D_bond value.
 #   Normalised to sum=1 before use, so only the RATIOS matter.
 #   Rationale:
