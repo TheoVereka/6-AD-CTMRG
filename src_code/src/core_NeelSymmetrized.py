@@ -975,7 +975,14 @@ def neel_abcdef_from_a(a_sym: torch.Tensor) -> tuple:
     Returns:
         (a, b, c, d, e, f) where a=c=e=a_sym, b=d=f=a_sym.flip(-1).
     """
-    b = a_sym.flip(-1)   # swap physical components: s → (d_PHYS − 1 − s)
+    d_PHYS = a_sym.shape[-1]
+    # Build the π-rotation matrix: U[s, d-1-s] = (-1)^s
+    U = torch.zeros(d_PHYS, d_PHYS, dtype=a_sym.dtype, device=a_sym.device)
+    for s in range(d_PHYS):
+        U[s, d_PHYS - 1 - s] = (-1.0) ** s
+    # Apply U on the physical (last) leg:  b[...,s'] = Σ_s U[s',s] a[...,s]
+    b = torch.einsum('ij,...j->...i', U, a_sym)
+    #b = a_sym.flip(-1)   # swap physical components: s → (d_PHYS − 1 − s)
     return a_sym, b, a_sym, b, a_sym, b
 
 

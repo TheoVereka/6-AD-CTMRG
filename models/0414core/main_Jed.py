@@ -3,6 +3,16 @@
 
 
 
+#NOTE:N_cores, USE_GPU (LINE UNDER TOO!!!!!)
+# _default_outdir = os.path.join('/scratch/chye/1stTrialRun',   
+#!!!! for IZAR is ...atch/izar/chye/...
+
+
+# # sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+# sys.stdout.flush()*3
+
+
+
 # ── Sweep control ─────────────────────────────────────────────────────────────
 
 D_BOND_LIST = [4, 5, 6, 7, 8, 9]#, 10, 11]
@@ -52,7 +62,7 @@ USE_GPU = False
 
 # ── Multi-GPU (optional, CUDA only) ──────────────────────────────────────────
 
-N_GPUS = 1
+N_GPUS = 0
 #   Number of GPUs to use for parallel energy computation.
 #   1  = single GPU or CPU (default) — sequential, unchanged behaviour.
 #   ≥2 = dispatch the 3 independent energy functions to separate GPUs:
@@ -65,7 +75,7 @@ N_GPUS = 1
 #   Set automatically in main() from --ngpu or torch.cuda.device_count().
 #   Override at runtime:  --ngpu N
 
-_N_PHYSICAL_CORES = 4
+_N_PHYSICAL_CORES = 25
 
 ########################
 # ── Physical model ── # ────────────────────────────────────────────────────────────
@@ -77,7 +87,7 @@ J1_COUPLING = 1.0
 #   The nn Hamiltonian is  H_nn = J1 Σ_{<i,j>} S_i · S_j
 #   summed over all 9 nearest-neighbour pairs in the 6-site honeycomb unit cell.
 
-J2_COUPLING = 0.0
+J2_COUPLING = 0.3
 #   Next-nearest-neighbour (nnn) Heisenberg exchange coupling constant.
 #   J2 > 0 = frustrated AFM.  Set to 0 to recover the pure J1 model.
 #   The nnn Hamiltonian is  H_nnn = J2 Σ_{<<i,j>>} S_i · S_j
@@ -154,7 +164,7 @@ os.environ.setdefault("KMP_BLOCKTIME", "0")
 
 
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+# sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 import matplotlib
 matplotlib.use('Agg')
@@ -1446,7 +1456,7 @@ def optimize_at_chi(
 
         print(f"    step {step:5d}  ctm={ctm_steps:3d}  loss={loss_item:+.10f}"
               f"  Δ={delta:+.3e}  {elapsed:.0f}/{budget_seconds:.0f}s")
-        # sys.stdout.flush()
+        sys.stdout.flush()
         loss_log.append({'step': step, 'ctm_steps': ctm_steps, 'loss': loss_item,
                          'D_bond': D_bond, 'chi': chi,
                          'elapsed': round(elapsed, 1)})
@@ -1710,7 +1720,7 @@ def main():
     # ── output directory ──────────────────────────────────────────────────────
     run_ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     _J2_str = f'J2_{args.J2}'.replace('.', 'p')
-    _default_outdir = os.path.join('/home/chye/6ADctmrg/data/raw',
+    _default_outdir = os.path.join('/scratch/chye/0414core',
                                    f'{ansatz_cfg["yaml_name"]}__{_J2_str}_{run_ts}')
     output_dir = args.output_dir or _default_outdir
     os.makedirs(output_dir, exist_ok=True)
@@ -1903,7 +1913,7 @@ def main():
             print(f"\n  ┌── D={D_bond}  chi={chi}"
                   f"  budget={chi_budget:.0f}s={chi_budget/60:.1f}min"
                   f"  [{timestamp()}]")
-            # sys.stdout.flush()
+            sys.stdout.flush()
 
             best_path   = os.path.join(output_dir,
                                        f"sweep_D{D_bond}_chi{chi}_best.pt")
