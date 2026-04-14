@@ -1028,13 +1028,12 @@ def plaq_abcdef_from_a(a_raw: torch.Tensor) -> tuple:
         FA1212 contracts F.leg2 ↔ A.leg2  →  a_raw.leg1 ↔ a_raw.leg2  ✓
     All three "hexagon edge" bonds are equivalent under C3 symmetry.
 
-    symmetrize_plaq_legs is applied to a_raw before calling this function,
-    enforcing a_raw[i,j,k,s] = a_raw[i,k,j,s] (mirror σ through each site).
-    This is a crystal symmetry of the plaquette VBC ground state: legs 1 and 2
-    are the two intra-plaquette bonds at each vertex and are exchanged by the
-    reflection through the perpendicular bisector of the hexagon edge.
-    The inter-plaquette bond (leg 0) remains unconstrained, so the
-    intra vs inter bond strengths are free to differentiate.
+    Note: symmetrize_plaq_legs (leg1↔leg2 projection) is NOT applied before
+    calling this function.  It was previously applied but this forced a_raw
+    into the leg1=leg2 symmetric subspace at every L-BFGS step, creating a
+    flat energy plateau at E/site = 1/8 that stalled optimisation for hundreds
+    of steps.  The C3 rotational symmetry alone is sufficient to recover the
+    plaquette VBC state.
 
     Note: the original code used permute(1,0,2,3) for c, which is a
     reflection (swap leg0↔leg1), not a C3² rotation — this broke the
@@ -1047,19 +1046,21 @@ def plaq_abcdef_from_a(a_raw: torch.Tensor) -> tuple:
 
 def initialize_plaq(D_bond: int, d_PHYS: int,
                     noise_scale: float = 1.0) -> torch.Tensor:
-    """Create a random tensor for the plaquette ansatz.
+    """Create a random tensor for the plaquette C3 ansatz.
 
-    Applies symmetrize_plaq_legs so that a_raw[i,j,k,s] = a_raw[i,k,j,s],
-    enforcing the mirror reflection symmetry of the plaquette through each
-    site (equivalent to swapping legs 1 and 2, which are the two
-    intra-plaquette bonds at every vertex).  Sets _USE_FULL_SVD = True so
-    the first L-BFGS step uses full deterministic SVD.
+    Returns a_raw of shape (D_bond, D_bond, D_bond, d_PHYS).  Sets
+    _USE_FULL_SVD = True so the first L-BFGS step uses full deterministic SVD.
+
+    Note: symmetrize_plaq_legs (leg1↔leg2 projection) is intentionally NOT
+    applied here.  Applying it at every optimisation step created a flat
+    energy plateau at E/site = 1/8 that stalled L-BFGS for hundreds of
+    iterations.  The C3 rotational constraint is still enforced via
+    plaq_abcdef_from_a at each closure evaluation.
     """
     global _USE_FULL_SVD
     a_raw = noise_scale * torch.randn(
         D_bond, D_bond, D_bond, d_PHYS,
         dtype=TENSORDTYPE, device=DEVICE)
-    a_raw = symmetrize_plaq_legs(a_raw)
     _USE_FULL_SVD = True
     return a_raw
 

@@ -2477,7 +2477,7 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
     E_FD = Jfd * _ckpt(_compute_nnn_bond_energy, open_F, closed_E, open_D, closed_C, BA, SdotS, use_reentrant=False)
     E_DB = Jdb * _ckpt(_compute_nnn_bond_energy, open_D, closed_C, open_B, closed_A, FE, SdotS, use_reentrant=False)
 
-    return torch.real((E_AF+E_CB+E_ED + E_DC+E_BA+E_FE)*0.5 +E_CA+E_AE+E_EC +E_BF+E_FD+E_DB)
+    return torch.real((E_AF+E_CB+E_ED + (E_DC+E_BA+E_FE)*0)*0.5 +E_CA+E_AE+E_EC +E_BF+E_FD+E_DB)
 
 
 
@@ -2569,7 +2569,7 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
     E_DB = Jdb * _ckpt(_compute_nnn_bond_energy, open_D, closed_A, open_B, closed_E, FC, SdotS, use_reentrant=False)
     E_BF = Jbf * _ckpt(_compute_nnn_bond_energy, open_B, closed_E, open_F, closed_C, DA, SdotS, use_reentrant=False)
 
-    return torch.real((E_EF+E_AB+E_CD + (E_BE+E_FC+E_DA)*0)*0.5 +E_EC+E_CA+E_AE +E_FD+E_DB+E_BF)
+    return torch.real(((E_EF+E_AB+E_CD)*0 + (E_BE+E_FC+E_DA)*0)*0.5 +E_EC+E_CA+E_AE +E_FD+E_DB+E_BF)
 
 
 # ── Observable helpers (used by evaluate_observables in the driver) ───────────

@@ -177,11 +177,11 @@ if os.environ.get("CTMRG_ANOMALY", "0") == "1":
 torch.set_num_threads(_N_PHYSICAL_CORES)
 torch.set_num_interop_threads(1)
 
-import core_PlaqSymmetrized as _core
-from core_PlaqSymmetrized import (
+import core_PlaqUnsymmetrize_J1plaqnonzero as _core
+from core_PlaqUnsymmetrize_J1plaqnonzero import (
     normalize_tensor,
     normalize_single_layer_tensor_for_double_layer,
-    symmetrize_plaq_legs,
+    #symmetrize_plaq_legs,
     plaq_abcdef_from_a,
     initialize_plaq,
     abcdef_to_ABCDEF,
@@ -280,7 +280,7 @@ SVD_CPU_OFFLOAD_THRESHOLD = 0
 #
 #   Default 0 → always GPU (correct for cluster; change to 99999 on laptop).
 
-RSVD_MODE = 'augmented'
+RSVD_MODE = 'full_svd'
 #   rSVD backward mode.  Controls how the truncated-SVD 5th-term correction
 #   (arXiv:2311.11894v3) is computed in the backward pass.
 #
@@ -557,7 +557,7 @@ def pad_tensor(t: torch.Tensor, old_D: int, new_D: int,
     out = noise * torch.randn(new_D, new_D, new_D, d_PHYS, dtype=TENSORDTYPE,
                               device=_core.DEVICE)
     out[:old_D, :old_D, :old_D, :] += normalize_tensor(t.detach())*torch.sqrt(torch.tensor(old_D**3 * d_PHYS, dtype=TENSORDTYPE))
-    out = symmetrize_plaq_legs(out)
+    #out = symmetrize_plaq_legs(out)
     return out
 
 
@@ -572,8 +572,8 @@ def evaluate_energy_clean(a_raw,
     """
     D_sq = D_bond ** 2
     with torch.no_grad():
-        a_sym = symmetrize_plaq_legs(a_raw)
-        a, b, c, d, e, f = plaq_abcdef_from_a(a_sym)
+        #a_sym = symmetrize_plaq_legs(a_raw)
+        a, b, c, d, e, f = plaq_abcdef_from_a(a_raw)
         aN = normalize_single_layer_tensor_for_double_layer(a)
         bN = normalize_single_layer_tensor_for_double_layer(b)
         cN = normalize_single_layer_tensor_for_double_layer(c)
@@ -697,8 +697,8 @@ def evaluate_observables(a_raw,
     magnetizations = []
 
     with torch.no_grad():
-        a_sym = symmetrize_plaq_legs(a_raw)
-        a, b, c, d, e, f = plaq_abcdef_from_a(a_sym)
+        #a_sym = symmetrize_plaq_legs(a_raw)
+        a, b, c, d, e, f = plaq_abcdef_from_a(a_raw)
         aN = normalize_single_layer_tensor_for_double_layer(a)
         bN = normalize_single_layer_tensor_for_double_layer(b)
         cN = normalize_single_layer_tensor_for_double_layer(c)
@@ -1175,8 +1175,8 @@ def optimize_at_chi(
         Never reuse environment tensors across calls.
         """
         # ── Plaquette symmetrisation: derive a,b,c,d,e,f from single a_raw ──
-        a_sym = symmetrize_plaq_legs(a_raw)
-        a, b, c, d, e, f = plaq_abcdef_from_a(a_sym)
+        #a_sym = symmetrize_plaq_legs(a_raw)
+        a, b, c, d, e, f = plaq_abcdef_from_a(a_raw)
 
         # IMPORTANT: Make the single-layer tensors consistent with the CTMRG
         # convention (double-layer tensors are Frobenius-normalized).
@@ -1578,14 +1578,14 @@ def main():
     # ── output directory ──────────────────────────────────────────────────────
     run_ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     _default_outdir = os.path.join('/home/chye/6ADctmrg/data/raw',
-                                   f'plaq_symmetrized_{run_ts}')
+                                   f'plaq_unsymmetrize_J1plaqnonzero_{run_ts}')
     output_dir = args.output_dir or _default_outdir
     os.makedirs(output_dir, exist_ok=True)
 
     # ── save hyperparameters to YAML (JSON fallback if PyYAML not installed) ──
     _hp = dict(
         # ── run identity ───────────────────────────────────────────────────
-        ansatz             = 'plaq_symmetrized',
+        ansatz             = 'plaq_unsymmetrize_J1plaqnonzero',
         run_timestamp      = run_ts,
         output_dir         = output_dir,
 
