@@ -5,13 +5,13 @@
 
 # ── Sweep control ─────────────────────────────────────────────────────────────
 
-D_BOND_LIST = [2,3,4, 5, 6, 7, 8, 9, 10, 11]
+D_BOND_LIST = [4, 5, 6, 7, 8, 9]#, 10, 11]
 #   Ordered list of iPEPS virtual bond dimensions to sweep (outer loop).
 #   Each D is warm-started from the best tensors found at the previous D
 #   (zero-padded to the new size + PAD_NOISE Gaussian noise).
 
 
-DEFAULT_D_BUDGET_FRACS = {2:0.1,3:0.1,4: 0.1, 5:0.1, 6:0.1, 7:0.1, 8:0.1, 9:0.1, 10:0.1, 11:0.1}
+DEFAULT_D_BUDGET_FRACS = {4: 0.1, 5:0.1, 6:0.1, 7:0.1, 8:0.1, 9:0.1}#, 10:0.1, 11:0.1}
 #   Fraction of the total wall-clock budget allocated to each D_bond value.
 #   Normalised to sum=1 before use, so only the RATIOS matter.
 #   Rationale:
@@ -22,21 +22,21 @@ DEFAULT_D_BUDGET_FRACS = {2:0.1,3:0.1,4: 0.1, 5:0.1, 6:0.1, 7:0.1, 8:0.1, 9:0.1,
 #   values have genuinely different computational costs and scientific weight.
 #   Within each D, every chi level gets equal time (see below).
 
-DEFAULT_CHI_MAX = {2:99,3:99,4: 80, 5:9999, 6:9999, 7:9999, 8:9999, 9:9999, 10:9999, 11:9999}
+DEFAULT_CHI_MAX = {4: 80, 5:9999, 6:9999, 7:9999, 8:9999, 9:9999}#, 10:9999, 11:9999}
 #   Largest chi to attempt for each D_bond.
 #   Increase if you have more memory; decrease if you hit OOM.
 
 DEFAULT_CHI_SCHEDULES = {
-    2: [ 3,  4,  6,  8],
-    3: [ 4,  6,  9, 12, 15],
+    #2: [ 3,  4,  6,  8],
+    #3: [ 4,  6,  9, 12, 15],
     4: [ 8, 12, 16, 20, 24], 
     5: [10, 15, 20, 25, 30, 35],
     6: [18, 24, 30, 36, 42, 48],
     7: [21, 28, 35, 42, 49, 56, 63],
     8: [32, 40, 48, 56, 64, 72, 80],
     9: [36, 45, 54, 63, 72, 81, 90, 99],
-    10:[40, 50, 60, 70, 80, 90,100,110,120],
-    11:[44, 55, 66, 77, 88, 99,110,121,132,143],
+    #10:[40, 50, 60, 70, 80, 90,100,110,120],
+    #11:[44, 55, 66, 77, 88, 99,110,121,132,143],
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -203,6 +203,8 @@ from core import (
     symmetrize_plaq_legs,
     plaq_abcdef_from_a,
     initialize_plaq,
+    # ── 6-tensor locally-reflected ansatz ───────────────────────────────
+    symmetrize_six_local_reflections,
 )
 
 
@@ -557,13 +559,21 @@ def _new_tensors_from_data(tensors: tuple) -> tuple:
 def _derive_abcdef(params_list: list, cfg: dict) -> tuple:
     """Derive the 6 single-layer tensors from *params_list* using *cfg*.
 
-    For the unrestricted ansatz (cfg['n_params']==6) the params are already
-    the 6 tensors, so they are returned directly.  For single-tensor ansätze
-    (cfg['n_params']==1) the single raw tensor is optionally symmetrized
-    (if cfg['symmetrize_fn'] is not None) and then the ansatz-specific
-    derive function produces all 6 tensors.
+    For the unrestricted ansatz (cfg['n_params']==6, symmetrize_fn=None) the
+    params are already the 6 tensors, returned directly.
+
+    For the 'sym6' ansatz (cfg['n_params']==6, symmetrize_fn!=None) the
+    symmetrize_fn is called with all 6 tensors as positional arguments and
+    returns a tuple of 6 symmetrized tensors.
+
+    For single-tensor ansätze (cfg['n_params']==1) the single raw tensor is
+    optionally symmetrized (if cfg['symmetrize_fn'] is not None) and then the
+    ansatz-specific derive function produces all 6 tensors.
     """
     if cfg['n_params'] == 6:
+        if cfg['symmetrize_fn'] is not None:
+            # Batch symmetrization: fn(a, b, c, d, e, f) → (a_sym, ..., f_sym)
+            return cfg['symmetrize_fn'](*params_list)
         return tuple(params_list)
     raw = params_list[0]
     if cfg['symmetrize_fn'] is not None:
@@ -616,6 +626,26 @@ ANSATZ_REGISTRY: dict = {
         'dir_prefix':  'plaq_symmetrized',
         'yaml_name':   'plaq_symmetrized',
         'description': 'Plaquette single-tensor ansatz (C3 virtual-leg rotation + intra-plaquette leg sym)',
+    },
+    # ── 6-tensor locally-reflected ansatz ────────────────────────────────────
+    # Like 'unrestricted' but each site tensor is projected onto the subspace
+    # invariant under its local mirror symmetry (swaps the two ring/intra-
+    # plaquette bonds while leaving the inter-plaquette bond fixed):
+    #   a, d: leg1↔leg2  via permute(0,2,1,3)
+    #   b, e: leg0↔leg1  via permute(1,0,2,3)
+    #   c, f: leg0↔leg2  via permute(2,1,0,3)
+    # The 6 tensors remain fully independent (no C3 relation between sites),
+    # so 'sym6' can represent symmetry-broken states that 'plaq' cannot.
+    'sym6': {
+        'n_params':    6,
+        'symmetrize_fn': symmetrize_six_local_reflections,  # batch: (a..f)→(a_sym..f_sym)
+        'derive_fn':   None,      # identity; symmetrize_fn already produces 6 tensors
+        'init_fn':     None,      # uses initialize_abcdef('random',...) for n_params==6
+        'ckpt_keys':   ['a', 'b', 'c', 'd', 'e', 'f'],
+        'dir_prefix':  'sym6',
+        'yaml_name':   'sym6',
+        'description': 'Six independent tensors, each with local mirror symmetry '
+                        '(a/d: leg1↔leg2, b/e: leg0↔leg1, c/f: leg0↔leg2)',
     },
 }
 
@@ -1814,32 +1844,12 @@ def main():
     # ══════════════════════════════════════════════════════════════════════════
     # Outer loop: D_bond
     # ══════════════════════════════════════════════════════════════════════════
-    # Tracks the chi at which the previous D exited early (chi-convergence).
-    # When set, D_next's chi schedule is filtered to chis > this value so that
-    # chi environments already implicitly covered are not re-run.
-    _prev_D_finished_chi: int | None = None
-
     for D_bond in D_bond_list:
         D_sq     = D_bond ** 2
         D_budget = d_budgets[D_bond]
         chis     = schedules[D_bond]
         chi_max  = chi_max_map[D_bond]
         D_start_time = time.perf_counter()
-
-        # ── Filter chi schedule when entering this D after an early exit ──────
-        # Previous D finished at _prev_D_finished_chi via chi-convergence;
-        # skip all chi values ≤ that level (already implicitly captured).
-        if _prev_D_finished_chi is not None:
-            chis_filtered = [c for c in chis if c > _prev_D_finished_chi]
-            if chis_filtered:
-                print(f"  [CHI-FILTER] Prev D finished at chi={_prev_D_finished_chi} "
-                      f"(early chi-convergence); filtering D={D_bond} schedule to "
-                      f"chi > {_prev_D_finished_chi}: {chis_filtered}")
-                chis = chis_filtered
-            else:
-                print(f"  [CHI-FILTER] No chi > {_prev_D_finished_chi} in schedule "
-                      f"for D={D_bond}; using full schedule {chis}.")
-            _prev_D_finished_chi = None   # consumed; reset for the next D
 
         print(f"\n{'═'*76}")
         print(f"  D_bond = {D_bond}   D²={D_sq}  D⁴={D_bond**4}  "
@@ -1857,9 +1867,15 @@ def main():
                   f"(padding {prev_D}→{D_bond}, noise={args.noise})")
             prev_tensors = best_params_by_D[prev_D]
             sym_fn = ansatz_cfg['symmetrize_fn']
+            # For n_params==6 with a batch symmetrize_fn (e.g. 'sym6'), the
+            # per-tensor symmetry is applied inside _derive_abcdef at every
+            # forward pass — do NOT pass it to pad_tensor (which takes a single
+            # tensor and would apply the wrong function).  For n_params==1 the
+            # existing per-tensor behaviour is preserved.
+            _pad_sym = sym_fn if ansatz_cfg['n_params'] == 1 else None
             padded = tuple(
                 pad_tensor(t, prev_D, D_bond, d_PHYS, args.noise,
-                           symmetrize_fn=sym_fn)
+                           symmetrize_fn=_pad_sym)
                 for t in prev_tensors)
             best_params_by_D[D_bond] = _new_tensors_from_data(padded)
             del padded
@@ -1976,9 +1992,7 @@ def main():
                 if delta_la < CHI_CONVERGENCE_THRESHOLD:
                     print(f"  │  [CHI-CONV] |ΔE|={delta_la:.3e} "
                           f"< {CHI_CONVERGENCE_THRESHOLD:.1e} → chi converged at "
-                          f"chi={chi}; skipping remaining chi levels for D={D_bond}. "
-                          f"D_next will start from chi > {chi}.")
-                    _prev_D_finished_chi = chi
+                          f"chi={chi}; skipping remaining chi levels for D={D_bond}.")
                     break   # exit chi loop early; cur_params stays at chi
 
         # Store best tensors at this D for warm-starting next D

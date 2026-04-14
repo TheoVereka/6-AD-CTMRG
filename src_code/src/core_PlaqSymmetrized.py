@@ -944,9 +944,28 @@ def plaq_abcdef_from_a(a_sym: torch.Tensor) -> tuple:
     b = e = a_sym.permute(1,2,0,3)
     c = f = a_sym.permute(1,0,2,3)
     """
-    b = a_sym.permute(1, 2, 0, 3)
-    c = a_sym.permute(2, 0, 1, 3)
-    return (a_sym, b, c, a_sym, b, c)
+    e = a_sym.permute(1, 2, 0, 3)   # C3  rotation
+    c = a_sym.permute(2, 0, 1, 3)   # C3² rotation
+    #b = a_sym.permute(2, 1, 0, 3)
+    #c = a_sym.permute(2, 0, 1, 3)
+    #d = a_sym.permute(0, 2, 1, 3)
+    #e = a_sym.permute(1, 2, 0, 3)
+    #f = a_sym.permute(1, 0, 2, 3)
+
+    # Build the π-rotation matrix: U[s, d-1-s] = (-1)^s
+    d_PHYS = 2 
+    U = torch.zeros(d_PHYS, d_PHYS, dtype=a_sym.dtype, device=a_sym.device)
+    for s in range(d_PHYS):
+        U[s, d_PHYS - 1 - s] = (-1.0) ** s
+    # Apply U on the physical (last) leg:  b[...,s'] = Σ_s U[s',s] a[...,s]
+    
+    #b = torch.einsum('ij,...j->...i', U, b)
+    #d = torch.einsum('ij,...j->...i', U, d)
+    #f = torch.einsum('ij,...j->...i', U, f)
+    
+    #return (a_sym, b, c, d, e, f)
+    #return (a_sym, torch.einsum('ij,...j->...i', U, e), c, torch.einsum('ij,...j->...i', U, a_sym), e, torch.einsum('ij,...j->...i', U, c))
+    return (a_sym, e, c, a_sym, e, c)
 
 
 def initialize_plaq(D_bond: int, d_PHYS: int,
@@ -2418,7 +2437,7 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
     E_BF = Jbf * _ckpt(_compute_nnn_bond_energy, open_B, closed_C, open_F, closed_A, DE, SdotS, use_reentrant=False)
     E_FD = Jfd * _ckpt(_compute_nnn_bond_energy, open_F, closed_A, open_D, closed_E, BC, SdotS, use_reentrant=False)
 
-    return torch.real(((E_AD+E_CF+E_EB)*0 + E_FA+E_DE+E_BC)*0.5 +E_AE+E_EC+E_CA +E_DB+E_BF+E_FD)
+    return torch.real(((E_AD+E_CF+E_EB) + E_FA+E_DE+E_BC)*0.5 +E_AE+E_EC+E_CA +E_DB+E_BF+E_FD)
 
 
 def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
@@ -2569,7 +2588,7 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
     E_DB = Jdb * _ckpt(_compute_nnn_bond_energy, open_D, closed_A, open_B, closed_E, FC, SdotS, use_reentrant=False)
     E_BF = Jbf * _ckpt(_compute_nnn_bond_energy, open_B, closed_E, open_F, closed_C, DA, SdotS, use_reentrant=False)
 
-    return torch.real((E_EF+E_AB+E_CD + (E_BE+E_FC+E_DA)*0)*0.5 +E_EC+E_CA+E_AE +E_FD+E_DB+E_BF)
+    return torch.real((E_EF+E_AB+E_CD + (E_BE+E_FC+E_DA))*0.5 +E_EC+E_CA+E_AE +E_FD+E_DB+E_BF)
 
 
 # ── Observable helpers (used by evaluate_observables in the driver) ───────────

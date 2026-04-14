@@ -172,4 +172,12 @@ def build_figure(D: int) -> plt.Figure:
 if __name__ == "__main__":
     fig2 = build_figure(D=2)
     fig3 = build_figure(D=3)
+    fig4 = build_figure(D=4)
+    
+    # Save all three figures
+    for fig, D in [(fig2, 2), (fig3, 3), (fig4, 4)]:
+        out_path = DATA_DIR / f"viz_D{D}_cubes_3d.png"
+        fig.savefig(out_path, dpi=300, bbox_inches='tight')
+        print(f"Saved: {out_path}")
+    
     plt.show()

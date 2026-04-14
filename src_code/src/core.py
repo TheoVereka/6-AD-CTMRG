@@ -1054,9 +1054,9 @@ def plaq_abcdef_from_a(a_raw: torch.Tensor) -> tuple:
         U[s, d_PHYS - 1 - s] = (-1.0) ** s
     # Apply U on the physical (last) leg:  b[...,s'] = Σ_s U[s',s] a[...,s]
     
-    b = torch.einsum('ij,...j->...i', U, b)
-    d = torch.einsum('ij,...j->...i', U, d)
-    f = torch.einsum('ij,...j->...i', U, f)
+    #b = torch.einsum('ij,...j->...i', U, b)
+    #d = torch.einsum('ij,...j->...i', U, d)
+    #f = torch.einsum('ij,...j->...i', U, f)
     
     #return (a_raw, b, c, d, e, f)
     return (a_raw, torch.einsum('ij,...j->...i', U, e), c, torch.einsum('ij,...j->...i', U, a_raw), e, torch.einsum('ij,...j->...i', U, c))
@@ -1081,6 +1081,49 @@ def initialize_plaq(D_bond: int, d_PHYS: int,
         dtype=TENSORDTYPE, device=DEVICE)
     _USE_FULL_SVD = True
     return a_raw
+
+
+# ── 6-tensor locally-reflected ansatz ────────────────────────────────────────
+
+def symmetrize_six_local_reflections(
+        a: torch.Tensor, b: torch.Tensor, c: torch.Tensor,
+        d: torch.Tensor, e: torch.Tensor, f: torch.Tensor,
+) -> tuple:
+    """Apply a distinct local mirror symmetrization to each of the 6 site tensors.
+
+    Each tensor has shape (D, D, D, d_PHYS) with virtual legs (0, 1, 2) and
+    physical leg 3.  The symmetrization maps each tensor onto the subspace
+    that is invariant under the unique local reflection which swaps the two
+    *ring bonds* (intra-plaquette legs) on that site while leaving the
+    outgoing inter-plaquette leg fixed:
+
+        a, d :  leg1 ↔ leg2  →  a_sym = (a + a.permute(0,2,1,3)) / 2
+        b, e :  leg0 ↔ leg1  →  b_sym = (b + b.permute(1,0,2,3)) / 2
+        c, f :  leg0 ↔ leg2  →  c_sym = (c + c.permute(2,1,0,3)) / 2
+
+    Each projection is idempotent and linear, so the symmetrization does NOT
+    create a flat energy landscape (unlike applying the same mirror to all six
+    tensors simultaneously, which would over-constrain the variational space
+    and stall L-BFGS).
+
+    This function is called as the ``symmetrize_fn`` of the ``'sym6'`` ansatz
+    registry entry.  It receives all six tensors at once (unlike the
+    single-tensor symmetrizers used by ``'neel'`` and ``'plaq'``) and returns
+    a tuple of six symmetrized tensors.
+
+    Args:
+        a, b, c, d, e, f:  Six (D, D, D, d_PHYS) site tensors.
+
+    Returns:
+        Tuple ``(a_sym, b_sym, c_sym, d_sym, e_sym, f_sym)``.
+    """
+    a_sym = (a + a.permute(0, 2, 1, 3)) / 2.0   # leg1 ↔ leg2
+    b_sym = (b + b.permute(1, 0, 2, 3)) / 2.0   # leg0 ↔ leg1
+    c_sym = (c + c.permute(2, 1, 0, 3)) / 2.0   # leg0 ↔ leg2
+    d_sym = (d + d.permute(0, 2, 1, 3)) / 2.0   # leg1 ↔ leg2
+    e_sym = (e + e.permute(1, 0, 2, 3)) / 2.0   # leg0 ↔ leg1
+    f_sym = (f + f.permute(2, 1, 0, 3)) / 2.0   # leg0 ↔ leg2
+    return (a_sym, b_sym, c_sym, d_sym, e_sym, f_sym)
 
 
 def abcdef_to_ABCDEF(a,b,c,d,e,f, D_squared:int):
@@ -2535,7 +2578,7 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
     E_BF = Jbf * _ckpt(_compute_nnn_bond_energy, open_B, closed_C, open_F, closed_A, DE, SdotS, use_reentrant=False)
     E_FD = Jfd * _ckpt(_compute_nnn_bond_energy, open_F, closed_A, open_D, closed_E, BC, SdotS, use_reentrant=False)
 
-    return torch.real(((E_AD+E_CF+E_EB)*0 + E_FA+E_DE+E_BC)*0.5 +E_AE+E_EC+E_CA +E_DB+E_BF+E_FD)
+    return torch.real(((E_AD+E_CF+E_EB) + E_FA+E_DE+E_BC)*0.5 +E_AE+E_EC+E_CA +E_DB+E_BF+E_FD)
 
 
 def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
@@ -2686,7 +2729,7 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
     E_DB = Jdb * _ckpt(_compute_nnn_bond_energy, open_D, closed_A, open_B, closed_E, FC, SdotS, use_reentrant=False)
     E_BF = Jbf * _ckpt(_compute_nnn_bond_energy, open_B, closed_E, open_F, closed_C, DA, SdotS, use_reentrant=False)
 
-    return torch.real((E_EF+E_AB+E_CD + (E_BE+E_FC+E_DA)*0)*0.5 +E_EC+E_CA+E_AE +E_FD+E_DB+E_BF)
+    return torch.real((E_EF+E_AB+E_CD + (E_BE+E_FC+E_DA))*0.5 +E_EC+E_CA+E_AE +E_FD+E_DB+E_BF)
 
 
 # ── Observable helpers (used by evaluate_observables in the driver) ───────────
