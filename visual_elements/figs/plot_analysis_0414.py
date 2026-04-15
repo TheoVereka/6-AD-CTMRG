@@ -704,14 +704,15 @@ def plot_bonds_vs_J2(all_results, out_dir, bond_key, bond_type_label):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 13. Plot: Néel order parameter m vs 1/D  (both ansätze on one figure)
+# 13. Plot: Néel order parameter m vs 1/D  (2 panels: 6tensors left, neel_sym right)
 # ──────────────────────────────────────────────────────────────────────────────
 def plot_order_param_vs_invD(all_results, out_dir):
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5), sharey=True)
 
-    for ansatz in ['6tensors', 'neel_sym']:
+    for ax, ansatz in zip(axes, ['6tensors', 'neel_sym']):
         sub = {k: v for k, v in all_results.items() if v['ansatz'] == ansatz}
         if not sub:
+            ax.set_visible(False)
             continue
         all_j2 = [v['j2'] for v in sub.values()]
         j2_col  = _j2_colormap(all_j2)
@@ -731,12 +732,14 @@ def plot_order_param_vs_invD(all_results, out_dir):
             ls   = style['linestyle']
             ax.errorbar(inv, ms, yerr=errs,
                         fmt='o'+ls, color=col, ms=4, lw=1.2, capsize=3,
-                        label=f'{style["label"]} J2={j2:.2f}')
+                        label=f'J2={j2:.2f}')
 
-    ax.set_xlabel('1/D', fontsize=12)
-    ax.set_ylabel('Néel order m', fontsize=12)
-    ax.set_title('Néel order parameter  m  vs  1/D', fontsize=11)
-    ax.legend(fontsize=7, ncol=2, loc='upper right')
+        ax.set_xlabel('1/D', fontsize=12)
+        ax.set_ylabel('Néel order m', fontsize=12)
+        ax.set_title(f'{ANSATZ_STYLE[ansatz]["label"]}', fontsize=10)
+        ax.legend(fontsize=7, ncol=2)
+
+    fig.suptitle('Néel order parameter  m  vs  1/D', fontsize=12)
     plt.tight_layout()
     _save(fig, os.path.join(out_dir, 'order_param_vs_invD.pdf'))
 
