@@ -471,7 +471,9 @@ def print_summary(
 
 def main() -> None:
     here     = os.path.dirname(os.path.abspath(__file__))
-    data_dir = here
+    data_dir = os.path.normpath(os.path.join(here, '..', '..', '..', 'data', '0414core'))
+    if not os.path.isdir(data_dir):
+        data_dir = here   # fallback to script location
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
