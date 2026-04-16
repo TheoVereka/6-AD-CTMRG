@@ -201,6 +201,9 @@ from core import (
     build_open_closed_env1,
     build_open_closed_env2,
     build_open_closed_env3,
+    build_single_open_env1,
+    build_single_open_env2,
+    build_single_open_env3,
     _build_nn_rho,
     _build_nnn_rho,
     set_dtype,
@@ -1983,17 +1986,16 @@ def main():
                 chi_la = chis[chi_idx] + D_bond * 2
                 print(f"  │  [Lookahead] evaluating (D={D_bond}, chi={chi_la}) "
                       f"with current tensors ...")
-                with torch.no_grad():
-                    energy_la, corr_la, mag_la = evaluate_observables(
-                        list(cur_params), Js, SdotS, chi_la, D_bond, d_PHYS,
-                        ansatz_cfg)
-                _save_observables_file(
-                    os.path.join(output_dir,
-                                 f"D_{D_bond}_chi_{chi}+2D_equals_chi_{chi_la}"
-                                 f"_energy_magnetization_correlation.txt"),
-                    D_bond, chi_la, energy_la, corr_la, mag_la)
-                _print_observables_summary(
-                    'LA ', D_bond, chi_la, energy_la, corr_la, mag_la)
+                # Use evaluate_energy_clean (not evaluate_observables) so the
+                # GPU D≥8 lazy-open path in the energy functions is active.
+                # evaluate_observables calls build_open_closed_env* which
+                # pre-builds all 6 open tensors simultaneously — at D=9,chi=81
+                # that is ~4 GB and causes OOM on a 32 GB GPU.
+                energy_la = evaluate_energy_clean(
+                    list(cur_params), Js, SdotS, chi_la, D_bond, d_PHYS,
+                    ansatz_cfg)
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
                 delta_la = abs(energy - energy_la)
                 print(f"  │  [Lookahead] chi={chi}: E={energy:+.10f} │ "
                       f"chi={chi_la}: E={energy_la:+.10f} │ "

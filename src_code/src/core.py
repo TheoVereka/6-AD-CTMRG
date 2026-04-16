@@ -3126,6 +3126,85 @@ def build_open_closed_env3(a, b, c, d, e, f, chi, D_bond, d_PHYS,
     return o, cl
 
 
+def build_single_open_env1(site: str, a, b, c, d, e, f, chi, D_bond, d_PHYS,
+                          C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E):
+    """Return the open tensor for ONE site in environment 1 (ebadcf).
+
+    Memory-efficient single-site version of build_open_closed_env1.
+    Used by evaluate_observables on GPU+D>=8 so that only 2 open tensors
+    (~chi^2 D^4 d^2) are ever alive simultaneously instead of all 6.
+    """
+    T1F = T1F.reshape(chi, chi, D_bond, D_bond)
+    T2A = T2A.reshape(chi, chi, D_bond, D_bond)
+    T2B = T2B.reshape(chi, chi, D_bond, D_bond)
+    T3C = T3C.reshape(chi, chi, D_bond, D_bond)
+    T3D = T3D.reshape(chi, chi, D_bond, D_bond)
+    T1E = T1E.reshape(chi, chi, D_bond, D_bond)
+    D2 = chi * D_bond * D_bond
+    if site == 'E':
+        return oe.contract("YX,MYar,abci,rstj->MbsXctij", C21CD, T1F, e, e.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch").reshape(D2, D2, d_PHYS, d_PHYS)
+    if site == 'D':
+        return oe.contract("MYct,abci,rstj->YarMbsij", T3C, d, d.conj(), optimize=[(0,1),(0,1)], backend="torch").reshape(D2, D2, d_PHYS, d_PHYS)
+    if site == 'A':
+        return oe.contract("ZY,NZbs,abci,rstj->NctYarij", C32EF, T2B, a, a.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch").reshape(D2, D2, d_PHYS, d_PHYS)
+    if site == 'F':
+        return oe.contract("NZar,abci,rstj->ZbsNctij", T1E, f, f.conj(), optimize=[(0,1),(0,1)], backend="torch").reshape(D2, D2, d_PHYS, d_PHYS)
+    if site == 'C':
+        return oe.contract("XZ,LXct,abci,rstj->LarZbsij", C13AB, T3D, c, c.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch").reshape(D2, D2, d_PHYS, d_PHYS)
+    if site == 'B':
+        return oe.contract("LXbs,abci,rstj->XctLarij", T2A, b, b.conj(), optimize=[(0,1),(0,1)], backend="torch").reshape(D2, D2, d_PHYS, d_PHYS)
+    raise ValueError(f"Unknown site '{site}' for env1; expected one of A-F")
+
+
+def build_single_open_env2(site: str, a, b, c, d, e, f, chi, D_bond, d_PHYS,
+                          C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A):
+    """Return the open tensor for ONE site in environment 2 (afcbed)."""
+    T1D = T1D.reshape(chi, chi, D_bond, D_bond)
+    T2C = T2C.reshape(chi, chi, D_bond, D_bond)
+    T2F = T2F.reshape(chi, chi, D_bond, D_bond)
+    T3E = T3E.reshape(chi, chi, D_bond, D_bond)
+    T3B = T3B.reshape(chi, chi, D_bond, D_bond)
+    T1A = T1A.reshape(chi, chi, D_bond, D_bond)
+    D2 = chi * D_bond * D_bond
+    if site == 'A':
+        return oe.contract("YX,MYar,abci,rstj->MbsXctij", C21EB, T1D, a, a.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch").reshape(D2, D2, d_PHYS, d_PHYS)
+    if site == 'B':
+        return oe.contract("MYct,abci,rstj->YarMbsij", T3E, b, b.conj(), optimize=[(0,1),(0,1)], backend="torch").reshape(D2, D2, d_PHYS, d_PHYS)
+    if site == 'C':
+        return oe.contract("ZY,NZbs,abci,rstj->NctYarij", C32AD, T2F, c, c.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch").reshape(D2, D2, d_PHYS, d_PHYS)
+    if site == 'D':
+        return oe.contract("NZar,abci,rstj->ZbsNctij", T1A, d, d.conj(), optimize=[(0,1),(0,1)], backend="torch").reshape(D2, D2, d_PHYS, d_PHYS)
+    if site == 'E':
+        return oe.contract("XZ,LXct,abci,rstj->LarZbsij", C13CF, T3B, e, e.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch").reshape(D2, D2, d_PHYS, d_PHYS)
+    if site == 'F':
+        return oe.contract("LXbs,abci,rstj->XctLarij", T2C, f, f.conj(), optimize=[(0,1),(0,1)], backend="torch").reshape(D2, D2, d_PHYS, d_PHYS)
+    raise ValueError(f"Unknown site '{site}' for env2; expected one of A-F")
+
+
+def build_single_open_env3(site: str, a, b, c, d, e, f, chi, D_bond, d_PHYS,
+                          C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C):
+    """Return the open tensor for ONE site in environment 3 (cdefab)."""
+    T1B = T1B.reshape(chi, chi, D_bond, D_bond)
+    T2E = T2E.reshape(chi, chi, D_bond, D_bond)
+    T2D = T2D.reshape(chi, chi, D_bond, D_bond)
+    T3A = T3A.reshape(chi, chi, D_bond, D_bond)
+    T3F = T3F.reshape(chi, chi, D_bond, D_bond)
+    T1C = T1C.reshape(chi, chi, D_bond, D_bond)
+    D2 = chi * D_bond * D_bond
+    if site == 'C':
+        return oe.contract("YX,MYar,abci,rstj->MbsXctij", C21AF, T1B, c, c.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch").reshape(D2, D2, d_PHYS, d_PHYS)
+    if site == 'F':
+        return oe.contract("MYct,abci,rstj->YarMbsij", T3A, f, f.conj(), optimize=[(0,1),(0,1)], backend="torch").reshape(D2, D2, d_PHYS, d_PHYS)
+    if site == 'E':
+        return oe.contract("ZY,NZbs,abci,rstj->NctYarij", C32CB, T2D, e, e.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch").reshape(D2, D2, d_PHYS, d_PHYS)
+    if site == 'B':
+        return oe.contract("NZar,abci,rstj->ZbsNctij", T1C, b, b.conj(), optimize=[(0,1),(0,1)], backend="torch").reshape(D2, D2, d_PHYS, d_PHYS)
+    if site == 'A':
+        return oe.contract("XZ,LXct,abci,rstj->LarZbsij", C13ED, T3F, a, a.conj(), optimize=[(0,1),(0,1),(0,1)], backend="torch").reshape(D2, D2, d_PHYS, d_PHYS)
+    if site == 'D':
+        return oe.contract("LXbs,abci,rstj->XctLarij", T2E, d, d.conj(), optimize=[(0,1),(0,1)], backend="torch").reshape(D2, D2, d_PHYS, d_PHYS)
+    raise ValueError(f"Unknown site '{site}' for env3; expected one of A-F")
+
 
 def build_heisenberg_H(J: float = 1.0, d: int = 2) -> torch.Tensor:
     # use spin s=(d-1)/2 to build spin-s operators sx, sy, sz:

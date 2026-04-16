@@ -191,6 +191,9 @@ from core import (
     build_open_closed_env1,
     build_open_closed_env2,
     build_open_closed_env3,
+    build_single_open_env1,
+    build_single_open_env2,
+    build_single_open_env3,
     _build_nn_rho,
     _build_nnn_rho,
     set_dtype,
@@ -617,7 +620,7 @@ ANSATZ_REGISTRY: dict = {
     # ── Plaquette single-tensor ansatz (C3 rotation + intra-plaquette leg sym) ─
     'plaq': {
         'n_params':    1,
-        'symmetrize_fn': symmetrize_plaq_legs,   # enforce a[i,j,k,s]=a[i,k,j,s]
+        'symmetrize_fn': None, #symmetrize_plaq_legs,   # enforce a[i,j,k,s]=a[i,k,j,s]
         'derive_fn':   plaq_abcdef_from_a,
         'init_fn':     initialize_plaq,
         'ckpt_keys':   ['a_raw'],
@@ -818,6 +821,123 @@ def evaluate_observables(params: list,
         if all(torch.linalg.norm(all27[i]).item() < 1e-30 for i in _corner_indices):
             print(f"  │  [WARN] CTMRG env still zero at chi={chi} after all internal retries; observables = NaN")
             return float('nan'), [float('nan')]*36, [float('nan')]*54
+
+        # ── GPU D>=8 lazy path ───────────────────────────────────────────────
+        # At D=9,chi=81 each open tensor is ~5.6 GB; 6 at once = ~33 GB → OOM.
+        # Build each closed tensor one-at-a-time, then compute rhos pair-at-a-time.
+        # Peak GPU memory: 2 open tensors + CTMRG env (already allocated).
+        if _core.DEVICE.type == 'cuda' and D_bond >= 8:
+            _a1 = (aN, bN, cN, dN, eN, fN, chi, D_bond, d_PHYS) + tuple(all27[:9])
+            _a2 = (aN, bN, cN, dN, eN, fN, chi, D_bond, d_PHYS) + tuple(all27[9:18])
+            _a3 = (aN, bN, cN, dN, eN, fN, chi, D_bond, d_PHYS) + tuple(all27[18:27])
+            # Build all 18 closed tensors lazily (one open at a time)
+            c1, c2, c3 = {}, {}, {}
+            for _s in 'EDAFCB':
+                _o = build_single_open_env1(_s, *_a1)
+                c1[_s] = oe.contract("ABii->AB", _o, backend="torch"); del _o
+            for _s in 'ABCDEF':
+                _o = build_single_open_env2(_s, *_a2)
+                c2[_s] = oe.contract("ABii->AB", _o, backend="torch"); del _o
+            for _s in 'CFEBAD':
+                _o = build_single_open_env3(_s, *_a3)
+                c3[_s] = oe.contract("ABii->AB", _o, backend="torch"); del _o
+            # Closed products (chi×chi, negligible memory)
+            AD1 = torch.mm(c1['A'], c1['D']); CF1 = torch.mm(c1['C'], c1['F']); EB1 = torch.mm(c1['E'], c1['B'])
+            FA1 = torch.mm(c1['F'], c1['A']); DE1 = torch.mm(c1['D'], c1['E']); BC1 = torch.mm(c1['B'], c1['C'])
+            CB2 = torch.mm(c2['C'], c2['B']); ED2 = torch.mm(c2['E'], c2['D']); AF2 = torch.mm(c2['A'], c2['F'])
+            DC2 = torch.mm(c2['D'], c2['C']); BA2 = torch.mm(c2['B'], c2['A']); FE2 = torch.mm(c2['F'], c2['E'])
+            EF3 = torch.mm(c3['E'], c3['F']); AB3 = torch.mm(c3['A'], c3['B']); CD3 = torch.mm(c3['C'], c3['D'])
+            BE3 = torch.mm(c3['B'], c3['E']); FC3 = torch.mm(c3['F'], c3['C']); DA3 = torch.mm(c3['D'], c3['A'])
+            # Lazy rho helpers: build pair of opens, compute rho, free opens
+            def _lnn(open_fn, s1, s2, p1, p2):
+                _o1 = open_fn(s1); _o2 = open_fn(s2)
+                r = _build_nn_rho(_o1, _o2, p1, p2, d_PHYS); del _o1, _o2; return r
+            def _lnnn(open_fn, s1, cl2, s3, cl4, lp):
+                _o1 = open_fn(s1); _o3 = open_fn(s3)
+                r = _build_nnn_rho(_o1, cl2, _o3, cl4, lp, d_PHYS); del _o1, _o3; return r
+            # ── Env 1 ──
+            _op1 = lambda s: build_single_open_env1(s, *_a1)
+            rho_AD = _lnn(_op1, 'A', 'D', EB1, CF1)
+            rho_CF = _lnn(_op1, 'C', 'F', AD1, EB1)
+            rho_EB = _lnn(_op1, 'E', 'B', CF1, AD1)
+            rho_FA = _lnn(_op1, 'F', 'A', DE1, BC1)
+            rho_DE = _lnn(_op1, 'D', 'E', BC1, FA1)
+            rho_BC = _lnn(_op1, 'B', 'C', FA1, DE1)
+            rho_AE1 = _lnnn(_op1, 'A', c1['D'], 'E', c1['B'], CF1)
+            rho_EC1 = _lnnn(_op1, 'E', c1['B'], 'C', c1['F'], AD1)
+            rho_CA1 = _lnnn(_op1, 'C', c1['F'], 'A', c1['D'], EB1)
+            rho_DB1 = _lnnn(_op1, 'D', c1['E'], 'B', c1['C'], FA1)
+            rho_BF1 = _lnnn(_op1, 'B', c1['C'], 'F', c1['A'], DE1)
+            rho_FD1 = _lnnn(_op1, 'F', c1['A'], 'D', c1['E'], BC1)
+            correlations += [_corr(r) for r in [rho_EB, rho_AD, rho_CF,
+                                                rho_FA, rho_DE, rho_BC,
+                                                rho_AE1, rho_EC1, rho_CA1,
+                                                rho_DB1, rho_BF1, rho_FD1]]
+            mag1 = {'A': _mag(rho_AD, 0), 'D': _mag(rho_AD, 1),
+                    'C': _mag(rho_CF, 0), 'F': _mag(rho_CF, 1),
+                    'E': _mag(rho_EB, 0), 'B': _mag(rho_EB, 1)}
+            for s in ['A', 'B', 'C', 'D', 'E', 'F']:
+                magnetizations.extend(mag1[s])
+            del rho_AD, rho_CF, rho_EB, rho_FA, rho_DE, rho_BC
+            del rho_AE1, rho_EC1, rho_CA1, rho_DB1, rho_BF1, rho_FD1
+            # ── Env 2 ──
+            _op2 = lambda s: build_single_open_env2(s, *_a2)
+            rho_CB = _lnn(_op2, 'C', 'B', AF2, ED2)
+            rho_AF = _lnn(_op2, 'A', 'F', ED2, CB2)
+            rho_ED = _lnn(_op2, 'E', 'D', CB2, AF2)
+            rho_DC = _lnn(_op2, 'D', 'C', BA2, FE2)
+            rho_BA = _lnn(_op2, 'B', 'A', FE2, DC2)
+            rho_FE = _lnn(_op2, 'F', 'E', DC2, BA2)
+            rho_CA2 = _lnnn(_op2, 'C', c2['B'], 'A', c2['F'], ED2)
+            rho_AE2 = _lnnn(_op2, 'A', c2['F'], 'E', c2['D'], CB2)
+            rho_EC2 = _lnnn(_op2, 'E', c2['D'], 'C', c2['B'], AF2)
+            rho_BF2 = _lnnn(_op2, 'B', c2['A'], 'F', c2['E'], DC2)
+            rho_FD2 = _lnnn(_op2, 'F', c2['E'], 'D', c2['C'], BA2)
+            rho_DB2 = _lnnn(_op2, 'D', c2['C'], 'B', c2['A'], FE2)
+            correlations += [_corr(r) for r in [rho_CB, rho_AF, rho_ED,
+                                                rho_DC, rho_BA, rho_FE,
+                                                rho_CA2, rho_AE2, rho_EC2,
+                                                rho_BF2, rho_FD2, rho_DB2]]
+            mag2 = {'C': _mag(rho_CB, 0), 'B': _mag(rho_CB, 1),
+                    'A': _mag(rho_AF, 0), 'F': _mag(rho_AF, 1),
+                    'E': _mag(rho_ED, 0), 'D': _mag(rho_ED, 1)}
+            for s in ['A', 'B', 'C', 'D', 'E', 'F']:
+                magnetizations.extend(mag2[s])
+            del rho_CB, rho_AF, rho_ED, rho_DC, rho_BA, rho_FE
+            del rho_CA2, rho_AE2, rho_EC2, rho_BF2, rho_FD2, rho_DB2
+            # ── Env 3 ──
+            _op3 = lambda s: build_single_open_env3(s, *_a3)
+            rho_EF = _lnn(_op3, 'E', 'F', CD3, AB3)
+            rho_AB = _lnn(_op3, 'A', 'B', EF3, CD3)
+            rho_CD = _lnn(_op3, 'C', 'D', AB3, EF3)
+            rho_BE = _lnn(_op3, 'B', 'E', FC3, DA3)
+            rho_FC = _lnn(_op3, 'F', 'C', DA3, BE3)
+            rho_DA = _lnn(_op3, 'D', 'A', BE3, FC3)
+            rho_EC3 = _lnnn(_op3, 'E', c3['F'], 'C', c3['D'], AB3)
+            rho_CA3 = _lnnn(_op3, 'C', c3['D'], 'A', c3['B'], EF3)
+            rho_AE3 = _lnnn(_op3, 'A', c3['B'], 'E', c3['F'], CD3)
+            rho_FD3 = _lnnn(_op3, 'F', c3['C'], 'D', c3['A'], BE3)
+            rho_DB3 = _lnnn(_op3, 'D', c3['A'], 'B', c3['E'], FC3)
+            rho_BF3 = _lnnn(_op3, 'B', c3['E'], 'F', c3['C'], DA3)
+            correlations += [_corr(r) for r in [rho_EF, rho_AB, rho_CD,
+                                                rho_BE, rho_FC, rho_DA,
+                                                rho_EC3, rho_CA3, rho_AE3,
+                                                rho_FD3, rho_DB3, rho_BF3]]
+            mag3 = {'E': _mag(rho_EF, 0), 'F': _mag(rho_EF, 1),
+                    'A': _mag(rho_AB, 0), 'B': _mag(rho_AB, 1),
+                    'C': _mag(rho_CD, 0), 'D': _mag(rho_CD, 1)}
+            for s in ['A', 'B', 'C', 'D', 'E', 'F']:
+                magnetizations.extend(mag3[s])
+            del rho_EF, rho_AB, rho_CD, rho_BE, rho_FC, rho_DA
+            del rho_EC3, rho_CA3, rho_AE3, rho_FD3, rho_DB3, rho_BF3
+            # Energy from correlations (same convention as evaluate_energy_clean)
+            energy = 0.0
+            for _blk in range(3):
+                _b = _blk * 12
+                energy += 0.5 * sum(Js[_b + _i] * correlations[_b + _i] for _i in range(6))
+                energy +=       sum(Js[_b + 6 + _i] * correlations[_b + 6 + _i] for _i in range(6))
+            return energy, correlations, magnetizations
+        # ── end GPU D>=8 lazy path — CPU / GPU D<8 use pre-build path below ──
 
         # ═══════════════════ Environment 1 (ebadcf) ═══════════════════════
         o1, c1 = build_open_closed_env1(

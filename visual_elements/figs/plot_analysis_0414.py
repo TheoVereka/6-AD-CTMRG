@@ -25,7 +25,96 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+import matplotlib.ticker as ticker
 from scipy.optimize import curve_fit
+
+
+def _j2_str(j2):
+    """Full-precision string for J2, used in filenames and labels.
+    Strips trailing zeros but always keeps at least 2 decimal places.
+    e.g. 0.20 → '0p20', 0.266 → '0p266', 0.26605 → '0p26605'  (filename form)
+    """
+    s = f'{j2:.10f}'.rstrip('0')   # full float, strip trailing zeros
+    # ensure at least 2 decimal places
+    dot = s.index('.')
+    if len(s) - dot - 1 < 2:
+        s = s + '0' * (2 - (len(s) - dot - 1))
+    return s
+
+
+def _j2_fname(j2):
+    """Filename-safe J2 string: dots replaced by 'p'."""
+    return _j2_str(j2).replace('.', 'p')
+
+
+def _j2_label(j2):
+    """Human-readable J2 label without trailing zeros, e.g. 'J2=0.266'."""
+    return f'J2={_j2_str(j2)}'
+
+
+def _fill_zoom_ax(ax_zoom, ax_main, xlim=(0.26, 0.28)):
+    """
+    Populate an existing ax_zoom with data re-plotted from ax_main, restricted to xlim.
+    The caller must create ax_zoom beforehand.
+    """
+    # Re-plot every errorbar collection from ax_main in the zoom
+    for cont in ax_main.containers:
+        if not hasattr(cont, 'get_children'):
+            continue
+        children = cont.get_children()
+        # errorbar container: [line_marker, caplines..., errlines...]
+        # Extract original data from the data line
+        data_line = None
+        for ch in children:
+            if hasattr(ch, 'get_xdata') and len(getattr(ch, 'get_xdata', lambda: [])()) > 0:
+                # first artist with x/y data is the marker line
+                if hasattr(ch, 'get_markersize') and not hasattr(ch, 'get_segments'):
+                    data_line = ch
+                    break
+        if data_line is None:
+            continue
+        xs  = np.asarray(data_line.get_xdata())
+        ys  = np.asarray(data_line.get_ydata())
+        col = data_line.get_color()
+        lbl = cont.get_label()
+        mstyle = data_line.get_marker()
+        ms    = data_line.get_markersize()
+        lw    = data_line.get_linewidth()
+        alpha = data_line.get_alpha() or 1.0
+        # Get yerr from the error line segments if present
+        yerr_lo = np.zeros(len(xs))
+        yerr_hi = np.zeros(len(xs))
+        for ch in children:
+            if hasattr(ch, 'get_segments'):
+                segs = ch.get_segments()
+                for seg in segs:
+                    if len(seg) == 2:
+                        x0, y0 = seg[0]
+                        x1, y1 = seg[1]
+                        if abs(x0 - x1) < 1e-12:   # vertical → error bar
+                            # find matching point index
+                            idx = np.argmin(np.abs(xs - x0))
+                            if idx < len(yerr_lo):
+                                yerr_lo[idx] = ys[idx] - min(y0, y1)
+                                yerr_hi[idx] = max(y0, y1) - ys[idx]
+        mask = (xs >= xlim[0]) & (xs <= xlim[1])
+        if mask.sum() == 0:
+            continue
+        ax_zoom.errorbar(
+            xs[mask], ys[mask],
+            yerr=[yerr_lo[mask], yerr_hi[mask]],
+            fmt=mstyle if lw == 0 else mstyle + '-',
+            color=col, ms=ms, lw=lw, alpha=alpha,
+            capsize=3, elinewidth=0.8, label=lbl
+        )
+    ax_zoom.set_xlim(xlim)
+    ax_zoom.set_xlabel('J2', fontsize=9)
+    ax_zoom.set_ylabel(ax_main.get_ylabel(), fontsize=9)
+    ax_zoom.set_title(f'Zoom  J2 ∈ [{xlim[0]}, {xlim[1]}]', fontsize=8)
+    ax_zoom.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
+    ax_zoom.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
+    ax_zoom.tick_params(labelsize=8)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # PATHS
@@ -481,7 +570,7 @@ def plot_energy_vs_invD(all_results, out_dir):
         
         # Create one figure per J2
         for j2 in all_j2:
-            j2_str = f'{j2:.2f}'.replace('.', 'p')
+            j2_str = _j2_fname(j2)
             fig, ax = plt.subplots(figsize=(8, 5))
             
             # Find data for this (ansatz, J2)
@@ -531,7 +620,7 @@ def plot_energy_vs_invD(all_results, out_dir):
             ax.set_xlabel('1/D', fontsize=12)
             ax.set_ylabel('Energy per site', fontsize=12)
             ax.set_title(
-                f'J2={j2:.2f}  –  Energy vs 1/D  ({lbl})\n'
+                f'{_j2_label(j2)}  –  Energy vs 1/D  ({lbl})\n'
                 '(dotted=horizontal, dashed=linear last-2, dash-dot=exp all-Ds, ★=E₀)',
                 fontsize=10
             )
@@ -544,10 +633,17 @@ def plot_energy_vs_invD(all_results, out_dir):
 # 10. Plot: E_0 vs J2  (both ansätze on one figure, asymmetric error bars)
 # ──────────────────────────────────────────────────────────────────────────────
 def plot_energy_vs_J2(all_results, out_dir):
-    fig, ax = plt.subplots(figsize=(7, 5))
+    ZOOM = (0.26, 0.28)
     markers = {'6tensors': 'o', 'neel_sym': 's'}
     style   = {'6tensors': dict(color='tab:blue'),
                'neel_sym' : dict(color='tab:orange')}
+
+    # Layout: top = both ansätze compared, bottom = zoom of 6tensors only
+    fig = plt.figure(figsize=(8, 8))
+    gs  = gridspec.GridSpec(2, 1, figure=fig,
+                            height_ratios=[3, 1.8], hspace=0.45)
+    ax_main = fig.add_subplot(gs[0])
+    ax_zoom = fig.add_subplot(gs[1])
 
     for ansatz in ['6tensors', 'neel_sym']:
         sub = {k: v for k, v in all_results.items() if v['ansatz'] == ansatz}
@@ -559,13 +655,10 @@ def plot_energy_vs_J2(all_results, out_dir):
         Ehor = [r['extrap']['E_horiz'] for r in rows]
         Elin = [r['extrap']['E_lin2']  for r in rows]
 
-        # Asymmetric error bars
-        # yerr_up   = E_horiz − E_0  (last D is above extrapolation)
-        # yerr_down = E_0 − E_lin2   (linear gives less-negative intercept)
         yerr_up   = np.clip(np.array(Ehor) - np.array(E0s),  0, None)
         yerr_down = np.clip(np.array(E0s)  - np.array(Elin), 0, None)
 
-        ax.errorbar(
+        ax_main.errorbar(
             j2s, E0s,
             yerr=[yerr_down, yerr_up],
             fmt=markers[ansatz]+'-',
@@ -574,13 +667,38 @@ def plot_energy_vs_J2(all_results, out_dir):
             **style[ansatz]
         )
 
-    ax.set_xlabel('J2', fontsize=12)
-    ax.set_ylabel('E₀  (extrapolated energy per site)', fontsize=12)
-    ax.set_title('Extrapolated energy E₀ vs J2\n'
-                 '(error bar up=last D, down=linear-2pts)',
-                 fontsize=10)
-    ax.legend(fontsize=10)
-    plt.tight_layout()
+    ax_main.set_xlabel('J2', fontsize=11)
+    ax_main.set_ylabel('E₀  (energy per site)', fontsize=11)
+    ax_main.set_title('Both ansätze  (error bar up=last D, down=linear-2pts)', fontsize=9)
+    ax_main.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
+    ax_main.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
+    ax_main.legend(fontsize=9)
+
+    # Zoom panel: only 6tensors data in [0.26, 0.28]
+    sub_6t = {k: v for k, v in all_results.items() if v['ansatz'] == '6tensors'}
+    if sub_6t:
+        rows_z = sorted(sub_6t.values(), key=lambda v: v['j2'])
+        mask_z = [(ZOOM[0] <= r['j2'] <= ZOOM[1]) for r in rows_z]
+        j2s_z  = [r['j2']          for r, m in zip(rows_z, mask_z) if m]
+        E0s_z  = [r['extrap']['E_0']     for r, m in zip(rows_z, mask_z) if m]
+        Ehor_z = [r['extrap']['E_horiz'] for r, m in zip(rows_z, mask_z) if m]
+        Elin_z = [r['extrap']['E_lin2']  for r, m in zip(rows_z, mask_z) if m]
+        if j2s_z:
+            eu = np.clip(np.array(Ehor_z) - np.array(E0s_z), 0, None)
+            ed = np.clip(np.array(E0s_z)  - np.array(Elin_z), 0, None)
+            ax_zoom.errorbar(j2s_z, E0s_z, yerr=[ed, eu],
+                             fmt='o-', capsize=4, color='tab:blue',
+                             label=ANSATZ_STYLE['6tensors']['label'])
+    ax_zoom.set_xlim(ZOOM)
+    ax_zoom.set_xlabel('J2', fontsize=10)
+    ax_zoom.set_ylabel('E₀  (energy per site)', fontsize=10)
+    ax_zoom.set_title(f'Zoom: 6-tensor  J2 ∈ [{ZOOM[0]}, {ZOOM[1]}]', fontsize=9)
+    ax_zoom.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
+    ax_zoom.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
+    ax_zoom.legend(fontsize=9)
+
+    fig.suptitle('Extrapolated energy E₀ vs J2', fontsize=12)
+    plt.tight_layout(rect=[0, 0, 1, 0.97])
     _save(fig, os.path.join(out_dir, 'energy_E0_vs_J2.pdf'))
 
 
@@ -630,7 +748,7 @@ def plot_bonds_vs_invD(all_results, out_dir, bond_key, bond_type_label):
 
                 if xs:
                     ax.errorbar(xs, ys, yerr=yes, fmt='o-', color=col, ms=5, lw=1.3,
-                                capsize=3, elinewidth=0.8, label=f'J2={j2:.2f}')
+                                capsize=3, elinewidth=0.8, label=_j2_label(j2))
 
             ax.set_xlabel('1/D', fontsize=11)
             ax.set_ylabel(f'⟨Sᵢ·Sⱼ⟩', fontsize=11)
@@ -648,13 +766,28 @@ def plot_bonds_vs_invD(all_results, out_dir, bond_key, bond_type_label):
 # ──────────────────────────────────────────────────────────────────────────────
 def plot_bonds_vs_J2(all_results, out_dir, bond_key, bond_type_label):
     """
-    One figure per bond type, 2 panels (6tensors left, neel_sym right).
+    One figure per bond type, 2 panels (6tensors left, neel_sym right) + zoom below 6tensors + legend row.
     All 3 ranks shown together per panel: Reds=rank1, Greens=rank2, Blues=rank3.
     Markers only. D controls darkness within each rank's color family.
     """
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5), sharey=True)
+    ZOOM = (0.26, 0.28)
 
-    for ax, ansatz in zip(axes, ['6tensors', 'neel_sym']):
+    fig = plt.figure(figsize=(13, 9.5))
+    gs  = gridspec.GridSpec(3, 2, figure=fig,
+                            height_ratios=[3, 1.8, 0.6], hspace=0.5, wspace=0.25)
+    ax_6t   = fig.add_subplot(gs[0, 0])
+    ax_neel = fig.add_subplot(gs[0, 1])
+    ax_zoom = fig.add_subplot(gs[1, 0])
+    ax_neel.sharey(ax_6t)
+    ax_dummy = fig.add_subplot(gs[1, 1])
+    ax_dummy.set_visible(False)
+    ax_legend = fig.add_subplot(gs[2, :])
+    ax_legend.axis('off')
+
+    ax_map = {'6tensors': ax_6t, 'neel_sym': ax_neel}
+
+    for ansatz in ['6tensors', 'neel_sym']:
+        ax = ax_map[ansatz]
         sub = {k: v for k, v in all_results.items() if v['ansatz'] == ansatz}
         if not sub:
             ax.set_visible(False)
@@ -695,10 +828,21 @@ def plot_bonds_vs_J2(all_results, out_dir, bond_key, bond_type_label):
             '(R=rank1, G=rank2, B=rank3;  bigger D = darker & more opaque)',
             fontsize=9
         )
-        ax.legend(fontsize=6, ncol=3)
+        ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
+        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
+
+
+    # Zoom panel: re-plot from ax_6t into ax_zoom
+    _fill_zoom_ax(ax_zoom, ax_6t, xlim=ZOOM)
+
+    # Collect legend from ax_6t and display in dedicated row
+    handles, labels = ax_6t.get_legend_handles_labels()
+    if handles:
+        ax_legend.legend(handles, labels, loc='center', ncol=6, fontsize=6,
+                        frameon=True, fancybox=True, shadow=False)
 
     fig.suptitle(f'{bond_type_label}  vs  J2', fontsize=12)
-    plt.tight_layout()
+    plt.tight_layout(rect=[0, 0, 1, 0.97])
     fname_out = f'{bond_key.replace("_groups","")}_vs_J2.pdf'
     _save(fig, os.path.join(out_dir, fname_out))
 
@@ -732,7 +876,7 @@ def plot_order_param_vs_invD(all_results, out_dir):
             ls   = style['linestyle']
             ax.errorbar(inv, ms, yerr=errs,
                         fmt='o'+ls, color=col, ms=4, lw=1.2, capsize=3,
-                        label=f'J2={j2:.2f}')
+                        label=_j2_label(j2))
 
         ax.set_xlabel('1/D', fontsize=12)
         ax.set_ylabel('Néel order m', fontsize=12)
@@ -748,9 +892,24 @@ def plot_order_param_vs_invD(all_results, out_dir):
 # 14. Plot: Néel order parameter m vs J2  (2 panels: 6tensors left, neel_sym right)
 # ──────────────────────────────────────────────────────────────────────────────
 def plot_order_param_vs_J2(all_results, out_dir):
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5), sharey=True)
+    ZOOM = (0.26, 0.28)
 
-    for ax, ansatz in zip(axes, ['6tensors', 'neel_sym']):
+    fig = plt.figure(figsize=(13, 9.5))
+    gs  = gridspec.GridSpec(3, 2, figure=fig,
+                            height_ratios=[3, 1.8, 0.6], hspace=0.5, wspace=0.25)
+    ax_6t   = fig.add_subplot(gs[0, 0])
+    ax_neel = fig.add_subplot(gs[0, 1])
+    ax_zoom = fig.add_subplot(gs[1, 0])
+    ax_neel.sharey(ax_6t)
+    ax_dummy = fig.add_subplot(gs[1, 1])
+    ax_dummy.set_visible(False)
+    ax_legend = fig.add_subplot(gs[2, :])
+    ax_legend.axis('off')
+
+    ax_map = {'6tensors': ax_6t, 'neel_sym': ax_neel}
+
+    for ansatz in ['6tensors', 'neel_sym']:
+        ax = ax_map[ansatz]
         sub = {k: v for k, v in all_results.items() if v['ansatz'] == ansatz}
         if not sub:
             ax.set_visible(False)
@@ -782,10 +941,20 @@ def plot_order_param_vs_J2(all_results, out_dir):
             f'{ANSATZ_STYLE[ansatz]["label"]}  (bigger D = more opaque & darker)',
             fontsize=10
         )
-        ax.legend(fontsize=7, ncol=2)
+        ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
+        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
+
+    # Zoom panel: re-plot from ax_6t into ax_zoom
+    _fill_zoom_ax(ax_zoom, ax_6t, xlim=ZOOM)
+
+    # Collect legend from ax_6t and display in dedicated row
+    handles, labels = ax_6t.get_legend_handles_labels()
+    if handles:
+        ax_legend.legend(handles, labels, loc='center', ncol=4, fontsize=7,
+                        frameon=True, fancybox=True, shadow=False)
 
     fig.suptitle('Néel order parameter  m  vs  J2', fontsize=12)
-    plt.tight_layout()
+    plt.tight_layout(rect=[0, 0, 1, 0.97])
     _save(fig, os.path.join(out_dir, 'order_param_vs_J2.pdf'))
 
 
