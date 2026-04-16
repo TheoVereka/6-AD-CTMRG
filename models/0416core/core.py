@@ -12,7 +12,6 @@ pytest==8.4.2
 pytorch==2.5.1
 """
 
-import math
 import numpy as np
 import opt_einsum as oe
 import torch
@@ -113,17 +112,19 @@ def get_last_trunc_error() -> float | None:
     return sum(recent) / len(recent)
 
 
-def _record_trunc_err(M_mat: torch.Tensor, S_kept: torch.Tensor, chi: int) -> None:
+def _record_trunc_err(S_all: torch.Tensor, chi: int) -> None:
     """Append one per-SVD truncation error to _TRUNC_ERRORS_ACC.
 
     Called only when _RECORD_TRUNC_ERROR is True (clean evaluation).
-    trunc_err = sqrt(max(0, ||M||_F^2 - ||S_kept||^2)) / ||M||_F
+    S_all must be the FULL singular value vector (all min(m,n) values) from
+    a torch.linalg.svd call on the detached corner-product matrix.
+    trunc_err = ||S_all[chi:]|| / ||S_all||
     """
     with torch.no_grad():
-        m_frob_sq = torch.linalg.norm(M_mat.detach()).item() ** 2
-        s_kept_sq = float((S_kept[:chi].detach().real ** 2).sum().item())
-        denom = math.sqrt(max(m_frob_sq, 1e-60))
-        err = math.sqrt(max(0.0, m_frob_sq - s_kept_sq)) / denom
+        S_real = S_all.real
+        norm_all  = torch.linalg.norm(S_real).clamp(min=1e-30)
+        norm_disc = torch.linalg.norm(S_real[chi:])
+        err = (norm_disc / norm_all).item()
     _TRUNC_ERRORS_ACC.append(err)
 
 # ── rSVD backward strategy ────────────────────────────────────────────────────
@@ -1251,16 +1252,12 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
 
 
     if _RECORD_TRUNC_ERROR:
-        _M21 = torch.mm(R1, R2.T)
-        U, S, V = truncated_svd_propack(_M21, chi,
-                        chi_extra=round(2*np.sqrt(D_squared)),
-                        rel_cutoff=1e-12,
-                        v0=None,
-                        keep_multiplets=False,
-                        abs_tol=1e-14,
-                        eps_multiplet=1e-12)
-        _record_trunc_err(_M21, S, chi)
-        del _M21
+        _U, _S_all, _Vh = torch.linalg.svd(torch.mm(R1, R2.T), full_matrices=False)
+        _record_trunc_err(_S_all, chi)
+        U = _U[:, :chi]
+        S = _S_all[:chi]
+        V = _Vh[:chi, :].conj().T
+        del _U, _S_all, _Vh
     else:
         U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
                         chi_extra=round(2*np.sqrt(D_squared)),
@@ -1333,16 +1330,12 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     R1 = matC32.T
     R2 = torch.mm(matC21,matC13)
     if _RECORD_TRUNC_ERROR:
-        _M32 = torch.mm(R1, R2.T)
-        U, S, V = truncated_svd_propack(_M32, chi,
-                        chi_extra=round(2*np.sqrt(D_squared)),
-                        rel_cutoff=1e-12,
-                        v0=None,
-                        keep_multiplets=False,
-                        abs_tol=1e-14,
-                        eps_multiplet=1e-12)
-        _record_trunc_err(_M32, S, chi)
-        del _M32
+        _U, _S_all, _Vh = torch.linalg.svd(torch.mm(R1, R2.T), full_matrices=False)
+        _record_trunc_err(_S_all, chi)
+        U = _U[:, :chi]
+        S = _S_all[:chi]
+        V = _Vh[:chi, :].conj().T
+        del _U, _S_all, _Vh
     else:
         U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
                         chi_extra=round(2*np.sqrt(D_squared)),
@@ -1364,16 +1357,12 @@ def trunc_rhoCCC(matC21, matC32, matC13, chi, D_squared):
     R2 = torch.mm(matC32,matC21)
     #U, S, Vh = torch.linalg.svd(torch.mm(R1,R2.T))
     if _RECORD_TRUNC_ERROR:
-        _M13 = torch.mm(R1, R2.T)
-        U, S, V = truncated_svd_propack(_M13, chi,
-                        chi_extra=round(2*np.sqrt(D_squared)),
-                        rel_cutoff=1e-12,
-                        v0=None,
-                        keep_multiplets=False,
-                        abs_tol=1e-14,
-                        eps_multiplet=1e-12)
-        _record_trunc_err(_M13, S, chi)
-        del _M13
+        _U, _S_all, _Vh = torch.linalg.svd(torch.mm(R1, R2.T), full_matrices=False)
+        _record_trunc_err(_S_all, chi)
+        U = _U[:, :chi]
+        S = _S_all[:chi]
+        V = _Vh[:chi, :].conj().T
+        del _U, _S_all, _Vh
     else:
         U, S, V = truncated_svd_propack(torch.mm(R1,R2.T), chi,
                         chi_extra=round(2*np.sqrt(D_squared)),

@@ -952,7 +952,7 @@ def evaluate_observables(params: list,
                 _b = _blk * 12
                 energy += 0.5 * sum(Js[_b + _i] * correlations[_b + _i] for _i in range(6))
                 energy +=       sum(Js[_b + 6 + _i] * correlations[_b + 6 + _i] for _i in range(6))
-            return energy, correlations, magnetizations
+            return energy, correlations, magnetizations, trunc_error
         # ── end GPU D>=8 lazy path — CPU / GPU D<8 use pre-build path below ──
 
         # ═══════════════════ Environment 1 (ebadcf) ═══════════════════════
