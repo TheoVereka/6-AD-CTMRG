@@ -202,10 +202,9 @@ from core import (
     symmetrize_virtual_legs,
     neel_abcdef_from_a,
     initialize_neel,
-    # ── Plaquette-symmetrized ansatz ─────────────────────────────────────
-    symmetrize_plaq_legs,
-    plaq_abcdef_from_a,
-    initialize_plaq,
+    # ── C6-Ypi single-tensor ansatz (renamed from plaq) ──────────────────
+    c6ypi_abcdef_from_a,
+    initialize_c6ypi,
     # ── 6-tensor locally-reflected ansatz ───────────────────────────────
     symmetrize_six_local_reflections,
 )
@@ -617,15 +616,15 @@ ANSATZ_REGISTRY: dict = {
         'yaml_name':   'neel_symmetrized',
         'description': 'Néel-symmetrized single-tensor ansatz (S3 virtual legs, π-rotation U=iσ_y)',
     },
-    # ── Plaquette single-tensor ansatz (C3 rotation + intra-plaquette leg sym) ─
-    'plaq': {
+    # ── C6-Ypi single-tensor ansatz (C6 rotation + pi-Y on B-sublattice) ──
+    'c6ypi': {
         'n_params':    1,
-        'symmetrize_fn': None, #symmetrize_plaq_legs,   # enforce a[i,j,k,s]=a[i,k,j,s]
-        'derive_fn':   plaq_abcdef_from_a,
-        'init_fn':     initialize_plaq,
+        'symmetrize_fn': None,
+        'derive_fn':   c6ypi_abcdef_from_a,
+        'init_fn':     initialize_c6ypi,
         'ckpt_keys':   ['a_raw'],
-        'yaml_name':   'plaq_symmetrized',
-        'description': 'Plaquette single-tensor ansatz (C3 virtual-leg rotation + intra-plaquette leg sym)',
+        'yaml_name':   '1tensor_C6Ypi',
+        'description': 'C6-Ypi single-tensor ansatz (C6 virtual-leg rotation + pi-Y on B-sublattice)',
     },
     # ── 6-tensor locally-reflected ansatz ────────────────────────────────────
     # Like 'unrestricted' but each site tensor is projected onto the subspace
@@ -744,6 +743,10 @@ def evaluate_observables(params: list,
               Complex iPEPS: <Sy> = Im(Tr(ρ·iSy_op)) — full physical value.
             Ordered: env1 site A (Sx, Sy, Sz), env1 site B, ..., env1 site F,
                      env2 site A, ..., env3 site F.
+        trunc_error (float | None): Mean CTMRG SVD truncation error from
+            the last CTMRG iteration, averaged over 3 environments × 3 SVDs.
+            Defined as ||S_discarded|| / ||S_all|| per SVD.  None if CTMRG
+            did not record errors (should not happen in normal use).
     """
     a, b, c, d, e, f = _derive_abcdef(params, ansatz_cfg)
     D_sq = D_bond ** 2
@@ -812,15 +815,18 @@ def evaluate_observables(params: list,
         fN = normalize_single_layer_tensor_for_double_layer(f)
 
         A, B, C, Dt, E, F = abcdef_to_ABCDEF(aN, bN, cN, dN, eN, fN, D_sq)
+        _core.set_record_trunc_error(True)
         all27 = CTMRG_from_init_to_stop(
                 A, B, C, Dt, E, F, chi, D_sq,
                 CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT)
+        trunc_error = _core.get_last_trunc_error()
+        _core.set_record_trunc_error(False)
 
         # ── Last-resort zero guard (CTMRG already retried with escalating noise) ──
         _corner_indices = (0, 1, 2, 9, 10, 11, 18, 19, 20)
         if all(torch.linalg.norm(all27[i]).item() < 1e-30 for i in _corner_indices):
             print(f"  │  [WARN] CTMRG env still zero at chi={chi} after all internal retries; observables = NaN")
-            return float('nan'), [float('nan')]*36, [float('nan')]*54
+            return float('nan'), [float('nan')]*36, [float('nan')]*54, float('nan')
 
         # ── GPU D>=8 lazy path ───────────────────────────────────────────────
         # At D=9,chi=81 each open tensor is ~5.6 GB; 6 at once = ~33 GB → OOM.
@@ -1079,7 +1085,7 @@ def evaluate_observables(params: list,
             energy +=       sum(Js[_b + 6 + _i] * correlations[_b + 6 + _i]
                                 for _i in range(6))    # nnn × 1
 
-    return energy, correlations, magnetizations
+    return energy, correlations, magnetizations, trunc_error
 
 
 # ── Bond labels matching the order returned by evaluate_observables ───────────
@@ -1096,13 +1102,18 @@ _SITE_LABELS = ['A', 'B', 'C', 'D', 'E', 'F']
 
 def _save_observables_file(filepath: str, D_bond: int, chi: int,
                            energy: float, correlations: list,
-                           magnetizations: list) -> None:
-    """Write energy / correlations / magnetizations to a human-readable file."""
+                           magnetizations: list,
+                           trunc_error: float | None = None) -> None:
+    """Write energy / correlations / magnetizations (and optionally CTMRG
+    truncation error) to a human-readable file."""
     n_sites = 6
     with open(filepath, 'w') as fp:
         fp.write(f"# D={D_bond}  chi={chi}  timestamp={timestamp()}\n\n")
         fp.write(f"energy           = {energy:+.12e}\n")
-        fp.write(f"energy_per_site  = {energy / n_sites:+.12e}\n\n")
+        fp.write(f"energy_per_site  = {energy / n_sites:+.12e}\n")
+        if trunc_error is not None:
+            fp.write(f"trunc_error      = {trunc_error:.6e}\n")
+        fp.write("\n")
 
         fp.write("# ── Bond correlations <Si·Sj>  (36 values) "
                  "──────────────────────\n")
@@ -1147,7 +1158,8 @@ def _save_observables_file(filepath: str, D_bond: int, chi: int,
 
 def _print_observables_summary(tag: str, D_bond: int, chi: int,
                                energy: float, correlations: list,
-                               magnetizations: list) -> None:
+                               magnetizations: list,
+                               trunc_error: float | None = None) -> None:
     """Print a compact summary of observables to stdout."""
     n_sites = 6
     nn_corrs  = [correlations[i] for i in range(36) if (i % 12) < 6]
@@ -1164,8 +1176,9 @@ def _print_observables_summary(tag: str, D_bond: int, chi: int,
         se  = (var / n) ** 0.5   # standard error = std / sqrt(n)
         return f"min={mn:+.6f} max={mx:+.6f} mean={avg:+.6f} se={se:.2e}"
 
+    te_str = f"  trunc_err={trunc_error:.3e}" if trunc_error is not None else ""
     print(f"  │  [{tag}] D={D_bond} chi={chi}  E={energy:+.10f}  "
-          f"E/site={energy/n_sites:+.10f}")
+          f"E/site={energy/n_sites:+.10f}{te_str}")
     print(f"  │    nn  <S·S> ({len(nn_corrs):>2d}): {_stat(nn_corrs)}")
     print(f"  │    nnn <S·S> ({len(nnn_corrs):>2d}): {_stat(nnn_corrs)}")
     print(f"  │    <Sx>      ({len(all_mx):>2d}): {_stat(all_mx)}")
@@ -2054,16 +2067,16 @@ def main():
 
             # Clean energy evaluation + observables
             print(f"  │  Evaluating energy & observables at (D={D_bond}, chi={chi}) ...")
-            energy, correlations, magnetizations = evaluate_observables(
+            energy, correlations, magnetizations, trunc_error = evaluate_observables(
                 list(cur_params), Js, SdotS, chi, D_bond, d_PHYS, ansatz_cfg)
             energy_per_site = energy / N_SITES
             _save_observables_file(
                 os.path.join(output_dir,
                              f"D_{D_bond}_chi_{chi}"
                              f"_energy_magnetization_correlation.txt"),
-                D_bond, chi, energy, correlations, magnetizations)
+                D_bond, chi, energy, correlations, magnetizations, trunc_error)
             _print_observables_summary(
-                'OBS', D_bond, chi, energy, correlations, magnetizations)
+                'OBS', D_bond, chi, energy, correlations, magnetizations, trunc_error)
 
             # Save final checkpoint for this (D, chi)
             save_checkpoint(best_path, cur_params, D_bond, chi,
@@ -2094,16 +2107,16 @@ def main():
                 print(f"  │  [Lookahead] evaluating (D={D_bond}, chi={chi_la}) "
                       f"with current tensors ...")
                 with torch.no_grad():
-                    energy_la, corr_la, mag_la = evaluate_observables(
+                    energy_la, corr_la, mag_la, trunc_la = evaluate_observables(
                         list(cur_params), Js, SdotS, chi_la, D_bond, d_PHYS,
                         ansatz_cfg)
                 _save_observables_file(
                     os.path.join(output_dir,
                                  f"D_{D_bond}_chi_{chi}+2D_equals_chi_{chi_la}"
                                  f"_energy_magnetization_correlation.txt"),
-                    D_bond, chi_la, energy_la, corr_la, mag_la)
+                    D_bond, chi_la, energy_la, corr_la, mag_la, trunc_la)
                 _print_observables_summary(
-                    'LA ', D_bond, chi_la, energy_la, corr_la, mag_la)
+                    'LA ', D_bond, chi_la, energy_la, corr_la, mag_la, trunc_la)
                 delta_la = abs(energy - energy_la)
                 print(f"  │  [Lookahead] chi={chi}: E={energy:+.10f} │ "
                       f"chi={chi_la}: E={energy_la:+.10f} │ "
