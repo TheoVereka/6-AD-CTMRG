@@ -197,9 +197,9 @@ def _zoom_order(ax_zoom, data_by_D, all_Ds, xlim, ansatz):
 # ──────────────────────────────────────────────────────────────────────────────
 # PATHS
 # ──────────────────────────────────────────────────────────────────────────────
-DATA_DIR   = '/home/chye/6ADctmrg/data/0414core'
+DATA_DIR   = '/home/chye/6ADctmrg/data/0416core'
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-OUT_DIR    = os.path.join(SCRIPT_DIR, 'analysis_plots_0414')
+OUT_DIR    = os.path.join(SCRIPT_DIR, 'analysis_plots_0416')
 os.makedirs(OUT_DIR, exist_ok=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -409,7 +409,9 @@ def compute_bond_groups(D_data, groups_raw):
     groups_raw: list of 3 group specs (NN or NNN)
 
     Returns: dict { D : { 'means': [m0,m1,m2], 'stds': [s0,s1,s2], 'ranks': [r0,r1,r2] } }
-    ranks[i] = 1 (smallest value) … 3 (largest value) within this D.
+    ranks[i] = 1 (smallest value) … 3 (largest value) **at this D**.
+    Ranking is done independently at each D so that rank-1 is always the
+    smallest value, rank-3 always the largest → curves never cross in vs-1/D.
     """
     result = {}
     for D in sorted(D_data.keys()):
@@ -426,8 +428,8 @@ def compute_bond_groups(D_data, groups_raw):
                 means.append(float('nan'))
                 stds.append(float('nan'))
                 sterrs.append(float('nan'))
-        # Rank ascending (rank 1 = smallest)
-        order = np.argsort(means)   # indices that sort ascending
+        # Rank ascending at THIS D: rank 1 = smallest value
+        order = np.argsort(means)
         ranks = [0, 0, 0]
         for rank_val, idx in enumerate(order, start=1):
             ranks[idx] = rank_val
@@ -493,11 +495,11 @@ def collect_all_data(data_dir):
         # Determine ansatz
         if fname.startswith('6tensors'):
             ansatz = '6tensors'
-        elif fname.startswith('neel_symmetrized'):
-            ansatz = 'neel_sym'
+        elif fname.startswith('1tensor_C6Ypi'):
+            ansatz = 'c6ypi'
         else:
             continue
-
+        
         # Extract J2
         m_j2 = RE_J2.search(fname)
         if not m_j2:
@@ -579,7 +581,7 @@ def save_json(all_results, out_dir):
 # ──────────────────────────────────────────────────────────────────────────────
 ANSATZ_STYLE = {
     '6tensors': dict(color='tab:blue',   linestyle='-',  label='6-tensor'),
-    'neel_sym' : dict(color='tab:orange', linestyle='--', label='Néel-sym'),
+    'c6ypi' : dict(color='tab:orange', linestyle='--', label='C6Ypi'),
 }
 
 def _j2_colormap(j2_list):
@@ -602,7 +604,7 @@ def _D_colormap(D_list):
 
 def _D_colormap_ansatz(D_list, ansatz):
     """Ansatz-specific D colormap: small D → light, large D → dark.
-    6tensors → Blues, neel_sym → Oranges.
+    6tensors → Blues, c6ypi → Oranges.
     """
     Ds    = sorted(set(D_list))
     cname = 'Blues' if ansatz == '6tensors' else 'Oranges'
@@ -639,7 +641,7 @@ def _save(fig, fpath):
 # 9.  Plot: Energy vs 1/D  (per ansatz subfolder, one figure per J2)
 # ──────────────────────────────────────────────────────────────────────────────
 def plot_energy_vs_invD(all_results, out_dir):
-    all_ansatz = ['6tensors', 'neel_sym']
+    all_ansatz = ['6tensors', 'c6ypi']
     
     for ansatz in all_ansatz:
         # Create subfolder for this ansatz
@@ -675,6 +677,7 @@ def plot_energy_vs_invD(all_results, out_dir):
             # Data points
             ax.plot(inv, eps, 'o-', color=col, ms=5, lw=1.4, label=lbl)
 
+            
             # 1. Horizontal line (dotted) at E_horiz
             x_max = max(inv) * 1.15
             ax.plot([0, x_max], [ex['E_horiz'], ex['E_horiz']],
@@ -690,7 +693,7 @@ def plot_energy_vs_invD(all_results, out_dir):
                         color=col, lw=1.0, ls='--', alpha=0.8)
 
             # 3. Exponential fit on all Ds (dash-dot)
-            if ex['exp_popt'] is not None:
+            if False and (ex['exp_popt'] is not None):
                 E0, c, Dchar = ex['exp_popt']
                 # Linspace in 1/D space → smooth curve on the 1/D axis
                 inv_max   = 1.0 / Ds[0] * 1.05
@@ -703,7 +706,7 @@ def plot_energy_vs_invD(all_results, out_dir):
             ax.plot(0, ex['E_0'], marker='*', color=col, ms=11, zorder=6,
                     markeredgewidth=0.4, markeredgecolor='k')
 
-            ax.set_xlim(left=-0.005)
+            ax.set_xlim(left=0)
             ax.set_xlabel('1/D', fontsize=12)
             ax.set_ylabel('Energy per site', fontsize=12)
             ax.set_title(
@@ -721,9 +724,9 @@ def plot_energy_vs_invD(all_results, out_dir):
 # ──────────────────────────────────────────────────────────────────────────────
 def plot_energy_vs_J2(all_results, out_dir):
     ZOOM = (0.26, 0.28)
-    markers = {'6tensors': 'o', 'neel_sym': 's'}
+    markers = {'6tensors': 'o', 'c6ypi': 's'}
     style   = {'6tensors': dict(color='tab:blue'),
-               'neel_sym' : dict(color='tab:orange')}
+               'c6ypi' : dict(color='tab:orange')}
 
     # Layout: top = both ansätze compared, bottom = zoom of 6tensors only
     fig = plt.figure(figsize=(8, 8))
@@ -732,7 +735,7 @@ def plot_energy_vs_J2(all_results, out_dir):
     ax_main = fig.add_subplot(gs[0])
     ax_zoom = fig.add_subplot(gs[1])
 
-    for ansatz in ['6tensors', 'neel_sym']:
+    for ansatz in ['6tensors', 'c6ypi']:
         sub = {k: v for k, v in all_results.items() if v['ansatz'] == ansatz}
         if not sub:
             continue
@@ -799,53 +802,48 @@ def _rank_label(bond_type, rank):
 def plot_bonds_vs_invD(all_results, out_dir, bond_key, bond_type_label):
     """
     bond_key : 'nn_groups' or 'nnn_groups'
-    Creates 3 figures (one per rank) with 2 panels (one per ansatz).
-    Each panel shows one curve per J2.
+    Per-ansatz subfolders, one figure per J2 with all 3 groups on one panel.
+    Groups use fixed ranking (determined at largest D) to avoid crossings.
     """
-    for target_rank in [1, 2, 3]:
-        fig, axes = plt.subplots(1, 2, figsize=(13, 5), sharey=True)
-
-        for ax, ansatz in zip(axes, ['6tensors', 'neel_sym']):
-            sub = {k: v for k, v in all_results.items() if v['ansatz'] == ansatz}
-            if not sub:
-                ax.set_visible(False)
+    all_ansatz = sorted(set(v['ansatz'] for v in all_results.values()))
+    bond_short = bond_key.replace('_groups', '')
+    RANK_COLORS = {1: 'tab:red', 2: 'tab:green', 3: 'tab:blue'}
+    for ansatz in all_ansatz:
+        subdir = os.path.join(out_dir, f'{bond_short}_vs_invD_{ansatz}')
+        os.makedirs(subdir, exist_ok=True)
+        sub = {k: v for k, v in all_results.items() if v['ansatz'] == ansatz}
+        if not sub:
+            continue
+        for j2 in sorted(set(v['j2'] for v in sub.values())):
+            matches = [v for v in sub.values() if v['j2'] == j2]
+            if not matches:
                 continue
-
-            all_j2 = [v['j2'] for v in sub.values()]
-            j2_col  = _j2_colormap(all_j2)
-
-            for fname in sorted(sub, key=lambda k: sub[k]['j2']):
-                v   = sub[fname]
-                j2  = v['j2']
-                col = j2_col[j2]
-                grp_data = v[bond_key]
-
+            grp_data = matches[0][bond_key]
+            fig, ax = plt.subplots(figsize=(8, 5))
+            for target_rank in [1, 2, 3]:
                 xs, ys, yes = [], [], []
                 for D, gd in sorted(grp_data.items()):
-                    ranks  = gd['ranks']
-                    means  = gd['means']
-                    sterrs = gd['sterrs']
-                    # Find which group index has target_rank at this D
-                    gi = next((i for i, r in enumerate(ranks) if r == target_rank), None)
+                    gi = next((i for i, r in enumerate(gd['ranks']) if r == target_rank), None)
                     if gi is None:
                         continue
                     xs.append(1.0 / D)
-                    ys.append(means[gi])
-                    yes.append(sterrs[gi])
-
+                    ys.append(gd['means'][gi])
+                    yes.append(gd['sterrs'][gi])
                 if xs:
-                    ax.errorbar(xs, ys, yerr=yes, fmt='o-', color=col, ms=5, lw=1.3,
-                                capsize=3, elinewidth=0.8, label=_j2_label(j2))
-
+                    ax.errorbar(xs, ys, yerr=yes, fmt='o-', color=RANK_COLORS[target_rank],
+                                ms=5, lw=1.3, capsize=3, elinewidth=0.8,
+                                label=RANK_LABELS[target_rank])
+            ax.set_xlim(left=0)
             ax.set_xlabel('1/D', fontsize=11)
-            ax.set_ylabel(f'⟨Sᵢ·Sⱼ⟩', fontsize=11)
-            ax.set_title(f'{ANSATZ_STYLE[ansatz]["label"]}', fontsize=10)
-            ax.legend(fontsize=7, ncol=2)
-
-        fig.suptitle(f'{bond_type_label}  –  rank {target_rank} group  vs  1/D', fontsize=12)
-        plt.tight_layout()
-        fname_out = f'{bond_key.replace("_groups","")}_rank{target_rank}_vs_invD.pdf'
-        _save(fig, os.path.join(out_dir, fname_out))
+            ax.set_ylabel('⟨Sᵢ·Sⱼ⟩', fontsize=11)
+            ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.4g'))
+            ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
+            ax.legend(fontsize=8)
+            fig.suptitle(
+                f'{bond_type_label}  vs  1/D  –  {_j2_label(j2)}  ({ANSATZ_STYLE[ansatz]["label"]})',
+                fontsize=11)
+            plt.tight_layout()
+            _save(fig, os.path.join(subdir, f'J2_{_j2_fname(j2)}.pdf'))
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -853,7 +851,7 @@ def plot_bonds_vs_invD(all_results, out_dir, bond_key, bond_type_label):
 # ──────────────────────────────────────────────────────────────────────────────
 def plot_bonds_vs_J2(all_results, out_dir, bond_key, bond_type_label):
     """
-    One figure per bond type, 2 panels (6tensors left, neel_sym right) + zoom below 6tensors + legend row.
+    One figure per bond type, 2 panels (6tensors left, c6ypi right) + zoom below 6tensors + legend row.
     All 3 ranks shown together per panel: Reds=rank1, Greens=rank2, Blues=rank3.
     Markers only. D controls darkness within each rank's color family.
     """
@@ -871,9 +869,9 @@ def plot_bonds_vs_J2(all_results, out_dir, bond_key, bond_type_label):
     ax_legend = fig.add_subplot(gs[2, :])
     ax_legend.axis('off')
 
-    ax_map = {'6tensors': ax_6t, 'neel_sym': ax_neel}
+    ax_map = {'6tensors': ax_6t, 'c6ypi': ax_neel}
 
-    for ansatz in ['6tensors', 'neel_sym']:
+    for ansatz in ['6tensors', 'c6ypi']:
         ax = ax_map[ansatz]
         sub = {k: v for k, v in all_results.items() if v['ansatz'] == ansatz}
         if not sub:
@@ -896,10 +894,10 @@ def plot_bonds_vs_J2(all_results, out_dir, bond_key, bond_type_label):
         # All Ds across all ranks (for shared colormap range within each rank)
         all_Ds = sorted(set(D for rk in data_by_rank_D.values() for D in rk))
 
-        # Save 6tensors data for zoom
-        if ansatz == '6tensors':
-            data_by_rank_D_6t = data_by_rank_D
-            all_Ds_6t = all_Ds
+        # Save first-available ansatz data for zoom
+        if 'data_by_rank_D_zoom' not in dir():
+            data_by_rank_D_zoom = data_by_rank_D
+            all_Ds_zoom = all_Ds
 
         for rank in [1, 2, 3]:
             D_col = _D_colormap_rank(all_Ds, rank)
@@ -925,7 +923,10 @@ def plot_bonds_vs_J2(all_results, out_dir, bond_key, bond_type_label):
 
 
     # Zoom panel: data-driven, only D=5,7,9(or8), rescaled colors
-    _zoom_bonds(ax_zoom, data_by_rank_D_6t, all_Ds_6t, xlim=ZOOM, ylabel='⟨Sᵢ·Sⱼ⟩')
+    if 'data_by_rank_D_zoom' in dir():
+        _zoom_bonds(ax_zoom, data_by_rank_D_zoom, all_Ds_zoom, xlim=ZOOM, ylabel='⟨Sᵢ·Sⱼ⟩')
+    else:
+        ax_zoom.set_visible(False)
 
     # Collect legend from ax_6t and display in dedicated row
     handles, labels = ax_6t.get_legend_handles_labels()
@@ -940,48 +941,48 @@ def plot_bonds_vs_J2(all_results, out_dir, bond_key, bond_type_label):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 13. Plot: Néel order parameter m vs 1/D  (2 panels: 6tensors left, neel_sym right)
+# 13. Plot: Néel order parameter m vs 1/D  (2 panels: 6tensors left, c6ypi right)
 # ──────────────────────────────────────────────────────────────────────────────
 def plot_order_param_vs_invD(all_results, out_dir):
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5), sharey=True)
-
-    for ax, ansatz in zip(axes, ['6tensors', 'neel_sym']):
+    """
+    Per-ansatz subfolders, one figure per J2 showing m vs 1/D.
+    """
+    all_ansatz = sorted(set(v['ansatz'] for v in all_results.values()))
+    for ansatz in all_ansatz:
+        subdir = os.path.join(out_dir, f'order_param_vs_invD_{ansatz}')
+        os.makedirs(subdir, exist_ok=True)
         sub = {k: v for k, v in all_results.items() if v['ansatz'] == ansatz}
         if not sub:
-            ax.set_visible(False)
             continue
-        all_j2 = [v['j2'] for v in sub.values()]
-        j2_col  = _j2_colormap(all_j2)
-        style   = ANSATZ_STYLE[ansatz]
-
-        for fname in sorted(sub, key=lambda k: sub[k]['j2']):
-            v  = sub[fname]
-            j2 = v['j2']
-            op = v['order_param']
+        col = ANSATZ_STYLE[ansatz]['color']
+        for j2 in sorted(set(v['j2'] for v in sub.values())):
+            matches = [v for v in sub.values() if v['j2'] == j2]
+            if not matches:
+                continue
+            op = matches[0]['order_param']
             Ds_op = sorted(op.keys())
             if not Ds_op:
                 continue
+            fig, ax = plt.subplots(figsize=(7, 5))
             inv  = [1.0 / D for D in Ds_op]
-            ms   = [op[D]['m']   for D in Ds_op]
+            ms_v = [op[D]['m']   for D in Ds_op]
             errs = [op[D]['err'] for D in Ds_op]
-            col  = j2_col[j2]
-            ls   = style['linestyle']
-            ax.errorbar(inv, ms, yerr=errs,
-                        fmt='o'+ls, color=col, ms=4, lw=1.2, capsize=3,
-                        label=_j2_label(j2))
-
-        ax.set_xlabel('1/D', fontsize=12)
-        ax.set_ylabel('Néel order m', fontsize=12)
-        ax.set_title(f'{ANSATZ_STYLE[ansatz]["label"]}', fontsize=10)
-        ax.legend(fontsize=7, ncol=2)
-
-    fig.suptitle('Néel order parameter  m  vs  1/D', fontsize=12)
-    plt.tight_layout()
-    _save(fig, os.path.join(out_dir, 'order_param_vs_invD.pdf'))
+            ax.errorbar(inv, ms_v, yerr=errs, fmt='o-', color=col,
+                        ms=5, lw=1.4, capsize=3)
+            ax.set_xlabel('1/D', fontsize=12)
+            ax.set_xlim(left=0.0)
+            ax.set_ylim(bottom=0.0)
+            ax.set_ylabel('Néel order m', fontsize=12)
+            ax.set_title(
+                f'{_j2_label(j2)}  –  Néel m vs 1/D  ({ANSATZ_STYLE[ansatz]["label"]})',
+                fontsize=10)
+            ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.4g'))
+            plt.tight_layout()
+            _save(fig, os.path.join(subdir, f'J2_{_j2_fname(j2)}.pdf'))
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 14. Plot: Néel order parameter m vs J2  (2 panels: 6tensors left, neel_sym right)
+# 14. Plot: Néel order parameter m vs J2  (2 panels: 6tensors left, c6ypi right)
 # ──────────────────────────────────────────────────────────────────────────────
 def plot_order_param_vs_J2(all_results, out_dir):
     ZOOM = (0.26, 0.28)
@@ -998,9 +999,9 @@ def plot_order_param_vs_J2(all_results, out_dir):
     ax_legend = fig.add_subplot(gs[2, :])
     ax_legend.axis('off')
 
-    ax_map = {'6tensors': ax_6t, 'neel_sym': ax_neel}
+    ax_map = {'6tensors': ax_6t, 'c6ypi': ax_neel}
 
-    for ansatz in ['6tensors', 'neel_sym']:
+    for ansatz in ['6tensors', 'c6ypi']:
         ax = ax_map[ansatz]
         sub = {k: v for k, v in all_results.items() if v['ansatz'] == ansatz}
         if not sub:
@@ -1017,10 +1018,11 @@ def plot_order_param_vs_J2(all_results, out_dir):
         all_Ds = sorted(data_by_D.keys())
         D_col  = _D_colormap_ansatz(all_Ds, ansatz)
 
-        # Save 6tensors data for zoom
-        if ansatz == '6tensors':
-            data_by_D_6t = data_by_D
-            all_Ds_6t = all_Ds
+        # Save first-available ansatz data for zoom
+        if 'data_by_D_zoom' not in dir():
+            data_by_D_zoom = data_by_D
+            all_Ds_zoom_op = all_Ds
+            ansatz_zoom_op = ansatz
 
         for D in all_Ds:
             pts  = sorted(data_by_D[D])
@@ -1042,7 +1044,10 @@ def plot_order_param_vs_J2(all_results, out_dir):
         ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
 
     # Zoom panel: data-driven, only D=5,7,9(or8), rescaled colors
-    _zoom_order(ax_zoom, data_by_D_6t, all_Ds_6t, xlim=ZOOM, ansatz='6tensors')
+    if 'data_by_D_zoom' in dir():
+        _zoom_order(ax_zoom, data_by_D_zoom, all_Ds_zoom_op, xlim=ZOOM, ansatz=ansatz_zoom_op)
+    else:
+        ax_zoom.set_visible(False)
 
     # Collect legend from ax_6t and display in dedicated row
     handles, labels = ax_6t.get_legend_handles_labels()
@@ -1059,7 +1064,7 @@ def plot_order_param_vs_J2(all_results, out_dir):
 # MAIN
 # ──────────────────────────────────────────────────────────────────────────────
 def main():
-    print('=== 0414core comprehensive analysis ===')
+    print('=== 0416core comprehensive analysis ===')
     print(f'Data dir : {DATA_DIR}')
     print(f'Output   : {OUT_DIR}')
     print()
