@@ -56,12 +56,40 @@ def _j2_label(j2):
 def _fill_zoom_ax(ax_zoom, ax_main, xlim=(0.26, 0.28)):
     """
     Populate an existing ax_zoom with data re-plotted from ax_main, restricted to xlim.
+    Only plots D=5, D=7, and (D=9 if available else D=8 if available).
+    Always connects dots with lines in zoom plot.
     The caller must create ax_zoom beforehand.
     """
-    # Re-plot every errorbar collection from ax_main in the zoom
+    # Pass 1: determine which D values are available in ax_main
+    available_D = set()
     for cont in ax_main.containers:
         if not hasattr(cont, 'get_children'):
             continue
+        lbl = cont.get_label()
+        for d in [5, 7, 8, 9]:
+            if f'D={d}' in lbl:
+                available_D.add(d)
+                break
+    
+    # Build allowed list: always [5, 7] + one of [9, 8] if available
+    allowed_D = [5, 7]
+    for d in [9, 8]:  # prefer D=9, fallback to D=8
+        if d in available_D:
+            allowed_D.append(d)
+            break
+    
+    # Pass 2: re-plot every errorbar collection from ax_main that matches allowed D
+    for cont in ax_main.containers:
+        if not hasattr(cont, 'get_children'):
+            continue
+        
+        lbl = cont.get_label()
+        
+        # Filter by allowed D values: check if label contains 'D=X' where X in allowed_D
+        has_allowed_D = any(f'D={d}' in lbl for d in allowed_D)
+        if not has_allowed_D:
+            continue
+        
         children = cont.get_children()
         # errorbar container: [line_marker, caplines..., errlines...]
         # Extract original data from the data line
@@ -77,7 +105,6 @@ def _fill_zoom_ax(ax_zoom, ax_main, xlim=(0.26, 0.28)):
         xs  = np.asarray(data_line.get_xdata())
         ys  = np.asarray(data_line.get_ydata())
         col = data_line.get_color()
-        lbl = cont.get_label()
         mstyle = data_line.get_marker()
         ms    = data_line.get_markersize()
         lw    = data_line.get_linewidth()
@@ -101,10 +128,15 @@ def _fill_zoom_ax(ax_zoom, ax_main, xlim=(0.26, 0.28)):
         mask = (xs >= xlim[0]) & (xs <= xlim[1])
         if mask.sum() == 0:
             continue
+        # Always use marker + line in zoom plot (default to 'o-' if no marker found)
+        if mstyle and mstyle != 'None':
+            fmt = mstyle + '-'
+        else:
+            fmt = 'o-'
         ax_zoom.errorbar(
             xs[mask], ys[mask],
             yerr=[yerr_lo[mask], yerr_hi[mask]],
-            fmt=mstyle if lw == 0 else mstyle + '-',
+            fmt=fmt,
             color=col, ms=ms, lw=lw, alpha=alpha,
             capsize=3, elinewidth=0.8, label=lbl
         )
@@ -818,7 +850,7 @@ def plot_bonds_vs_J2(all_results, out_dir, bond_key, bond_type_label):
                 errs = [p[2] for p in pts]
                 alpha = min(1.0, max(0.2, D / 10.0))
                 ax.errorbar(j2s, vals, yerr=errs, fmt='o', color=D_col[D], ms=6,
-                            alpha=alpha, capsize=3, elinewidth=0.8, lw=0,
+                            alpha=alpha, capsize=3, elinewidth=0.8, lw=1.1,
                             label=f'{RANK_LABELS[rank]} D={D}')
 
         ax.set_xlabel('J2', fontsize=11)
@@ -932,7 +964,7 @@ def plot_order_param_vs_J2(all_results, out_dir):
             errs = [p[2] for p in pts]
             alpha = min(1.0, max(0.2, D / 10.0))
             ax.errorbar(j2s, ms, yerr=errs,
-                        fmt='o', color=D_col[D], ms=6, lw=0,
+                        fmt='o', color=D_col[D], ms=6, lw=1.1,
                         elinewidth=1.0, alpha=alpha, capsize=3, label=f'D={D}')
 
         ax.set_xlabel('J2', fontsize=11)
