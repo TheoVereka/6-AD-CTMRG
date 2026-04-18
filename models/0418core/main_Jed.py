@@ -14,7 +14,7 @@
 
 
 
-MY_OUTPUT_OUTERDIR = '/scratch/izar/chye/0418core'
+MY_OUTPUT_OUTERDIR = '/scratch/chye/0418core'
 
 # ── Sweep control ─────────────────────────────────────────────────────────────
 
@@ -61,7 +61,7 @@ TOTAL_BUDGET_HOURS = 99999
 # ── GPU/CPU intent ────────────────────────────────────────────────────────────
 # Duplicated below in the TUNABLE PARAMETERS section with full comments.
 
-USE_GPU = True
+USE_GPU = False
 
 # ── Multi-GPU (optional, CUDA only) ──────────────────────────────────────────
 

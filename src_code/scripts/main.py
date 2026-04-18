@@ -3,6 +3,10 @@
 
 
 
+
+
+MY_OUTPUT_OUTERDIR = '/home/chye/6ADctmrg/data/raw'
+
 # ── Sweep control ─────────────────────────────────────────────────────────────
 
 D_BOND_LIST = [4, 5, 6, 7, 8, 9, 10, 11]
@@ -77,7 +81,7 @@ J1_COUPLING = 1.0
 #   The nn Hamiltonian is  H_nn = J1 Σ_{<i,j>} S_i · S_j
 #   summed over all 9 nearest-neighbour pairs in the 6-site honeycomb unit cell.
 
-J2_COUPLING = 0.0
+J2_COUPLING = 0.268
 #   Next-nearest-neighbour (nnn) Heisenberg exchange coupling constant.
 #   J2 > 0 = frustrated AFM.  Set to 0 to recover the pure J1 model.
 #   The nnn Hamiltonian is  H_nnn = J2 Σ_{<<i,j>>} S_i · S_j
@@ -206,6 +210,7 @@ from core import (
     build_single_open_env2,
     build_single_open_env3,
     _build_nn_rho,
+    _build_nn_rho_seq,
     _build_nnn_rho,
     _build_nnn_rho_seq,
     set_dtype,
@@ -908,8 +913,8 @@ def evaluate_observables(params: list,
 
             # Lazy rho helpers: build pair of opens, compute rho, free opens
             def _lnn(open_fn, s1, s2, p1, p2):
-                _o1 = open_fn(s1); _o2 = open_fn(s2)
-                r = _build_nn_rho(_o1, _o2, p1, p2, d_PHYS); del _o1, _o2; return r
+                return _build_nn_rho_seq(
+                    lambda: open_fn(s1), lambda: open_fn(s2), p1, p2, d_PHYS)
             def _lnnn(open_fn, s1, cl2, s3, cl4, lp):
                 return _build_nnn_rho_seq(
                     lambda: open_fn(s1), cl2,
@@ -1931,7 +1936,7 @@ def main():
     # ── output directory ──────────────────────────────────────────────────────
     run_ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     _J2_str = f'J2_{args.J2}'.replace('.', 'p')
-    _default_outdir = os.path.join('/home/chye/6ADctmrg/data/raw',
+    _default_outdir = os.path.join(MY_OUTPUT_OUTERDIR,
                                    f'{ansatz_cfg["yaml_name"]}__{_J2_str}_{run_ts}')
     output_dir = args.output_dir or _default_outdir
     os.makedirs(output_dir, exist_ok=True)
