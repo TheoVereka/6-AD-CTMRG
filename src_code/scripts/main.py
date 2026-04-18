@@ -5,13 +5,13 @@
 
 # ── Sweep control ─────────────────────────────────────────────────────────────
 
-D_BOND_LIST = [4, 5, 6, 7, 8, 9]#, 10, 11]
+D_BOND_LIST = [4, 5, 6, 7, 8, 9, 10, 11]
 #   Ordered list of iPEPS virtual bond dimensions to sweep (outer loop).
 #   Each D is warm-started from the best tensors found at the previous D
 #   (zero-padded to the new size + PAD_NOISE Gaussian noise).
 
 
-DEFAULT_D_BUDGET_FRACS = {4: 0.1, 5:0.1, 6:0.1, 7:0.1, 8:0.1, 9:0.1}#, 10:0.1, 11:0.1}
+DEFAULT_D_BUDGET_FRACS = {4: 0.1, 5:0.1, 6:0.1, 7:0.1, 8:0.1, 9:0.1, 10:0.1, 11:0.1}
 #   Fraction of the total wall-clock budget allocated to each D_bond value.
 #   Normalised to sum=1 before use, so only the RATIOS matter.
 #   Rationale:
@@ -22,7 +22,7 @@ DEFAULT_D_BUDGET_FRACS = {4: 0.1, 5:0.1, 6:0.1, 7:0.1, 8:0.1, 9:0.1}#, 10:0.1, 1
 #   values have genuinely different computational costs and scientific weight.
 #   Within each D, every chi level gets equal time (see below).
 
-DEFAULT_CHI_MAX = {4: 80, 5:9999, 6:9999, 7:9999, 8:9999, 9:9999}#, 10:9999, 11:9999}
+DEFAULT_CHI_MAX = {4: 80, 5:9999, 6:9999, 7:9999, 8:9999, 9:9999, 10:9999, 11:9999}
 #   Largest chi to attempt for each D_bond.
 #   Increase if you have more memory; decrease if you hit OOM.
 
@@ -34,9 +34,9 @@ DEFAULT_CHI_SCHEDULES = {
     6: [18, 24, 30, 36, 42, 48],
     7: [21, 28, 35, 42, 49, 56, 63],
     8: [32, 40, 48, 56, 64, 72, 80],
-    9: [36, 45, 54, 63, 72, 81, 90, 99],
-    #10:[40, 50, 60, 70, 80, 90,100,110,120],
-    #11:[44, 55, 66, 77, 88, 99,110,121,132,143],
+    9: [36, 45, 54, 63, 72, 81, 90],#, 99],
+    10:[40, 50, 60, 70, 80, 90,100],#,110,120],
+    11:[44, 55, 66, 77, 88, 99,110],#,121,132,143],
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -152,6 +152,17 @@ os.environ.setdefault("KMP_BLOCKTIME", "0")
 #print("OMP_NUM_THREADS =", os.environ["OMP_NUM_THREADS"])
 #print("MKL_NUM_THREADS =", os.environ["MKL_NUM_THREADS"])
 
+# ── CUDA memory allocator ─────────────────────────────────────────────────────
+# Must be set BEFORE the first CUDA allocation (i.e. before torch.cuda.* calls).
+#   expandable_segments:True  — uses expandable (growable) memory segments instead
+#     of fixed-size ones.  Dramatically reduces fragmentation that causes OOM at
+#     D=9+: without this, the caching allocator often reserves large contiguous
+#     blocks that cannot be reused after free, showing as "reserved but
+#     unallocated" memory (2+ GiB at D=9,chi=90).  With expandable segments the
+#     allocator can grow/shrink segments on demand, so freed memory is reusable.
+#   See: https://pytorch.org/docs/stable/notes/cuda.html#environment-variables
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
 
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -196,6 +207,7 @@ from core import (
     build_single_open_env3,
     _build_nn_rho,
     _build_nnn_rho,
+    _build_nnn_rho_seq,
     set_dtype,
     set_device,
     # ── Néel-symmetrized ansatz ──────────────────────────────────────────
@@ -205,6 +217,12 @@ from core import (
     # ── C6-Ypi single-tensor ansatz (renamed from plaq) ──────────────────
     c6ypi_abcdef_from_a,
     initialize_c6ypi,
+    # ── C3-Vypi single-tensor ansatz ─────────────────────────────────────
+    c3vypi_abcdef_from_a,
+    initialize_c3vypi,
+    # ── Two-C3 two-tensor ansatz ─────────────────────────────────────────
+    twoc3_abcdef_from_ab,
+    initialize_twoc3,
     # ── 6-tensor locally-reflected ansatz ───────────────────────────────
     symmetrize_six_local_reflections,
 )
@@ -571,12 +589,17 @@ def _derive_abcdef(params_list: list, cfg: dict) -> tuple:
     For single-tensor ansätze (cfg['n_params']==1) the single raw tensor is
     optionally symmetrized (if cfg['symmetrize_fn'] is not None) and then the
     ansatz-specific derive function produces all 6 tensors.
+
+    For two-tensor ansätze (cfg['n_params']==2) both raw tensors are passed
+    to derive_fn(*params_list) which returns the 6 tensors directly.
     """
     if cfg['n_params'] == 6:
         if cfg['symmetrize_fn'] is not None:
             # Batch symmetrization: fn(a, b, c, d, e, f) → (a_sym, ..., f_sym)
             return cfg['symmetrize_fn'](*params_list)
         return tuple(params_list)
+    if cfg['n_params'] == 2:
+        return cfg['derive_fn'](*params_list)
     raw = params_list[0]
     if cfg['symmetrize_fn'] is not None:
         raw = cfg['symmetrize_fn'](raw)
@@ -645,6 +668,32 @@ ANSATZ_REGISTRY: dict = {
         'description': 'Six independent tensors, each with local mirror symmetry '
                         '(a/d: leg1↔leg2, b/e: leg0↔leg1, c/f: leg0↔leg2)',
     },
+    # ── C3-Vypi single-tensor ansatz ─────────────────────────────────────────
+    # Like c6ypi but with a different virtual-leg permutation rule.
+    # The user defines the permutation in c3vypi_abcdef_from_a.
+    'c3vypi': {
+        'n_params':    1,
+        'symmetrize_fn': None,
+        'derive_fn':   c3vypi_abcdef_from_a,
+        'init_fn':     initialize_c3vypi,
+        'ckpt_keys':   ['a_raw'],
+        'yaml_name':   '1tensor_C3Vypi',
+        'description': 'C3-Vypi single-tensor ansatz (C3 virtual-leg rotation + pi-Y on B-sublattice)',
+    },
+    # ── Two-C3 two-tensor ansatz ────────────────────────────────────────────
+    # Two independent tensors (a, b); A-sublattice = C3 rotations of a,
+    # B-sublattice = C3 rotations of b.  No symmetrization, no physical-leg
+    # rotation.
+    'twoc3': {
+        'n_params':    2,
+        'symmetrize_fn': None,
+        'derive_fn':   twoc3_abcdef_from_ab,
+        'init_fn':     initialize_twoc3,
+        'ckpt_keys':   ['a_raw', 'b_raw'],
+        'yaml_name':   '2tensor_twoC3',
+        'description': 'Two-tensor ansatz: A-sublattice (a,c,e) = C3 rotations of a; '
+                        'B-sublattice (b,d,f) = C3 rotations of b',
+    },
 }
 
 
@@ -688,6 +737,10 @@ def evaluate_energy_clean(params: list,
         A, B, C, Dt, E, F = abcdef_to_ABCDEF(aN, bN, cN, dN, eN, fN, D_sq)
         all27 = CTMRG_from_init_to_stop(
                 A, B, C, Dt, E, F, chi, D_sq, CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT)
+        # Free double-layer tensors — only needed by CTMRG, not by energy functions.
+        del A, B, C, Dt, E, F
+        if _core.DEVICE.type == 'cuda':
+            torch.cuda.empty_cache()
 
         # ── Last-resort zero guard (CTMRG already retried with escalating noise) ──
         _corner_indices = (0, 1, 2, 9, 10, 11, 18, 19, 20)
@@ -829,39 +882,46 @@ def evaluate_observables(params: list,
             return float('nan'), [float('nan')]*36, [float('nan')]*54, float('nan')
 
         # ── GPU D>=8 lazy path ───────────────────────────────────────────────
-        # At D=9,chi=81 each open tensor is ~5.6 GB; 6 at once = ~33 GB → OOM.
-        # Build each closed tensor one-at-a-time, then compute rhos pair-at-a-time.
-        # Peak GPU memory: 2 open tensors + CTMRG env (already allocated).
+        # Memory-critical path for D=9+ on GPU.  Previous approach built all
+        # 3 envs' closed tensors + pair products upfront (36 tensors ×
+        # 0.40 GiB each = 14.3 GiB), then computed rhos on top → OOM.
+        #
+        # Fix: process ONE environment at a time.  For each env:
+        #   1. Build 6 closed tensors (lazily, one open at a time)
+        #   2. Build 6 pair products from those closeds
+        #   3. Compute all 12 rhos (6 NN + 6 NNN), extract corr + mag
+        #   4. Delete closeds + pairs + torch.cuda.empty_cache()
+        #
+        # Peak vRAM per env (D=9,chi=90,float64):
+        #   6 closeds (2.38 GiB) + 6 pairs (2.38 GiB) + 2 opens (3.17 GiB)
+        #   + _build_nnn_rho_seq intermediates (1.58 GiB W only) = ~9.5 GiB
+        # vs old peak w/ _build_nnn_rho: ~11.5 GiB (4 opens + W+V alive)
+        # vs original peak: ~25 GiB (all 3 envs' closeds+pairs + opens + rho)
         if _core.DEVICE.type == 'cuda' and D_bond >= 8:
+            # Free double-layer tensors — only needed for CTMRG, not open/closed
+            del A, B, C, Dt, E, F
+            torch.cuda.empty_cache()
+
             _a1 = (aN, bN, cN, dN, eN, fN, chi, D_bond, d_PHYS) + tuple(all27[:9])
             _a2 = (aN, bN, cN, dN, eN, fN, chi, D_bond, d_PHYS) + tuple(all27[9:18])
             _a3 = (aN, bN, cN, dN, eN, fN, chi, D_bond, d_PHYS) + tuple(all27[18:27])
-            # Build all 18 closed tensors lazily (one open at a time)
-            c1, c2, c3 = {}, {}, {}
-            for _s in 'EDAFCB':
-                _o = build_single_open_env1(_s, *_a1)
-                c1[_s] = oe.contract("ABii->AB", _o, backend="torch"); del _o
-            for _s in 'ABCDEF':
-                _o = build_single_open_env2(_s, *_a2)
-                c2[_s] = oe.contract("ABii->AB", _o, backend="torch"); del _o
-            for _s in 'CFEBAD':
-                _o = build_single_open_env3(_s, *_a3)
-                c3[_s] = oe.contract("ABii->AB", _o, backend="torch"); del _o
-            # Closed products (chi×chi, negligible memory)
-            AD1 = torch.mm(c1['A'], c1['D']); CF1 = torch.mm(c1['C'], c1['F']); EB1 = torch.mm(c1['E'], c1['B'])
-            FA1 = torch.mm(c1['F'], c1['A']); DE1 = torch.mm(c1['D'], c1['E']); BC1 = torch.mm(c1['B'], c1['C'])
-            CB2 = torch.mm(c2['C'], c2['B']); ED2 = torch.mm(c2['E'], c2['D']); AF2 = torch.mm(c2['A'], c2['F'])
-            DC2 = torch.mm(c2['D'], c2['C']); BA2 = torch.mm(c2['B'], c2['A']); FE2 = torch.mm(c2['F'], c2['E'])
-            EF3 = torch.mm(c3['E'], c3['F']); AB3 = torch.mm(c3['A'], c3['B']); CD3 = torch.mm(c3['C'], c3['D'])
-            BE3 = torch.mm(c3['B'], c3['E']); FC3 = torch.mm(c3['F'], c3['C']); DA3 = torch.mm(c3['D'], c3['A'])
+
             # Lazy rho helpers: build pair of opens, compute rho, free opens
             def _lnn(open_fn, s1, s2, p1, p2):
                 _o1 = open_fn(s1); _o2 = open_fn(s2)
                 r = _build_nn_rho(_o1, _o2, p1, p2, d_PHYS); del _o1, _o2; return r
             def _lnnn(open_fn, s1, cl2, s3, cl4, lp):
-                _o1 = open_fn(s1); _o3 = open_fn(s3)
-                r = _build_nnn_rho(_o1, cl2, _o3, cl4, lp, d_PHYS); del _o1, _o3; return r
-            # ── Env 1 ──
+                return _build_nnn_rho_seq(
+                    lambda: open_fn(s1), cl2,
+                    lambda: open_fn(s3), cl4, lp, d_PHYS)
+
+            # ── Env 1 ── (build closeds, pairs, rhos, then free)
+            c1 = {}
+            for _s in 'EDAFCB':
+                _o = build_single_open_env1(_s, *_a1)
+                c1[_s] = oe.contract("ABii->AB", _o, backend="torch"); del _o
+            AD1 = torch.mm(c1['A'], c1['D']); CF1 = torch.mm(c1['C'], c1['F']); EB1 = torch.mm(c1['E'], c1['B'])
+            FA1 = torch.mm(c1['F'], c1['A']); DE1 = torch.mm(c1['D'], c1['E']); BC1 = torch.mm(c1['B'], c1['C'])
             _op1 = lambda s: build_single_open_env1(s, *_a1)
             rho_AD = _lnn(_op1, 'A', 'D', EB1, CF1)
             rho_CF = _lnn(_op1, 'C', 'F', AD1, EB1)
@@ -886,7 +946,16 @@ def evaluate_observables(params: list,
                 magnetizations.extend(mag1[s])
             del rho_AD, rho_CF, rho_EB, rho_FA, rho_DE, rho_BC
             del rho_AE1, rho_EC1, rho_CA1, rho_DB1, rho_BF1, rho_FD1
-            # ── Env 2 ──
+            del c1, AD1, CF1, EB1, FA1, DE1, BC1
+            torch.cuda.empty_cache()
+
+            # ── Env 2 ── (build closeds, pairs, rhos, then free)
+            c2 = {}
+            for _s in 'ABCDEF':
+                _o = build_single_open_env2(_s, *_a2)
+                c2[_s] = oe.contract("ABii->AB", _o, backend="torch"); del _o
+            CB2 = torch.mm(c2['C'], c2['B']); ED2 = torch.mm(c2['E'], c2['D']); AF2 = torch.mm(c2['A'], c2['F'])
+            DC2 = torch.mm(c2['D'], c2['C']); BA2 = torch.mm(c2['B'], c2['A']); FE2 = torch.mm(c2['F'], c2['E'])
             _op2 = lambda s: build_single_open_env2(s, *_a2)
             rho_CB = _lnn(_op2, 'C', 'B', AF2, ED2)
             rho_AF = _lnn(_op2, 'A', 'F', ED2, CB2)
@@ -911,7 +980,16 @@ def evaluate_observables(params: list,
                 magnetizations.extend(mag2[s])
             del rho_CB, rho_AF, rho_ED, rho_DC, rho_BA, rho_FE
             del rho_CA2, rho_AE2, rho_EC2, rho_BF2, rho_FD2, rho_DB2
-            # ── Env 3 ──
+            del c2, CB2, ED2, AF2, DC2, BA2, FE2
+            torch.cuda.empty_cache()
+
+            # ── Env 3 ── (build closeds, pairs, rhos, then free)
+            c3 = {}
+            for _s in 'CFEBAD':
+                _o = build_single_open_env3(_s, *_a3)
+                c3[_s] = oe.contract("ABii->AB", _o, backend="torch"); del _o
+            EF3 = torch.mm(c3['E'], c3['F']); AB3 = torch.mm(c3['A'], c3['B']); CD3 = torch.mm(c3['C'], c3['D'])
+            BE3 = torch.mm(c3['B'], c3['E']); FC3 = torch.mm(c3['F'], c3['C']); DA3 = torch.mm(c3['D'], c3['A'])
             _op3 = lambda s: build_single_open_env3(s, *_a3)
             rho_EF = _lnn(_op3, 'E', 'F', CD3, AB3)
             rho_AB = _lnn(_op3, 'A', 'B', EF3, CD3)
@@ -936,6 +1014,9 @@ def evaluate_observables(params: list,
                 magnetizations.extend(mag3[s])
             del rho_EF, rho_AB, rho_CD, rho_BE, rho_FC, rho_DA
             del rho_EC3, rho_CA3, rho_AE3, rho_FD3, rho_DB3, rho_BF3
+            del c3, EF3, AB3, CD3, BE3, FC3, DA3
+            torch.cuda.empty_cache()
+
             # Energy from correlations (same convention as evaluate_energy_clean)
             energy = 0.0
             for _blk in range(3):
@@ -944,6 +1025,9 @@ def evaluate_observables(params: list,
                 energy +=       sum(Js[_b + 6 + _i] * correlations[_b + 6 + _i] for _i in range(6))
             return energy, correlations, magnetizations, trunc_error
         # ── end GPU D>=8 lazy path — CPU / GPU D<8 use pre-build path below ──
+
+        # Free double-layer tensors (unneeded after CTMRG; tiny at low D but good practice)
+        del A, B, C, Dt, E, F
 
         # ═══════════════════ Environment 1 (ebadcf) ═══════════════════════
         o1, c1 = build_open_closed_env1(
@@ -1343,8 +1427,9 @@ def optimize_at_chi(
     or opt_conv_threshold hit.
 
     Returns (best_params_tuple, best_loss, steps_done).
-    best_params_tuple contains 1 tensor for single-tensor ansätze (neel/plaq),
-    or 6 tensors for the unrestricted ansatz, matching ansatz_cfg['n_params'].
+    best_params_tuple contains 1 tensor for single-tensor ansätze (neel/c6ypi/c3vypi),
+    2 tensors for two-tensor ansätze (twoc3),
+    or 6 tensors for 6-tensor ansätze (unrestricted/sym6), matching ansatz_cfg['n_params'].
     """
     if loss_log is None:
         loss_log = []
@@ -1359,8 +1444,11 @@ def optimize_at_chi(
         params = list(_new_tensors_from_data(init_params))
     elif n_params == 6:
         params = list(initialize_abcdef('random', D_bond, d_PHYS, INIT_NOISE))
-    else:
+    elif n_params == 1:
         params = [ansatz_cfg['init_fn'](D_bond, d_PHYS, INIT_NOISE)]
+    else:
+        # n_params >= 2: init_fn returns a tuple of tensors
+        params = list(ansatz_cfg['init_fn'](D_bond, d_PHYS, INIT_NOISE))
     for t in params:
         t.requires_grad_(True)
 
