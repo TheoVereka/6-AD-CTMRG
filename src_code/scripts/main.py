@@ -722,7 +722,11 @@ def pad_tensor(t: torch.Tensor, old_D: int, new_D: int,
 def evaluate_energy_clean(params: list,
                           Js, SdotS, chi: int, D_bond: int, d_PHYS: int,
                           ansatz_cfg: dict) -> float:
-    """Re-converge environment from scratch and return total energy (float).
+    """
+    
+    [DEPRECATED] This function is no longer used in the main optimization loop, but it is still called once per (D, chi) level after optimization to compute the final energy with a clean CTMRG convergence from scratch.  It is also called by the --evaluate-only CLI flag to compute energies without any optimization.
+
+    Re-converge environment from scratch and return total energy (float).
 
     IMPORTANT: CTMRG consumes *double-layer* site tensors which are normalised
     inside ``abcdef_to_ABCDEF``. For consistency, we rescale the single-layer
@@ -886,27 +890,37 @@ def evaluate_observables(params: list,
             print(f"  │  [WARN] CTMRG env still zero at chi={chi} after all internal retries; observables = NaN")
             return float('nan'), [float('nan')]*36, [float('nan')]*54, float('nan')
 
-        # ── GPU D>=8 lazy path ───────────────────────────────────────────────
-        # Memory-critical path for D=9+ on GPU.  Previous approach built all
-        # 3 envs' closed tensors + pair products upfront (36 tensors ×
-        # 0.40 GiB each = 14.3 GiB), then computed rhos on top → OOM.
-        #
-        # Fix: process ONE environment at a time.  For each env:
-        #   1. Build 6 closed tensors (lazily, one open at a time)
-        #   2. Build 6 pair products from those closeds
-        #   3. Compute all 12 rhos (6 NN + 6 NNN), extract corr + mag
-        #   4. Delete closeds + pairs + torch.cuda.empty_cache()
-        #
-        # Peak vRAM per env (D=9,chi=90,float64):
-        #   6 closeds (2.38 GiB) + 6 pairs (2.38 GiB) + 2 opens (3.17 GiB)
-        #   + _build_nnn_rho_seq intermediates (1.58 GiB W only) = ~9.5 GiB
-        # vs old peak w/ _build_nnn_rho: ~11.5 GiB (4 opens + W+V alive)
-        # vs original peak: ~25 GiB (all 3 envs' closeds+pairs + opens + rho)
-        if _core.DEVICE.type == 'cuda' and D_bond >= 8:
-            # Free double-layer tensors — only needed for CTMRG, not open/closed
-            del A, B, C, Dt, E, F
+        # ── Free double-layer tensors (only needed for CTMRG) ────────────
+        del A, B, C, Dt, E, F
+        if _core.DEVICE.type == 'cuda':
             torch.cuda.empty_cache()
 
+        # ── Memory check: pre-build vs lazy path ────────────────────────
+        # Pre-build: build_open_closed_env builds all 6 opens per env ONCE,
+        #   reuses them for all 12 rho computations → 18 open builds total.
+        #   This is 5× faster than the lazy path for the post-CTMRG phase.
+        # Lazy: rebuilds each open for every rho that needs it → 90 builds.
+        #
+        # Under torch.no_grad() there is no autograd graph, so pre-build is
+        # always preferred UNLESS 6 opens don't fit in GPU memory (D≥11 on
+        # a 32 GB GPU).  The lazy path was designed for the optimization
+        # forward+backward where checkpointing + autograd dominate memory.
+        #
+        # Peak estimate: 6 opens + 2 NNN intermediates (W,V) + 6 closeds.
+        _use_lazy = False
+        if _core.DEVICE.type == 'cuda':
+            _D2 = chi * D_bond * D_bond
+            _elem_sz = aN.element_size()  # 8 for float64, 4 for float32
+            _open_bytes = _D2 * _D2 * d_PHYS * d_PHYS * _elem_sz
+            _peak_est = 8 * _open_bytes + 6 * _D2 * _D2 * _elem_sz
+            _gpu_total = torch.cuda.get_device_properties(
+                _core.DEVICE).total_memory
+            _use_lazy = _peak_est > _gpu_total * 0.80
+
+        if _use_lazy:
+            # ── Lazy path (memory-safe fallback for very large D) ─────────
+            # Rebuilds each open tensor ~5× but keeps at most 2 alive.
+            # Used only when 6 opens don't fit in GPU memory.
             _a1 = (aN, bN, cN, dN, eN, fN, chi, D_bond, d_PHYS) + tuple(all27[:9])
             _a2 = (aN, bN, cN, dN, eN, fN, chi, D_bond, d_PHYS) + tuple(all27[9:18])
             _a3 = (aN, bN, cN, dN, eN, fN, chi, D_bond, d_PHYS) + tuple(all27[18:27])
@@ -1029,10 +1043,14 @@ def evaluate_observables(params: list,
                 energy += 0.5 * sum(Js[_b + _i] * correlations[_b + _i] for _i in range(6))
                 energy +=       sum(Js[_b + 6 + _i] * correlations[_b + 6 + _i] for _i in range(6))
             return energy, correlations, magnetizations, trunc_error
-        # ── end GPU D>=8 lazy path — CPU / GPU D<8 use pre-build path below ──
 
-        # Free double-layer tensors (unneeded after CTMRG; tiny at low D but good practice)
-        del A, B, C, Dt, E, F
+        # ═══════════════════════════════════════════════════════════════════
+        # Pre-build path — fast, each open tensor built ONCE per env
+        # ═══════════════════════════════════════════════════════════════════
+        # build_open_closed_env builds all 6 opens + closeds in one call.
+        # All rhos are computed from pre-built opens (no redundant rebuilds).
+        # Peak per env: 6 opens + 6 closeds + 2 NNN intermediates (W,V).
+        # At D=9,chi=90: ~18 GiB — fits easily in 32 GiB GPU.
 
         # ═══════════════════ Environment 1 (ebadcf) ═══════════════════════
         o1, c1 = build_open_closed_env1(
@@ -1077,6 +1095,8 @@ def evaluate_observables(params: list,
         for s in ['A','B','C','D','E','F']:
             magnetizations.extend(mag1[s])
         del o1, c1
+        if _core.DEVICE.type == 'cuda':
+            torch.cuda.empty_cache()
 
         # ═══════════════════ Environment 2 (afcbed) ═══════════════════════
         o2, c2 = build_open_closed_env2(
@@ -1117,6 +1137,8 @@ def evaluate_observables(params: list,
         for s in ['A','B','C','D','E','F']:
             magnetizations.extend(mag2[s])
         del o2, c2
+        if _core.DEVICE.type == 'cuda':
+            torch.cuda.empty_cache()
 
         # ═══════════════════ Environment 3 (cdefab) ═══════════════════════
         o3, c3 = build_open_closed_env3(
