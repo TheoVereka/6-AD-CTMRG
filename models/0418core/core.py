@@ -2690,15 +2690,21 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
     """Energy for 3 ebadcf bonds.
 
     Memory strategy (GPU only):
-      D ≤ 7 : open tensors ≤ 440 MB total → pre-build all 6, _ckpt per bond.
-      D ≥ 8 : each bond's _ckpt closure builds its OWN pair of opens internally →
-              at most 2 opens alive simultaneously → ~1.6 GB peak open-tensor usage.
+      6 opens < 35% GPU : pre-build all 6 once, _ckpt per bond.
+        (D≤9 on 32 GB: 6 opens ≤ 9.5 GB — always pre-build, 5× faster.)
+      6 opens ≥ 35% GPU : lazy-open closures, at most 2 opens alive at once.
+        (D≥10 on 32 GB: 6 opens ≥ 11.4 GB — lazy required.)
     CPU: no checkpoint, no closure — pre-build all 6 once, direct calls.
     """
     _on_gpu = DEVICE.type == 'cuda'
+    _D2 = chi * D_bond * D_bond
+    _use_lazy = _on_gpu and (
+        6 * _D2 * _D2 * d_PHYS * d_PHYS * a.element_size()
+        > torch.cuda.get_device_properties(DEVICE).total_memory * 0.35
+    ) if _on_gpu else False
 
     # ── GPU + large-D: lazy-open closures + _ckpt ────────────────────────
-    if _on_gpu and D_bond >= 8:
+    if _use_lazy:
         T1F_r = T1F.reshape(chi,chi,D_bond,D_bond)
         T2A_r = T2A.reshape(chi,chi,D_bond,D_bond)
         T2B_r = T2B.reshape(chi,chi,D_bond,D_bond)
@@ -2804,7 +2810,7 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
 
         return torch.real((E_AD+E_CF+E_EB + E_FA+E_DE+E_BC)*0.5 +E_AE+E_EC+E_CA +E_DB+E_BF+E_FD)
 
-    # ── Pre-build path: CPU (any D) or GPU D ≤ 7 ────────────────────────
+    # ── Pre-build path: CPU (any D) or GPU (6 opens fit in memory) ────────
     o, cl = build_open_closed_env1(a, b, c, d, e, f, chi, D_bond, d_PHYS,
                                    C21CD, C32EF, C13AB,
                                    T1F, T2A, T2B, T3C, T3D, T1E)
@@ -2813,7 +2819,7 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
     DE = torch.mm(cl['D'], cl['E']);  BC = torch.mm(cl['B'], cl['C'])
 
     if _on_gpu:
-        # GPU D ≤ 7: sub-checkpoint each bond (saves ~9 GB backward memory)
+        # GPU pre-build: sub-checkpoint each bond (saves ~9 GB backward memory)
         E_AD = Jad * _ckpt(_compute_nn_bond_energy,  o['A'], o['D'], EB, CF, SdotS, use_reentrant=False)
         E_CF = Jcf * _ckpt(_compute_nn_bond_energy,  o['C'], o['F'], AD, EB, SdotS, use_reentrant=False)
         E_EB = Jeb * _ckpt(_compute_nn_bond_energy,  o['E'], o['B'], CF, AD, SdotS, use_reentrant=False)
@@ -2851,11 +2857,16 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
                 SdotS,
                 chi, D_bond, d_PHYS, 
                 C21EB, C32AD,C13CF,T1D,T2C,T2F,T3E,T3B,T1A):
-    """Energy for 3 afcbed bonds.  GPU+D≥8: lazy-open+_ckpt.  CPU: no checkpoint."""
+    """Energy for 3 afcbed bonds.  GPU+large-D: lazy-open+_ckpt.  CPU: no checkpoint."""
     _on_gpu = DEVICE.type == 'cuda'
+    _D2 = chi * D_bond * D_bond
+    _use_lazy = _on_gpu and (
+        6 * _D2 * _D2 * d_PHYS * d_PHYS * a.element_size()
+        > torch.cuda.get_device_properties(DEVICE).total_memory * 0.35
+    ) if _on_gpu else False
 
     # ── GPU + large-D: lazy-open closures + _ckpt ────────────────────────
-    if _on_gpu and D_bond >= 8:
+    if _use_lazy:
         T1D_r = T1D.reshape(chi,chi,D_bond,D_bond)
         T2C_r = T2C.reshape(chi,chi,D_bond,D_bond)
         T2F_r = T2F.reshape(chi,chi,D_bond,D_bond)
@@ -2959,7 +2970,7 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
 
         return torch.real((E_AF+E_CB+E_ED + E_DC+E_BA+E_FE)*0.5 +E_CA+E_AE+E_EC +E_BF+E_FD+E_DB)
 
-    # ── Pre-build path: CPU (any D) or GPU D ≤ 7 ────────────────────────
+    # ── Pre-build path: CPU (any D) or GPU (6 opens fit in memory) ────────
     o, cl = build_open_closed_env2(a, b, c, d, e, f, chi, D_bond, d_PHYS,
                                    C21EB, C32AD, C13CF,
                                    T1D, T2C, T2F, T3E, T3B, T1A)
@@ -3038,9 +3049,14 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
         torch.Tensor: Scalar energy per bond (float32).
     """
     _on_gpu = DEVICE.type == 'cuda'
+    _D2 = chi * D_bond * D_bond
+    _use_lazy = _on_gpu and (
+        6 * _D2 * _D2 * d_PHYS * d_PHYS * a.element_size()
+        > torch.cuda.get_device_properties(DEVICE).total_memory * 0.35
+    ) if _on_gpu else False
 
-    # ── GPU D≥8: lazy-open closures + _ckpt ──────────────────────────────
-    if _on_gpu and D_bond >= 8:
+    # ── GPU + large-D: lazy-open closures + _ckpt ────────────────────────
+    if _use_lazy:
         T1B_r = T1B.reshape(chi,chi,D_bond,D_bond)
         T2E_r = T2E.reshape(chi,chi,D_bond,D_bond)
         T2D_r = T2D.reshape(chi,chi,D_bond,D_bond)
@@ -3144,7 +3160,7 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
 
         return torch.real((E_EF+E_AB+E_CD + E_BE+E_FC+E_DA)*0.5 +E_EC+E_CA+E_AE +E_FD+E_DB+E_BF)
 
-    # ── Pre-build path: CPU (any D) or GPU D ≤ 7 ─────────────────────────
+    # ── Pre-build path: CPU (any D) or GPU (6 opens fit in memory) ─────────
     o, cl = build_open_closed_env3(a, b, c, d, e, f, chi, D_bond, d_PHYS,
                                    C21AF, C32CB, C13ED,
                                    T1B, T2E, T2D, T3A, T3F, T1C)
@@ -3230,7 +3246,7 @@ def _build_nn_rho_seq(build_open_X, build_open_Y, pair1, pair2, d_PHYS):
     oX  = build_open_X()                                                      # (D2,D2,d,d)
     W   = oe.contract("MN,NYij->MYij", closure, oX, backend="torch")          # (D2,D2,d,d)
     del oX                                                                     # free before building oY
-    oY  = build_open_Y()                                                       # (D2,D2,d,d)
+    oY  = build_open_Y()                                                   # (D2,D2,d,d)
     rho = oe.contract("MYij,YMkl->ikjl", W, oY, backend="torch")              # (d,d,d,d)
     del W, oY
     return _psd_normalize_rho(rho.reshape(d_PHYS*d_PHYS, d_PHYS*d_PHYS), d_PHYS)

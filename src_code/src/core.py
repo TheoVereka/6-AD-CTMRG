@@ -3246,7 +3246,7 @@ def _build_nn_rho_seq(build_open_X, build_open_Y, pair1, pair2, d_PHYS):
     oX  = build_open_X()                                                      # (D2,D2,d,d)
     W   = oe.contract("MN,NYij->MYij", closure, oX, backend="torch")          # (D2,D2,d,d)
     del oX                                                                     # free before building oY
-    oY  = build_open_Y()   _build_nn_rho_seq                                                    # (D2,D2,d,d)
+    oY  = build_open_Y()                                                   # (D2,D2,d,d)
     rho = oe.contract("MYij,YMkl->ikjl", W, oY, backend="torch")              # (d,d,d,d)
     del W, oY
     return _psd_normalize_rho(rho.reshape(d_PHYS*d_PHYS, d_PHYS*d_PHYS), d_PHYS)
