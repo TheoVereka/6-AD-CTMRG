@@ -387,17 +387,17 @@ LBFGS_HISTORY = 150
 #   and wastes nothing.  Old values like 50–100 were appropriate for classical
 #   L-BFGS that runs continuously; they do not apply here.
 
-OPT_TOL_GRAD = 1e-8
+OPT_TOL_GRAD = 3e-7
 #   L-BFGS inner convergence criterion on the infinity-norm of the gradient:
 #   the sub-iteration loop exits early if  ||∇loss||_∞ < OPT_TOL_GRAD.
 #   This is an inner stopping rule inside a single optimizer.step() call.
 
-OPT_TOL_CHANGE = 3e-8
+OPT_TOL_CHANGE = 1e-6
 #   L-BFGS inner convergence criterion on consecutive loss change:
 #   sub-iteration exits if  |L_{k+1} – L_k| < OPT_TOL_CHANGE.
 #   Set tighter than OPT_TOL_GRAD to catch near-flat regions.
 
-OPT_CONV_THRESHOLD = 1e-7
+OPT_CONV_THRESHOLD = 3e-6
 # Outer-loop early-stop: disabled (= 0).
 # The outer delta |loss(k) - loss(k-1)| compares two L-BFGS final values that
 # used DIFFERENT CTMRG environments, so even near a true minimum the delta is
@@ -487,7 +487,50 @@ CTM_CONV_THR_FLOAT32_MIN = 1e-5
 #   float32 (USE_DOUBLE_PRECISION=False / --single) — do not hard-code 3e-7
 #   for single-precision runs or CTMRG will never converge (ctm=40 always).
 
-# ── Checkpointing ───────────────────────────────────────────────────────────
+CTM_CONV_MODE = 'Edifference'
+#   CTMRG convergence criterion.  Controls which metric(s) must be satisfied
+#   for CTMRG to declare convergence.  Three options:
+#
+#   'SVdifference'  (default, recommended for optimization)
+#     Converge when max|ΔSV| < CTM_CONV_THR across all 9 corner spectra.
+#     Fastest: no tensor builds needed, O(chi) per check.
+#
+#   'Edifference'   (recommended for clean evaluation when physics accuracy
+#                   matters more than speed)
+#     Converge when |ΔE_proxy| < CTM_E_CONV_THRESHOLD.
+#     E_proxy = tr(ρ_EB · SdotS) = 1 NN bond from env1 (no J factor).
+#     Cost per check: 6 open tensor builds + 1 rho (~1/27 of full energy).
+#     SV check still runs every iteration for zero-collapse detection.
+#     Only passes energy_proxy_fn during evaluate_energy_clean /
+#     evaluate_observables — NOT during the optimization CTMRG call.
+#
+#   'both'          (strictest; for near-phase-boundary diagnostics)
+#     Converge only when BOTH max|ΔSV| < CTM_CONV_THR AND
+#     |ΔE_proxy| < CTM_E_CONV_THRESHOLD are simultaneously satisfied.
+#     Once SV has converged (sticky flag), waits for E to also converge.
+#
+#   Recorded in hyperparams.yaml as ctm_conv_mode.
+
+CTM_E_CONV_THRESHOLD = 3e-7
+#   Energy-proxy convergence threshold for 'Edifference' and 'both' modes.
+#   Applied to |E_proxy(iter N) − E_proxy(iter N-1)| where E_proxy is the
+#   EB bond energy from env1 (unit SdotS, no J).
+#   Typical converged drift at D=8, chi=80: ~1e-10 to 1e-11.
+#   1e-8 is a safe target that fires well before oscillations dominate.
+#   Recorded in hyperparams.yaml as ctm_e_conv_threshold.
+
+CTM_E_PROXY_INTERVAL = 1
+#   Number of CTMRG iterations between consecutive energy proxy evaluations.
+#   interval=1: check every step (tightest tracking, highest overhead).
+#   interval=5: check every 5th step (default; good balance).
+#   interval=10: check every 10th step (lowest overhead, coarser tracking).
+#   Cost: 6 open tensor builds per check ≈ 22% of one full energy evaluation.
+#   Over 20 CTMRG steps with interval=5: 4 checks ≈ 88% of 1 energy overhead.
+#   Only active when energy_proxy_fn is passed to CTMRG_from_init_to_stop,
+#   which the driver does ONLY for evaluate_energy_clean / evaluate_observables.
+#   Recorded in hyperparams.yaml as ctm_e_proxy_interval.
+
+
 
 SAVE_EVERY = 10
 #   Frequency (in outer optimisation steps) at which the "latest" checkpoint
@@ -744,8 +787,34 @@ def evaluate_energy_clean(params: list,
         fN = normalize_single_layer_tensor_for_double_layer(f)
 
         A, B, C, Dt, E, F = abcdef_to_ABCDEF(aN, bN, cN, dN, eN, fN, D_sq)
+        # Build full-energy callable for Edifference / both convergence modes.
+        # Calls all 3 energy functions (all 27 bonds) under no_grad — the same
+        # functions used for the post-CTMRG energy evaluation, so the same
+        # memory guards (lazy-open path) apply automatically.
+        # Passed as None for SVdifference (default) for zero overhead.
+        _proxy_fn = None
+        if _core._CTM_CONV_MODE != 'SVdifference':
+            def _proxy_fn(
+                    C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E,
+                    C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A,
+                    C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C):
+                with torch.no_grad():
+                    _e1 = energy_expectation_nearest_neighbor_3ebadcf_bonds(
+                        aN, bN, cN, dN, eN, fN, *Js[0:12], SdotS,
+                        chi, D_bond, d_PHYS,
+                        C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E)
+                    _e2 = energy_expectation_nearest_neighbor_3afcbed_bonds(
+                        aN, bN, cN, dN, eN, fN, *Js[12:24], SdotS,
+                        chi, D_bond, d_PHYS,
+                        C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A)
+                    _e3 = energy_expectation_nearest_neighbor_other_3_bonds(
+                        aN, bN, cN, dN, eN, fN, *Js[24:36], SdotS,
+                        chi, D_bond, d_PHYS,
+                        C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C)
+                    return (_e1 + _e2 + _e3).item()
         all27 = CTMRG_from_init_to_stop(
-                A, B, C, Dt, E, F, chi, D_sq, CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT)
+                A, B, C, Dt, E, F, chi, D_sq, CTM_MAX_STEPS, CTM_CONV_THR,
+                ENV_IDENTITY_INIT, energy_proxy_fn=_proxy_fn)
         # Free double-layer tensors — only needed by CTMRG, not by energy functions.
         del A, B, C, Dt, E, F
         if _core.DEVICE.type == 'cuda':
@@ -877,10 +946,36 @@ def evaluate_observables(params: list,
         fN = normalize_single_layer_tensor_for_double_layer(f)
 
         A, B, C, Dt, E, F = abcdef_to_ABCDEF(aN, bN, cN, dN, eN, fN, D_sq)
+        # Build full-energy callable for Edifference / both convergence modes.
+        # Calls all 3 energy functions (all 27 bonds) under no_grad — the same
+        # functions used for the post-CTMRG energy evaluation, so the same
+        # memory guards (lazy-open path) apply automatically.
+        # Passed as None for SVdifference (default) for zero overhead.
+        _proxy_fn = None
+        if _core._CTM_CONV_MODE != 'SVdifference':
+            def _proxy_fn(
+                    C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E,
+                    C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A,
+                    C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C):
+                with torch.no_grad():
+                    _e1 = energy_expectation_nearest_neighbor_3ebadcf_bonds(
+                        aN, bN, cN, dN, eN, fN, *Js[0:12], SdotS,
+                        chi, D_bond, d_PHYS,
+                        C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E)
+                    _e2 = energy_expectation_nearest_neighbor_3afcbed_bonds(
+                        aN, bN, cN, dN, eN, fN, *Js[12:24], SdotS,
+                        chi, D_bond, d_PHYS,
+                        C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A)
+                    _e3 = energy_expectation_nearest_neighbor_other_3_bonds(
+                        aN, bN, cN, dN, eN, fN, *Js[24:36], SdotS,
+                        chi, D_bond, d_PHYS,
+                        C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C)
+                    return (_e1 + _e2 + _e3).item()
         _core.set_record_trunc_error(True)
         all27 = CTMRG_from_init_to_stop(
                 A, B, C, Dt, E, F, chi, D_sq,
-                CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT)
+                CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT,
+                energy_proxy_fn=_proxy_fn)
         trunc_error = _core.get_last_trunc_error()
         _core.set_record_trunc_error(False)
 
@@ -1553,9 +1648,31 @@ def optimize_at_chi(
         fN = normalize_single_layer_tensor_for_double_layer(f)
 
         A, B, C, Dt, E, F = abcdef_to_ABCDEF(aN, bN, cN, dN, eN, fN, D_sq)
+        
+        _proxy_fn = None
+        if _core._CTM_CONV_MODE != 'SVdifference':
+            def _proxy_fn(
+                    C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E,
+                    C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A,
+                    C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C):
+                with torch.no_grad():
+                    _e1 = energy_expectation_nearest_neighbor_3ebadcf_bonds(
+                        aN, bN, cN, dN, eN, fN, *Js[0:12], SdotS,
+                        chi, D_bond, d_PHYS,
+                        C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E)
+                    _e2 = energy_expectation_nearest_neighbor_3afcbed_bonds(
+                        aN, bN, cN, dN, eN, fN, *Js[12:24], SdotS,
+                        chi, D_bond, d_PHYS,
+                        C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A)
+                    _e3 = energy_expectation_nearest_neighbor_other_3_bonds(
+                        aN, bN, cN, dN, eN, fN, *Js[24:36], SdotS,
+                        chi, D_bond, d_PHYS,
+                        C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C)
+                    return (_e1 + _e2 + _e3).item()
+                
         all28 = CTMRG_from_init_to_stop(
             A, B, C, Dt, E, F, chi, D_sq,
-            CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT)
+            CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT, energy_proxy_fn = _proxy_fn)
 
 
         (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
@@ -1898,6 +2015,9 @@ def main():
     _core.set_rsvd_mode(RSVD_MODE,
                         neumann_terms=RSVD_NEUMANN_TERMS,
                         power_iters=RSVD_POWER_ITERS)
+    _core.set_ctm_conv_mode(CTM_CONV_MODE,
+                            e_threshold=CTM_E_CONV_THRESHOLD,
+                            e_proxy_interval=CTM_E_PROXY_INTERVAL)
 
     # ── parse D_bond list ─────────────────────────────────────────────────────
     D_bond_list: list[int] = [int(x) for x in args.D_bonds.split(',')]
@@ -2019,9 +2139,12 @@ def main():
         rsvd_power_iters   = RSVD_POWER_ITERS,
 
         # ── CTMRG ──────────────────────────────────────────────────────────
-        ctm_max_steps      = CTM_MAX_STEPS,
-        ctm_conv_thr       = CTM_CONV_THR,
-        env_identity_init  = ENV_IDENTITY_INIT,
+        ctm_max_steps          = CTM_MAX_STEPS,
+        ctm_conv_thr           = CTM_CONV_THR,
+        ctm_conv_mode          = CTM_CONV_MODE,
+        ctm_e_conv_threshold   = CTM_E_CONV_THRESHOLD,
+        ctm_e_proxy_interval   = CTM_E_PROXY_INTERVAL,
+        env_identity_init      = ENV_IDENTITY_INIT,
 
         # ── tensor init & padding ──────────────────────────────────────────
         init_noise         = INIT_NOISE,
