@@ -214,7 +214,7 @@ _RSVD_POWER_ITERS: int | None = None
 #   Over 20 CTMRG steps: 89% × (20/5) = ~356% of 1 energy as overhead.
 #   NOT recommended for optimization CTMRG (pass energy_proxy_fn=None).
 #   Only enable for evaluation CTMRG (evaluate_energy_clean, evaluate_observables).
-_CTM_CONV_MODE: str = 'Edifference'
+_CTM_CONV_MODE: str = 'both'
 #   Active convergence mode.  Changed by set_ctm_conv_mode().
 
 _CTM_E_CONV_THRESHOLD: float = 1e-9
@@ -2733,8 +2733,8 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
                         _e_met = (_last_e_proxy is not None
                                   and abs(_curr_e - _last_e_proxy)
                                         < _CTM_E_CONV_THRESHOLD)
-
-                        #print(f"CTMRG iter {iteration+1:3d}: energy proxy = {_curr_e:.8f}")
+                        
+                        print(f"CTMRG iter {iteration+1:3d}: energy proxy = {_curr_e:.8f}")
                         
                         _last_e_proxy = _curr_e
 

@@ -66,6 +66,7 @@ _NNN_BONDS_SORTED = sorted(NNN_CANONICAL)
 ANSATZ_STYLE = {
     '6tensors':         {'ls': '-',  'label': '6-tensor (unrestricted)'},
     'neel_symmetrized': {'ls': '--', 'label': 'Néel-symmetrized'},
+    '1tensor_C6Ypi':    {'ls': '-.', 'label': '1-tensor C6+Yπ'},
 }
 
 # ── build folder→last-complete-D map from job-*.out logs ──────────────────────
@@ -339,6 +340,8 @@ def _ansatz_legend_handles() -> list:
                       label='6-tensor (unrestricted)'),
         mlines.Line2D([], [], color='grey', ls='--', lw=1.8, marker='o', ms=6,
                       mfc='none', label='Néel-symmetrized'),
+        mlines.Line2D([], [], color='grey', ls='-.', lw=1.8, marker='o', ms=6,
+                      mfc='none', label='1-tensor C6+Yπ'),
     ]
 
 

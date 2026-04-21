@@ -217,7 +217,7 @@ _RSVD_POWER_ITERS: int | None = None
 _CTM_CONV_MODE: str = 'Edifference'
 #   Active convergence mode.  Changed by set_ctm_conv_mode().
 
-_CTM_E_CONV_THRESHOLD: float = 3e-7
+_CTM_E_CONV_THRESHOLD: float = 1e-9
 #   Energy-proxy convergence threshold (|ΔE_proxy| < this → E-converged).
 #   Only used when _CTM_CONV_MODE is 'Edifference' or 'both'.
 

@@ -40,9 +40,9 @@ from scipy.optimize import curve_fit
 # ──────────────────────────────────────────────────────────────────────────────
 # PATHS
 # ──────────────────────────────────────────────────────────────────────────────
-DATA_DIR   = '/home/chye/6ADctmrg/data/0418core'
+DATA_DIR   = '/home/chye/6ADctmrg/data/0420core/second0p268'
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-OUT_DIR    = os.path.join(SCRIPT_DIR, 'analysis_plots_0418')
+OUT_DIR    = os.path.join(SCRIPT_DIR, 'analysis_plots_0418second0p268')
 os.makedirs(OUT_DIR, exist_ok=True)
 
 

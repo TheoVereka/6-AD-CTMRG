@@ -396,17 +396,17 @@ LBFGS_HISTORY = 150
 #   and wastes nothing.  Old values like 50–100 were appropriate for classical
 #   L-BFGS that runs continuously; they do not apply here.
 
-OPT_TOL_GRAD = 3e-7
+OPT_TOL_GRAD = 1e-7
 #   L-BFGS inner convergence criterion on the infinity-norm of the gradient:
 #   the sub-iteration loop exits early if  ||∇loss||_∞ < OPT_TOL_GRAD.
 #   This is an inner stopping rule inside a single optimizer.step() call.
 
-OPT_TOL_CHANGE = 1e-6
+OPT_TOL_CHANGE = 1e-7
 #   L-BFGS inner convergence criterion on consecutive loss change:
 #   sub-iteration exits if  |L_{k+1} – L_k| < OPT_TOL_CHANGE.
 #   Set tighter than OPT_TOL_GRAD to catch near-flat regions.
 
-OPT_CONV_THRESHOLD = 3e-6
+OPT_CONV_THRESHOLD = 3e-7
 # Outer-loop early-stop: disabled (= 0).
 # The outer delta |loss(k) - loss(k-1)| compares two L-BFGS final values that
 # used DIFFERENT CTMRG environments, so even near a true minimum the delta is
@@ -476,7 +476,7 @@ ENV_IDENTITY_INIT = False
 
 
 
-CTM_MAX_STEPS = 50
+CTM_MAX_STEPS = 500
 #   Hard cap on CTMRG iterations per environment convergence call.
 #   With the singular-value convergence criterion and CTM_CONV_THR=1e-3,
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
@@ -520,7 +520,7 @@ CTM_CONV_MODE = 'Edifference'
 #
 #   Recorded in hyperparams.yaml as ctm_conv_mode.
 
-CTM_E_CONV_THRESHOLD = 3e-7
+CTM_E_CONV_THRESHOLD = 1e-9
 #   Energy-proxy convergence threshold for 'Edifference' and 'both' modes.
 #   Applied to |E_proxy(iter N) − E_proxy(iter N-1)| where E_proxy is the
 #   EB bond energy from env1 (unit SdotS, no J).

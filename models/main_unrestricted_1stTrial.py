@@ -476,7 +476,7 @@ ENV_IDENTITY_INIT = False
 
 
 
-CTM_MAX_STEPS = 50
+CTM_MAX_STEPS = 500
 #   Hard cap on CTMRG iterations per environment convergence call.
 #   With the singular-value convergence criterion and CTM_CONV_THR=1e-3,
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
@@ -520,7 +520,7 @@ CTM_CONV_MODE = 'Edifference'
 #
 #   Recorded in hyperparams.yaml as ctm_conv_mode.
 
-CTM_E_CONV_THRESHOLD = 3e-7
+CTM_E_CONV_THRESHOLD = 1e-9
 #   Energy-proxy convergence threshold for 'Edifference' and 'both' modes.
 #   Applied to |E_proxy(iter N) − E_proxy(iter N-1)| where E_proxy is the
 #   EB bond energy from env1 (unit SdotS, no J).

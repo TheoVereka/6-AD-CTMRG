@@ -3,9 +3,18 @@
 
 
 
+#NOTE:N_cores, USE_GPU (LINE UNDER TOO!!!!!)
+# _default_outdir = os.path.join('/scratch/chye/!!YOURDATE!!!core',   
+#!!!! for IZAR is ...atch/izar/chye/...
 
 
-MY_OUTPUT_OUTERDIR = '/home/chye/6ADctmrg/data/raw'
+# # sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+# sys.stdout.flush()*3
+
+
+
+
+MY_OUTPUT_OUTERDIR = '/scratch/izar/chye/0420core'
 
 # ── Sweep control ─────────────────────────────────────────────────────────────
 
@@ -52,7 +61,7 @@ TOTAL_BUDGET_HOURS = 99999
 # ── GPU/CPU intent ────────────────────────────────────────────────────────────
 # Duplicated below in the TUNABLE PARAMETERS section with full comments.
 
-USE_GPU = False
+USE_GPU = True
 
 # ── Multi-GPU (optional, CUDA only) ──────────────────────────────────────────
 
@@ -69,7 +78,7 @@ N_GPUS = 1
 #   Set automatically in main() from --ngpu or torch.cuda.device_count().
 #   Override at runtime:  --ngpu N
 
-_N_PHYSICAL_CORES = 4
+_N_PHYSICAL_CORES = 25
 
 ########################
 # ── Physical model ── # ────────────────────────────────────────────────────────────
@@ -169,7 +178,7 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+# sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 import matplotlib
 matplotlib.use('Agg')
@@ -192,8 +201,8 @@ if os.environ.get("CTMRG_ANOMALY", "0") == "1":
 torch.set_num_threads(_N_PHYSICAL_CORES)
 torch.set_num_interop_threads(1)
 
-import core as _core
-from core import (
+import core_both as _core
+from core_both import (
     normalize_tensor,
     normalize_single_layer_tensor_for_double_layer,
     initialize_abcdef,
@@ -387,17 +396,17 @@ LBFGS_HISTORY = 150
 #   and wastes nothing.  Old values like 50–100 were appropriate for classical
 #   L-BFGS that runs continuously; they do not apply here.
 
-OPT_TOL_GRAD = 3e-7
+OPT_TOL_GRAD = 1e-7
 #   L-BFGS inner convergence criterion on the infinity-norm of the gradient:
 #   the sub-iteration loop exits early if  ||∇loss||_∞ < OPT_TOL_GRAD.
 #   This is an inner stopping rule inside a single optimizer.step() call.
 
-OPT_TOL_CHANGE = 1e-6
+OPT_TOL_CHANGE = 1e-7
 #   L-BFGS inner convergence criterion on consecutive loss change:
 #   sub-iteration exits if  |L_{k+1} – L_k| < OPT_TOL_CHANGE.
 #   Set tighter than OPT_TOL_GRAD to catch near-flat regions.
 
-OPT_CONV_THRESHOLD = 3e-6
+OPT_CONV_THRESHOLD = 3e-7
 # Outer-loop early-stop: disabled (= 0).
 # The outer delta |loss(k) - loss(k-1)| compares two L-BFGS final values that
 # used DIFFERENT CTMRG environments, so even near a true minimum the delta is
@@ -473,7 +482,7 @@ CTM_MAX_STEPS = 500
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
 #   ansatz ~4 steps, 6-tensor ~40 steps).  90 is a safe upper bound.
 
-CTM_CONV_THR = 2e-6
+CTM_CONV_THR = 1e-6
 
 CTM_CONV_THR_FLOAT32_MIN = 1e-5
 #   CTMRG convergence threshold: stop iterating when the max change in
@@ -487,7 +496,7 @@ CTM_CONV_THR_FLOAT32_MIN = 1e-5
 #   float32 (USE_DOUBLE_PRECISION=False / --single) — do not hard-code 3e-7
 #   for single-precision runs or CTMRG will never converge (ctm=40 always).
 
-CTM_CONV_MODE = 'Edifference'
+CTM_CONV_MODE = 'both'
 #   CTMRG convergence criterion.  Controls which metric(s) must be satisfied
 #   for CTMRG to declare convergence.  Three options:
 #
@@ -1811,7 +1820,7 @@ def optimize_at_chi(
 
         print(f"    step {step:5d}  ctm={ctm_steps:3d}  loss={loss_item:+.10f}"
               f"  Δ={delta:+.3e}  {elapsed:.0f}/{budget_seconds:.0f}s")
-        # sys.stdout.flush()
+        sys.stdout.flush()
         loss_log.append({'step': step, 'ctm_steps': ctm_steps, 'loss': loss_item,
                          'D_bond': D_bond, 'chi': chi,
                          'elapsed': round(elapsed, 1)})
@@ -2274,7 +2283,7 @@ def main():
             print(f"\n  ┌── D={D_bond}  chi={chi}"
                   f"  budget={chi_budget:.0f}s={chi_budget/60:.1f}min"
                   f"  [{timestamp()}]")
-            # sys.stdout.flush()
+            sys.stdout.flush()
 
             best_path   = os.path.join(output_dir,
                                        f"sweep_D{D_bond}_chi{chi}_best.pt")
