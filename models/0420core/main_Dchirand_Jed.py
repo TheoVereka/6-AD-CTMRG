@@ -3,9 +3,18 @@
 
 
 
+#NOTE:N_cores, USE_GPU (LINE UNDER TOO!!!!!)
+# _default_outdir = os.path.join('/scratch/chye/!!YOURDATE!!!core',   
+#!!!! for IZAR is ...atch/izar/chye/...
 
 
-MY_OUTPUT_OUTERDIR = '/home/chye/6ADctmrg/data/raw'
+# # sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+# sys.stdout.flush()*3
+
+
+
+
+MY_OUTPUT_OUTERDIR = '/scratch/chye/0420core'
 
 # ── Sweep control ─────────────────────────────────────────────────────────────
 
@@ -69,7 +78,7 @@ N_GPUS = 1
 #   Set automatically in main() from --ngpu or torch.cuda.device_count().
 #   Override at runtime:  --ngpu N
 
-_N_PHYSICAL_CORES = 4
+_N_PHYSICAL_CORES = 25
 
 ########################
 # ── Physical model ── # ────────────────────────────────────────────────────────────
@@ -81,7 +90,7 @@ J1_COUPLING = 1.0
 #   The nn Hamiltonian is  H_nn = J1 Σ_{<i,j>} S_i · S_j
 #   summed over all 9 nearest-neighbour pairs in the 6-site honeycomb unit cell.
 
-J2_COUPLING = 0.23
+J2_COUPLING = 0.268
 #   Next-nearest-neighbour (nnn) Heisenberg exchange coupling constant.
 #   J2 > 0 = frustrated AFM.  Set to 0 to recover the pure J1 model.
 #   The nnn Hamiltonian is  H_nnn = J2 Σ_{<<i,j>>} S_i · S_j
@@ -169,7 +178,7 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+# sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 import matplotlib
 matplotlib.use('Agg')
@@ -192,8 +201,8 @@ if os.environ.get("CTMRG_ANOMALY", "0") == "1":
 torch.set_num_threads(_N_PHYSICAL_CORES)
 torch.set_num_interop_threads(1)
 
-import core as _core
-from core import (
+import core_Drand as _core
+from core_Drand import (
     normalize_tensor,
     normalize_single_layer_tensor_for_double_layer,
     initialize_abcdef,
@@ -487,7 +496,7 @@ CTM_CONV_THR_FLOAT32_MIN = 1e-5
 #   float32 (USE_DOUBLE_PRECISION=False / --single) — do not hard-code 3e-7
 #   for single-precision runs or CTMRG will never converge (ctm=40 always).
 
-CTM_CONV_MODE = 'both'
+CTM_CONV_MODE = 'Edifference'
 #   CTMRG convergence criterion.  Controls which metric(s) must be satisfied
 #   for CTMRG to declare convergence.  Three options:
 #
@@ -511,7 +520,7 @@ CTM_CONV_MODE = 'both'
 #
 #   Recorded in hyperparams.yaml as ctm_conv_mode.
 
-CTM_E_CONV_THRESHOLD = 1e-8
+CTM_E_CONV_THRESHOLD = 1e-9
 #   Energy-proxy convergence threshold for 'Edifference' and 'both' modes.
 #   Applied to |E_proxy(iter N) − E_proxy(iter N-1)| where E_proxy is the
 #   EB bond energy from env1 (unit SdotS, no J).
@@ -1723,7 +1732,7 @@ def optimize_at_chi(
 
         print(f"    step {step:5d}  ctm={ctm_steps:3d}  loss={loss_item:+.10f}"
               f"  Δ={delta:+.3e}  {elapsed:.0f}/{budget_seconds:.0f}s")
-        # sys.stdout.flush()
+        sys.stdout.flush()
         loss_log.append({'step': step, 'ctm_steps': ctm_steps, 'loss': loss_item,
                          'D_bond': D_bond, 'chi': chi,
                          'elapsed': round(elapsed, 1)})
@@ -2201,7 +2210,7 @@ def main():
             print(f"\n  ┌── D={D_bond}  chi={chi}"
                   f"  budget={chi_budget:.0f}s={chi_budget/60:.1f}min"
                   f"  [{timestamp()}]")
-            # sys.stdout.flush()
+            sys.stdout.flush()
 
             best_path   = os.path.join(output_dir,
                                        f"sweep_D{D_bond}_chi{chi}_best.pt")

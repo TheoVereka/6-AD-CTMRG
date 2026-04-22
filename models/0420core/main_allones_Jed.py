@@ -3,19 +3,28 @@
 
 
 
+#NOTE:N_cores, USE_GPU (LINE UNDER TOO!!!!!)
+# _default_outdir = os.path.join('/scratch/chye/!!YOURDATE!!!core',   
+#!!!! for IZAR is ...atch/izar/chye/...
 
 
-MY_OUTPUT_OUTERDIR = '/home/chye/6ADctmrg/data/raw'
+# # sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+# sys.stdout.flush()*3
+
+
+
+
+MY_OUTPUT_OUTERDIR = '/scratch/chye/0420core'
 
 # ── Sweep control ─────────────────────────────────────────────────────────────
 
-D_BOND_LIST = [2,3,4, 5, 6, 7, 8, 9, 10, 11]
+D_BOND_LIST = [4, 5, 6, 7, 8, 9, 10, 11]
 #   Ordered list of iPEPS virtual bond dimensions to sweep (outer loop).
 #   Each D is warm-started from the best tensors found at the previous D
 #   (zero-padded to the new size + PAD_NOISE Gaussian noise).
 
 
-DEFAULT_D_BUDGET_FRACS = {2:0.1,3:0.1,4: 0.1, 5:0.1, 6:0.1, 7:0.1, 8:0.1, 9:0.1, 10:0.1, 11:0.1}
+DEFAULT_D_BUDGET_FRACS = {4: 0.1, 5:0.1, 6:0.1, 7:0.1, 8:0.1, 9:0.1, 10:0.1, 11:0.1}
 #   Fraction of the total wall-clock budget allocated to each D_bond value.
 #   Normalised to sum=1 before use, so only the RATIOS matter.
 #   Rationale:
@@ -26,13 +35,13 @@ DEFAULT_D_BUDGET_FRACS = {2:0.1,3:0.1,4: 0.1, 5:0.1, 6:0.1, 7:0.1, 8:0.1, 9:0.1,
 #   values have genuinely different computational costs and scientific weight.
 #   Within each D, every chi level gets equal time (see below).
 
-DEFAULT_CHI_MAX = {2:99,3:99,4: 80, 5:9999, 6:9999, 7:9999, 8:9999, 9:9999, 10:9999, 11:9999}
+DEFAULT_CHI_MAX = {4: 80, 5:9999, 6:9999, 7:9999, 8:9999, 9:9999, 10:9999, 11:9999}
 #   Largest chi to attempt for each D_bond.
 #   Increase if you have more memory; decrease if you hit OOM.
 
 DEFAULT_CHI_SCHEDULES = {
-    2: [ 3,  4,  6,  8],
-    3: [ 4,  6,  9, 12, 15],
+    #2: [ 3,  4,  6,  8],
+    #3: [ 4,  6,  9, 12, 15],
     4: [ 8, 12, 16, 20, 24], 
     5: [10, 15, 20, 25, 30, 35],
     6: [18, 24, 30, 36, 42, 48],
@@ -69,7 +78,7 @@ N_GPUS = 1
 #   Set automatically in main() from --ngpu or torch.cuda.device_count().
 #   Override at runtime:  --ngpu N
 
-_N_PHYSICAL_CORES = 4
+_N_PHYSICAL_CORES = 25
 
 ########################
 # ── Physical model ── # ────────────────────────────────────────────────────────────
@@ -81,7 +90,7 @@ J1_COUPLING = 1.0
 #   The nn Hamiltonian is  H_nn = J1 Σ_{<i,j>} S_i · S_j
 #   summed over all 9 nearest-neighbour pairs in the 6-site honeycomb unit cell.
 
-J2_COUPLING = 0.23
+J2_COUPLING = 0.268
 #   Next-nearest-neighbour (nnn) Heisenberg exchange coupling constant.
 #   J2 > 0 = frustrated AFM.  Set to 0 to recover the pure J1 model.
 #   The nnn Hamiltonian is  H_nnn = J2 Σ_{<<i,j>>} S_i · S_j
@@ -169,7 +178,7 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+# sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 import matplotlib
 matplotlib.use('Agg')
@@ -192,8 +201,8 @@ if os.environ.get("CTMRG_ANOMALY", "0") == "1":
 torch.set_num_threads(_N_PHYSICAL_CORES)
 torch.set_num_interop_threads(1)
 
-import core as _core
-from core import (
+import core_allones as _core
+from core_allones import (
     normalize_tensor,
     normalize_single_layer_tensor_for_double_layer,
     initialize_abcdef,
@@ -487,7 +496,7 @@ CTM_CONV_THR_FLOAT32_MIN = 1e-5
 #   float32 (USE_DOUBLE_PRECISION=False / --single) — do not hard-code 3e-7
 #   for single-precision runs or CTMRG will never converge (ctm=40 always).
 
-CTM_CONV_MODE = 'both'
+CTM_CONV_MODE = 'Edifference'
 #   CTMRG convergence criterion.  Controls which metric(s) must be satisfied
 #   for CTMRG to declare convergence.  Three options:
 #
@@ -511,7 +520,7 @@ CTM_CONV_MODE = 'both'
 #
 #   Recorded in hyperparams.yaml as ctm_conv_mode.
 
-CTM_E_CONV_THRESHOLD = 1e-8
+CTM_E_CONV_THRESHOLD = 1e-9
 #   Energy-proxy convergence threshold for 'Edifference' and 'both' modes.
 #   Applied to |E_proxy(iter N) − E_proxy(iter N-1)| where E_proxy is the
 #   EB bond energy from env1 (unit SdotS, no J).
@@ -550,27 +559,14 @@ N_SITES = 6
 
 # ── Tensor initialisation & padding ──────────────────────────────────────────
 
-INIT_NOISE = 1.0
+INIT_NOISE = 3e-3
 # abcdef init noise, NOTE: NOT USED.
-# Actually NEVER USED!!!!
 
 PAD_NOISE = 2e-1
 #   Gaussian noise amplitude added to the ZERO-PADDED new indices when
 #   enlarging tensors from D → D+1.  Non-zero noise breaks the symmetry of
 #   the padded zeros and prevents the optimiser from getting stuck in the
 #   subspace of the smaller-D manifold.  Keep comparable to INIT_NOISE.
-
-RAND_INIT_NEW_D = True
-#   True  → skip the D-1 → D padded warm-start entirely; each new D starts
-#            from a fully random initialisation (same as the very first D).
-#   False → default: pad best tensors from D-1 to size D and add PAD_NOISE.
-#   Overrideable at runtime: --rand-init-new-d CLI flag.
-
-RAND_INIT_NEW_CHI = True
-#   True  → skip warm-starting from the previous chi's result; each chi
-#            level within the same D starts from a fully random initialisation.
-#   False → default: continue from best tensors found at the previous chi.
-#   Overrideable at runtime: --rand-init-new-chi CLI flag.
 
 GEO_SCHEDULE_STEPS = 5
 #   Number of chi values generated by the geometric FALLBACK schedule.
@@ -773,6 +769,76 @@ def pad_tensor(t: torch.Tensor, old_D: int, new_D: int,
     if symmetrize_fn is not None:
         out = symmetrize_fn(out)
     return out
+
+
+def evaluate_energy_clean(params: list,
+                          Js, SdotS, chi: int, D_bond: int, d_PHYS: int,
+                          ansatz_cfg: dict) -> float:
+    """
+    
+    [DEPRECATED] This function is no longer used in the main optimization loop, but it is still called once per (D, chi) level after optimization to compute the final energy with a clean CTMRG convergence from scratch.  It is also called by the --evaluate-only CLI flag to compute energies without any optimization.
+
+    Re-converge environment from scratch and return total energy (float).
+
+    IMPORTANT: CTMRG consumes *double-layer* site tensors which are normalised
+    inside ``abcdef_to_ABCDEF``. For consistency, we rescale the single-layer
+    tensors here in the same convention used inside the optimiser objective.
+    This keeps printed denominators like <iPEPS|iPEPS> close to real 1.
+    """
+    a, b, c, d, e, f = _derive_abcdef(params, ansatz_cfg)
+    D_sq = D_bond ** 2
+    with torch.no_grad():
+        aN = normalize_single_layer_tensor_for_double_layer(a)
+        bN = normalize_single_layer_tensor_for_double_layer(b)
+        cN = normalize_single_layer_tensor_for_double_layer(c)
+        dN = normalize_single_layer_tensor_for_double_layer(d)
+        eN = normalize_single_layer_tensor_for_double_layer(e)
+        fN = normalize_single_layer_tensor_for_double_layer(f)
+
+        A, B, C, Dt, E, F = abcdef_to_ABCDEF(aN, bN, cN, dN, eN, fN, D_sq)
+        # Clean-evaluation CTMRG: always pass energy_proxy_fn=None.
+        # core.CTMRG_from_init_to_stop auto-falls back to SVdifference mode
+        # when proxy=None (see _effective_mode logic in core.py), so CTMRG
+        # converges fast via SV criterion.  The full 27-bond energy and all
+        # observables are computed ONCE in the single forward pass that follows
+        # — there is no need to call 27 bonds per CTMRG iteration here.
+        # (Using the Edifference proxy during CTMRG would call 36 open-tensor
+        # builds every iteration, making evaluate_energy_clean 10-100× slower
+        # than a single optimization step for no accuracy benefit.)
+        all27 = CTMRG_from_init_to_stop(
+                A, B, C, Dt, E, F, chi, D_sq, CTM_MAX_STEPS, CTM_CONV_THR,
+                ENV_IDENTITY_INIT, energy_proxy_fn=None)
+        # Free double-layer tensors — only needed by CTMRG, not by energy functions.
+        del A, B, C, Dt, E, F
+        if _core.DEVICE.type == 'cuda':
+            torch.cuda.empty_cache()
+
+        # ── Last-resort zero guard (CTMRG already retried with escalating noise) ──
+        _corner_indices = (0, 1, 2, 9, 10, 11, 18, 19, 20)
+        if all(torch.linalg.norm(all27[i]).item() < 1e-30 for i in _corner_indices):
+            print(f"  │  [WARN] CTMRG env still zero at chi={chi} after all internal retries")
+            return float('nan')
+
+        E3ebadcf = energy_expectation_nearest_neighbor_3ebadcf_bonds(
+            aN, bN, cN, dN, eN, fN,
+                *Js[0:12],
+                SdotS,
+                chi, D_bond, d_PHYS, 
+                *all27[:9])
+        E3afcbed = energy_expectation_nearest_neighbor_3afcbed_bonds(
+            aN, bN, cN, dN, eN, fN,
+                *Js[12:24],
+                SdotS,
+                chi, D_bond, d_PHYS, 
+                *all27[9:18])
+            
+        E3 = energy_expectation_nearest_neighbor_other_3_bonds(
+            aN, bN, cN, dN, eN, fN,
+            *Js[24:36],
+            SdotS,
+            chi, D_bond, d_PHYS, 
+            *all27[18:27])
+        return (E3ebadcf + E3afcbed + E3).item()
 
 
 def evaluate_observables(params: list,
@@ -1665,7 +1731,7 @@ def optimize_at_chi(
                     for p in params:
                         if p.grad is not None:
                             p.grad.data = torch.nan_to_num(p.grad.data, nan=0.0, posinf=0.0, neginf=0.0)
-                    # print("Gradient:" + " ".join(f"{torch.linalg.norm(p.grad).item():.4e}" for p in params))
+                    #print("Gradient:" + " ".join(f"{torch.linalg.norm(p.grad).item():.4e}" for p in params))
                     
                     return loss
                 except Exception as exc:
@@ -1683,6 +1749,8 @@ def optimize_at_chi(
                     # Print a short one-line warning (kept minimal to avoid log spam).
                     msg = str(exc).splitlines()[0][:200]
                     print(f"[closure] Non-finite/ill-defined point -> penalty loss (reason: {msg})")
+                    
+                    # print out the gradient norm for debugging
                     _p0 = params[0]
                     _real_dtype = _p0.real.dtype if _p0.is_complex() else _p0.dtype
                     return torch.tensor(1.0e6, dtype=_real_dtype, device=_p0.device)
@@ -1723,7 +1791,7 @@ def optimize_at_chi(
 
         print(f"    step {step:5d}  ctm={ctm_steps:3d}  loss={loss_item:+.10f}"
               f"  Δ={delta:+.3e}  {elapsed:.0f}/{budget_seconds:.0f}s")
-        # sys.stdout.flush()
+        sys.stdout.flush()
         loss_log.append({'step': step, 'ctm_steps': ctm_steps, 'loss': loss_item,
                          'D_bond': D_bond, 'chi': chi,
                          'elapsed': round(elapsed, 1)})
@@ -1810,16 +1878,6 @@ def main():
     parser.add_argument(
         '--noise', type=float, default=PAD_NOISE,
         help='Gaussian noise amplitude when padding tensors for D→D+1 (= PAD_NOISE).')
-    parser.add_argument(
-        '--rand-init-new-d', dest='rand_init_new_d', action='store_true',
-        default=RAND_INIT_NEW_D,
-        help='Skip D-1→D padded warm-start; use fully random init for each new D '
-             '(= RAND_INIT_NEW_D).')
-    parser.add_argument(
-        '--rand-init-new-chi', dest='rand_init_new_chi', action='store_true',
-        default=RAND_INIT_NEW_CHI,
-        help='Skip warm-starting from previous chi; use fully random init for each '
-             'chi level within the same D (= RAND_INIT_NEW_CHI).')
     parser.add_argument(
         '--double', action='store_true', default=USE_DOUBLE_PRECISION,
         help='Use float64/complex128 (default: float32/complex64). '
@@ -2069,10 +2127,8 @@ def main():
         env_identity_init      = ENV_IDENTITY_INIT,
 
         # ── tensor init & padding ──────────────────────────────────────────
-        init_noise                 = INIT_NOISE,
-        pad_noise                  = args.noise,
-        rand_init_new_d            = args.rand_init_new_d,
-        rand_init_new_chi          = args.rand_init_new_chi,
+        init_noise         = INIT_NOISE,
+        pad_noise          = args.noise,
 
         # ── I/O ────────────────────────────────────────────────────────────
         save_every         = SAVE_EVERY,
@@ -2155,12 +2211,9 @@ def main():
         # ── Warm-start from D-1 if available ─────────────────────────────────
         prev_D = D_bond_list[D_bond_list.index(D_bond) - 1] \
                  if D_bond_list.index(D_bond) > 0 else None
-        if args.rand_init_new_d and prev_D is not None:
-            print(f"  [rand-D] random init for D={D_bond} (ignoring D={prev_D} tensors)")
         if (best_params_by_D.get(D_bond) is None
                 and prev_D is not None
-                and best_params_by_D.get(prev_D) is not None
-                and not args.rand_init_new_d):
+                and best_params_by_D.get(prev_D) is not None):
             print(f"  Warm-starting from D={prev_D} tensors "
                   f"(padding {prev_D}→{D_bond}, noise={args.noise})")
             prev_tensors = best_params_by_D[prev_D]
@@ -2201,7 +2254,7 @@ def main():
             print(f"\n  ┌── D={D_bond}  chi={chi}"
                   f"  budget={chi_budget:.0f}s={chi_budget/60:.1f}min"
                   f"  [{timestamp()}]")
-            # sys.stdout.flush()
+            sys.stdout.flush()
 
             best_path   = os.path.join(output_dir,
                                        f"sweep_D{D_bond}_chi{chi}_best.pt")
@@ -2210,18 +2263,11 @@ def main():
             loss_log: list = []
             all_loss_logs[(D_bond, chi)] = loss_log
 
-            # ── Chi init: random or warm-start ────────────────────────────
-            if args.rand_init_new_chi and chi_idx > 0:
-                print(f"  │  [rand-chi] random init for chi={chi} (ignoring previous result)")
-                _init_params = None
-            else:
-                _init_params = cur_params
-
             best_params_tuple, best_loss, global_step = optimize_at_chi(
                 Js, SdotS, D_bond, chi, d_PHYS,
                 budget_seconds=chi_budget,
                 lbfgs_max_iter=lbfgs_iters,
-                init_params=_init_params,
+                init_params=cur_params,
                 step_offset=global_step,
                 best_path=best_path,
                 latest_path=latest_path,

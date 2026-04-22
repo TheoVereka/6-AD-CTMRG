@@ -214,10 +214,10 @@ _RSVD_POWER_ITERS: int | None = None
 #   Over 20 CTMRG steps: 89% × (20/5) = ~356% of 1 energy as overhead.
 #   NOT recommended for optimization CTMRG (pass energy_proxy_fn=None).
 #   Only enable for evaluation CTMRG (evaluate_energy_clean, evaluate_observables).
-_CTM_CONV_MODE: str = 'both'
+_CTM_CONV_MODE: str = 'Edifference'
 #   Active convergence mode.  Changed by set_ctm_conv_mode().
 
-_CTM_E_CONV_THRESHOLD: float = 1e-8
+_CTM_E_CONV_THRESHOLD: float = 1e-9
 #   Energy-proxy convergence threshold (|ΔE_proxy| < this → E-converged).
 #   Only used when _CTM_CONV_MODE is 'Edifference' or 'both'.
 
@@ -1263,7 +1263,7 @@ def initialize_c3vypi(D_bond: int, d_PHYS: int,
     Returns a_raw of shape (D_bond, D_bond, D_bond, d_PHYS).
     """
     global _USE_FULL_SVD
-    a_raw = torch.randn(
+    a_raw = noise_scale * torch.randn(
         D_bond, D_bond, D_bond, d_PHYS,
         dtype=TENSORDTYPE, device=DEVICE)
     _USE_FULL_SVD = True
@@ -1302,10 +1302,10 @@ def initialize_twoc3(D_bond: int, d_PHYS: int,
     Returns (a_raw, b_raw), each of shape (D_bond, D_bond, D_bond, d_PHYS).
     """
     global _USE_FULL_SVD
-    a_raw = torch.randn(
+    a_raw = noise_scale * torch.randn(
         D_bond, D_bond, D_bond, d_PHYS,
         dtype=TENSORDTYPE, device=DEVICE)
-    b_raw = torch.randn(
+    b_raw = noise_scale * torch.randn(
         D_bond, D_bond, D_bond, d_PHYS,
         dtype=TENSORDTYPE, device=DEVICE)
     _USE_FULL_SVD = True

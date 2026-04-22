@@ -214,10 +214,10 @@ _RSVD_POWER_ITERS: int | None = None
 #   Over 20 CTMRG steps: 89% × (20/5) = ~356% of 1 energy as overhead.
 #   NOT recommended for optimization CTMRG (pass energy_proxy_fn=None).
 #   Only enable for evaluation CTMRG (evaluate_energy_clean, evaluate_observables).
-_CTM_CONV_MODE: str = 'both'
+_CTM_CONV_MODE: str = 'Edifference'
 #   Active convergence mode.  Changed by set_ctm_conv_mode().
 
-_CTM_E_CONV_THRESHOLD: float = 1e-8
+_CTM_E_CONV_THRESHOLD: float = 1e-9
 #   Energy-proxy convergence threshold (|ΔE_proxy| < this → E-converged).
 #   Only used when _CTM_CONV_MODE is 'Edifference' or 'both'.
 
@@ -747,7 +747,7 @@ class SVD_PROPACK(torch.autograd.Function):
             return U_all[:, :k], S_all[:k], V_all[:, :k]
 
         else:
-            #print("Full", end='')
+            #print("Full", end=' ')
             # Full thin SVD.  cuSOLVER has a fixed per-call overhead that makes
             # it slower than CPU LAPACK for matrices below the crossover size
             # (varies by GPU: always on MX250, n<~500 on A100/V100).
@@ -1209,7 +1209,7 @@ def initialize_c6ypi(D_bond: int, d_PHYS: int,
     _USE_FULL_SVD = True so the first L-BFGS step uses full deterministic SVD.
     """
     global _USE_FULL_SVD
-    a_raw = torch.randn(
+    a_raw = noise_scale * torch.randn(
         D_bond, D_bond, D_bond, d_PHYS,
         dtype=TENSORDTYPE, device=DEVICE)
     _USE_FULL_SVD = True
@@ -1263,7 +1263,7 @@ def initialize_c3vypi(D_bond: int, d_PHYS: int,
     Returns a_raw of shape (D_bond, D_bond, D_bond, d_PHYS).
     """
     global _USE_FULL_SVD
-    a_raw = torch.randn(
+    a_raw = noise_scale * torch.randn(
         D_bond, D_bond, D_bond, d_PHYS,
         dtype=TENSORDTYPE, device=DEVICE)
     _USE_FULL_SVD = True
@@ -1302,10 +1302,10 @@ def initialize_twoc3(D_bond: int, d_PHYS: int,
     Returns (a_raw, b_raw), each of shape (D_bond, D_bond, D_bond, d_PHYS).
     """
     global _USE_FULL_SVD
-    a_raw = torch.randn(
+    a_raw = noise_scale * torch.randn(
         D_bond, D_bond, D_bond, d_PHYS,
         dtype=TENSORDTYPE, device=DEVICE)
-    b_raw = torch.randn(
+    b_raw = noise_scale * torch.randn(
         D_bond, D_bond, D_bond, d_PHYS,
         dtype=TENSORDTYPE, device=DEVICE)
     _USE_FULL_SVD = True
@@ -2949,7 +2949,7 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
         E_BF = Jbf * _ckpt(_nnn_BF, closed_C, closed_A, closed_D, closed_E, SdotS, use_reentrant=False)
         E_FD = Jfd * _ckpt(_nnn_FD, closed_A, closed_E, closed_B, closed_C, SdotS, use_reentrant=False)
 
-        return torch.real((E_AD+E_CF+E_EB + E_FA+E_DE+E_BC)*0.5 +E_AE+E_EC+E_CA +E_DB+E_BF+E_FD)
+        return torch.real((E_AD*2+E_CF*2+E_EB*2 + E_FA*0+E_DE*0+E_BC*0)*0.5 +E_AE+E_EC+E_CA +E_DB+E_BF+E_FD)
 
     # ── Pre-build path: CPU (any D) or GPU (6 opens fit in memory) ────────
     o, cl = build_open_closed_env1(a, b, c, d, e, f, chi, D_bond, d_PHYS,
@@ -2988,7 +2988,7 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
         E_BF = Jbf * _compute_nnn_bond_energy(o['B'], cl['C'], o['F'], cl['A'], DE, SdotS)
         E_FD = Jfd * _compute_nnn_bond_energy(o['F'], cl['A'], o['D'], cl['E'], BC, SdotS)
 
-    return torch.real((E_AD+E_CF+E_EB + E_FA+E_DE+E_BC)*0.5 +E_AE+E_EC+E_CA +E_DB+E_BF+E_FD)
+    return torch.real((E_AD*2+E_CF*2+E_EB*2 + E_FA*0+E_DE*0+E_BC*0)*0.5 +E_AE+E_EC+E_CA +E_DB+E_BF+E_FD)
 
 
 def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
@@ -3109,7 +3109,7 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
         E_FD = Jfd * _ckpt(_nnn_FD, closed_E, closed_C, closed_B, closed_A, SdotS, use_reentrant=False)
         E_DB = Jdb * _ckpt(_nnn_DB, closed_C, closed_A, closed_F, closed_E, SdotS, use_reentrant=False)
 
-        return torch.real((E_AF+E_CB+E_ED + E_DC+E_BA+E_FE)*0.5 +E_CA+E_AE+E_EC +E_BF+E_FD+E_DB)
+        return torch.real((E_AF*2+E_CB*2+E_ED*2 + E_DC*0+E_BA*0+E_FE*0)*0.5 +E_CA+E_AE+E_EC +E_BF+E_FD+E_DB)
 
     # ── Pre-build path: CPU (any D) or GPU (6 opens fit in memory) ────────
     o, cl = build_open_closed_env2(a, b, c, d, e, f, chi, D_bond, d_PHYS,
@@ -3146,7 +3146,7 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
         E_FD = Jfd * _compute_nnn_bond_energy(o['F'], cl['E'], o['D'], cl['C'], BA, SdotS)
         E_DB = Jdb * _compute_nnn_bond_energy(o['D'], cl['C'], o['B'], cl['A'], FE, SdotS)
 
-    return torch.real((E_AF+E_CB+E_ED + E_DC+E_BA+E_FE)*0.5 +E_CA+E_AE+E_EC +E_BF+E_FD+E_DB)
+    return torch.real((E_AF*2+E_CB*2+E_ED*2 + E_DC*0+E_BA*0+E_FE*0)*0.5 +E_CA+E_AE+E_EC +E_BF+E_FD+E_DB)
 
 
 
@@ -3299,7 +3299,7 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
         E_DB = Jdb * _ckpt(_nnn_DB, closed_A, closed_E, closed_F, closed_C, SdotS, use_reentrant=False)
         E_BF = Jbf * _ckpt(_nnn_BF, closed_E, closed_C, closed_D, closed_A, SdotS, use_reentrant=False)
 
-        return torch.real((E_EF+E_AB+E_CD + E_BE+E_FC+E_DA)*0.5 +E_EC+E_CA+E_AE +E_FD+E_DB+E_BF)
+        return torch.real((E_EF*2+E_AB*2+E_CD*2 + E_BE*0+E_FC*0+E_DA*0)*0.5 +E_EC+E_CA+E_AE +E_FD+E_DB+E_BF)
 
     # ── Pre-build path: CPU (any D) or GPU (6 opens fit in memory) ─────────
     o, cl = build_open_closed_env3(a, b, c, d, e, f, chi, D_bond, d_PHYS,
@@ -3336,7 +3336,7 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
         E_DB = Jdb * _compute_nnn_bond_energy(o['D'], cl['A'], o['B'], cl['E'], FC, SdotS)
         E_BF = Jbf * _compute_nnn_bond_energy(o['B'], cl['E'], o['F'], cl['C'], DA, SdotS)
 
-    return torch.real((E_EF+E_AB+E_CD + E_BE+E_FC+E_DA)*0.5 +E_EC+E_CA+E_AE +E_FD+E_DB+E_BF)
+    return torch.real((E_EF*2+E_AB*2+E_CD*2 + E_BE*0+E_FC*0+E_DA*0)*0.5 +E_EC+E_CA+E_AE +E_FD+E_DB+E_BF)
 
 
 # ── Observable helpers (used by evaluate_observables in the driver) ───────────
