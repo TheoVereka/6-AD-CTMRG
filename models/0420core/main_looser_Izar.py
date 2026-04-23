@@ -39,16 +39,16 @@ DEFAULT_CHI_MAX = {3:99,4: 80, 5:9999, 6:9999, 7:9999, 8:9999, 9:9999, 10:9999, 
 #   Increase if you have more memory; decrease if you hit OOM.
 
 DEFAULT_CHI_SCHEDULES = {
-    #2: [ 3,  4,  6,  8],
-    3: [ 4,  6,  9, 12, 15],
-    4: [ 8, 12, 16, 20, 24], 
-    5: [10, 15, 20, 25, 30, 35],
-    6: [18, 24, 30, 36, 42, 48],
-    7: [21, 28, 35, 42, 49, 56, 63],
-    8: [32, 40, 48, 56, 64, 72, 80],
-    9: [36, 45, 54, 63, 72, 81, 90],#, 99],
-    10:[40, 50, 60, 70, 80, 90,100],#,110,120],
-    11:[44, 55, 66, 77, 88, 99,110],#,121,132,143],
+    #2: [ 6,  8],
+    3: [ 9, 12, 15],
+    4: [12, 16, 20, 24], 
+    5: [20, 25, 30, 35],
+    6: [24, 30, 36, 42, 48],
+    7: [28, 35, 42, 49, 56, 63],
+    8: [40, 48, 56, 64, 72, 80],
+    9: [45, 54, 63, 72, 81, 90],#, 99],
+    10:[50, 60, 70, 80, 90,100],#,110,120],
+    11:[55, 66, 77, 88, 99,110],#,121,132,143],
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -241,6 +241,13 @@ from core_0p2to0p25 import (
 )
 
 
+class _CollapseRestartD(Exception):
+    """Sentinel: raised from optimize_at_chi when collapsed env requires
+    restarting the entire current D level from chi_schedule[0]."""
+    pass
+
+
+
 # Total wall-clock time for the entire sweep.  The sweep is designed to run
 # for a fixed time rather than a fixed number of steps, so that results at
 # different (D, chi) levels are directly comparable.  The default is 11 h, which
@@ -395,17 +402,17 @@ LBFGS_HISTORY = 150
 #   and wastes nothing.  Old values like 50–100 were appropriate for classical
 #   L-BFGS that runs continuously; they do not apply here.
 
-OPT_TOL_GRAD = 3e-8
+OPT_TOL_GRAD = 1e-8
 #   L-BFGS inner convergence criterion on the infinity-norm of the gradient:
 #   the sub-iteration loop exits early if  ||∇loss||_∞ < OPT_TOL_GRAD.
 #   This is an inner stopping rule inside a single optimizer.step() call.
 
-OPT_TOL_CHANGE = 1e-7
+OPT_TOL_CHANGE = 4e-8
 #   L-BFGS inner convergence criterion on consecutive loss change:
 #   sub-iteration exits if  |L_{k+1} – L_k| < OPT_TOL_CHANGE.
 #   Set tighter than OPT_TOL_GRAD to catch near-flat regions.
 
-OPT_CONV_THRESHOLD = 3e-7
+OPT_CONV_THRESHOLD = 1e-7
 # Outer-loop early-stop: disabled (= 0).
 # The outer delta |loss(k) - loss(k-1)| compares two L-BFGS final values that
 # used DIFFERENT CTMRG environments, so even near a true minimum the delta is
@@ -475,13 +482,13 @@ ENV_IDENTITY_INIT = False
 
 
 
-CTM_MAX_STEPS = 200
+CTM_MAX_STEPS = 100
 #   Hard cap on CTMRG iterations per environment convergence call.
 #   With the singular-value convergence criterion and CTM_CONV_THR=1e-3,
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
 #   ansatz ~4 steps, 6-tensor ~40 steps).  90 is a safe upper bound.
 
-CTM_CONV_THR = 5e-7
+CTM_CONV_THR = 1e-6
 
 CTM_CONV_THR_FLOAT32_MIN = 1e-5
 #   CTMRG convergence threshold: stop iterating when the max change in
@@ -519,7 +526,7 @@ CTM_CONV_MODE = 'both'
 #
 #   Recorded in hyperparams.yaml as ctm_conv_mode.
 
-CTM_E_CONV_THRESHOLD = 1e-8
+CTM_E_CONV_THRESHOLD = 3e-8
 #   Energy-proxy convergence threshold for 'Edifference' and 'both' modes.
 #   Applied to |E_proxy(iter N) − E_proxy(iter N-1)| where E_proxy is the
 #   EB bond energy from env1 (unit SdotS, no J).
@@ -580,13 +587,13 @@ MEAN_FIELD_INIT = True
 #   False → default: use random init or warm-start (controlled by the flags
 #            above).  Overrideable at runtime: --mean-field-init CLI flag.
 
-RAND_INIT_NEW_D = True
+RAND_INIT_NEW_D = False
 #   True  → skip the D-1 → D padded warm-start entirely; each new D starts
 #            from a fully random initialisation (same as the very first D).
 #   False → default: pad best tensors from D-1 to size D and add PAD_NOISE.
 #   Overrideable at runtime: --rand-init-new-d CLI flag.
 
-RAND_INIT_NEW_CHI = True
+RAND_INIT_NEW_CHI = False
 #   True  → skip warm-starting from the previous chi's result; each chi
 #            level within the same D starts from a fully random initialisation.
 #   False → default: continue from best tensors found at the previous chi.
@@ -1791,22 +1798,14 @@ def optimize_at_chi(
                          'elapsed': round(elapsed, 1)})
 
         # ── Last-resort collapsed-loss guard ──────────────────────────────
-        # If CTMRG exhausted all noise restarts AND the FloatingPointError
-        # was not raised (e.g. near-zero but not exactly zero env → loss ≈ 0),
-        # do not let this corrupt best_loss.  Restore best tensors and skip.
+        # If CTMRG env collapses to near-zero AND FloatingPointError was not
+        # raised, signal the outer D loop to restart from chi_schedule[0]
+        # with fresh tensors by raising _CollapseRestartD.
         _loss_is_collapsed = (loss_item >= -1e-12 and best_loss < -0.5)
         if _loss_is_collapsed:
-            print(f"    [ZERO-GUARD] loss={loss_item:+.10f} ≈ 0 "
-                  f"(env likely near-collapsed); restoring best tensors "
-                  f"(best_loss={best_loss:+.10f})")
-            if best_params is not None:
-                with torch.no_grad():
-                    for p, b_val in zip(params, best_params):
-                        p.data.copy_(b_val)
-            if OPTIMIZER == 'lbfgs' and _lbfgs is not None:
-                _lbfgs_reset_history()
-            step += 1
-            continue
+            print(f"    [ZERO-GUARD] loss={loss_item:+.10f} \u2248 0 "
+                  f"(env near-collapsed); signalling D={D_bond} restart from chi={chi}")
+            raise _CollapseRestartD(f"D={D_bond}, chi={chi}")
 
         if loss_item < best_loss:
             best_loss   = loss_item
@@ -2222,207 +2221,226 @@ def main():
         print(f"  chi schedule: {chis}  ({len(chis)} levels, equal time split)")
         print(f"{'═'*76}")
 
-        # ── Warm-start from D-1 if available ─────────────────────────────────
-        prev_D = D_bond_list[D_bond_list.index(D_bond) - 1] \
-                 if D_bond_list.index(D_bond) > 0 else None
-        if args.rand_init_new_d and prev_D is not None:
-            print(f"  [rand-D] random init for D={D_bond} (ignoring D={prev_D} tensors)")
-        if (best_params_by_D.get(D_bond) is None
-                and prev_D is not None
-                and best_params_by_D.get(prev_D) is not None
-                and not args.rand_init_new_d):
-            print(f"  Warm-starting from D={prev_D} tensors "
-                  f"(padding {prev_D}→{D_bond}, noise={args.noise})")
-            prev_tensors = best_params_by_D[prev_D]
-            sym_fn = ansatz_cfg['symmetrize_fn']
-            # For n_params==6 with a batch symmetrize_fn (e.g. 'sym6'), the
-            # per-tensor symmetry is applied inside _derive_abcdef at every
-            # forward pass — do NOT pass it to pad_tensor (which takes a single
-            # tensor and would apply the wrong function).  For n_params==1 the
-            # existing per-tensor behaviour is preserved.
-            _pad_sym = sym_fn if ansatz_cfg['n_params'] == 1 else None
-            padded = tuple(
-                pad_tensor(t, prev_D, D_bond, d_PHYS, args.noise,
-                           symmetrize_fn=_pad_sym)
-                for t in prev_tensors)
-            best_params_by_D[D_bond] = _new_tensors_from_data(padded)
-            del padded
-
-        # current best tensors at this D (None = random init at first chi)
-        cur_params = best_params_by_D.get(D_bond)
-
-        # ── Inner loop: chi ───────────────────────────────────────────────────
-        for chi_idx, chi in enumerate(chis):
-            # Skip (D, chi) pairs that come before the resume point
-            if resume_D is not None and resume_chi is not None:
-                if D_bond < resume_D:
-                    continue
-                if D_bond == resume_D and chi < resume_chi:
-                    continue
-                if D_bond == resume_D and chi == resume_chi:
-                    resume_D = None   # resume point reached; continue normally
-                    cur_params = best_params_by_D.get(D_bond)
-
-            # equal time budget for every chi level within this D
-            chi_budget = D_budget / len(chis)
-
-            lbfgs_iters = LBFGS_MAX_ITER
-
-            print(f"\n  ┌── D={D_bond}  chi={chi}"
-                  f"  budget={chi_budget:.0f}s={chi_budget/60:.1f}min"
-                  f"  [{timestamp()}]")
-            sys.stdout.flush()
-
-            best_path   = os.path.join(output_dir,
-                                       f"sweep_D{D_bond}_chi{chi}_best.pt")
-            latest_path = os.path.join(output_dir,
-                                       f"sweep_D{D_bond}_chi{chi}_latest.pt")
-            loss_log: list = []
-            all_loss_logs[(D_bond, chi)] = loss_log
-
-            # ── Chi init: mean-field / random / warm-start ─────────────────
-            if args.mean_field_init:
-                _init_params = _make_mean_field_params(
-                    ansatz_cfg, D_bond, d_PHYS, INIT_NOISE)
-                if chi_idx == 0:
-                    print(f"  │  [mean-field] Néel product-state init for chi={chi}")
+        _d_restart_count = 0
+        while True:  # ── D-restart harness; re-entered if env collapses ──
+            # ── Warm-start from D-1 if available ─────────────────────────────────
+            prev_D = D_bond_list[D_bond_list.index(D_bond) - 1] \
+                     if D_bond_list.index(D_bond) > 0 else None
+            if args.rand_init_new_d and prev_D is not None:
+                print(f"  [rand-D] random init for D={D_bond} (ignoring D={prev_D} tensors)")
+            if (best_params_by_D.get(D_bond) is None
+                    and prev_D is not None
+                    and best_params_by_D.get(prev_D) is not None
+                    and not args.rand_init_new_d):
+                print(f"  Warm-starting from D={prev_D} tensors "
+                      f"(padding {prev_D}→{D_bond}, noise={args.noise})")
+                prev_tensors = best_params_by_D[prev_D]
+                sym_fn = ansatz_cfg['symmetrize_fn']
+                # For n_params==6 with a batch symmetrize_fn (e.g. 'sym6'), the
+                # per-tensor symmetry is applied inside _derive_abcdef at every
+                # forward pass — do NOT pass it to pad_tensor (which takes a single
+                # tensor and would apply the wrong function).  For n_params==1 the
+                # existing per-tensor behaviour is preserved.
+                _pad_sym = sym_fn if ansatz_cfg['n_params'] == 1 else None
+                padded = tuple(
+                    pad_tensor(t, prev_D, D_bond, d_PHYS, args.noise,
+                               symmetrize_fn=_pad_sym)
+                    for t in prev_tensors)
+                best_params_by_D[D_bond] = _new_tensors_from_data(padded)
+                del padded
+    
+            # current best tensors at this D (None = random init at first chi)
+            cur_params = best_params_by_D.get(D_bond)
+    
+            # ── Inner loop: chi ───────────────────────────────────────────────────
+            _chi_collapse = False
+            for chi_idx, chi in enumerate(chis):
+                # Skip (D, chi) pairs that come before the resume point
+                if resume_D is not None and resume_chi is not None:
+                    if D_bond < resume_D:
+                        continue
+                    if D_bond == resume_D and chi < resume_chi:
+                        continue
+                    if D_bond == resume_D and chi == resume_chi:
+                        resume_D = None   # resume point reached; continue normally
+                        cur_params = best_params_by_D.get(D_bond)
+    
+                # equal time budget for every chi level within this D
+                chi_budget = D_budget / len(chis)
+    
+                lbfgs_iters = LBFGS_MAX_ITER
+    
+                print(f"\n  ┌── D={D_bond}  chi={chi}"
+                      f"  budget={chi_budget:.0f}s={chi_budget/60:.1f}min"
+                      f"  [{timestamp()}]")
+                sys.stdout.flush()
+    
+                best_path   = os.path.join(output_dir,
+                                           f"sweep_D{D_bond}_chi{chi}_best.pt")
+                latest_path = os.path.join(output_dir,
+                                           f"sweep_D{D_bond}_chi{chi}_latest.pt")
+                loss_log: list = []
+                all_loss_logs[(D_bond, chi)] = loss_log
+    
+                # ── Chi init: mean-field / random / warm-start ─────────────────
+                if args.mean_field_init and D_bond == D_BOND_LIST[0] and chi == DEFAULT_CHI_SCHEDULES[D_BOND_LIST[0]][0]:
+                    _init_params = _make_mean_field_params(
+                        ansatz_cfg, D_bond, d_PHYS, INIT_NOISE)
+                    if chi_idx == 0:
+                        print(f"  │  [mean-field] Néel product-state init for chi={chi}")
+                    else:
+                        print(f"  │  [mean-field] Néel product-state init for chi={chi} "
+                              f"(ignoring previous result)")
+                elif args.rand_init_new_chi and chi_idx > 0:
+                    print(f"  │  [rand-chi] random init for chi={chi} (ignoring previous result)")
+                    _init_params = None
                 else:
-                    print(f"  │  [mean-field] Néel product-state init for chi={chi} "
-                          f"(ignoring previous result)")
-            elif args.rand_init_new_chi and chi_idx > 0:
-                print(f"  │  [rand-chi] random init for chi={chi} (ignoring previous result)")
-                _init_params = None
-            else:
-                _init_params = cur_params
-
-            best_params_tuple, best_loss, global_step = optimize_at_chi(
-                Js, SdotS, D_bond, chi, d_PHYS,
-                budget_seconds=chi_budget,
-                lbfgs_max_iter=lbfgs_iters,
-                init_params=_init_params,
-                step_offset=global_step,
-                best_path=best_path,
-                latest_path=latest_path,
-                loss_log=loss_log,
-                out_dir=output_dir,
-                ansatz_cfg=ansatz_cfg,
-            )
-            # ── Brand-new tensors from raw data; kill the old run entirely ──
-            cur_params = _new_tensors_from_data(best_params_tuple)
-            del best_params_tuple
-            gc.collect()  # free old optimizer state + CTMRG envs + graph
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()  # return freed CUDA blocks to driver
-
-
-            # Clean energy evaluation + observables
-            print(f"  │  Evaluating energy & observables at (D={D_bond}, chi={chi}) ...")
-            energy, correlations, magnetizations, trunc_error = evaluate_observables(
-                list(cur_params), Js, SdotS, chi, D_bond, d_PHYS, ansatz_cfg)
-            energy_per_site = energy / N_SITES
-            _save_observables_file(
-                os.path.join(output_dir,
-                             f"D_{D_bond}_chi_{chi}"
-                             f"_energy_magnetization_correlation.txt"),
-                D_bond, chi, energy, correlations, magnetizations, trunc_error)
-            _print_observables_summary(
-                'OBS', D_bond, chi, energy, correlations, magnetizations, trunc_error)
-
-            # Save final checkpoint for this (D, chi)
-            save_checkpoint(best_path, cur_params, D_bond, chi,
-                            best_loss, energy, global_step, loss_log, ansatz_cfg)
-
-            # Log
-            record = {
-                'D_bond': D_bond, 'chi': chi,
-                'best_loss': best_loss, 'energy': energy,
-                'energy_per_site': energy_per_site,
-                'steps': len(loss_log),
-                'timestamp': timestamp(),
-            }
-            energy_table.append(record)
-            wall = time.perf_counter() - t_global_start
-            print(f"  └── E={energy:+.10f}  E/site={energy_per_site:+.10f}"
-                  f"  wall={wall/3600:.2f}h")
-
-            # ── Chi-convergence lookahead ─────────────────────────────────────
-            # Evaluate energy at chi+D and chi+2D (using current optimised
-            # tensors, no further optimisation) to test if chi is converged.
-            # BOTH |E(chi)-E(chi+D)| and |E(chi)-E(chi+2D)| must be below
-            # CHI_CONVERGENCE_THRESHOLD to declare chi convergence.
-            # Each lookahead env is fully freed before the next is built:
-            # del + gc.collect() + empty_cache() between the two evals so
-            # at no point are two lookahead envs live simultaneously.
-            # The finishing chi for D_next schedule filtering is the CURRENT
-            # chi (not chi_la), per the protocol.
-            if chi_idx < len(chis):
-                # ── Lookahead 1: chi + D ─────────────────────────────────────
-                chi_la_1 = chis[chi_idx] + D_bond
-                print(f"  │  [Lookahead+D] evaluating (D={D_bond}, chi={chi_la_1}) "
-                      f"with current tensors ...")
-                with torch.no_grad():
-                    energy_la_1, corr_la_1, mag_la_1, trunc_la_1 = evaluate_observables(
-                        list(cur_params), Js, SdotS, chi_la_1, D_bond, d_PHYS,
-                        ansatz_cfg)
+                    _init_params = cur_params
+    
+                try:
+                    best_params_tuple, best_loss, global_step = optimize_at_chi(
+                        Js, SdotS, D_bond, chi, d_PHYS,
+                        budget_seconds=chi_budget,
+                        lbfgs_max_iter=lbfgs_iters,
+                        init_params=_init_params,
+                        step_offset=global_step,
+                        best_path=best_path,
+                        latest_path=latest_path,
+                        loss_log=loss_log,
+                        out_dir=output_dir,
+                        ansatz_cfg=ansatz_cfg,
+                    )
+                except _CollapseRestartD as _exc:
+                    _chi_collapse = True
+                    break
+                # ── Brand-new tensors from raw data; kill the old run entirely ──
+                cur_params = _new_tensors_from_data(best_params_tuple)
+                del best_params_tuple
+                gc.collect()  # free old optimizer state + CTMRG envs + graph
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()  # return freed CUDA blocks to driver
+    
+    
+                # Clean energy evaluation + observables
+                print(f"  │  Evaluating energy & observables at (D={D_bond}, chi={chi}) ...")
+                energy, correlations, magnetizations, trunc_error = evaluate_observables(
+                    list(cur_params), Js, SdotS, chi, D_bond, d_PHYS, ansatz_cfg)
+                energy_per_site = energy / N_SITES
                 _save_observables_file(
                     os.path.join(output_dir,
-                                 f"D_{D_bond}_chi_{chi}+D_equals_chi_{chi_la_1}"
+                                 f"D_{D_bond}_chi_{chi}"
                                  f"_energy_magnetization_correlation.txt"),
-                    D_bond, chi_la_1, energy_la_1, corr_la_1, mag_la_1, trunc_la_1)
+                    D_bond, chi, energy, correlations, magnetizations, trunc_error)
                 _print_observables_summary(
-                    'LA+D', D_bond, chi_la_1, energy_la_1, corr_la_1, mag_la_1, trunc_la_1)
-                delta_la_1 = energy - energy_la_1
-                print(f"  │  [Lookahead+D] chi={chi}: E={energy:+.10f} │ "
-                      f"chi={chi_la_1}: E={energy_la_1:+.10f} │ "
-                      f"ΔE={delta_la_1:.3e}  "
-                      f"[thr={CHI_CONVERGENCE_THRESHOLD:.1e}]")
-                # ── Release chi+D lookahead env before building chi+2D env ───
-                # Identical pattern to the original single-lookahead cleanup:
-                # freed env tensors stay in PyTorch CUDA cache until empty_cache.
-                # Must call this BEFORE the chi+2D eval to avoid two large envs
-                # (chi+D and chi+2D) being live simultaneously.
-                del energy_la_1, corr_la_1, mag_la_1, trunc_la_1
+                    'OBS', D_bond, chi, energy, correlations, magnetizations, trunc_error)
+    
+                # Save final checkpoint for this (D, chi)
+                save_checkpoint(best_path, cur_params, D_bond, chi,
+                                best_loss, energy, global_step, loss_log, ansatz_cfg)
+    
+                # Log
+                record = {
+                    'D_bond': D_bond, 'chi': chi,
+                    'best_loss': best_loss, 'energy': energy,
+                    'energy_per_site': energy_per_site,
+                    'steps': len(loss_log),
+                    'timestamp': timestamp(),
+                }
+                energy_table.append(record)
+                wall = time.perf_counter() - t_global_start
+                print(f"  └── E={energy:+.10f}  E/site={energy_per_site:+.10f}"
+                      f"  wall={wall/3600:.2f}h")
+    
+                # ── Chi-convergence lookahead ─────────────────────────────────────
+                # Evaluate energy at chi+D and chi+2D (using current optimised
+                # tensors, no further optimisation) to test if chi is converged.
+                # BOTH |E(chi)-E(chi+D)| and |E(chi)-E(chi+2D)| must be below
+                # CHI_CONVERGENCE_THRESHOLD to declare chi convergence.
+                # Each lookahead env is fully freed before the next is built:
+                # del + gc.collect() + empty_cache() between the two evals so
+                # at no point are two lookahead envs live simultaneously.
+                # The finishing chi for D_next schedule filtering is the CURRENT
+                # chi (not chi_la), per the protocol.
+                if chi_idx < len(chis):
+                    # ── Lookahead 1: chi + D ─────────────────────────────────────
+                    chi_la_1 = chis[chi_idx] + D_bond
+                    print(f"  │  [Lookahead+D] evaluating (D={D_bond}, chi={chi_la_1}) "
+                          f"with current tensors ...")
+                    with torch.no_grad():
+                        energy_la_1, corr_la_1, mag_la_1, trunc_la_1 = evaluate_observables(
+                            list(cur_params), Js, SdotS, chi_la_1, D_bond, d_PHYS,
+                            ansatz_cfg)
+                    _save_observables_file(
+                        os.path.join(output_dir,
+                                     f"D_{D_bond}_chi_{chi}+D_equals_chi_{chi_la_1}"
+                                     f"_energy_magnetization_correlation.txt"),
+                        D_bond, chi_la_1, energy_la_1, corr_la_1, mag_la_1, trunc_la_1)
+                    _print_observables_summary(
+                        'LA+D', D_bond, chi_la_1, energy_la_1, corr_la_1, mag_la_1, trunc_la_1)
+                    delta_la_1 = energy - energy_la_1
+                    print(f"  │  [Lookahead+D] chi={chi}: E={energy:+.10f} │ "
+                          f"chi={chi_la_1}: E={energy_la_1:+.10f} │ "
+                          f"ΔE={delta_la_1:.3e}  "
+                          f"[thr={CHI_CONVERGENCE_THRESHOLD:.1e}]")
+                    # ── Release chi+D lookahead env before building chi+2D env ───
+                    # Identical pattern to the original single-lookahead cleanup:
+                    # freed env tensors stay in PyTorch CUDA cache until empty_cache.
+                    # Must call this BEFORE the chi+2D eval to avoid two large envs
+                    # (chi+D and chi+2D) being live simultaneously.
+                    del energy_la_1, corr_la_1, mag_la_1, trunc_la_1
+                    gc.collect()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+    
+                    # ── Lookahead 2: chi + 2D ────────────────────────────────────
+                    chi_la_2 = chis[chi_idx] + D_bond * 2
+                    print(f"  │  [Lookahead+2D] evaluating (D={D_bond}, chi={chi_la_2}) "
+                          f"with current tensors ...")
+                    with torch.no_grad():
+                        energy_la_2, corr_la_2, mag_la_2, trunc_la_2 = evaluate_observables(
+                            list(cur_params), Js, SdotS, chi_la_2, D_bond, d_PHYS,
+                            ansatz_cfg)
+                    _save_observables_file(
+                        os.path.join(output_dir,
+                                     f"D_{D_bond}_chi_{chi}+2D_equals_chi_{chi_la_2}"
+                                     f"_energy_magnetization_correlation.txt"),
+                        D_bond, chi_la_2, energy_la_2, corr_la_2, mag_la_2, trunc_la_2)
+                    _print_observables_summary(
+                        'LA+2D', D_bond, chi_la_2, energy_la_2, corr_la_2, mag_la_2, trunc_la_2)
+                    delta_la_2 = energy - energy_la_2
+                    print(f"  │  [Lookahead+2D] chi={chi}: E={energy:+.10f} │ "
+                          f"chi={chi_la_2}: E={energy_la_2:+.10f} │ "
+                          f"ΔE={delta_la_2:.3e}  "
+                          f"[thr={CHI_CONVERGENCE_THRESHOLD:.1e}]")
+                    # ── Release chi+2D lookahead env before next chi optimization ─
+                    # The lookahead evaluated at chi_la_2 > chi, allocating larger
+                    # env tensors.  Freed here so the next chi CTMRG gets clean
+                    # contiguous blocks — prevents OOM "605 MiB free but 1.28 GiB
+                    # requested".
+                    del energy_la_2, corr_la_2, mag_la_2, trunc_la_2
+                    gc.collect()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    if abs(delta_la_1) < CHI_CONVERGENCE_THRESHOLD and \
+                            abs(delta_la_2) < CHI_CONVERGENCE_THRESHOLD and \
+                                abs(delta_la_1 + delta_la_2) < CHI_CONVERGENCE_THRESHOLD:
+                        print(f"  │  [CHI-CONV] ΔE(chi+D)={delta_la_1:.3e} and "
+                              f"ΔE(chi+2D)={delta_la_2:.3e} tri-th "
+                              f"within {CHI_CONVERGENCE_THRESHOLD:.1e} → chi converged at "
+                              f"chi={chi}; skipping remaining chi levels for D={D_bond}.")
+                        break   # exit chi loop early; cur_params stays at chi
+
+            if _chi_collapse:
+                _d_restart_count += 1
+                print(f"\n  [D-RESTART #{_d_restart_count}] env collapsed "
+                      f"(D={D_bond}, chi={chi}); clearing state and replaying "
+                      f"chi schedule from chi={chis[0]}")
+                best_params_by_D[D_bond] = None
                 gc.collect()
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
-
-                # ── Lookahead 2: chi + 2D ────────────────────────────────────
-                chi_la_2 = chis[chi_idx] + D_bond * 2
-                print(f"  │  [Lookahead+2D] evaluating (D={D_bond}, chi={chi_la_2}) "
-                      f"with current tensors ...")
-                with torch.no_grad():
-                    energy_la_2, corr_la_2, mag_la_2, trunc_la_2 = evaluate_observables(
-                        list(cur_params), Js, SdotS, chi_la_2, D_bond, d_PHYS,
-                        ansatz_cfg)
-                _save_observables_file(
-                    os.path.join(output_dir,
-                                 f"D_{D_bond}_chi_{chi}+2D_equals_chi_{chi_la_2}"
-                                 f"_energy_magnetization_correlation.txt"),
-                    D_bond, chi_la_2, energy_la_2, corr_la_2, mag_la_2, trunc_la_2)
-                _print_observables_summary(
-                    'LA+2D', D_bond, chi_la_2, energy_la_2, corr_la_2, mag_la_2, trunc_la_2)
-                delta_la_2 = energy - energy_la_2
-                print(f"  │  [Lookahead+2D] chi={chi}: E={energy:+.10f} │ "
-                      f"chi={chi_la_2}: E={energy_la_2:+.10f} │ "
-                      f"ΔE={delta_la_2:.3e}  "
-                      f"[thr={CHI_CONVERGENCE_THRESHOLD:.1e}]")
-                # ── Release chi+2D lookahead env before next chi optimization ─
-                # The lookahead evaluated at chi_la_2 > chi, allocating larger
-                # env tensors.  Freed here so the next chi CTMRG gets clean
-                # contiguous blocks — prevents OOM "605 MiB free but 1.28 GiB
-                # requested".
-                del energy_la_2, corr_la_2, mag_la_2, trunc_la_2
-                gc.collect()
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                if abs(delta_la_1) < CHI_CONVERGENCE_THRESHOLD and \
-                        abs(delta_la_2) < CHI_CONVERGENCE_THRESHOLD and \
-                            abs(delta_la_1 + delta_la_2) < CHI_CONVERGENCE_THRESHOLD:
-                    print(f"  │  [CHI-CONV] ΔE(chi+D)={delta_la_1:.3e} and "
-                          f"ΔE(chi+2D)={delta_la_2:.3e} tri-th "
-                          f"within {CHI_CONVERGENCE_THRESHOLD:.1e} → chi converged at "
-                          f"chi={chi}; skipping remaining chi levels for D={D_bond}.")
-                    break   # exit chi loop early; cur_params stays at chi
+                continue  # re-enter while True; warm-start re-runs above
+            break  # chi schedule completed normally
 
         # Store best tensors at this D for warm-starting next D
         # (brand-new objects — old D's entire graph is released)
