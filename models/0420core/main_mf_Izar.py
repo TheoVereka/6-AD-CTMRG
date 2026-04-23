@@ -3,44 +3,52 @@
 
 
 
+#NOTE:N_cores, USE_GPU (LINE UNDER TOO!!!!!)
+# _default_outdir = os.path.join('/scratch/chye/!!YOURDATE!!!core',   
+#!!!! for IZAR is ...atch/izar/chye/...
 
 
-MY_OUTPUT_OUTERDIR = '/home/chye/6ADctmrg/data/raw'
+# # sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+# sys.stdout.flush()*3
+
+
+
+
+MY_OUTPUT_OUTERDIR = '/scratch/izar/chye/0420core'
 
 # ── Sweep control ─────────────────────────────────────────────────────────────
 
-D_BOND_LIST = [2,3,4, 5, 6]#, 7, 8, 9, 10, 11]
+D_BOND_LIST = [3,4, 5, 6, 7, 8, 9, 10, 11]
 #   Ordered list of iPEPS virtual bond dimensions to sweep (outer loop).
 #   Each D is warm-started from the best tensors found at the previous D
 #   (zero-padded to the new size + PAD_NOISE Gaussian noise).
 
 
-DEFAULT_D_BUDGET_FRACS = {2:0.1,3:0.1,4: 0.1, 5:0.1, 6:0.1}#, 7:0.1, 8:0.1, 9:0.1, 10:0.1, 11:0.1}
+DEFAULT_D_BUDGET_FRACS = {3:0.1,4: 0.1, 5:0.1, 6:0.1, 7:0.1, 8:0.1, 9:0.1, 10:0.1, 11:0.1}
 #   Fraction of the total wall-clock budget allocated to each D_bond value.
 #   Normalised to sum=1 before use, so only the RATIOS matter.
 #   Rationale:
-#     D=2 : small tensors, converges quickly — 3 % is enough.
 #     D=3 : main physics workhorse, needs the most time — 52 %.
 #     D=4 : highest accuracy but very slow per step — 45 %.
 #   Note: This is the ONLY intentional asymmetry in the sweep.  Different D
 #   values have genuinely different computational costs and scientific weight.
 #   Within each D, every chi level gets equal time (see below).
 
-DEFAULT_CHI_MAX = {2:99,3:99,4: 80, 5:9999, 6:9999}#, 7:9999, 8:9999, 9:9999, 10:9999, 11:9999}
+DEFAULT_CHI_MAX = {3:99,4: 80, 5:9999, 6:9999, 7:9999, 8:9999, 9:9999, 10:9999, 11:9999}
 #   Largest chi to attempt for each D_bond.
 #   Increase if you have more memory; decrease if you hit OOM.
 
 DEFAULT_CHI_SCHEDULES = {
-    2: [ 3,  4,  6,  8],
+    #2: [ 3,  4,  6,  8],
     3: [ 4,  6,  9, 12, 15],
     4: [ 8, 12, 16, 20, 24], 
     5: [10, 15, 20, 25, 30, 35],
     6: [18, 24, 30, 36, 42, 48],
-    #7: [21, 28, 35, 42, 49, 56, 63],
-    #8: [32, 40, 48, 56, 64, 72, 80],
-    #9: [36, 45, 54, 63, 72, 81, 90],#, 99],
-    #10:[40, 50, 60, 70, 80, 90,100],#,110,120],
-    #11:[44, 55, 66, 77, 88, 99,110],#,121,132,143],
+    7: [21, 28, 35, 42, 49, 56, 63],
+    8: [32, 40, 48, 56, 64, 72, 80],
+    9: [36, 45, 54, 63, 72, 81, 90],#, 99],
+    10:[40, 50, 60, 70, 80, 90,100],#,110,120],
+    11:[44, 55, 66, 77, 88, 99,110],#,121,132,143],
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -52,7 +60,7 @@ TOTAL_BUDGET_HOURS = 99999
 # ── GPU/CPU intent ────────────────────────────────────────────────────────────
 # Duplicated below in the TUNABLE PARAMETERS section with full comments.
 
-USE_GPU = False
+USE_GPU = True
 
 # ── Multi-GPU (optional, CUDA only) ──────────────────────────────────────────
 
@@ -69,7 +77,7 @@ N_GPUS = 1
 #   Set automatically in main() from --ngpu or torch.cuda.device_count().
 #   Override at runtime:  --ngpu N
 
-_N_PHYSICAL_CORES = 4
+_N_PHYSICAL_CORES = 25
 
 ########################
 # ── Physical model ── # ────────────────────────────────────────────────────────────
@@ -169,7 +177,7 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+# sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 import matplotlib
 matplotlib.use('Agg')
@@ -192,8 +200,8 @@ if os.environ.get("CTMRG_ANOMALY", "0") == "1":
 torch.set_num_threads(_N_PHYSICAL_CORES)
 torch.set_num_interop_threads(1)
 
-import core as _core
-from core import (
+import core_0p2to0p25 as _core
+from core_0p2to0p25 import (
     normalize_tensor,
     normalize_single_layer_tensor_for_double_layer,
     initialize_abcdef,
@@ -572,13 +580,13 @@ MEAN_FIELD_INIT = True
 #   False → default: use random init or warm-start (controlled by the flags
 #            above).  Overrideable at runtime: --mean-field-init CLI flag.
 
-RAND_INIT_NEW_D = False
+RAND_INIT_NEW_D = True
 #   True  → skip the D-1 → D padded warm-start entirely; each new D starts
 #            from a fully random initialisation (same as the very first D).
 #   False → default: pad best tensors from D-1 to size D and add PAD_NOISE.
 #   Overrideable at runtime: --rand-init-new-d CLI flag.
 
-RAND_INIT_NEW_CHI = False
+RAND_INIT_NEW_CHI = True
 #   True  → skip warm-starting from the previous chi's result; each chi
 #            level within the same D starts from a fully random initialisation.
 #   False → default: continue from best tensors found at the previous chi.
@@ -1777,7 +1785,7 @@ def optimize_at_chi(
 
         print(f"    step {step:5d}  ctm={ctm_steps:3d}  loss={loss_item:+.10f}"
               f"  Δ={delta:+.3e}  {elapsed:.0f}/{budget_seconds:.0f}s")
-        # sys.stdout.flush()
+        sys.stdout.flush()
         loss_log.append({'step': step, 'ctm_steps': ctm_steps, 'loss': loss_item,
                          'D_bond': D_bond, 'chi': chi,
                          'elapsed': round(elapsed, 1)})
@@ -2263,7 +2271,7 @@ def main():
             print(f"\n  ┌── D={D_bond}  chi={chi}"
                   f"  budget={chi_budget:.0f}s={chi_budget/60:.1f}min"
                   f"  [{timestamp()}]")
-            # sys.stdout.flush()
+            sys.stdout.flush()
 
             best_path   = os.path.join(output_dir,
                                        f"sweep_D{D_bond}_chi{chi}_best.pt")
@@ -2273,7 +2281,7 @@ def main():
             all_loss_logs[(D_bond, chi)] = loss_log
 
             # ── Chi init: mean-field / random / warm-start ─────────────────
-            if args.mean_field_init and D_bond == 3 and chi==4 :
+            if args.mean_field_init:
                 _init_params = _make_mean_field_params(
                     ansatz_cfg, D_bond, d_PHYS, INIT_NOISE)
                 if chi_idx == 0:
