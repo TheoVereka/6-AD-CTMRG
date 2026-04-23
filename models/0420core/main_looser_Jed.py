@@ -571,7 +571,7 @@ INIT_NOISE = 5e-3
 # close to the exact Néel product state and the optimizer gets 
 # stuck in a local minimum.
 
-PAD_NOISE = 1e-2
+PAD_NOISE = 5e-3
 #   Gaussian noise amplitude added to the ZERO-PADDED new indices when
 #   enlarging tensors from D → D+1.  Non-zero noise breaks the symmetry of
 #   subspace of the smaller-D manifold.  Keep comparable to INIT_NOISE.
@@ -796,7 +796,7 @@ def pad_tensor(t: torch.Tensor, old_D: int, new_D: int,
 
     out = noise * torch.randn(new_D, new_D, new_D, d_PHYS, dtype=TENSORDTYPE,
                               device=_core.DEVICE)
-    out[:old_D, :old_D, :old_D, :] += normalize_tensor(t.detach())*torch.sqrt(torch.tensor(old_D**3 * d_PHYS, dtype=TENSORDTYPE))
+    out[:old_D, :old_D, :old_D, :] += normalize_tensor(t.detach())#*torch.sqrt(torch.tensor(old_D**3 * d_PHYS, dtype=TENSORDTYPE))
     if symmetrize_fn is not None:
         out = symmetrize_fn(out)
     return out
