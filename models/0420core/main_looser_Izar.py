@@ -200,8 +200,8 @@ if os.environ.get("CTMRG_ANOMALY", "0") == "1":
 torch.set_num_threads(_N_PHYSICAL_CORES)
 torch.set_num_interop_threads(1)
 
-import core as _core
-from core import (
+import core_0p2to0p25 as _core
+from core_0p2to0p25 import (
     normalize_tensor,
     normalize_single_layer_tensor_for_double_layer,
     initialize_abcdef,
@@ -580,13 +580,13 @@ MEAN_FIELD_INIT = True
 #   False → default: use random init or warm-start (controlled by the flags
 #            above).  Overrideable at runtime: --mean-field-init CLI flag.
 
-RAND_INIT_NEW_D = False
+RAND_INIT_NEW_D = True
 #   True  → skip the D-1 → D padded warm-start entirely; each new D starts
 #            from a fully random initialisation (same as the very first D).
 #   False → default: pad best tensors from D-1 to size D and add PAD_NOISE.
 #   Overrideable at runtime: --rand-init-new-d CLI flag.
 
-RAND_INIT_NEW_CHI = False
+RAND_INIT_NEW_CHI = True
 #   True  → skip warm-starting from the previous chi's result; each chi
 #            level within the same D starts from a fully random initialisation.
 #   False → default: continue from best tensors found at the previous chi.
@@ -2281,7 +2281,7 @@ def main():
             all_loss_logs[(D_bond, chi)] = loss_log
 
             # ── Chi init: mean-field / random / warm-start ─────────────────
-            if args.mean_field_init and D_bond == 3 and chi==4 :
+            if args.mean_field_init:
                 _init_params = _make_mean_field_params(
                     ansatz_cfg, D_bond, d_PHYS, INIT_NOISE)
                 if chi_idx == 0:
