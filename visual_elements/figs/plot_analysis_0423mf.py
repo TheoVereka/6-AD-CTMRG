@@ -9,16 +9,16 @@ Analysis & plotting for 0420core jobs from node-jobid.log.
 
 Plots (only vs 1/D, no vs J2):
   For each J2 in [0.20, 0.21, 0.22, 0.23, 0.24, 0.25]:
-    energy_vsInvD_J2_XXX.pdf     — 2×2: (0,0) two | (0,1) mf | (1,0) both | empty
-    NN_vsInvD_J2_XXX.pdf         — 3×2 grid with rank-compare panels
-    NNN_vsInvD_J2_XXX.pdf        — 3×2 grid with rank-compare panels
-    order_vsInvD_J2_XXX.pdf      — 2×2: (0,0) two | (0,1) mf | (1,0) both | empty
+    energy_vsInvD_J2_XXX.png     — 2×2: (0,0) two | (0,1) mf | (1,0) both | empty
+    NN_vsInvD_J2_XXX.png         — 3×2 grid with rank-compare panels
+    NNN_vsInvD_J2_XXX.png        — 3×2 grid with rank-compare panels
+    order_vsInvD_J2_XXX.png      — 2×2: (0,0) two | (0,1) mf | (1,0) both | empty
 
   For J2 = 0.20 only (extra comparison mf vs mf1t):
-    energy_vsInvD_J2_0p20_mf_vs_mf1t.pdf
-    NN_vsInvD_J2_0p20_mf_vs_mf1t.pdf
-    NNN_vsInvD_J2_0p20_mf_vs_mf1t.pdf
-    order_vsInvD_J2_0p20_mf_vs_mf1t.pdf
+    energy_vsInvD_J2_0p20_mf_vs_mf1t.png
+    NN_vsInvD_J2_0p20_mf_vs_mf1t.png
+    NNN_vsInvD_J2_0p20_mf_vs_mf1t.png
+    order_vsInvD_J2_0p20_mf_vs_mf1t.png
 """
 import os
 import re
@@ -615,21 +615,21 @@ def plot_all(all_data, out_dir):
             plot_fn_single=_plot_energy_ax,
             plot_fn_both=_energy_both_ax,
             title_suffix='Energy per site vs 1/D',
-            fname=os.path.join(out_dir, f'energy_vsInvD_J2_{jstr}.pdf'),
+            fname=os.path.join(out_dir, f'energy_vsInvD_J2_{jstr}.png'),
         )
 
         # NN bonds vs 1/D
         _fig_3x2_bonds(
             all_data, j2, 'C6', 'C3v', 'nn_groups',
             'NN bond correlations',
-            fname=os.path.join(out_dir, f'NN_vsInvD_J2_{jstr}.pdf'),
+            fname=os.path.join(out_dir, f'NN_vsInvD_J2_{jstr}.png'),
         )
 
         # NNN bonds vs 1/D
         _fig_3x2_bonds(
             all_data, j2, 'C6', 'C3v', 'nnn_groups',
             'NNN bond correlations',
-            fname=os.path.join(out_dir, f'NNN_vsInvD_J2_{jstr}.pdf'),
+            fname=os.path.join(out_dir, f'NNN_vsInvD_J2_{jstr}.png'),
         )
 
         # Order param vs 1/D
@@ -638,7 +638,7 @@ def plot_all(all_data, out_dir):
             plot_fn_single=_plot_order_ax,
             plot_fn_both=_order_both_ax,
             title_suffix='Néel order parameter vs 1/D',
-            fname=os.path.join(out_dir, f'order_vsInvD_J2_{jstr}.pdf'),
+            fname=os.path.join(out_dir, f'order_vsInvD_J2_{jstr}.png'),
         )
 
     if False:
@@ -652,24 +652,24 @@ def plot_all(all_data, out_dir):
             plot_fn_single=_plot_energy_ax,
             plot_fn_both=_energy_both_ax,
             title_suffix='Energy per site vs 1/D  [mf vs mf1t]',
-            fname=os.path.join(out_dir, f'energy_vsInvD_{fstr}.pdf'),
+            fname=os.path.join(out_dir, f'energy_vsInvD_{fstr}.png'),
         )
         _fig_3x2_bonds(
             all_data, j2, 'mf', 'mf1t', 'nn_groups',
             'NN bond correlations  [mf vs mf1t]',
-            fname=os.path.join(out_dir, f'NN_vsInvD_{fstr}.pdf'),
+            fname=os.path.join(out_dir, f'NN_vsInvD_{fstr}.png'),
         )
         _fig_3x2_bonds(
             all_data, j2, 'mf', 'mf1t', 'nnn_groups',
             'NNN bond correlations  [mf vs mf1t]',
-            fname=os.path.join(out_dir, f'NNN_vsInvD_{fstr}.pdf'),
+            fname=os.path.join(out_dir, f'NNN_vsInvD_{fstr}.png'),
         )
         _fig_2x2_both(
             all_data, j2, 'mf', 'mf1t',
             plot_fn_single=_plot_order_ax,
             plot_fn_both=_order_both_ax,
             title_suffix='Néel order parameter vs 1/D  [mf vs mf1t]',
-            fname=os.path.join(out_dir, f'order_vsInvD_{fstr}.pdf'),
+            fname=os.path.join(out_dir, f'order_vsInvD_{fstr}.png'),
         )
 
 
