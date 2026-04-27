@@ -54,9 +54,9 @@ RANK_COLORS = {1: 'tab:red', 2: 'tab:green', 3: 'tab:blue'}
 RANK_LABELS = {1: 'rank 1 (most neg)', 2: 'rank 2 (mid)', 3: 'rank 3 (least neg)'}
 
 # Summary plot: which D values to show explicitly
-D_SHOW    = [5, 7, 8]
-D_MARKERS = {5: '^', 7: 's', 8: 'D'}
-D_ALPHAS  = {5: 0.35, 7: 0.60, 8: 0.85}
+D_SHOW    = [6, 7, 8]
+D_MARKERS = {6: '^', 7: 's', 8: 'D'}
+D_ALPHAS  = {6: 0.35, 7: 0.60, 8: 0.85}
 
 # ──────────────────────────────────────────────────────────────────────────────
 # REGEXES
