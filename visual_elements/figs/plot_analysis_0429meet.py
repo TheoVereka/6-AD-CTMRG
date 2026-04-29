@@ -29,13 +29,13 @@ os.makedirs(OUT_DIR, exist_ok=True)
 
 FOLDER_MAP = {
     0.20: '1tensor_C6Ypi__J2_0p2_20260423_185210',
-    #0.21: '1tensor_C6Ypi__J2_0p21_20260423_185249',
+    0.21: '1tensor_C6Ypi__J2_0p21_20260423_185249',
     0.22: '1tensor_C6Ypi__J2_0p22_20260423_185346',
     0.23: '1tensor_C6Ypi__J2_0p23_20260423_185446',
     0.24: '1tensor_C6Ypi__J2_0p24_20260423_185748',
     0.25: '1tensor_C6Ypi__J2_0p25_20260423_192207',
     0.26: '1tensor_C6Ypi__J2_0p26_20260425_025529',
-    #0.27: '1tensor_C6Ypi__J2_0p27_20260425_025529',
+    0.27: '1tensor_C6Ypi__J2_0p27_20260425_025529',
     0.28: '1tensor_C6Ypi__J2_0p28_20260425_030516',
     0.29: '1tensor_C6Ypi__J2_0p29_20260423_192250',
     0.30: '1tensor_C6Ypi__J2_0p3_20260423_193610',
@@ -142,20 +142,29 @@ def compute_order_param(D_data):
     for D in sorted(D_data.keys()):
         mag = D_data[D].get('mag', {})
         sz_ace, sz_bdf = [], []
+        sx_ace, sx_bdf = [], []
         for env in [1, 2, 3]:
             for site in 'ACE':
                 k = (env, site)
                 if k in mag:
                     sz_ace.append(mag[k]['Sz'])
+                    sx_ace.append(mag[k]['Sx'])
             for site in 'BDF':
                 k = (env, site)
                 if k in mag:
                     sz_bdf.append(mag[k]['Sz'])
-        m_ace  = float(np.mean(sz_ace)) if sz_ace else float('nan')
-        m_bdf  = float(np.mean(sz_bdf)) if sz_bdf else float('nan')
-        m_neel = (0.5 * abs(m_ace - m_bdf)
-                  if not (np.isnan(m_ace) or np.isnan(m_bdf)) else float('nan'))
-        result[D] = {'m_ace': m_ace, 'm_bdf': m_bdf, 'm_neel': m_neel}
+                    sx_bdf.append(mag[k]['Sx'])
+        sz_ace_mean = float(np.mean(sz_ace)) if sz_ace else float('nan')
+        sz_bdf_mean = float(np.mean(sz_bdf)) if sz_bdf else float('nan')
+        sx_ace_mean = float(np.mean(sx_ace)) if sx_ace else float('nan')
+        sx_bdf_mean = float(np.mean(sx_bdf)) if sx_bdf else float('nan')
+        if not any(np.isnan(x) for x in [sz_ace_mean, sz_bdf_mean, sx_ace_mean, sx_bdf_mean]):
+            stag_sz = 0.5 * (sz_ace_mean - sz_bdf_mean)
+            stag_sx = 0.5 * (sx_ace_mean - sx_bdf_mean)
+            m_neel = float(np.sqrt(stag_sx**2 + stag_sz**2))
+        else:
+            m_neel = float('nan')
+        result[D] = {'m_ace': sz_ace_mean, 'm_bdf': sz_bdf_mean, 'm_neel': m_neel}
     return result
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -478,7 +487,7 @@ def plot_overview_j2(v, j2, out_dir, ylims=None):
 
     # Dash-dot: exponential fit (all Ds)
     if ex['exp_popt'] is not None:
-        Ds_line = np.where(inv_line > 0, 1.0 / inv_line, np.inf)
+        Ds_line = np.where(inv_line > 1e-12, 1.0 / np.maximum(inv_line, 1e-12), 1e12)
         y_exp   = _exp_model(Ds_line, *ex['exp_popt'])
         ax_e.plot(inv_line, y_exp,
                   color='tab:green', lw=1.1, ls='-.', alpha=0.85,
@@ -752,6 +761,9 @@ def plot_summary_vs_j2(all_data, out_dir, ylims=None, use_delta_extrap=False):
     ax_m.spines['left'].set_color(m_axis_color)
     if ylims is not None and not use_delta_extrap:
         ax_d.set_ylim(ylims['nn_delta'])
+    # Same zero level: both axes start at 0
+    ax_m.set_ylim(bottom=0.0)
+    ax_d.set_ylim(bottom=0.0)
 
     # Combined legend
     lines_m, labs_m = ax_m.get_legend_handles_labels()

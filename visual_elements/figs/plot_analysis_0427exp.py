@@ -142,20 +142,29 @@ def compute_order_param(D_data):
     for D in sorted(D_data.keys()):
         mag = D_data[D].get('mag', {})
         sz_ace, sz_bdf = [], []
+        sx_ace, sx_bdf = [], []
         for env in [1, 2, 3]:
             for site in 'ACE':
                 k = (env, site)
                 if k in mag:
                     sz_ace.append(mag[k]['Sz'])
+                    sx_ace.append(mag[k]['Sx'])
             for site in 'BDF':
                 k = (env, site)
                 if k in mag:
                     sz_bdf.append(mag[k]['Sz'])
-        m_ace  = float(np.mean(sz_ace)) if sz_ace else float('nan')
-        m_bdf  = float(np.mean(sz_bdf)) if sz_bdf else float('nan')
-        m_neel = (0.5 * abs(m_ace - m_bdf)
-                  if not (np.isnan(m_ace) or np.isnan(m_bdf)) else float('nan'))
-        result[D] = {'m_ace': m_ace, 'm_bdf': m_bdf, 'm_neel': m_neel}
+                    sx_bdf.append(mag[k]['Sx'])
+        sz_ace_mean = float(np.mean(sz_ace)) if sz_ace else float('nan')
+        sz_bdf_mean = float(np.mean(sz_bdf)) if sz_bdf else float('nan')
+        sx_ace_mean = float(np.mean(sx_ace)) if sx_ace else float('nan')
+        sx_bdf_mean = float(np.mean(sx_bdf)) if sx_bdf else float('nan')
+        if not any(np.isnan(x) for x in [sz_ace_mean, sz_bdf_mean, sx_ace_mean, sx_bdf_mean]):
+            stag_sz = 0.5 * (sz_ace_mean - sz_bdf_mean)
+            stag_sx = 0.5 * (sx_ace_mean - sx_bdf_mean)
+            m_neel = float(np.sqrt(stag_sx**2 + stag_sz**2))
+        else:
+            m_neel = float('nan')
+        result[D] = {'m_ace': sz_ace_mean, 'm_bdf': sz_bdf_mean, 'm_neel': m_neel}
     return result
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -229,9 +238,9 @@ def compute_energy_extrap(Ds, eps):
 def compute_mag_extrap(Ds, mneel_list):
     """
     Linear extrapolation of m_Néel to 1/D → 0.
-    Returns (m_lin3, m_lin4, m_star, m_err):
+    Returns (m_lin2, m_lin3, m_star, m_err):
+      m_lin2 — intercept of lin fit using last 2 Ds
       m_lin3 — intercept of lin fit using last 3 Ds
-      m_lin4 — intercept of lin fit using last 4 Ds
       m_star — midpoint → best estimate
       m_err  — half-range → error bar half-width
     """
@@ -239,17 +248,17 @@ def compute_mag_extrap(Ds, mneel_list):
     m_f    = np.array(mneel_list, dtype=float)
     inv    = 1.0 / Ds_f
 
+    n2 = min(2, len(Ds_f))
+    c2 = np.polyfit(inv[-n2:], m_f[-n2:], 1)
+    m_lin2 = float(c2[1])
+
     n3 = min(3, len(Ds_f))
     c3 = np.polyfit(inv[-n3:], m_f[-n3:], 1)
     m_lin3 = float(c3[1])
 
-    n4 = min(4, len(Ds_f))
-    c4 = np.polyfit(inv[-n4:], m_f[-n4:], 1)
-    m_lin4 = float(c4[1])
-
-    m_star = 0.5 * (m_lin3 + m_lin4)
-    m_err  = 0.5 * abs(m_lin3 - m_lin4)
-    return m_lin3, m_lin4, m_star, m_err
+    m_star = 0.5 * (m_lin2 + m_lin3)
+    m_err  = 0.5 * abs(m_lin2 - m_lin3)
+    return m_lin2, m_lin3, m_star, m_err
 
 
 def compute_fixed_exp_extrap(Ds, vals, Dchar, n_fit):
@@ -271,11 +280,6 @@ def compute_fixed_exp_extrap(Ds, vals, Dchar, n_fit):
         popt, _ = curve_fit(model, Ds_fit, v_fit,
                              p0=[float(v_fit[-1]) * 0.8, float(v_fit[-1]) * 0.2],
                              maxfev=5000)
-        
-        
-        print(float(popt[0]))
-
-
         return float(popt[0]), float(popt[1]), popt
     except Exception:
         return float(vals[-1]), 0.0, None
@@ -303,7 +307,7 @@ def load_all_data():
         nn_groups   = compute_bond_groups(D_data, NN_GROUPS_RAW)
         order       = compute_order_param(D_data)
         mneel_list  = [order[D]['m_neel'] for D in Ds]
-        m_lin3, m_lin4, m_star, m_err = compute_mag_extrap(Ds, mneel_list)
+        m_lin2, m_lin3, m_star, m_err = compute_mag_extrap(Ds, mneel_list)
 
         # ── ΔNN and per-rank fixed-exp extrapolation ──────────────────────────
         Dchar = extrap['exp_popt'][2] if extrap.get('exp_popt') is not None else None
@@ -336,8 +340,8 @@ def load_all_data():
             'nn_groups':         nn_groups,
             'order':             order,
             'mneel_list':        mneel_list,
+            'm_lin2':            m_lin2,
             'm_lin3':            m_lin3,
-            'm_lin4':            m_lin4,
             'm_star':            m_star,
             'm_err':             m_err,
             'delta_per_D':       delta_per_D,
@@ -393,7 +397,7 @@ def compute_global_ylims(all_data):
         # Mag: raw m_neel + all three extrapolation values (clipped >=0)
         vals_m = [x for x in v['mneel_list'] if not np.isnan(x)]
         all_m.extend(vals_m)
-        for val in [v['m_lin3'], v['m_lin4'], v['m_star']]:
+        for val in [v['m_lin2'], v['m_lin3'], v['m_star']]:
             all_m.append(max(0.0, val))
         # NN bond means
         for D_entry in v['nn_groups'].values():
@@ -433,8 +437,8 @@ def plot_overview_j2(v, j2, out_dir, ylims=None):
     order      = v['order']
     nn_grp     = v['nn_groups']
     mneel_list = np.array(v['mneel_list'])
+    m_lin2     = v['m_lin2']
     m_lin3     = v['m_lin3']
-    m_lin4     = v['m_lin4']
     m_star     = v['m_star']
     m_err      = v['m_err']
 
@@ -478,7 +482,7 @@ def plot_overview_j2(v, j2, out_dir, ylims=None):
 
     # Dash-dot: exponential fit (all Ds)
     if ex['exp_popt'] is not None:
-        Ds_line = np.where(inv_line > 0, 1.0 / inv_line, np.inf)
+        Ds_line = np.where(inv_line > 1e-12, 1.0 / np.maximum(inv_line, 1e-12), 1e12)
         y_exp   = _exp_model(Ds_line, *ex['exp_popt'])
         ax_e.plot(inv_line, y_exp,
                   color='tab:green', lw=1.1, ls='-.', alpha=0.85,
@@ -509,24 +513,24 @@ def plot_overview_j2(v, j2, out_dir, ylims=None):
         ax_m.axhline(float(m_v[-1]), color=col_m, lw=0.9, ls=':', alpha=0.55,
                       label=f'm(D={int(1/inv_v[-1])})')
 
-        # Dashed orange: lin fit last 3 Ds
+        # Dashed orange: lin fit last 2 Ds
+        n2m = min(2, len(inv_v))
+        c2m = np.polyfit(inv_v[-n2m:], m_v[-n2m:], 1)
+        ax_m.plot(inv_line, np.polyval(c2m, inv_line),
+                  color='tab:orange', lw=1.1, ls='--', alpha=0.85,
+                  label=f'lin fit (last {n2m} D): intercept={m_lin2:.4f}')
+
+        # Dash-dot red: lin fit last 3 Ds
         n3m = min(3, len(inv_v))
         c3m = np.polyfit(inv_v[-n3m:], m_v[-n3m:], 1)
         ax_m.plot(inv_line, np.polyval(c3m, inv_line),
-                  color='tab:orange', lw=1.1, ls='--', alpha=0.85,
+                  color='tab:red', lw=1.1, ls='-.', alpha=0.85,
                   label=f'lin fit (last {n3m} D): intercept={m_lin3:.4f}')
 
-        # Dash-dot red: lin fit last 4 Ds
-        n4m = min(4, len(inv_v))
-        c4m = np.polyfit(inv_v[-n4m:], m_v[-n4m:], 1)
-        ax_m.plot(inv_line, np.polyval(c4m, inv_line),
-                  color='tab:red', lw=1.1, ls='-.', alpha=0.85,
-                  label=f'lin fit (last {n4m} D): intercept={m_lin4:.4f}')
-
     # Star with ASYMMETRIC clipped error bar at x=0
-    # three values: m_lastD, m_lin3, m_lin4 sorted → median=center, min=lower, max=upper
+    # three values: m_lastD, m_lin2, m_lin3 sorted → median=center, min=lower, max=upper
     m_lastD = mneel_list[-1] if len(mneel_list) > 0 and not np.isnan(mneel_list[-1]) else 0.0
-    three_vals = sorted([m_lastD, m_lin3, m_lin4])
+    three_vals = sorted([m_lastD, m_lin2, m_lin3])
     m_ctr = max(0.0, three_vals[1])   # median
     m_lo  = max(0.0, three_vals[0])   # min
     m_hi  = max(0.0, three_vals[2])   # max
@@ -587,39 +591,31 @@ def plot_overview_j2(v, j2, out_dir, ylims=None):
     _save(fig, os.path.join(out_dir, f'overview_J2_{jstr}.pdf'))
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 7. Summary figure: statistics vs J2  (two variants)
+# 7. Summary figure: statistics vs J2
 # ──────────────────────────────────────────────────────────────────────────────
-def plot_summary_vs_j2(all_data, out_dir, ylims=None, use_delta_extrap=False):
+def plot_summary_vs_j2(all_data, out_dir, ylims=None):
     """
     Two panels sharing the J2 x-axis.
-    use_delta_extrap=False → ΔNN per-D curves (raw last chi).
-    use_delta_extrap=True  → ΔNN replaced by fixed-exp D→∞ extrapolated values
-                              (single starred line, no error bar).
 
     Panel 1: E per site vs J2
-      • D=6, D=7, D=9 raw curves (Blues cmap, increasing opacity, ▲/■/◆)
+      • D=6, D=7, D=9 raw curves (Blues cmap, ▲/■/◆)
       • Extrapolation with error bars (darkest blue, ★)
 
     Panel 2: m_Néel (left y-axis, Purples) + ΔNN (right y-axis, Oranges)
-      • m_Néel:  D curves + extrapolation  (same markers as panel 1)
-      • ΔNN:     D curves  (or extrap star when use_delta_extrap=True)
-      • Axis label colors match their respective colormaps.
+      • m_Néel:  D curves + extrapolation with asymmetric error bars
+      • ΔNN:     D curves (raw per D) + fixed-exp D→∞ extrapolated ★
+      • Both y-axes share the same zero level (bottom=0).
     """
-    j2_arr = np.array(sorted(all_data.keys()))
-
     # ── Collect arrays ────────────────────────────────────────────────────────
-    # Energy
-    e_by_D   = {D: ([], []) for D in D_SHOW}   # (j2_list, e_list)
+    e_by_D   = {D: ([], []) for D in D_SHOW}
     e_ext_j2 = []; e_ext_val = []; e_ext_err = []
 
-    # Magnetization (asymmetric clipped error bars)
     m_by_D    = {D: ([], []) for D in D_SHOW}
     m_ext_j2  = []; m_ext_val = []
-    m_ext_elo = []; m_ext_ehi = []   # asymmetric yerr [down, up]
+    m_ext_elo = []; m_ext_ehi = []
 
-    # NN Delta
-    d_by_D      = {D: ([], []) for D in D_SHOW}   # Delta = max(means) - min(means)
-    d_ext_j2    = []; d_ext_val = []               # fixed-exp extrapolated ΔNN
+    d_by_D   = {D: ([], []) for D in D_SHOW}
+    d_ext_j2 = []; d_ext_val = []
 
     for j2 in sorted(all_data.keys()):
         v  = all_data[j2]
@@ -640,24 +636,23 @@ def plot_summary_vs_j2(all_data, out_dir, ylims=None, use_delta_extrap=False):
         e_ext_val.append(v['extrap']['E_best'])
         e_ext_err.append(v['extrap']['E_err'])
 
-        # asymmetric clipped m extrapolation: center=median, bounds=min/max of [m_lastD, m_lin3, m_lin4]
+        # asymmetric clipped m extrapolation: center=median, bounds=min/max of [m_lastD, m_lin2, m_lin3]
         m_lastD = v['mneel_list'][-1] if len(v['mneel_list']) > 0 and not np.isnan(v['mneel_list'][-1]) else 0.0
-        three_vals = sorted([m_lastD, v['m_lin3'], v['m_lin4']])
-        m_ctr = max(0.0, three_vals[1])   # median
-        m_lo  = max(0.0, three_vals[0])   # min
-        m_hi  = max(0.0, three_vals[2])   # max
+        three_vals = sorted([m_lastD, v['m_lin2'], v['m_lin3']])
+        m_ctr = max(0.0, three_vals[1])
+        m_lo  = max(0.0, three_vals[0])
+        m_hi  = max(0.0, three_vals[2])
         m_ext_j2.append(j2)
         m_ext_val.append(m_ctr)
         m_ext_elo.append(m_ctr - m_lo)
         m_ext_ehi.append(m_hi - m_ctr)
 
     # ── Color palettes ────────────────────────────────────────────────────────
-    E_cmap      = plt.get_cmap('Blues')
-    m_cmap      = plt.get_cmap('Purples')
-    d_cmap      = plt.get_cmap('Oranges')
+    E_cmap = plt.get_cmap('Blues')
+    m_cmap = plt.get_cmap('Purples')
+    d_cmap = plt.get_cmap('Oranges')
 
-    n_curves    = len(D_SHOW)
-    # base colors at evenly spaced positions; extrapolation gets darkest
+    n_curves = len(D_SHOW)
     def _palette(cmap, n):
         return [cmap(0.35 + 0.45 * i / max(n - 1, 1)) for i in range(n)]
 
@@ -665,12 +660,10 @@ def plot_summary_vs_j2(all_data, out_dir, ylims=None, use_delta_extrap=False):
     m_cols   = _palette(m_cmap, n_curves); m_col_ext = m_cmap(0.95)
     d_cols   = _palette(d_cmap, n_curves); d_col_ext = d_cmap(0.95)
 
-    # Axis brand colors (used for y-axis labels / ticks)
     m_axis_color = m_cmap(0.80)
     d_axis_color = d_cmap(0.80)
 
     # ── Figure ────────────────────────────────────────────────────────────────
-    suffix = 'extrap' if use_delta_extrap else 'raw'
     fig, (ax_e, ax_m) = plt.subplots(2, 1, figsize=(9, 10), sharex=True,
                                       gridspec_kw={'hspace': 0.10})
 
@@ -689,8 +682,7 @@ def plot_summary_vs_j2(all_data, out_dir, ylims=None, use_delta_extrap=False):
                   label='extrap (D→∞)')
 
     ax_e.set_ylabel('Energy per site', fontsize=11)
-    title_suffix = ' [ΔNN: D→∞ extrap]' if use_delta_extrap else ' [ΔNN: raw per D]'
-    ax_e.set_title('C6Yπ — statistics vs J2' + title_suffix, fontsize=12, pad=6)
+    ax_e.set_title('C6Yπ — statistics vs J2', fontsize=12, pad=6)
     ax_e.legend(fontsize=9, loc='best')
     ax_e.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
     ax_e.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
@@ -700,7 +692,7 @@ def plot_summary_vs_j2(all_data, out_dir, ylims=None, use_delta_extrap=False):
     # ── Panel 2: m_Néel (left) + ΔNN (right) ─────────────────────────────────
     ax_d = ax_m.twinx()
 
-    # --- m_Néel data (left axis) ---
+    # m_Néel: D curves + extrap
     for i, D in enumerate(D_SHOW):
         j2s, ms = m_by_D[D]
         if j2s:
@@ -715,38 +707,34 @@ def plot_summary_vs_j2(all_data, out_dir, ylims=None, use_delta_extrap=False):
                   markeredgewidth=0.5, markeredgecolor='k',
                   label='m extrap')
 
+    # ΔNN: D curves + extrapolation
+    for i, D in enumerate(D_SHOW):
+        j2s, ds = d_by_D[D]
+        if j2s:
+            ax_d.plot(j2s, ds, D_MARKERS[D] + '--',
+                      color=d_cols[i], alpha=D_ALPHAS[D],
+                      ms=7, lw=1.1, label=f'ΔNN D={D}')
+    if d_ext_j2:
+        ax_d.plot(d_ext_j2, d_ext_val, '*-',
+                  color=d_col_ext, ms=12, lw=1.5,
+                  markeredgewidth=0.5, markeredgecolor='k',
+                  label=f'ΔNN extrap D→∞ (N={N_FIT_CORR})')
+
+    # y-axis styling
     ax_m.set_ylabel(r'm$_\mathrm{N\acute{e}el}$', fontsize=11, color=m_axis_color)
     ax_m.tick_params(axis='y', labelcolor=m_axis_color)
-    if ylims is not None:
-        ax_m.set_ylim(ylims['mag'])
-    else:
-        ax_m.set_ylim(bottom=0.0)
-
-    # --- ΔNN data (right axis) ---
-    if True:
-    #if not use_delta_extrap:
-        # raw per-D curves
-        for i, D in enumerate(D_SHOW):
-            j2s, ds = d_by_D[D]
-            if j2s:
-                ax_d.plot(j2s, ds, D_MARKERS[D] + '--',
-                          color=d_cols[i], alpha=D_ALPHAS[D],
-                          ms=7, lw=1.1, label=f'ΔNN D={D}')
-    #else:
-        # fixed-exp D→∞ extrapolated values, centre only (no errbar)
-        if d_ext_j2:
-            ax_d.plot(d_ext_j2, d_ext_val, '*-',
-                      color=d_col_ext, ms=12, lw=1.5,
-                      markeredgewidth=0.5, markeredgecolor='k',
-                      label=f'ΔNN extrap D→∞ (N={N_FIT_CORR})')
-
     ax_d.set_ylabel(r'$\Delta_\mathrm{NN}$ = max$-$min corr', fontsize=11,
                     color=d_axis_color)
     ax_d.tick_params(axis='y', labelcolor=d_axis_color)
     ax_d.spines['right'].set_color(d_axis_color)
     ax_m.spines['left'].set_color(m_axis_color)
-    if ylims is not None and not use_delta_extrap:
+
+    # Same zero level: both axes start at 0
+    if ylims is not None:
+        ax_m.set_ylim(ylims['mag'])
         ax_d.set_ylim(ylims['nn_delta'])
+    ax_m.set_ylim(bottom=0.0)
+    ax_d.set_ylim(bottom=0.0)
 
     # Combined legend
     lines_m, labs_m = ax_m.get_legend_handles_labels()
@@ -759,7 +747,7 @@ def plot_summary_vs_j2(all_data, out_dir, ylims=None, use_delta_extrap=False):
     ax_m.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.4g'))
     ax_d.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.4g'))
 
-    _save(fig, os.path.join(out_dir, f'summary_{suffix}_vs_J2.pdf'))
+    _save(fig, os.path.join(out_dir, 'summary_vs_J2.pdf'))
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 8. JSON dump
@@ -799,9 +787,8 @@ def main():
     for j2, v in sorted(all_data.items()):
         plot_overview_j2(v, j2, OUT_DIR, ylims=_ov_ylims)
 
-    print("Generating summary figures ...")
-    plot_summary_vs_j2(all_data, OUT_DIR, ylims=_sum_ylims, use_delta_extrap=False)
-    plot_summary_vs_j2(all_data, OUT_DIR, ylims=_sum_ylims, use_delta_extrap=True)
+    print("Generating summary figure ...")
+    plot_summary_vs_j2(all_data, OUT_DIR, ylims=_sum_ylims)
 
     print(f"\nDone.  All figures in: {OUT_DIR}")
 
