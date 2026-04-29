@@ -162,7 +162,7 @@ def compute_order_param(D_data):
 # 3. Extrapolation helpers
 # ──────────────────────────────────────────────────────────────────────────────
 def _exp_model(D, E0, c, Dchar):
-    return E0 + c * np.pow(np.asarray(D, dtype=float),Dchar)
+    return E0 + c * np.exp(-np.asarray(D/Dchar, dtype=float))
 
 
 def compute_energy_extrap(Ds, eps):
@@ -266,7 +266,7 @@ def compute_fixed_exp_extrap(Ds, vals, Dchar, n_fit):
     Ds_fit = Ds[-n_use:]
     v_fit  = vals[-n_use:]
     def model(D, A, B):
-        return A + B * np.pow(np.asarray(D, dtype=float),Dchar)
+        return A + B * np.exp(-np.asarray(D/Dchar, dtype=float))
     try:
         popt, _ = curve_fit(model, Ds_fit, v_fit,
                              p0=[float(v_fit[-1]) * 0.8, float(v_fit[-1]) * 0.2],
@@ -570,7 +570,7 @@ def plot_overview_j2(v, j2, out_dir, ylims=None):
             re = v['rank_extrap'][target_rank]
             if re['popt'] is not None and Dchar is not None:
                 A, B = re['A'], re['B']
-                y_fit = A + B * np.pow(np.asarray(D, dtype=float),Dchar)
+                y_fit = A + B * np.exp(-D_dense / Dchar )
                 ax_nn.plot(inv_dense, y_fit,
                            color=RANK_COLORS[target_rank], lw=0.9, ls='--', alpha=0.6)
                 # Extrapolated intercept star at 1/D → 0
