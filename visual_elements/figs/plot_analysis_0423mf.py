@@ -55,6 +55,9 @@ FOLDER_MAP = {
         0.30: '1tensor_C6Ypi__J2_0p3_20260423_193610',
     },
     'C3v': {
+        0.21: '1tensor_C3Vypi__J2_0p21_20260428_201139',
+        0.23: '1tensor_C3Vypi__J2_0p23_20260427_191513',
+        0.25: '1tensor_C3Vypi__J2_0p25_20260427_205614',
         0.26: '1tensor_C3Vypi__J2_0p26_20260425_032814',
         0.27: '1tensor_C3Vypi__J2_0p27_20260425_032814',
         0.28: '1tensor_C3Vypi__J2_0p28_20260425_031820',
@@ -370,7 +373,7 @@ def _plot_energy_ax(ax, v, col, lbl, marker='o'):
             markeredgewidth=0.4, markeredgecolor='k', label='_nolegend_')
     ax.set_xlim(left=0, right=1/2.5)
     # y lim set to global min and max of E across all ansätze
-    ax.set_ylim(bottom=GLOBAL_MIN_E - 0.01, top=GLOBAL_MAX_E + 0.01)
+    ax.set_ylim(bottom=GLOBAL_MIN_E - 0.001, top=GLOBAL_MAX_E + 0.001)
     ax.set_xlabel('1/D', fontsize=11)
     ax.set_ylabel('Energy per site', fontsize=11)
 
@@ -398,7 +401,7 @@ def _plot_bonds_invD_ax(ax, v, bond_key, ansatz):
         ax.plot(inv, means_for_rank, 'o-', color=col, ms=4, lw=1.2,
                 label=RANK_LABELS[target_rank])
     ax.set_xlim(left=0,right=1/2.5)
-    ax.set_ylim(bottom=GLOBAL_MIN_BOND_NN-0.01 if bond_key == 'nn_groups' else GLOBAL_MIN_BOND_NNN-0.01, top=GLOBAL_MAX_BOND_NN+0.01 if bond_key == 'nn_groups' else GLOBAL_MAX_BOND_NNN+0.01)
+    ax.set_ylim(bottom=GLOBAL_MIN_BOND_NN-0.001 if bond_key == 'nn_groups' else GLOBAL_MIN_BOND_NNN-0.001, top=GLOBAL_MAX_BOND_NN+0.001 if bond_key == 'nn_groups' else GLOBAL_MAX_BOND_NNN+0.001)
     ax.set_xlabel('1/D', fontsize=11)
     ax.set_ylabel('⟨Sᵢ·Sⱼ⟩', fontsize=11)
     ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.4g'))
@@ -427,7 +430,7 @@ def _plot_bonds_invD_rank_compare(ax, v_a, v_b, bond_key, rank, ansatz_a, ansatz
         inv = [1.0 / D for D in D_for_rank]
         ax.plot(inv, means_for_rank, mkr + ls, color=col, ms=4, lw=1.2, label=lbl)
     ax.set_xlim(left=0, right=1/2.5)
-    ax.set_ylim(bottom=GLOBAL_MIN_BOND_NN-0.01 if bond_key == 'nn_groups' else GLOBAL_MIN_BOND_NNN-0.01, top=GLOBAL_MAX_BOND_NN+0.01 if bond_key == 'nn_groups' else GLOBAL_MAX_BOND_NNN+0.01)
+    ax.set_ylim(bottom=GLOBAL_MIN_BOND_NN-0.001 if bond_key == 'nn_groups' else GLOBAL_MIN_BOND_NNN-0.001, top=GLOBAL_MAX_BOND_NN+0.001 if bond_key == 'nn_groups' else GLOBAL_MAX_BOND_NNN+0.001)
     ax.set_xlabel('1/D', fontsize=11)
     ax.set_ylabel('⟨Sᵢ·Sⱼ⟩', fontsize=11)
     ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.4g'))
@@ -443,7 +446,7 @@ def _plot_order_ax(ax, v, col, lbl, marker='o'):
     mneel = [v['order'][D]['m_neel'] for D in v['Ds']]
     ax.plot(inv, mneel, marker + '-', color=col, ms=5, lw=1.4, label=lbl)
     ax.set_xlim(left=0, right=1/2.5)
-    ax.set_ylim(bottom=-0.01, top=GLOBAL_MAX_ORDER+0.01)
+    ax.set_ylim(bottom=-0.001, top=GLOBAL_MAX_ORDER+0.001)
     ax.set_xlabel('1/D', fontsize=11)
     ax.set_ylabel('m_Néel', fontsize=11)
 
@@ -687,10 +690,12 @@ def main():
         v['energy_per_site'][i]
         for ansatz in all_data.values() for v in ansatz.values() for i in range(len(v['energy_per_site']))
     )
+    #GLOBAL_MIN_E = -0.452
     GLOBAL_MAX_E = max(
         v['energy_per_site'][i]
         for ansatz in all_data.values() for v in ansatz.values() for i in range(len(v['energy_per_site']))
     )
+    #GLOBAL_MAX_E = -0.432
     GLOBAL_MAX_ORDER = max(
         v['order'][D]['m_neel']
         for ansatz in all_data.values() for v in ansatz.values() for D in v['order']

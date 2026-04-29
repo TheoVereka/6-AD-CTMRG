@@ -54,9 +54,9 @@ RANK_COLORS = {1: 'tab:red', 2: 'tab:green', 3: 'tab:blue'}
 RANK_LABELS = {1: 'rank 1 (most neg)', 2: 'rank 2 (mid)', 3: 'rank 3 (least neg)'}
 
 # Summary plot: which D values to show explicitly
-D_SHOW    = [6, 7, 8]
-D_MARKERS = {6: '^', 7: 's', 8: 'D'}
-D_ALPHAS  = {6: 0.35, 7: 0.60, 8: 0.85}
+D_SHOW    = [6, 7, 9]
+D_MARKERS = {6: '^', 7: 's', 9: 'D'}
+D_ALPHAS  = {6: 0.35, 7: 0.60, 9: 0.85}
 
 # ──────────────────────────────────────────────────────────────────────────────
 # REGEXES
@@ -248,6 +248,30 @@ def compute_mag_extrap(Ds, mneel_list):
     m_err  = 0.5 * abs(m_lin2 - m_lin3)
     return m_lin2, m_lin3, m_star, m_err
 
+
+def compute_fixed_exp_extrap(Ds, vals, Dchar, n_fit):
+    """
+    Fit  f(D) = A + B * exp(-D / Dchar)  with Dchar FIXED (from the energy fit).
+    Uses the last n_fit D values.  Returns (A, B, popt) where A is the D→∞
+    extrapolated value, or (vals[-1], 0, None) as fallback.
+    """
+    Ds   = np.array(Ds,   dtype=float)
+    vals = np.array(vals, dtype=float)
+    n_use = min(n_fit, len(Ds))
+    if n_use < 2 or Dchar is None or Dchar <= 0:
+        return float(vals[-1]), 0.0, None
+    Ds_fit = Ds[-n_use:]
+    v_fit  = vals[-n_use:]
+    def model(D, A, B):
+        return A + B * np.exp(-np.asarray(D, dtype=float) / Dchar)
+    try:
+        popt, _ = curve_fit(model, Ds_fit, v_fit,
+                             p0=[float(v_fit[-1]) * 0.8, float(v_fit[-1]) * 0.2],
+                             maxfev=5000)
+        return float(popt[0]), float(popt[1]), popt
+    except Exception:
+        return float(vals[-1]), 0.0, None
+
 # ──────────────────────────────────────────────────────────────────────────────
 # 4. Load all data
 # ──────────────────────────────────────────────────────────────────────────────
@@ -272,6 +296,31 @@ def load_all_data():
         order       = compute_order_param(D_data)
         mneel_list  = [order[D]['m_neel'] for D in Ds]
         m_lin2, m_lin3, m_star, m_err = compute_mag_extrap(Ds, mneel_list)
+
+        # ── ΔNN and per-rank fixed-exp extrapolation ──────────────────────────
+        Dchar = extrap['exp_popt'][2] if extrap.get('exp_popt') is not None else None
+
+        # ΔNN = max - min of the 3 group means  per D
+        delta_per_D = []
+        for D in Ds:
+            m = nn_groups[D]['means']
+            delta_per_D.append(max(m) - min(m))
+        delta_extrap_A, _, _ = compute_fixed_exp_extrap(
+            Ds, delta_per_D, Dchar, N_FIT_CORR)
+
+        # Per-rank (1 = most-neg, 3 = least-neg) fixed-exp fit: store popt per rank
+        rank_extrap = {}   # rank → {'A': float, 'B': float, 'popt': array|None}
+        for target_rank in [1, 3]:
+            rank_vals = []
+            for D in Ds:
+                entry = nn_groups[D]
+                val = next((entry['means'][gi] for gi, r in enumerate(entry['ranks'])
+                            if r == target_rank), float('nan'))
+                rank_vals.append(val)
+            A, B, popt = compute_fixed_exp_extrap(Ds, rank_vals, Dchar, N_FIT_CORR)
+            rank_extrap[target_rank] = {'A': A, 'B': B, 'popt': popt,
+                                        'vals': rank_vals}
+
         data[j2] = {
             'Ds':                Ds,
             'energy_per_site':   eps,
@@ -283,6 +332,9 @@ def load_all_data():
             'm_lin3':            m_lin3,
             'm_star':            m_star,
             'm_err':             m_err,
+            'delta_per_D':       delta_per_D,
+            'delta_extrap_A':    delta_extrap_A,
+            'rank_extrap':       rank_extrap,
         }
     return data
 
@@ -484,8 +536,14 @@ def plot_overview_j2(v, j2, out_dir, ylims=None):
     ax_m.legend(fontsize=8, loc='upper right')
     ax_m.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
 
-    # ── Panel 3: NN correlations (3 ranks, no fit) ────────────────────────────
-    D_list = sorted(nn_grp.keys())
+    # ── Panel 3: NN correlations (3 ranks) + fixed-exp fit for ranks 1 & 3 ───
+    D_list   = sorted(nn_grp.keys())
+    Ds_arr   = np.array(v['Ds'], dtype=float)
+    Dchar    = (v['extrap']['exp_popt'][2]
+                if v['extrap'].get('exp_popt') is not None else None)
+    D_dense  = np.linspace(Ds_arr[0], Ds_arr[-1] * 6, 400)   # dense D for fit curve
+    inv_dense = 1.0 / D_dense
+
     for target_rank in [1, 2, 3]:
         D_r, m_r = [], []
         for D in D_list:
@@ -499,6 +557,18 @@ def plot_overview_j2(v, j2, out_dir, ylims=None):
                    color=RANK_COLORS[target_rank], ms=5, lw=1.2,
                    label=RANK_LABELS[target_rank])
 
+        # Fixed-Dchar exp fit for ranks 1 and 3 only
+        if target_rank in [1, 3] and target_rank in v.get('rank_extrap', {}):
+            re = v['rank_extrap'][target_rank]
+            if re['popt'] is not None and Dchar is not None:
+                A, B = re['A'], re['B']
+                y_fit = A + B * np.exp(-D_dense / Dchar)
+                ax_nn.plot(inv_dense, y_fit,
+                           color=RANK_COLORS[target_rank], lw=0.9, ls='--', alpha=0.6)
+                # Extrapolated intercept star at 1/D → 0
+                ax_nn.plot(0, A, '*', color=RANK_COLORS[target_rank], ms=11,
+                           markeredgewidth=0.4, markeredgecolor='k', zorder=7)
+
     ax_nn.set_ylabel(r'$\langle S_i \cdot S_j \rangle$ (NN)', fontsize=11)
     ax_nn.legend(fontsize=8, loc='upper right')
     ax_nn.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
@@ -509,19 +579,22 @@ def plot_overview_j2(v, j2, out_dir, ylims=None):
     _save(fig, os.path.join(out_dir, f'overview_J2_{jstr}.pdf'))
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 7. Summary figure: statistics vs J2
+# 7. Summary figure: statistics vs J2  (two variants)
 # ──────────────────────────────────────────────────────────────────────────────
-def plot_summary_vs_j2(all_data, out_dir, ylims=None):
+def plot_summary_vs_j2(all_data, out_dir, ylims=None, use_delta_extrap=False):
     """
     Two panels sharing the J2 x-axis.
+    use_delta_extrap=False → ΔNN per-D curves (raw last chi).
+    use_delta_extrap=True  → ΔNN replaced by fixed-exp D→∞ extrapolated values
+                              (single starred line, no error bar).
 
     Panel 1: E per site vs J2
-      • D=5, D=7, D=8 raw curves (Blues cmap, increasing opacity, ▲/■/◆)
+      • D=6, D=7, D=9 raw curves (Blues cmap, increasing opacity, ▲/■/◆)
       • Extrapolation with error bars (darkest blue, ★)
 
     Panel 2: m_Néel (left y-axis, Purples) + ΔNN (right y-axis, Oranges)
-      • m_Néel:  D=5, D=7, D=8 + extrapolation  (same markers as panel 1)
-      • ΔNN:     D=5, D=7, D=8 only              (same markers, dashed)
+      • m_Néel:  D curves + extrapolation  (same markers as panel 1)
+      • ΔNN:     D curves  (or extrap star when use_delta_extrap=True)
       • Axis label colors match their respective colormaps.
     """
     j2_arr = np.array(sorted(all_data.keys()))
@@ -537,7 +610,8 @@ def plot_summary_vs_j2(all_data, out_dir, ylims=None):
     m_ext_elo = []; m_ext_ehi = []   # asymmetric yerr [down, up]
 
     # NN Delta
-    d_by_D   = {D: ([], []) for D in D_SHOW}   # Delta = max(means) - min(means)
+    d_by_D      = {D: ([], []) for D in D_SHOW}   # Delta = max(means) - min(means)
+    d_ext_j2    = []; d_ext_val = []               # fixed-exp extrapolated ΔNN
 
     for j2 in sorted(all_data.keys()):
         v  = all_data[j2]
@@ -550,6 +624,9 @@ def plot_summary_vs_j2(all_data, out_dir, ylims=None):
                 m_by_D[D][0].append(j2); m_by_D[D][1].append(v['mneel_list'][idx])
                 nn = v['nn_groups'][D]['means']
                 d_by_D[D][0].append(j2); d_by_D[D][1].append(max(nn) - min(nn))
+
+        if v.get('delta_extrap_A') is not None:
+            d_ext_j2.append(j2); d_ext_val.append(v['delta_extrap_A'])
 
         e_ext_j2.append(j2)
         e_ext_val.append(v['extrap']['E_best'])
@@ -578,13 +655,14 @@ def plot_summary_vs_j2(all_data, out_dir, ylims=None):
 
     E_cols   = _palette(E_cmap, n_curves); E_col_ext = E_cmap(0.95)
     m_cols   = _palette(m_cmap, n_curves); m_col_ext = m_cmap(0.95)
-    d_cols   = _palette(d_cmap, n_curves)
+    d_cols   = _palette(d_cmap, n_curves); d_col_ext = d_cmap(0.95)
 
     # Axis brand colors (used for y-axis labels / ticks)
     m_axis_color = m_cmap(0.80)
     d_axis_color = d_cmap(0.80)
 
     # ── Figure ────────────────────────────────────────────────────────────────
+    suffix = 'extrap' if use_delta_extrap else 'raw'
     fig, (ax_e, ax_m) = plt.subplots(2, 1, figsize=(9, 10), sharex=True,
                                       gridspec_kw={'hspace': 0.10})
 
@@ -603,7 +681,8 @@ def plot_summary_vs_j2(all_data, out_dir, ylims=None):
                   label='extrap (D→∞)')
 
     ax_e.set_ylabel('Energy per site', fontsize=11)
-    ax_e.set_title('C6Yπ — statistics vs J2', fontsize=12, pad=6)
+    title_suffix = ' [ΔNN: D→∞ extrap]' if use_delta_extrap else ' [ΔNN: raw per D]'
+    ax_e.set_title('C6Yπ — statistics vs J2' + title_suffix, fontsize=12, pad=6)
     ax_e.legend(fontsize=9, loc='best')
     ax_e.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
     ax_e.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
@@ -636,19 +715,28 @@ def plot_summary_vs_j2(all_data, out_dir, ylims=None):
         ax_m.set_ylim(bottom=0.0)
 
     # --- ΔNN data (right axis) ---
-    for i, D in enumerate(D_SHOW):
-        j2s, ds = d_by_D[D]
-        if j2s:
-            ax_d.plot(j2s, ds, D_MARKERS[D] + '--',
-                      color=d_cols[i], alpha=D_ALPHAS[D],
-                      ms=7, lw=1.1, label=f'ΔNN D={D}')
+    if not use_delta_extrap:
+        # raw per-D curves
+        for i, D in enumerate(D_SHOW):
+            j2s, ds = d_by_D[D]
+            if j2s:
+                ax_d.plot(j2s, ds, D_MARKERS[D] + '--',
+                          color=d_cols[i], alpha=D_ALPHAS[D],
+                          ms=7, lw=1.1, label=f'ΔNN D={D}')
+    else:
+        # fixed-exp D→∞ extrapolated values, centre only (no errbar)
+        if d_ext_j2:
+            ax_d.plot(d_ext_j2, d_ext_val, '*-',
+                      color=d_col_ext, ms=12, lw=1.5,
+                      markeredgewidth=0.5, markeredgecolor='k',
+                      label=f'ΔNN extrap D→∞ (N={N_FIT_CORR})')
 
     ax_d.set_ylabel(r'$\Delta_\mathrm{NN}$ = max$-$min corr', fontsize=11,
                     color=d_axis_color)
     ax_d.tick_params(axis='y', labelcolor=d_axis_color)
     ax_d.spines['right'].set_color(d_axis_color)
     ax_m.spines['left'].set_color(m_axis_color)
-    if ylims is not None:
+    if ylims is not None and not use_delta_extrap:
         ax_d.set_ylim(ylims['nn_delta'])
 
     # Combined legend
@@ -662,7 +750,7 @@ def plot_summary_vs_j2(all_data, out_dir, ylims=None):
     ax_m.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.4g'))
     ax_d.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.4g'))
 
-    _save(fig, os.path.join(out_dir, 'summary_vs_J2.pdf'))
+    _save(fig, os.path.join(out_dir, f'summary_{suffix}_vs_J2.pdf'))
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 8. JSON dump
@@ -702,8 +790,9 @@ def main():
     for j2, v in sorted(all_data.items()):
         plot_overview_j2(v, j2, OUT_DIR, ylims=_ov_ylims)
 
-    print("Generating summary figure ...")
-    plot_summary_vs_j2(all_data, OUT_DIR, ylims=_sum_ylims)
+    print("Generating summary figures ...")
+    plot_summary_vs_j2(all_data, OUT_DIR, ylims=_sum_ylims, use_delta_extrap=False)
+    plot_summary_vs_j2(all_data, OUT_DIR, ylims=_sum_ylims, use_delta_extrap=True)
 
     print(f"\nDone.  All figures in: {OUT_DIR}")
 
