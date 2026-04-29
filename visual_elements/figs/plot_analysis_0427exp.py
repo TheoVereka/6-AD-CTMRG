@@ -24,7 +24,7 @@ from scipy.optimize import curve_fit
 # ──────────────────────────────────────────────────────────────────────────────
 DATA_DIR   = '/home/chye/6ADctmrg/data/0420core'
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-OUT_DIR    = os.path.join(SCRIPT_DIR, 'analysis_plots_0427')
+OUT_DIR    = os.path.join(SCRIPT_DIR, 'analysis_plots_0427DoverDchar')
 os.makedirs(OUT_DIR, exist_ok=True)
 
 FOLDER_MAP = {
@@ -229,9 +229,9 @@ def compute_energy_extrap(Ds, eps):
 def compute_mag_extrap(Ds, mneel_list):
     """
     Linear extrapolation of m_Néel to 1/D → 0.
-    Returns (m_lin2, m_lin3, m_star, m_err):
-      m_lin2 — intercept of lin fit using last 2 Ds
+    Returns (m_lin3, m_lin4, m_star, m_err):
       m_lin3 — intercept of lin fit using last 3 Ds
+      m_lin4 — intercept of lin fit using last 4 Ds
       m_star — midpoint → best estimate
       m_err  — half-range → error bar half-width
     """
@@ -239,17 +239,17 @@ def compute_mag_extrap(Ds, mneel_list):
     m_f    = np.array(mneel_list, dtype=float)
     inv    = 1.0 / Ds_f
 
-    n2 = min(2, len(Ds_f))
-    c2 = np.polyfit(inv[-n2:], m_f[-n2:], 1)
-    m_lin2 = float(c2[1])
-
     n3 = min(3, len(Ds_f))
     c3 = np.polyfit(inv[-n3:], m_f[-n3:], 1)
     m_lin3 = float(c3[1])
 
-    m_star = 0.5 * (m_lin2 + m_lin3)
-    m_err  = 0.5 * abs(m_lin2 - m_lin3)
-    return m_lin2, m_lin3, m_star, m_err
+    n4 = min(4, len(Ds_f))
+    c4 = np.polyfit(inv[-n4:], m_f[-n4:], 1)
+    m_lin4 = float(c4[1])
+
+    m_star = 0.5 * (m_lin3 + m_lin4)
+    m_err  = 0.5 * abs(m_lin3 - m_lin4)
+    return m_lin3, m_lin4, m_star, m_err
 
 
 def compute_fixed_exp_extrap(Ds, vals, Dchar, n_fit):
@@ -303,7 +303,7 @@ def load_all_data():
         nn_groups   = compute_bond_groups(D_data, NN_GROUPS_RAW)
         order       = compute_order_param(D_data)
         mneel_list  = [order[D]['m_neel'] for D in Ds]
-        m_lin2, m_lin3, m_star, m_err = compute_mag_extrap(Ds, mneel_list)
+        m_lin3, m_lin4, m_star, m_err = compute_mag_extrap(Ds, mneel_list)
 
         # ── ΔNN and per-rank fixed-exp extrapolation ──────────────────────────
         Dchar = extrap['exp_popt'][2] if extrap.get('exp_popt') is not None else None
@@ -336,8 +336,8 @@ def load_all_data():
             'nn_groups':         nn_groups,
             'order':             order,
             'mneel_list':        mneel_list,
-            'm_lin2':            m_lin2,
             'm_lin3':            m_lin3,
+            'm_lin4':            m_lin4,
             'm_star':            m_star,
             'm_err':             m_err,
             'delta_per_D':       delta_per_D,
@@ -393,7 +393,7 @@ def compute_global_ylims(all_data):
         # Mag: raw m_neel + all three extrapolation values (clipped >=0)
         vals_m = [x for x in v['mneel_list'] if not np.isnan(x)]
         all_m.extend(vals_m)
-        for val in [v['m_lin2'], v['m_lin3'], v['m_star']]:
+        for val in [v['m_lin3'], v['m_lin4'], v['m_star']]:
             all_m.append(max(0.0, val))
         # NN bond means
         for D_entry in v['nn_groups'].values():
@@ -421,8 +421,8 @@ def plot_overview_j2(v, j2, out_dir, ylims=None):
                • star ★ extrapolated value at x=0
       Panel 2: m_Néel vs 1/D
                • dots+line, horizontal line at last D,
-               • orange-dashed: linear fit of last 2 Ds (→ 0 extrapolation),
-               • red-dashdot: linear fit of last 3 Ds (→ 0 extrapolation),
+               • orange-dashed: linear fit of last 3 Ds (→ 0 extrapolation),
+               • red-dashdot: linear fit of last 4 Ds (→ 0 extrapolation),
                • star ★ at midpoint of the two intercepts ± half-range
       Panel 3: NN correlation (3 rank groups) vs 1/D — raw dots+lines, no fit
     """
@@ -433,8 +433,8 @@ def plot_overview_j2(v, j2, out_dir, ylims=None):
     order      = v['order']
     nn_grp     = v['nn_groups']
     mneel_list = np.array(v['mneel_list'])
-    m_lin2     = v['m_lin2']
     m_lin3     = v['m_lin3']
+    m_lin4     = v['m_lin4']
     m_star     = v['m_star']
     m_err      = v['m_err']
 
@@ -509,24 +509,24 @@ def plot_overview_j2(v, j2, out_dir, ylims=None):
         ax_m.axhline(float(m_v[-1]), color=col_m, lw=0.9, ls=':', alpha=0.55,
                       label=f'm(D={int(1/inv_v[-1])})')
 
-        # Dashed orange: lin fit last 2 Ds
-        n2 = min(2, len(inv_v))
-        c2 = np.polyfit(inv_v[-n2:], m_v[-n2:], 1)
-        ax_m.plot(inv_line, np.polyval(c2, inv_line),
-                  color='tab:orange', lw=1.1, ls='--', alpha=0.85,
-                  label=f'lin fit (last {n2} D): intercept={m_lin2:.4f}')
-
-        # Dash-dot red: lin fit last 3 Ds
+        # Dashed orange: lin fit last 3 Ds
         n3m = min(3, len(inv_v))
         c3m = np.polyfit(inv_v[-n3m:], m_v[-n3m:], 1)
         ax_m.plot(inv_line, np.polyval(c3m, inv_line),
-                  color='tab:red', lw=1.1, ls='-.', alpha=0.85,
+                  color='tab:orange', lw=1.1, ls='--', alpha=0.85,
                   label=f'lin fit (last {n3m} D): intercept={m_lin3:.4f}')
 
+        # Dash-dot red: lin fit last 4 Ds
+        n4m = min(4, len(inv_v))
+        c4m = np.polyfit(inv_v[-n4m:], m_v[-n4m:], 1)
+        ax_m.plot(inv_line, np.polyval(c4m, inv_line),
+                  color='tab:red', lw=1.1, ls='-.', alpha=0.85,
+                  label=f'lin fit (last {n4m} D): intercept={m_lin4:.4f}')
+
     # Star with ASYMMETRIC clipped error bar at x=0
-    # three values: m_lastD, m_lin2, m_lin3 sorted → median=center, min=lower, max=upper
+    # three values: m_lastD, m_lin3, m_lin4 sorted → median=center, min=lower, max=upper
     m_lastD = mneel_list[-1] if len(mneel_list) > 0 and not np.isnan(mneel_list[-1]) else 0.0
-    three_vals = sorted([m_lastD, m_lin2, m_lin3])
+    three_vals = sorted([m_lastD, m_lin3, m_lin4])
     m_ctr = max(0.0, three_vals[1])   # median
     m_lo  = max(0.0, three_vals[0])   # min
     m_hi  = max(0.0, three_vals[2])   # max
@@ -640,9 +640,9 @@ def plot_summary_vs_j2(all_data, out_dir, ylims=None, use_delta_extrap=False):
         e_ext_val.append(v['extrap']['E_best'])
         e_ext_err.append(v['extrap']['E_err'])
 
-        # asymmetric clipped m extrapolation: center=median, bounds=min/max of [m_lastD, m_lin2, m_lin3]
+        # asymmetric clipped m extrapolation: center=median, bounds=min/max of [m_lastD, m_lin3, m_lin4]
         m_lastD = v['mneel_list'][-1] if len(v['mneel_list']) > 0 and not np.isnan(v['mneel_list'][-1]) else 0.0
-        three_vals = sorted([m_lastD, v['m_lin2'], v['m_lin3']])
+        three_vals = sorted([m_lastD, v['m_lin3'], v['m_lin4']])
         m_ctr = max(0.0, three_vals[1])   # median
         m_lo  = max(0.0, three_vals[0])   # min
         m_hi  = max(0.0, three_vals[2])   # max

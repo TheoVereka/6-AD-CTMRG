@@ -24,18 +24,18 @@ from scipy.optimize import curve_fit
 # ──────────────────────────────────────────────────────────────────────────────
 DATA_DIR   = '/home/chye/6ADctmrg/data/0420core'
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-OUT_DIR    = os.path.join(SCRIPT_DIR, 'analysis_plots_0427')
+OUT_DIR    = os.path.join(SCRIPT_DIR, 'analysis_plots_0429meet')
 os.makedirs(OUT_DIR, exist_ok=True)
 
 FOLDER_MAP = {
     0.20: '1tensor_C6Ypi__J2_0p2_20260423_185210',
-    0.21: '1tensor_C6Ypi__J2_0p21_20260423_185249',
+    #0.21: '1tensor_C6Ypi__J2_0p21_20260423_185249',
     0.22: '1tensor_C6Ypi__J2_0p22_20260423_185346',
     0.23: '1tensor_C6Ypi__J2_0p23_20260423_185446',
     0.24: '1tensor_C6Ypi__J2_0p24_20260423_185748',
     0.25: '1tensor_C6Ypi__J2_0p25_20260423_192207',
     0.26: '1tensor_C6Ypi__J2_0p26_20260425_025529',
-    0.27: '1tensor_C6Ypi__J2_0p27_20260425_025529',
+    #0.27: '1tensor_C6Ypi__J2_0p27_20260425_025529',
     0.28: '1tensor_C6Ypi__J2_0p28_20260425_030516',
     0.29: '1tensor_C6Ypi__J2_0p29_20260423_192250',
     0.30: '1tensor_C6Ypi__J2_0p3_20260423_193610',
@@ -54,9 +54,9 @@ RANK_COLORS = {1: 'tab:red', 2: 'tab:green', 3: 'tab:blue'}
 RANK_LABELS = {1: 'rank 1 (most neg)', 2: 'rank 2 (mid)', 3: 'rank 3 (least neg)'}
 
 # Summary plot: which D values to show explicitly
-D_SHOW    = [6, 7, 9]
-D_MARKERS = {6: '^', 7: 's', 9: 'D'}
-D_ALPHAS  = {6: 0.35, 7: 0.60, 9: 0.85}
+D_SHOW    = [6, 7, 8]
+D_MARKERS = {6: '^', 7: 's', 8: 'D'}
+D_ALPHAS  = {6: 0.35, 7: 0.60, 8: 0.85}
 
 # Number of largest Ds used for ΔNN / rank-corr fixed-exp extrapolation
 N_FIT_CORR = 3
@@ -162,7 +162,7 @@ def compute_order_param(D_data):
 # 3. Extrapolation helpers
 # ──────────────────────────────────────────────────────────────────────────────
 def _exp_model(D, E0, c, Dchar):
-    return E0 + c * np.pow(np.asarray(D, dtype=float),Dchar)
+    return E0 + c * np.exp(-np.asarray(D/Dchar, dtype=float))
 
 
 def compute_energy_extrap(Ds, eps):
@@ -266,7 +266,7 @@ def compute_fixed_exp_extrap(Ds, vals, Dchar, n_fit):
     Ds_fit = Ds[-n_use:]
     v_fit  = vals[-n_use:]
     def model(D, A, B):
-        return A + B * np.pow(np.asarray(D, dtype=float),Dchar)
+        return A + B * np.exp(-np.asarray(D/Dchar, dtype=float))
     try:
         popt, _ = curve_fit(model, Ds_fit, v_fit,
                              p0=[float(v_fit[-1]) * 0.8, float(v_fit[-1]) * 0.2],
@@ -505,14 +505,15 @@ def plot_overview_j2(v, j2, out_dir, ylims=None):
               label=r'm$_\mathrm{N\acute{e}el}$(D)')
 
     if len(m_v):
+        
         # Horizontal line: last valid D
-        ax_m.axhline(float(m_v[-1]), color=col_m, lw=0.9, ls=':', alpha=0.55,
+        if True: ax_m.axhline(float(m_v[-1]), color=col_m, lw=0.9, ls=':', alpha=0.55,
                       label=f'm(D={int(1/inv_v[-1])})')
 
         # Dashed orange: lin fit last 2 Ds
         n2 = min(2, len(inv_v))
         c2 = np.polyfit(inv_v[-n2:], m_v[-n2:], 1)
-        ax_m.plot(inv_line, np.polyval(c2, inv_line),
+        if True: ax_m.plot(inv_line, np.polyval(c2, inv_line),
                   color='tab:orange', lw=1.1, ls='--', alpha=0.85,
                   label=f'lin fit (last {n2} D): intercept={m_lin2:.4f}')
 
@@ -532,12 +533,13 @@ def plot_overview_j2(v, j2, out_dir, ylims=None):
     m_hi  = max(0.0, three_vals[2])   # max
     yerr_down = m_ctr - m_lo
     yerr_up   = m_hi - m_ctr
-    ax_m.errorbar([0], [m_ctr],
+    if True: ax_m.errorbar([0], [m_ctr],
                   yerr=[[yerr_down], [yerr_up]],
                   fmt='*', color=col_m, ms=14, capsize=5, elinewidth=1.3,
                   markeredgewidth=0.5, markeredgecolor='k', zorder=7,
                   label=f'extrap = {m_ctr:.4f} [{m_lo:.4f}, {m_hi:.4f}]')
-
+    else: ax_m.scatter([0],[m_lin3], marker='*', color=col_m, s=200, edgecolors='k', zorder=7,
+                       label=f'extrap = {m_lin3:.4f}')
     ax_m.set_ylabel(r'm$_\mathrm{N\acute{e}el}$', fontsize=11)
     if ylims is not None:
         ax_m.set_ylim(ylims['mag'])
@@ -570,7 +572,7 @@ def plot_overview_j2(v, j2, out_dir, ylims=None):
             re = v['rank_extrap'][target_rank]
             if re['popt'] is not None and Dchar is not None:
                 A, B = re['A'], re['B']
-                y_fit = A + B * np.pow(np.asarray(D, dtype=float),Dchar)
+                y_fit = A + B * np.exp(-D_dense / Dchar )
                 ax_nn.plot(inv_dense, y_fit,
                            color=RANK_COLORS[target_rank], lw=0.9, ls='--', alpha=0.6)
                 # Extrapolated intercept star at 1/D → 0
@@ -616,11 +618,13 @@ def plot_summary_vs_j2(all_data, out_dir, ylims=None, use_delta_extrap=False):
     m_by_D    = {D: ([], []) for D in D_SHOW}
     m_ext_j2  = []; m_ext_val = []
     m_ext_elo = []; m_ext_ehi = []   # asymmetric yerr [down, up]
+    m_ext_lin3 = []
 
     # NN Delta
     d_by_D      = {D: ([], []) for D in D_SHOW}   # Delta = max(means) - min(means)
     d_ext_j2    = []; d_ext_val = []               # fixed-exp extrapolated ΔNN
 
+    
     for j2 in sorted(all_data.keys()):
         v  = all_data[j2]
         Ds = v['Ds']
@@ -650,6 +654,7 @@ def plot_summary_vs_j2(all_data, out_dir, ylims=None, use_delta_extrap=False):
         m_ext_val.append(m_ctr)
         m_ext_elo.append(m_ctr - m_lo)
         m_ext_ehi.append(m_hi - m_ctr)
+        m_ext_lin3.append(max(0.0, v['m_lin3']))
 
     # ── Color palettes ────────────────────────────────────────────────────────
     E_cmap      = plt.get_cmap('Blues')
@@ -675,21 +680,22 @@ def plot_summary_vs_j2(all_data, out_dir, ylims=None, use_delta_extrap=False):
                                       gridspec_kw={'hspace': 0.10})
 
     # ── Panel 1: Energy ───────────────────────────────────────────────────────
-    for i, D in enumerate(D_SHOW):
-        j2s, es = e_by_D[D]
-        if j2s:
-            ax_e.plot(j2s, es, D_MARKERS[D] + '-',
-                      color=E_cols[i], alpha=D_ALPHAS[D],
-                      ms=7, lw=1.3, label=f'D={D}')
-
-    ax_e.errorbar(e_ext_j2, e_ext_val, yerr=e_ext_err,
-                  fmt='*-', color=E_col_ext, alpha=1.0,
-                  ms=12, lw=1.5, capsize=4, elinewidth=1.1,
-                  markeredgewidth=0.5, markeredgecolor='k',
-                  label='extrap (D→∞)')
+    if not use_delta_extrap:
+        # raw mode: only per-D curves
+        for i, D in enumerate(D_SHOW):
+            j2s, es = e_by_D[D]
+            if j2s:
+                ax_e.plot(j2s, es, D_MARKERS[D] + '-',
+                          color=E_cols[i], alpha=D_ALPHAS[D],
+                          ms=7, lw=1.3, label=f'D={D}')
+    else:
+        # extrap mode: only extrapolated line, no error bars
+        ax_e.plot(e_ext_j2, e_ext_val, '*-', color=E_col_ext, alpha=1.0,
+                  ms=12, lw=1.5, markeredgewidth=0.5, markeredgecolor='k',
+                  label='extrap (D→∞, exp)')
 
     ax_e.set_ylabel('Energy per site', fontsize=11)
-    title_suffix = ' [ΔNN: D→∞ extrap]' if use_delta_extrap else ' [ΔNN: raw per D]'
+    title_suffix = ' [extrap only]' if use_delta_extrap else ' [raw D curves]'
     ax_e.set_title('C6Yπ — statistics vs J2' + title_suffix, fontsize=12, pad=6)
     ax_e.legend(fontsize=9, loc='best')
     ax_e.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
@@ -701,19 +707,19 @@ def plot_summary_vs_j2(all_data, out_dir, ylims=None, use_delta_extrap=False):
     ax_d = ax_m.twinx()
 
     # --- m_Néel data (left axis) ---
-    for i, D in enumerate(D_SHOW):
-        j2s, ms = m_by_D[D]
-        if j2s:
-            ax_m.plot(j2s, ms, D_MARKERS[D] + '-',
-                      color=m_cols[i], alpha=D_ALPHAS[D],
-                      ms=7, lw=1.3, label=f'm D={D}')
-
-    ax_m.errorbar(m_ext_j2, m_ext_val,
-                  yerr=[m_ext_elo, m_ext_ehi],
-                  fmt='*-', color=m_col_ext, alpha=1.0,
-                  ms=12, lw=1.5, capsize=4, elinewidth=1.1,
-                  markeredgewidth=0.5, markeredgecolor='k',
-                  label='m extrap')
+    if not use_delta_extrap:
+        # raw mode: only per-D curves
+        for i, D in enumerate(D_SHOW):
+            j2s, ms = m_by_D[D]
+            if j2s:
+                ax_m.plot(j2s, ms, D_MARKERS[D] + '-',
+                          color=m_cols[i], alpha=D_ALPHAS[D],
+                          ms=7, lw=1.3, label=f'm D={D}')
+    else:
+        # extrap mode: lin3 extrapolation, no error bars
+        ax_m.plot(m_ext_j2, m_ext_lin3, '*-', color=m_col_ext, alpha=1.0,
+                  ms=12, lw=1.5, markeredgewidth=0.5, markeredgecolor='k',
+                  label='m extrap (lin3)')
 
     ax_m.set_ylabel(r'm$_\mathrm{N\acute{e}el}$', fontsize=11, color=m_axis_color)
     ax_m.tick_params(axis='y', labelcolor=m_axis_color)
@@ -723,22 +729,21 @@ def plot_summary_vs_j2(all_data, out_dir, ylims=None, use_delta_extrap=False):
         ax_m.set_ylim(bottom=0.0)
 
     # --- ΔNN data (right axis) ---
-    if True:
-    #if not use_delta_extrap:
-        # raw per-D curves
+    if not use_delta_extrap:
+        # raw mode: per-D curves
         for i, D in enumerate(D_SHOW):
             j2s, ds = d_by_D[D]
             if j2s:
                 ax_d.plot(j2s, ds, D_MARKERS[D] + '--',
                           color=d_cols[i], alpha=D_ALPHAS[D],
                           ms=7, lw=1.1, label=f'ΔNN D={D}')
-    #else:
-        # fixed-exp D→∞ extrapolated values, centre only (no errbar)
+    else:
+        # extrap mode: fixed-exp D→∞ extrapolated, no error bars
         if d_ext_j2:
             ax_d.plot(d_ext_j2, d_ext_val, '*-',
                       color=d_col_ext, ms=12, lw=1.5,
                       markeredgewidth=0.5, markeredgecolor='k',
-                      label=f'ΔNN extrap D→∞ (N={N_FIT_CORR})')
+                      label=f'ΔNN extrap D→∞ (exp, N={N_FIT_CORR})')
 
     ax_d.set_ylabel(r'$\Delta_\mathrm{NN}$ = max$-$min corr', fontsize=11,
                     color=d_axis_color)
