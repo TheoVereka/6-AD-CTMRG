@@ -10,7 +10,17 @@ VERIFIED source of every numerical boundary:
   - Ghorbani+ 2016: abstract text  (JPCM 28, 406001 / arXiv:1603.08896)
   - Ferrari+ 2017 : user-provided example image + 2020 review passage [13]  (PRB 96, 104401)
   - Merino+ 2018  : Google Scholar snippet + 2020 review passage [7]  (PRB 97, 205112)
-  - Gu+ 2022      : abstract (PRB 105, 174403) – spin DYNAMICS paper, no new boundaries
+  - Liu+ 2020     : abstract confirmed (Physica E 120, 114037 / arXiv:2006.04350)
+  - Ferrari+Becca 2020 (JPCM 32, 274003 / arXiv:1912.09310): OMITTED – same boundaries as Ferrari 2017; focus is dynamics
+  - Mukherjee+ 2023: Fig.5 upper panel confirmed (PRB 107, 155122 / arXiv:2108.08801) – PLOTTED: J1-J2 boundaries at Jchi=0
+  - Yao+ 2022     : abstract confirmed (PRB 105, 024401 / arXiv:2111.01611) – SU(N) generalization (NOT plotted)
+  - Gu+ 2022      : abstract confirmed (PRB 105, 174403) – spin DYNAMICS; no new boundaries (NOT plotted)
+  - Wessler+ 2020 : abstract confirmed (npj Quantum Materials 5, 85 / arXiv:2003.02529) – EXPERIMENTAL YbBr3 (NOT plotted)
+  - Sushchyev+Wessel 2023 (PRB 108, 235146 / arXiv:2308.15871): spatially anisotropic J1 only, no J2 – NOT relevant
+  - Li+Tseng+Jiang 2025 (arXiv:2509.11437): classical ISING model – NOT relevant
+  NOTE: No major 2021-2025 paper independently computes new phase boundaries for the pure
+  spin-1/2 AFM J1-J2 Heisenberg honeycomb model. The community shifted to dynamics, experiments,
+  and model variants (FM-J1 cobaltates, SU(N), bilayer, J1-J2-Jchi).
 """
 
 import matplotlib.pyplot as plt
@@ -23,9 +33,10 @@ import numpy as np
 COLORS = {
     "Néel":     "#C0392B",   # red
     "PVB":      "#E67E22",   # orange   – Plaquette Valence-Bond Solid
-    "Dimer":    "#2980B9",   # blue     – Dimer/Columnar VBS
+    "Columnar": "#2980B9",   # blue     – Columnar VBS
     "QSL":      "#27AE60",   # green    – Quantum Spin Liquid
     "Stripe":   "#8E44AD",   # purple   – Stripe / Collinear AFM
+    "Spiral":   "#8E44AD",   # purple (same as Stripe) – Spiral / collinear-2 AFM
     "Unknown":  "#BDC3C7",   # grey     – phase not determined
 }
 
@@ -45,12 +56,12 @@ studies = [
     dict(
         label="Albuquerque 2011",
         year=2011,
-        method="ED + QDM + CMF",
+        method="ED",
         ref="PRB 84, 024406",
         phases=[
             (0.00, 0.20, "Néel",   "Néel"),
             (0.20, 0.35, "PVB",    "PVB"),
-            (0.35, 0.50, "Dimer",  "Staggered VBC?"),  # see notes — ambiguous in paper
+            (0.35, 0.50, "Columnar",  "Columnar VBC?"),  # see notes — ambiguous in paper
         ],
         notes=(
             "Combination of exact diagonalization (ED, clusters up to 42 sites), "
@@ -58,8 +69,8 @@ studies = [
             "effective quantum dimer model (QDM), and self-consistent cluster mean-field (CMF). "
             "Full (J2,J3) phase diagram explored; J3=0 slice quoted here. "
             "At J3=0: Néel AFM for J2/J1 < ~0.20; plaquette VBC (PVB) for ~0.20 < J2/J1 < ~0.35; "
-            "staggered VBC (= dimer order) for J2/J1 > ~0.35 — though the paper explicitly notes "
-            "this staggered-VBC region may alternatively reflect magnetically ordered phases that "
+            "columnar VBC (= dimer order) for J2/J1 > ~0.35 — though the paper explicitly notes "
+            "this columnar-VBC region may alternatively reflect magnetically ordered phases that "
             "break lattice rotational symmetry, so the assignment is cautious. "
             "Boundaries are approximate (finite-size ED, no bulk extrapolation). "
             "Finds a Gutzwiller projected tight-binding wavefunction with unusually accurate energy "
@@ -75,7 +86,7 @@ studies = [
             (0.00, 0.22, "Néel",    "Néel"),
             (0.22, 0.25, "QSL",     "QSL?"),     # narrow possible SL window
             (0.25, 0.35, "PVB",     "PVB"),
-            (0.35, 0.50, "Unknown", "?"),
+            #(0.35, 0.50, "Unknown", ""),
         ],
         notes=(
             "DMRG with SU(2) symmetry on cylinders. Néel order for J2/J1 < 0.22; "
@@ -91,13 +102,13 @@ studies = [
         phases=[
             (0.00, 0.22, "Néel",   "Néel"),
             (0.22, 0.35, "PVB",    "PVB"),
-            (0.35, 0.50, "Dimer",  "Dimer"),
+            (0.35, 0.50, "Columnar",  "Columnar"),
         ],
         notes=(
-            "DMRG (van den Brink group). Both Néel→PVB (at 0.22) and PVB→Dimer (at 0.35) "
+            "DMRG (van den Brink group). Both Néel→PVB (at 0.22) and PVB→Columnar (at 0.35) "
             "transitions claimed to be continuous with simultaneously vanishing spin gap and order "
             "parameters — interpreted as deconfined quantum criticality. "
-            '"Dimer" here means a staggered valence-bond solid (alternating dimers).'
+            '"Columnar" here means a staggered valence-bond solid (alternating dimers).'
         ),
     ),
     dict(
@@ -108,11 +119,11 @@ studies = [
         phases=[
             (0.00, 0.26, "Néel",   "Néel"),
             (0.26, 0.36, "PVB",    "PVB"),
-            (0.36, 0.50, "Dimer",  "Dimer"),
+            (0.36, 0.50, "Columnar",  "Columnar"),
         ],
         notes=(
             "DMRG (White group). Weak PVB order for 0.26 < J2/J1 < 0.36; "
-            "dimer (= staggered VBS) order for J2/J1 > 0.36. "
+            "Columnar (= staggered VBS) order for J2/J1 > 0.36. "
             "Transition at J2/J1 ≈ 0.26 compatible with deconfined criticality scenario."
         ),
     ),
@@ -124,11 +135,12 @@ studies = [
         ref="JPCM 28, 406001",
         phases=[
             (0.00,  0.207, "Néel",    "Néel"),
-            (0.207, 0.369, "QSL",     "QSL (gapped)"),
+            (0.207, 0.396, "QSL",     "QSL (gapped)"),
             # gap 0.369–0.396 not labelled in paper
             (0.396, 0.500, "Stripe",  "Stripe"),
         ],
         notes=(
+            "[VERIFIED: arXiv:1603.08896, published JPCM 28, 406001 (2016)] "
             "Modified Spin Wave (MSW) theory — introduces quantum fluctuations beyond linear "
             "spin wave, treats disordered states self-consistently. "
             "Finds three phases for equal J1-couplings: "
@@ -146,7 +158,7 @@ studies = [
         phases=[
             (0.00, 0.23, "Néel",   "Néel"),
             (0.23, 0.36, "PVB",    "PVB"),      # d±id SL lower in energy than Néel but above PVB
-            (0.36, 0.50, "Dimer",  "Columnar"),
+            (0.36, 0.50, "Columnar",  "Columnar"),
         ],
         notes=(
             "Variational Monte Carlo with Gutzwiller-projected bosonic and fermionic "
@@ -155,7 +167,7 @@ studies = [
             "Columnar VBS for J2/J1 > 0.36. "
             "The d±id SL is the lowest-energy SL state and beats the Néel state near J2/J1 ≈ 0.23, "
             "but is always higher in energy than the PVB — hence PVB is the true ground state. "
-            '"Columnar VBS" here = staggered dimer order (= "Dimer" of Ganesh/Zhu 2013).'
+            '"Columnar VBS" here = staggered dimer order (= "Columnar" of Ganesh/Zhu 2013).'
         ),
     ),
     dict(
@@ -164,23 +176,87 @@ studies = [
         method="Schwinger Boson MF",
         ref="PRB 97, 205112",
         phases=[
-            (0.00, 0.20, "Néel",    "Néel"),
-            (0.20, 0.40, "QSL",     "QSL"),     # See note — boundaries approximate at J3=0
-            (0.40, 0.50, "Stripe",  "Stripe"),
+            (0.00, 0.20, "Néel",   "Néel"),
+            (0.20, 0.40, "QSL",    "QSL"),     # boundaries approximate at J3=0
+            (0.40, 0.50, "Spiral", "Spiral"),
         ],
         notes=(
             "Schwinger boson mean-field theory (SU(2) and SU(3)), fully unrestricted, "
             "for the J1-J2-J3 model (S=1/2 and S=1) — not a pure J1-J2 study. "
-            "At J3=0 and S=1/2: QSL sandwiched between Néel and collinear (stripe) AFM; "
+            "At J3=0 and S=1/2: QSL sandwiched between Néel and collinear (stripe/spiral) AFM; "
             "boundaries quoted from the 2020 review: ~0.20 < J2/J1 < ~0.40 (approx.). "
+            "The larger-J2 ordered phase is a collinear (possibly spiral) AFM, labelled "
+            "Neel-II or spiral depending on the reference frame. "
             "The Schwinger-boson QSL overlaps in J2/J1 with the PVB/Columnar VBS of DMRG/VMC; "
             "the method does not break translation symmetry so it cannot produce VBS order."
         ),
     ),
-    # ---- 2022+ DYNAMICS / OTHER -------------------------------------------
-    # Gu, Yu, Li (2022) is a spin-dynamics paper; it adopts its phase diagram from
-    # prior literature and does NOT determine new phase boundaries.
-    # Included in review text only.
+    # ---- 2020 ------------------------------------------------------------------
+    dict(
+        label="Liu 2020",
+        year=2020,
+        method="Hubbard-Stratonovich MF",
+        ref="Physica E 120, 114037",
+        phases=[
+            (0.00, 0.20, "Néel", "Néel"),
+            (0.20, 0.32, "QSL",  "QSL (0-flux: triv gapless)"),   # zero-flux, topologically trivial, gapless
+            (0.32, 0.50, "QSL",  "QSL (π-flux: nontriv, gapped)"),   # pi-flux, topologically nontrivial, gapped
+        ],
+        notes=(
+            "Topological bond-parameter analysis within a Schwinger-boson framework. "
+            "Outer boundaries of the disordered phase (0.20 and 0.50) are ADOPTED from prior work, "
+            "not independently computed. "
+            "Main claim: within the disordered window, there are two topologically distinct phases: "
+            "(i) zero-flux spin liquid (gapless, topologically trivial) for J2/J1 < 0.32; "
+            "(ii) π-flux chiral spin liquid (gapped, non-trivial Berry phase) for J2/J1 > 0.32. "
+            "CAUTION: (a) Upper boundary 0.50 is inconsistent with the stripe order found by DMRG "
+            "at J2/J1 ~ 0.36–0.40; the method does not capture symmetry-breaking states. "
+            "(b) Published in Physica E (lower-tier journal); methodology less rigorous than "
+            "DMRG/VMC. (c) The topological character of the two sub-phases has not been "
+            "independently confirmed. Treat with caution."
+        ),
+    ),
+    dict(
+        label="Mukherjee 2023",
+        year=2023,
+        method="Schwinger Boson MF",
+        ref="PRB 107, 155122",
+        phases=[
+            (0.00,  0.22, "Néel",    "Néel"),
+            (0.22,  0.37, "QSL",     "GSL (gapped Z2)"),
+            (0.37,  0.40, "Columnar",     "Columnar"),     # C3-breaking valence-bond crystal
+            (0.40,  0.50, "Spiral",  "Spiral"),
+        ],
+        notes=(
+            "[VERIFIED: arXiv:2108.08801, Fig. 5 upper panel, Sec. IV verbatim] "
+            "Schwinger-Boson mean-field theory (SBMFT) on the J1-J2-Jchi honeycomb model. "
+            "At Jchi=0 (pure J1-J2 limit, Figure 5 upper panel): "
+            "(1) Néel AFM for J2/J1 ≤ 0.22; "
+            "(2) Gapped Spin Liquid (GSL, Z2 QSL) for 0.22 < J2/J1 < 0.37; "
+            "(3) Valence Bond Crystal (VBC, C3-broken) for 0.37 ≤ J2/J1 < 0.40; "
+            "(4) Spiral AFM for J2/J1 > 0.40. "
+            "Main paper focus: adding Jchi (scalar chiral interaction) drives the GSL into a "
+            "chiral Z2 SL with non-trivial Chern bands and large thermal Hall conductivity. "
+            "CAUTION: SBMFT boundaries may differ from DMRG/VMC; the GSL here overlaps with "
+            "the PVB+Columnar VBS regime of DMRG/VMC since SBMFT can produce a narrow VBC window."
+        ),
+    ),
+    # ---- 2022+ DYNAMICS / EXTENSIONS (not phase-boundary papers) ----------
+    # Gu, Yu, Li (2022) — PRB 105, 174403 — spin dynamics (SCPT). Adopts its phase diagram from
+    #   prior literature and does NOT determine new phase boundaries. Included in print review only.
+    # Yao, Luo, Chen 2022 — PRB 105, 024401 — SU(N) generalization, not specific to S=1/2.
+    #   NOT plotted.
+    # Ferrari & Becca 2020 — JPCM 32, 274003 — OMITTED: same boundaries as Ferrari 2017; focus
+    #   is dynamics of S(q,omega), not new phase boundaries.
+    # Sushchyev & Wessel 2023 — PRB 108, 235146 — spatially anisotropic J1 (NO J2 frustration).
+    #   NOT relevant to J1-J2 phase diagram.
+    # Li, Tseng, Jiang 2025 — arXiv:2509.11437 — CLASSICAL Ising model, not Heisenberg.
+    #   NOT relevant.
+    # Wessler et al 2020 — npj QM 5, 85 — EXPERIMENTAL INS on YbBr3; no computed phase boundaries.
+    #   Included in print review only.
+    # NOTE (2021-2025): No paper found that independently computes NEW phase boundaries for
+    #   the pure spin-1/2 AFM J1-J2 Heisenberg honeycomb model. The field pivoted to:
+    #   dynamics, experimental materials (YbBr3, YbCl3, cobaltates), and model extensions.
 ]
 
 # ---- Gu 2022 note (not plotted as a phase diagram) -----------------------
@@ -234,17 +310,17 @@ fig_ind.suptitle(r"J1–J2 Heisenberg Honeycomb Lattice — Individual Phase Dia
 
 # legend
 handles = [mpatches.Patch(color=COLORS[k], label=k)
-           for k in ["Néel", "PVB", "Dimer", "QSL", "Stripe", "Unknown"]]
+           for k in ["Néel", "PVB", "Columnar", "QSL", "Stripe", "Unknown"]]
 label_names = {
     "Néel":    "Néel AFM",
-    "PVB":     "PVB (Plaquette VBS)",
-    "Dimer":   "Dimer/Columnar VBS",
+    "PVB":     "Plaquette VBS (Read-Sachdev)",
+    "Columnar":   "Columnar-dimer VBS",
     "QSL":     "QSL / Spin Liquid",
-    "Stripe":  "Stripe AFM",
+    "Stripe":  "Stripe / Spiral AFM",
     "Unknown": "not determined",
 }
 handles2 = [mpatches.Patch(color=COLORS[k], label=label_names[k])
-            for k in ["Néel", "PVB", "Dimer", "QSL", "Stripe", "Unknown"]]
+            for k in ["Néel", "PVB", "Columnar", "QSL", "Stripe", "Unknown"]]
 fig_ind.legend(handles=handles2, loc="lower center", ncol=3,
                fontsize=8, bbox_to_anchor=(0.5, -0.06), frameon=True)
 
@@ -307,7 +383,7 @@ for i, s in enumerate(studies):
                 ha="right", va="center", fontsize=8.5,
                 transform=ax_stk.get_yaxis_transform())
 
-# divider between pre-2015 (4 studies) and main review
+# divider between pre-2015 (4 studies) and main review (2015+: 5 studies)
 div_y = (n_studies - 5) * y_gap + y_gap * 0.5
 ax_stk.axhline(div_y, color="black", lw=0.8, ls="--", alpha=0.5)
 ax_stk.text(0.495, div_y + 0.05, "2015+", ha="right", va="bottom",
@@ -415,7 +491,25 @@ lines = [
     "            (lower energy than Neel) but always higher than PVB -- no true SL ground state.",
     "            'Columnar VBS' = staggered-dimer pattern; same phase as 'Dimer' of Ganesh/Zhu.",
     "",
-    "7. Merino, Ralko (2018) -- PRB 97, 205112",
+    SEP,
+    "MAIN REVIEW: 2019-2026 (continued)",
+    SEP,
+    "",
+    "7. Liu, Quan, Lin, Zou (2020) -- Physica E 120, 114037",
+    "   arXiv  : 2006.04350",
+    "   Method : Topological bond-order parameter analysis within a Schwinger-boson mean-field",
+    "            framework. Outer boundaries of the disordered phase are adopted from prior work.",
+    "   Main claim: Within the disordered window (~0.2 < J2/J1 < ~0.5), identifies TWO",
+    "            topologically distinct sub-phases:",
+    "            (i)  Zero-flux spin liquid (gapless, topologically trivial) for J2/J1 < 0.32;",
+    "            (ii) Pi-flux chiral spin liquid (gapped, non-trivial Berry phase) for J2/J1 > 0.32.",
+    "   CAUTION: (a) Upper boundary 0.50 is NOT consistent with DMRG/VMC stripe order at ~0.36-0.40;",
+    "            the method cannot resolve symmetry-breaking ordered phases.",
+    "            (b) Do not confuse 'zero-flux' here with any real-space topological invariant;",
+    "            the distinction is within a mean-field Schwinger-boson ansatz only.",
+    "            (c) Published in Physica E (lower-tier journal); not independently confirmed.",
+    "",
+    "8. Merino, Ralko (2018) -- PRB 97, 205112",
     "   arXiv  : 1801.07042",
     "   Method : Schwinger boson mean-field theory (SU(2) and SU(3) representations),",
     "            fully unrestricted Ansatz, applied to the J1-J2-J3 Heisenberg model at S=1/2",
@@ -428,7 +522,21 @@ lines = [
     "            inaccessible; the 'QSL' likely overlaps with the PVB/Columnar VBS of DMRG/VMC.",
     "            (b) For S=1, the QSL is quickly destroyed by weaker quantum fluctuations.",
     "",
-    "8. Gu, Yu, Li (2022) -- PRB 105, 174403     [DYNAMICS study, NOT a phase-diagram paper]",
+    "9. Mukherjee, Kundu, Singh, Kundu (2023) -- PRB 107, 155122      [PLOTTED: Fig. 5 upper panel]",
+    "    arXiv  : 2108.08801",
+    "    Method : Schwinger-boson mean-field theory (SBMFT).",
+    "    Model  : J1-J2-Jchi on honeycomb. Figure 5 upper panel = pure J1-J2 phase diagram (Jchi=0).",
+    "    Phase diagram at Jchi=0 (Fig. 5, Sec. IV verbatim):",
+    "      (1) Neel AFM:                           J2/J1 <= 0.22",
+    "      (2) Gapped Spin Liquid (GSL, Z2 QSL):   0.22 < J2/J1 < 0.37",
+    "      (3) Valence Bond Crystal (VBC, C3-brk):  0.37 <= J2/J1 < 0.40",
+    "      (4) Spiral AFM:                         J2/J1 > 0.40",
+    "    Main paper focus: adding Jchi drives the GSL into a chiral Z2 SL with non-trivial",
+    "    Chern bands and large thermal Hall conductivity (kappa_xy/T).",
+    "    CAUTION: SBMFT boundaries may differ from DMRG/VMC; the broad GSL (0.22-0.37) likely",
+    "    overlaps with PVB+Columnar of DMRG/VMC since SBMFT cannot fully resolve VBS order.",
+    "",
+    "10. Gu, Yu, Li (2022) -- PRB 105, 174403     [DYNAMICS study, NOT a phase-diagram paper]",
     "   arXiv  : 2205.12822",
     "   Method : Spin cluster perturbation theory (SCPT) on a 24-site C6-symmetric cluster",
     "            via exact diagonalization of the cluster, then coupled to the bath perturbatively",
@@ -440,6 +548,50 @@ lines = [
     "            (ii) VBS phases show strong spinon continua coexisting with triplon modes.",
     "            (iii) Stripe phase shows a spin gap at the M point (unlike linear spin-wave).",
     "            (iv) Neel-phase spectral features consistent with INS on YbCl3 and YbBr3.",
+    "",
+    SEP,
+    "EXTENSIONS, DYNAMICS AND EXPERIMENTAL (not in main plot)",
+    SEP,
+    "",
+    "11. Wessler, Roessli, Kramer, et al. (2020) -- npj Quantum Materials 5, 85",
+    "    arXiv  : 2003.02529  (DOI: 10.1038/s41535-020-00287-1)",
+    "    Method : EXPERIMENTAL -- inelastic neutron scattering (INS) on YbBr3 single crystals.",
+    "    System : YbBr3 is an effective S=1/2 Heisenberg honeycomb lattice with competing",
+    "             nearest-neighbor (J1) and next-nearest-neighbor (J2) interactions.",
+    "    Finding: No magnetic long-range order observed down to T = 100 mK.",
+    "             Broad spin-spin correlation continuum consistent with PLAQUETTE-type fluctuations",
+    "             as predicted by the J1-J2 theory (Ferrari+Bieri+Becca 2017, PRB 96, 104401).",
+    "    Note   : This is the first direct experimental evidence of the frustrated paramagnetic",
+    "             (plaquette-VBS-like) regime of the J1-J2 honeycomb model in a real material.",
+    "             Not a phase-boundary computation; included as experimental validation.",
+    "",
+    "12. Yao, Luo, Chen (2022) -- PRB 105, 024401",
+    "    arXiv  : 2111.01611",
+    "    Method : Large-N saddle-point analysis of the SU(N) J1-J2 Heisenberg model.",
+    "    Model  : SU(N) generalization of J1-J2 on the honeycomb lattice.",
+    "    Relevance: At general N, finds rich phase diagram including Dirac SL, chiral SL,",
+    "    valence cluster solids, flux ordered states, and stripe states. For N=2 (S=1/2)",
+    "    results are consistent with prior work. Provides a unified large-N perspective.",
+    "    Note: This is an SU(N) generalization; the S=1/2 case (N=2) is only one point.",
+    "",
+    "13. Ferrari, Becca (2020) -- J. Phys.: Condens. Matter 32, 274003   [OMITTED from main plot]",
+    "    arXiv  : 1912.09310",
+    "    Method : VMC with Gutzwiller-projected fermionic states; computes DYNAMICAL S(q,omega).",
+    "    Phases : Same boundaries as Ferrari 2017 (Neel < 0.23; PVB 0.23-0.36; Columnar > 0.36).",
+    "    Note   : Omitted from plot because it adds NO new phase boundaries vs. Ferrari 2017.",
+    "             Key dynamical results: roton-like softening at K-point in Neel phase near J2~0.23;",
+    "             broad spinon continuum in VBS phases below the triplon mode.",
+    "",
+    "14. Sushchyev, Wessel (2023) -- PRB 108, 235146   [NOT RELEVANT to J1-J2 frustrated model]",
+    "    arXiv  : 2308.15871",
+    "    Model  : Spatially ANISOTROPIC J1-only Heisenberg honeycomb (three different J1 values).",
+    "             No next-nearest-neighbor J2 frustration. Different physics from J1-J2 model.",
+    "    Method : Large-scale quantum Monte Carlo.",
+    "    Finding: Maps Neel AFM vs. three distinct dimer-singlet phases from spatial dimerization.",
+    "",
+    "15. Li, Tseng, Jiang (2025) -- arXiv:2509.11437   [NOT RELEVANT: classical Ising model]",
+    "    Model  : CLASSICAL frustrated J1-J2 ISING (not Heisenberg) on honeycomb.",
+    "    Finding: Second-order phase transitions in 2D Ising universality class for small J2/J1.",
     "",
     SEP,
     "CROSS-STUDY PHASE IDENTIFICATION",
@@ -465,16 +617,20 @@ lines = [
     "SUMMARY TABLE",
     SEP,
     "",
-    "Study             Method          Neel ends  Disordered/SL         2nd ordered phase",
-    "----------------  --------------- ---------- --------------------- -------------------------",
-    "Albuquerque+ 2011 ED+QDM+CMF      ~0.20      PVB ~0.20-~0.35(est.) Stag. VBC >~0.35 (ambig.)",
-    "Gong+ 2013        DMRG            ~0.22      SL? 0.22-0.25(narrow) PVB 0.25-0.35",
-    "Ganesh+ 2013      DMRG            0.22       PVB 0.22-0.35         Dimer >0.35",
-    "Zhu+ 2013         DMRG            0.26       PVB 0.26-0.36         Dimer >0.36",
-    "Ghorbani+ 2016    Modified SW     0.207      QSL 0.207-0.369       Stripe >0.396",
-    "Ferrari+ 2017     VMC             0.23       PVB 0.23-0.36         Columnar >0.36",
-    "Merino+ 2018      Schwinger Boson ~0.20      QSL ~0.20-~0.40(est.) Stripe >~0.40",
-    "Gu+ 2022          SCPT (dynamics) --- (adopts prior phase diagram) ---",
+    "Study               Method              Neel ends   Intermediate/SL        2nd ordered phase",
+    "------------------  ------------------  ----------  ---------------------  -------------------------",
+    "Albuquerque+ 2011   ED+QDM+CMF          ~0.20       PVB ~0.20-~0.35(est.)  Stag. VBC >~0.35 (ambig.)",
+    "Gong+ 2013          DMRG                ~0.22       SL? 0.22-0.25; PVB 0.25-0.35  unresolved >0.35",
+    "Ganesh+ 2013        DMRG                0.22        PVB 0.22-0.35          Columnar >0.35",
+    "Zhu+ 2013           DMRG                0.26        PVB 0.26-0.36          Columnar >0.36",
+    "Ghorbani+ 2016      Modified SW         0.207       QSL 0.207-0.369        Stripe >0.396",
+    "Ferrari+ 2017       VMC                 0.23        PVB 0.23-0.36          Columnar >0.36",
+    "Merino+ 2018        Schwinger Boson     ~0.20       QSL ~0.20-~0.40(est.)  Spiral/Stripe >~0.40",
+    "Ferrari+Becca 2020  [OMITTED: same bdry as Ferrari 2017; only dynamics; see entry 13]",
+    "Liu+ 2020           SBMFT (topol.)      ~0.20(adp.) Z-flux QSL 0.20-0.32; pi-flux QSL 0.32-0.50",
+    "Gu+ 2022            SCPT (dynamics)     --- (adopts prior phase diagram) ---",
+    "Mukherjee+ 2023     SBMFT               0.22        GSL 0.22-0.37; VBC 0.37-0.40     Spiral >0.40",
+    "Yao+2022            SU(N) large-N       --- (SU(N) generalization; N=2 consistent with prior) ---",
     SEP,
 ]
 review = "\n".join(lines)
