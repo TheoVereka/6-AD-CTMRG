@@ -9,13 +9,13 @@ MY_OUTPUT_OUTERDIR = '/home/chye/6ADctmrg/data/raw'
 
 # ── Sweep control ─────────────────────────────────────────────────────────────
 
-D_BOND_LIST = [3,4, 5, 6]#, 7, 8, 9, 10, 11]
+D_BOND_LIST = [4, 5, 6]#, 7, 8, 9, 10, 11]
 #   Ordered list of iPEPS virtual bond dimensions to sweep (outer loop).
 #   Each D is warm-started from the best tensors found at the previous D
 #   (zero-padded to the new size + PAD_NOISE Gaussian noise).
 
 
-DEFAULT_D_BUDGET_FRACS = {3:0.1,4: 0.1, 5:0.1, 6:0.1}#, 7:0.1, 8:0.1, 9:0.1, 10:0.1, 11:0.1}
+DEFAULT_D_BUDGET_FRACS = {4: 0.1, 5:0.1, 6:0.1}#, 7:0.1, 8:0.1, 9:0.1, 10:0.1, 11:0.1}
 #   Fraction of the total wall-clock budget allocated to each D_bond value.
 #   Normalised to sum=1 before use, so only the RATIOS matter.
 #   Rationale:
@@ -26,23 +26,22 @@ DEFAULT_D_BUDGET_FRACS = {3:0.1,4: 0.1, 5:0.1, 6:0.1}#, 7:0.1, 8:0.1, 9:0.1, 10:
 #   values have genuinely different computational costs and scientific weight.
 #   Within each D, every chi level gets equal time (see below).
 
-DEFAULT_CHI_MAX = {3:99,4: 80, 5:9999, 6:9999}#, 7:9999, 8:9999, 9:9999, 10:9999, 11:9999}
+DEFAULT_CHI_MAX = {4: 80, 5:9999, 6:9999}#, 7:9999, 8:9999, 9:9999, 10:9999, 11:9999}
 #   Largest chi to attempt for each D_bond.
 #   Increase if you have more memory; decrease if you hit OOM.
 
 DEFAULT_CHI_SCHEDULES = {
-    #2: [ 6,  8],
-    3: [ 9, 15],
-    4: [12, 20, 24], 
-    5: [20, 30, 35],
-    6: [24, 36, 42, 48],
-    #7: [28, 42, 56, 63],
-    #8: [40, 56, 72, 80],
-    #9: [45, 63, 81, 90],#, 99],
-    #10:[50, 70, 90,100],#,110,120],
-    #11:[55, 77, 99,110],#,121,132,143],
+    #2: [ 6, 10, 12],
+    #3: [15, 21],
+    4: [20, 28, 32], 
+    5: [25, 30, 40, 45],
+    6: [30, 36, 48, 60],
+    #7: [35, 42, 56, 70, 77],
+    #8: [40, 56, 72, 88, 96],
+    #9: [45, 63, 81, 99,108],
+    #10:[50, 70, 90,100,110],
+    #11:[55, 77, 99,110,121],
 }
-
 # ══════════════════════════════════════════════════════════════════════════════
 # Time Budget
 # ══════════════════════════════════════════════════════════════════════════════
@@ -452,6 +451,40 @@ ADAM_WEIGHT_DECAY = 0.0
 ADAM_STEPS_PER_CTM = 5
 #   Number of Adam gradient steps between consecutive CTMRG environment
 #   refreshes.  Higher = cheaper; lower = more accurate environment.
+
+# ── Adam → L-BFGS warmup protocol ────────────────────────────────────────────
+
+USE_ADAM_WARMUP_THEN_LBFGS = True
+#   True  → start each chi-level with Adam (robust exploration of the
+#            non-convex, frustrated landscape), then switch to a fresh
+#            L-BFGS instance once |Δloss| < ADAM_TO_LBFGS_SWITCH_THRESHOLD
+#            for ADAM_SWITCH_PATIENCE consecutive outer steps.
+#            Rationale: Adam handles the rugged early-phase landscape (where
+#            L-BFGS's quadratic model is inaccurate and line-search failures
+#            are common) and converges to the basin quickly.  Once the loss
+#            is nearly flat, L-BFGS's superlinear convergence polishes the
+#            solution far more efficiently than Adam's linear rate.
+#            Recommended for frustrated systems (J2 > 0, near critical
+#            points).  Uses Adam hyperparams for the warmup phase and
+#            LBFGS_* hyperparams for the finishing phase.
+#   False → use OPTIMIZER ('lbfgs' or 'adam') for the full optimization.
+#   Overrideable at runtime: --adam-warmup-lbfgs CLI flag.
+
+ADAM_TO_LBFGS_SWITCH_THRESHOLD = 1e1
+#   Loss-difference threshold for the Adam→L-BFGS switch.
+#   When |loss(k) - loss(k-1)| < this value for ADAM_SWITCH_PATIENCE
+#   consecutive outer steps, Adam is killed and a fresh L-BFGS is started.
+#   Typical range:
+#     1e-4 : switch early (landscape may still be moderately rough)
+#     1e-5 : safe default (landscape is locally smooth, L-BFGS reliable)
+#     1e-7 : switch very late (near full convergence, L-BFGS fine-polishes)
+
+ADAM_SWITCH_PATIENCE = 1
+#   Number of consecutive outer steps with |Δloss| < ADAM_TO_LBFGS_SWITCH_THRESHOLD
+#   required before the switch is triggered.  Prevents premature switching
+#   caused by a single accidentally small step (e.g. after a stall where
+#   Adam momentarily makes no progress).  3 is safe; increase to 5 on
+#   oscillating or noisy landscapes.
 
 # ── CTMRG algorithm ──────────────────────────────────────────────────────────
 #
@@ -1552,24 +1585,32 @@ def optimize_at_chi(
     loss_history  = collections.deque(maxlen=12)  # cycle detection up to length 12
     step          = step_offset
 
+    # ── effective optimizer — starts as 'adam' in warmup mode ─────────────────
+    # USE_ADAM_WARMUP_THEN_LBFGS overrides OPTIMIZER for the exploration phase;
+    # the variable is updated to 'lbfgs' when the switch fires.
+    _effective_optimizer: str = ('adam' if USE_ADAM_WARMUP_THEN_LBFGS
+                                  else OPTIMIZER)
+    _switch_patience_count: int = 0   # consecutive steps under threshold
+    _switched_to_lbfgs: bool   = False  # True after Adam→L-BFGS transition
+
     # ── pre-create Adam optimizer (state persists across outer steps) ─────────
     _adam: torch.optim.Optimizer | None = None
-    if OPTIMIZER == 'adam':
+    if _effective_optimizer == 'adam':
         _adam = torch.optim.Adam(
             params,
             lr=ADAM_LR, betas=ADAM_BETAS, eps=ADAM_EPS,
             weight_decay=ADAM_WEIGHT_DECAY)
 
-    # ── pre-create L-BFGS optimizer (curvature state persists across outer
-    #    steps within one (D,chi) level; the object is local to this function
-    #    call so there is ZERO cross-(D,chi) leakage) ──────────────────────────
-    _lbfgs: torch.optim.Optimizer | None = None
+    # ── L-BFGS factory + optional initial instance ────────────────────────────
+    # _make_lbfgs is always defined when lbfgs might be used (both in pure-lbfgs
+    # mode and in warmup mode where lbfgs is the finishing optimizer).
     # last_ctm_steps / last_cn: shared between the closure (nonlocal writes)
     # and the outer step (read-back after _lbfgs.step returns).  Declared here
     # so the history-clear hooks can inspect the *previous* step's values.
+    _lbfgs: torch.optim.Optimizer | None = None
     last_ctm_steps: int | None = None
     last_cn: dict[str, float] | None = None
-    if OPTIMIZER == 'lbfgs':
+    if OPTIMIZER == 'lbfgs' or USE_ADAM_WARMUP_THEN_LBFGS:
         def _make_lbfgs(*_tensors) -> torch.optim.LBFGS:
             return torch.optim.LBFGS(
                 list(_tensors),
@@ -1580,7 +1621,6 @@ def optimize_at_chi(
                 history_size=LBFGS_HISTORY,
                 line_search_fn='strong_wolfe',
             )
-        _lbfgs = _make_lbfgs(*params)
 
         def _lbfgs_reset_history() -> None:
             """Clear L-BFGS curvature history, resetting the Hessian approx to
@@ -1595,6 +1635,10 @@ def optimize_at_chi(
             """
             assert _lbfgs is not None
             _lbfgs.state.clear()
+
+        if _effective_optimizer == 'lbfgs':
+            # Pure L-BFGS mode: create initial instance now.
+            _lbfgs = _make_lbfgs(*params)
 
     def _loss_with_differentiable_ctmrg() -> tuple[torch.Tensor, int]:
         """Compute loss with CTMRG inside the autograd graph.
@@ -1686,7 +1730,7 @@ def optimize_at_chi(
         # (LBFGS calls the closure multiple times; reusing env tensors would
         #  both crash autograd and give incorrect gradients.)
         ctm_steps = -1
-        if OPTIMIZER == 'lbfgs':
+        if _effective_optimizer == 'lbfgs':
             if _lbfgs is None:
                 raise RuntimeError("L-BFGS optimizer requested but was not initialized")
 
@@ -1766,7 +1810,7 @@ def optimize_at_chi(
             if params[0].device.type == 'cuda':
                 gc.collect()
                 torch.cuda.empty_cache()
-        else:  # adam — persistent state, ADAM_STEPS_PER_CTM micro-steps per env refresh
+        else:  # adam (initial or full run) — persistent state, ADAM_STEPS_PER_CTM micro-steps per env refresh
             if _adam is None:
                 raise RuntimeError("Adam optimizer requested but was not initialized")
             for _s in range(ADAM_STEPS_PER_CTM):
@@ -1810,6 +1854,32 @@ def optimize_at_chi(
             save_checkpoint(latest_path, tuple(best_params), D_bond, chi,
                             best_loss, None, step, loss_log, ansatz_cfg)
 
+        # ── Adam → L-BFGS warmup switch ──────────────────────────────────────
+        if (USE_ADAM_WARMUP_THEN_LBFGS
+                and _effective_optimizer == 'adam'
+                and prev_loss is not None):
+            if abs(delta) < ADAM_TO_LBFGS_SWITCH_THRESHOLD:
+                _switch_patience_count += 1
+                if _switch_patience_count >= ADAM_SWITCH_PATIENCE:
+                    print(f"    [warmup] Adam\u2192L-BFGS switch at step {step} "
+                          f"(|\u0394loss|={abs(delta):.2e} < "
+                          f"{ADAM_TO_LBFGS_SWITCH_THRESHOLD:.2e} "
+                          f"for {ADAM_SWITCH_PATIENCE} consecutive steps)")
+                    # Kill Adam: clear moment state, release reference
+                    del _adam
+                    _adam = None
+                    if params[0].device.type == 'cuda':
+                        gc.collect()
+                        torch.cuda.empty_cache()
+                    # Start a fresh L-BFGS (no stale curvature from Adam phase)
+                    _lbfgs = _make_lbfgs(*params)  # type: ignore[name-defined]
+                    _effective_optimizer = 'lbfgs'
+                    _switched_to_lbfgs   = True
+                    _switch_patience_count = 0
+            else:
+                _switch_patience_count = 0  # reset: loss still dropping fast
+        # ─────────────────────────────────────────────────────────────────────
+
         if prev_loss is not None and abs(delta) < OPT_CONV_THRESHOLD:
             print(f"    Outer convergence at step {step} (\u0394={delta:.2e})")
             break
@@ -1829,7 +1899,7 @@ def optimize_at_chi(
 # ══════════════════════════════════════════════════════════════════════════════
 
 def main():
-    global TENSORDTYPE, OPTIMIZER
+    global TENSORDTYPE, OPTIMIZER, USE_ADAM_WARMUP_THEN_LBFGS, ADAM_SWITCH_PATIENCE, ADAM_TO_LBFGS_SWITCH_THRESHOLD
     parser = argparse.ArgumentParser(
         description="10-12 h iPEPS benchmark: sweep D_bond (outer) × chi (inner)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -1905,7 +1975,29 @@ def main():
     parser.add_argument(
         '--optimizer', choices=['lbfgs', 'adam'], default=OPTIMIZER,
         help="Optimiser: 'lbfgs' (default, fast on smooth landscapes) or "
-             "'adam' (more robust on noisy landscapes, constant LR).")
+             "'adam' (more robust on noisy landscapes, constant LR). "
+             "Ignored when --adam-warmup-lbfgs is set (warmup always uses adam "
+             "then switches to lbfgs regardless of this flag).")
+    parser.add_argument(
+        '--adam-warmup-lbfgs', dest='adam_warmup_lbfgs', action='store_true',
+        default=USE_ADAM_WARMUP_THEN_LBFGS,
+        help='Use Adam for initial non-convex exploration, then switch to a '
+             'fresh L-BFGS once |\u0394loss| < adam-switch-thr for '
+             'adam-switch-patience consecutive outer steps. Recommended for '
+             'frustrated systems (J2 > 0). Overrides --optimizer for the warmup '
+             'phase; L-BFGS phase uses LBFGS_* hyperparameters as usual.')
+    parser.add_argument(
+        '--adam-switch-thr', type=float, default=ADAM_TO_LBFGS_SWITCH_THRESHOLD,
+        dest='adam_switch_thr',
+        help='Loss-difference threshold for Adam\u2192L-BFGS switch '
+             '(= ADAM_TO_LBFGS_SWITCH_THRESHOLD). '
+             'Only active when --adam-warmup-lbfgs is set.')
+    parser.add_argument(
+        '--adam-switch-patience', type=int, default=ADAM_SWITCH_PATIENCE,
+        dest='adam_switch_patience',
+        help='Consecutive outer steps with |\u0394loss| below threshold '
+             'required before the switch fires (= ADAM_SWITCH_PATIENCE). '
+             'Only active when --adam-warmup-lbfgs is set.')
     parser.add_argument(
         '--ansatz', choices=list(ANSATZ_REGISTRY.keys()), default='unrestricted',
         help=('iPEPS ansatz to optimize. Available: '
@@ -1946,6 +2038,15 @@ def main():
     set_dtype(args.double, use_real)
     TENSORDTYPE = _core.TENSORDTYPE          # sync from core
     OPTIMIZER = args.optimizer
+    # global USE_ADAM_WARMUP_THEN_LBFGS, ADAM_TO_LBFGS_SWITCH_THRESHOLD, ADAM_SWITCH_PATIENCE
+    if args.adam_warmup_lbfgs:
+        USE_ADAM_WARMUP_THEN_LBFGS = True
+    ADAM_TO_LBFGS_SWITCH_THRESHOLD = args.adam_switch_thr
+    ADAM_SWITCH_PATIENCE           = args.adam_switch_patience
+    if True: #USE_ADAM_WARMUP_THEN_LBFGS:
+        print(f"  Optimizer: Adam warmup \u2192 L-BFGS "
+              f"(switch when |\u0394loss| < {ADAM_TO_LBFGS_SWITCH_THRESHOLD:.1e} "
+              f"for {ADAM_SWITCH_PATIENCE} steps)")
     # Float32 spectral noise floor is ~5e-5–2e-4; CTM_CONV_THR=3e-7 is below
     # that floor and will never trigger in single precision — CTMRG would
     # always burn all CTM_MAX_STEPS steps and return a non-converged (garbage)
@@ -2099,6 +2200,9 @@ def main():
 
         # ── optimiser ──────────────────────────────────────────────────────
         optimizer          = OPTIMIZER,
+        use_adam_warmup_then_lbfgs    = USE_ADAM_WARMUP_THEN_LBFGS,
+        adam_to_lbfgs_switch_thr      = ADAM_TO_LBFGS_SWITCH_THRESHOLD,
+        adam_switch_patience          = ADAM_SWITCH_PATIENCE,
         # L-BFGS
         lbfgs_lr           = LBFGS_LR,
         lbfgs_max_iter     = LBFGS_MAX_ITER,
@@ -2273,7 +2377,8 @@ def main():
                                            f"sweep_D{D_bond}_chi{chi}_latest.pt")
                 loss_log: list = []
                 all_loss_logs[(D_bond, chi)] = loss_log
-    
+                
+                """
                 # ── Chi init: mean-field / random / warm-start ─────────────────
                 if args.mean_field_init and D_bond == D_BOND_LIST[0] and chi == DEFAULT_CHI_SCHEDULES[D_BOND_LIST[0]][0]:
                     _init_params = _make_mean_field_params(
@@ -2287,6 +2392,8 @@ def main():
                     print(f"  │  [rand-chi] random init for chi={chi} (ignoring previous result)")
                     _init_params = None
                 else:
+                """
+                if True:
                     _init_params = cur_params
     
                 try:
