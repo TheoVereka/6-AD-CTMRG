@@ -9,13 +9,13 @@ MY_OUTPUT_OUTERDIR = '/home/chye/6ADctmrg/data/raw'
 
 # ── Sweep control ─────────────────────────────────────────────────────────────
 
-D_BOND_LIST = [4, 5, 6]#, 7, 8, 9, 10, 11]
+D_BOND_LIST = [3,4, 5, 6]#, 7, 8, 9, 10, 11]
 #   Ordered list of iPEPS virtual bond dimensions to sweep (outer loop).
 #   Each D is warm-started from the best tensors found at the previous D
 #   (zero-padded to the new size + PAD_NOISE Gaussian noise).
 
 
-DEFAULT_D_BUDGET_FRACS = {4: 0.1, 5:0.1, 6:0.1}#, 7:0.1, 8:0.1, 9:0.1, 10:0.1, 11:0.1}
+DEFAULT_D_BUDGET_FRACS = {3:0.1,4: 0.1, 5:0.1, 6:0.1}#, 7:0.1, 8:0.1, 9:0.1, 10:0.1, 11:0.1}
 #   Fraction of the total wall-clock budget allocated to each D_bond value.
 #   Normalised to sum=1 before use, so only the RATIOS matter.
 #   Rationale:
@@ -26,21 +26,21 @@ DEFAULT_D_BUDGET_FRACS = {4: 0.1, 5:0.1, 6:0.1}#, 7:0.1, 8:0.1, 9:0.1, 10:0.1, 1
 #   values have genuinely different computational costs and scientific weight.
 #   Within each D, every chi level gets equal time (see below).
 
-DEFAULT_CHI_MAX = {4: 80, 5:9999, 6:9999}#, 7:9999, 8:9999, 9:9999, 10:9999, 11:9999}
+DEFAULT_CHI_MAX = {3:99,4: 80, 5:9999, 6:9999}#, 7:9999, 8:9999, 9:9999, 10:9999, 11:9999}
 #   Largest chi to attempt for each D_bond.
 #   Increase if you have more memory; decrease if you hit OOM.
 
 DEFAULT_CHI_SCHEDULES = {
-    #2: [ 6, 10, 12],
-    #3: [15, 21],
+    #2: [10, 14, 16],
+    3: [15, 21, 24],
     4: [20, 28, 32], 
-    5: [25, 30, 40, 45],
-    6: [30, 36, 48, 60],
-    #7: [35, 42, 56, 70, 77],
-    #8: [40, 56, 72, 88, 96],
-    #9: [45, 63, 81, 99,108],
-    #10:[50, 70, 90,100,110],
-    #11:[55, 77, 99,110,121],
+    5: [30, 40, 45],
+    6: [36, 48, 54],
+    #7: [49, 63, 77, 84],
+    #8: [56, 72, 88, 96],
+    #9: [72, 90, 99,108],
+    #10:[80, 90,100,110],
+    #11:[88, 99,110,121],
 }
 # ══════════════════════════════════════════════════════════════════════════════
 # Time Budget
@@ -179,6 +179,45 @@ from torch.utils.checkpoint import checkpoint as _ckpt
 import functools as _functools
 
 
+# ── Zero-overhead dual-stream logger ──────────────────────────────────────────
+# _TeeStream wraps stdout and mirrors every write to a file object.
+# The file is opened (line-buffered) once output_dir is known, via tee_stdout().
+# All print() calls — including those from core.py and PyTorch — are captured
+# because they ultimately call sys.stdout.write().  No threads, no queues, no
+# extra formatting overhead.
+
+class _TeeStream:
+    """Proxy for sys.stdout that mirrors every write to *logfile*."""
+    def __init__(self, original, logfile):
+        self._orig   = original
+        self._logfile = logfile
+    def write(self, s):
+        self._orig.write(s)
+        self._logfile.write(s)
+    def flush(self):
+        self._orig.flush()
+        self._logfile.flush()
+    def fileno(self):         # needed by some libraries that call os.write
+        return self._orig.fileno()
+    def isatty(self):
+        return self._orig.isatty()
+    # Forward every other attribute transparently
+    def __getattr__(self, name):
+        return getattr(self._orig, name)
+
+# Installed in main() once output_dir is known (before banner is printed).
+_tee_installed: bool = False
+def _install_tee(output_dir: str) -> None:
+    global _tee_installed
+    if _tee_installed:
+        return
+    import sys as _sys
+    _logfile = open(os.path.join(output_dir, 'run.log'), 'a', buffering=1,
+                    encoding='utf-8', errors='replace')
+    _sys.stdout = _TeeStream(_sys.stdout, _logfile)
+    _tee_installed = True
+
+
 # Optional debugging aid: if set, PyTorch will print the forward op trace that
 # produced a backward error (e.g. complex SVD phase-gauge issues).
 if os.environ.get("CTMRG_ANOMALY", "0") == "1":
@@ -303,21 +342,8 @@ USE_REAL_TENSORS = True
 #             results at different chi directly comparable.
 
 
-SVD_CPU_OFFLOAD_THRESHOLD = 0
-#   SVD dispatch: for CUDA runs, matrices with min(m,n) < this value are
-#   computed on CPU then moved back to GPU (avoids cuSOLVER launch overhead
-#   which dominates for small matrices on low-end GPUs).
-#   SET TO 0 FOR CLUSTER GPU — all CTMRG matrices are < 1024, so 1024 forces
-#   every SVD to CPU + GPU↔CPU round-trip transfer, defeating the GPU entirely.
-#
-#   Desktop / laptop GPU (MX250, GTX 1650, etc.):
-#     CPU LAPACK beats cuSOLVER at ALL sizes → set to 99999
-#   Cluster GPU (A100, V100, H100, RTX 4090, etc.):
-#     GPU faster for large matrices (n > ~300-500) → set to 0 or 512
-#     0   = always GPU (best for large-chi runs on cluster)
-#     512 = CPU for small chi, GPU for large chi (safe default)
-#
-#   Default 0 → always GPU (correct for cluster; change to 99999 on laptop).
+# SVD_CPU_OFFLOAD_THRESHOLD is always 0 (GPU always handles SVD; never
+# offload to CPU for cluster GPUs).  Hard-coded in core.py; not a tunable.
 
 RSVD_MODE = 'augmented'
 #   rSVD backward mode.  Controls how the truncated-SVD 5th-term correction
@@ -440,17 +466,17 @@ OPTIMIZER = 'lbfgs'
 
 # ── Adam hyperparameters (used only when OPTIMIZER='adam') ────────────────────
 
-ADAM_LR = 3e-3
+ADAM_LR = 2e-3
 #   Adam learning rate.  Typical range: 1e-4 – 1e-3.
 ADAM_BETAS = (0.9, 0.999)
 #   Exponential decay rates for 1st and 2nd moment estimates.
-ADAM_EPS = 1e-8
+ADAM_EPS = 1e-9
 #   Denominator epsilon for numerical stability.
 ADAM_WEIGHT_DECAY = 0.0
 #   L2 regularisation strength.  0.0 = no regularisation (recommended).
-ADAM_STEPS_PER_CTM = 5
-#   Number of Adam gradient steps between consecutive CTMRG environment
-#   refreshes.  Higher = cheaper; lower = more accurate environment.
+# Adam always makes exactly 1 gradient step per CTMRG environment refresh;
+# ADAM_STEPS_PER_CTM is removed — it was always 1 and configuring otherwise
+# would bias the alternating-optimisation scheme.
 
 # ── Adam → L-BFGS warmup protocol ────────────────────────────────────────────
 
@@ -470,7 +496,7 @@ USE_ADAM_WARMUP_THEN_LBFGS = True
 #   False → use OPTIMIZER ('lbfgs' or 'adam') for the full optimization.
 #   Overrideable at runtime: --adam-warmup-lbfgs CLI flag.
 
-ADAM_TO_LBFGS_SWITCH_THRESHOLD = 1e1
+ADAM_TO_LBFGS_SWITCH_THRESHOLD = 3e-5
 #   Loss-difference threshold for the Adam→L-BFGS switch.
 #   When |loss(k) - loss(k-1)| < this value for ADAM_SWITCH_PATIENCE
 #   consecutive outer steps, Adam is killed and a fresh L-BFGS is started.
@@ -479,7 +505,7 @@ ADAM_TO_LBFGS_SWITCH_THRESHOLD = 1e1
 #     1e-5 : safe default (landscape is locally smooth, L-BFGS reliable)
 #     1e-7 : switch very late (near full convergence, L-BFGS fine-polishes)
 
-ADAM_SWITCH_PATIENCE = 1
+ADAM_SWITCH_PATIENCE = 4
 #   Number of consecutive outer steps with |Δloss| < ADAM_TO_LBFGS_SWITCH_THRESHOLD
 #   required before the switch is triggered.  Prevents premature switching
 #   caused by a single accidentally small step (e.g. after a stall where
@@ -513,7 +539,7 @@ CTM_MAX_STEPS = 100
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
 #   ansatz ~4 steps, 6-tensor ~40 steps).  90 is a safe upper bound.
 
-CTM_CONV_THR = 1e-6
+CTM_CONV_THR = 1e-7
 
 CTM_CONV_THR_FLOAT32_MIN = 1e-5
 #   CTMRG convergence threshold: stop iterating when the max change in
@@ -551,7 +577,7 @@ CTM_CONV_MODE = 'both'
 #
 #   Recorded in hyperparams.yaml as ctm_conv_mode.
 
-CTM_E_CONV_THRESHOLD = 5e-8
+CTM_E_CONV_THRESHOLD = 2e-8
 #   Energy-proxy convergence threshold for 'Edifference' and 'both' modes.
 #   Applied to |E_proxy(iter N) − E_proxy(iter N-1)| where E_proxy is the
 #   EB bond energy from env1 (unit SdotS, no J).
@@ -559,17 +585,8 @@ CTM_E_CONV_THRESHOLD = 5e-8
 #   1e-8 is a safe target that fires well before oscillations dominate.
 #   Recorded in hyperparams.yaml as ctm_e_conv_threshold.
 
-CTM_E_PROXY_INTERVAL = 1
-#   Number of CTMRG iterations between consecutive energy proxy evaluations.
-#   interval=1: check every step (tightest tracking, highest overhead).
-#   interval=5: check every 5th step (default; good balance).
-#   interval=10: check every 10th step (lowest overhead, coarser tracking).
-#   Cost: 6 open tensor builds per check ≈ 22% of one full energy evaluation.
-#   Over 20 CTMRG steps with interval=5: 4 checks ≈ 88% of 1 energy overhead.
-#   Only active when energy_proxy_fn is passed to CTMRG_from_init_to_stop,
-#   which the driver does ONLY for evaluate_energy_clean / evaluate_observables.
-#   Recorded in hyperparams.yaml as ctm_e_proxy_interval.
-
+# CTM_E_PROXY_INTERVAL is always 1 — the energy proxy is checked every CTMRG
+# step for the tightest convergence tracking.  Hard-coded; not a tunable.
 
 
 SAVE_EVERY = 10
@@ -681,7 +698,7 @@ def _new_tensors_from_data(tensors: tuple) -> tuple:
     """
     out = []
     for t in tensors:
-        new = torch.empty(t.shape, dtype=TENSORDTYPE, device=t.device)
+        new = torch.empty(t.shape, dtype=t.dtype, device=t.device)
         new.copy_(t.detach())
         out.append(new)
     return tuple(out)
@@ -1639,6 +1656,7 @@ def optimize_at_chi(
         if _effective_optimizer == 'lbfgs':
             # Pure L-BFGS mode: create initial instance now.
             _lbfgs = _make_lbfgs(*params)
+            _lbfgs_outer_steps: int = 0  # reset on fresh LBFGS creation
 
     def _loss_with_differentiable_ctmrg() -> tuple[torch.Tensor, int]:
         """Compute loss with CTMRG inside the autograd graph.
@@ -1800,6 +1818,7 @@ def optimize_at_chi(
 
             loss_item = loss_val.item()
             del loss_val          # release the 0-dim tensor + its dead graph
+            _lbfgs_outer_steps += 1
             if last_ctm_steps is not None:
                 ctm_steps = last_ctm_steps
             # ── GPU memory cleanup after L-BFGS step ─────────────────────
@@ -1810,14 +1829,13 @@ def optimize_at_chi(
             if params[0].device.type == 'cuda':
                 gc.collect()
                 torch.cuda.empty_cache()
-        else:  # adam (initial or full run) — persistent state, ADAM_STEPS_PER_CTM micro-steps per env refresh
+        else:  # adam (initial or full run) — 1 gradient step per env refresh
             if _adam is None:
                 raise RuntimeError("Adam optimizer requested but was not initialized")
-            for _s in range(ADAM_STEPS_PER_CTM):
-                _adam.zero_grad()
-                _loss, ctm_steps = _loss_with_differentiable_ctmrg()
-                _loss.backward()
-                _adam.step()
+            _adam.zero_grad()
+            _loss, ctm_steps = _loss_with_differentiable_ctmrg()
+            _loss.backward()
+            _adam.step()
             loss_item = _loss.detach().item()
             # ── GPU memory cleanup after Adam micro-steps ────────────────
             if params[0].device.type == 'cuda':
@@ -1839,7 +1857,7 @@ def optimize_at_chi(
         # with fresh tensors by raising _CollapseRestartD.
         _loss_is_collapsed = (loss_item >= -1e-12 and best_loss < -0.5)
         if _loss_is_collapsed:
-            print(f"    [ZERO-GUARD] loss={loss_item:+.10f} \u2248 0 "
+            print(f"    [ZERO-GUARD] loss>={loss_item:+.10f} \u2248 0 "
                   f"(env near-collapsed); signalling D={D_bond} restart from chi={chi}")
             raise _CollapseRestartD(f"D={D_bond}, chi={chi}")
 
@@ -1873,6 +1891,7 @@ def optimize_at_chi(
                         torch.cuda.empty_cache()
                     # Start a fresh L-BFGS (no stale curvature from Adam phase)
                     _lbfgs = _make_lbfgs(*params)  # type: ignore[name-defined]
+                    _lbfgs_outer_steps = 0  # reset warmup counter
                     _effective_optimizer = 'lbfgs'
                     _switched_to_lbfgs   = True
                     _switch_patience_count = 0
@@ -1880,10 +1899,15 @@ def optimize_at_chi(
                 _switch_patience_count = 0  # reset: loss still dropping fast
         # ─────────────────────────────────────────────────────────────────────
 
-        if prev_loss is not None and abs(delta) < OPT_CONV_THRESHOLD:
+        # Skip convergence checks for the first 2 outer steps after LBFGS
+        # creation: the Hessian approximation is still bootstrapping from
+        # identity, so the energy drop may be artificially small.
+        _lbfgs_warmed_up = (
+            _effective_optimizer != 'lbfgs' or _lbfgs_outer_steps >= 3)
+        if _lbfgs_warmed_up and prev_loss is not None and abs(delta) < OPT_CONV_THRESHOLD:
             print(f"    Outer convergence at step {step} (\u0394={delta:.2e})")
             break
-        if any(abs(loss_item - h) < 1e-10 for h in loss_history):
+        if _lbfgs_warmed_up and any(abs(loss_item - h) < 1e-9 for h in loss_history):
             print(f"    Cycle detected at step {step} "
                   f"(amplitude={abs(delta):.3e}); stopping.")
             break
@@ -1930,6 +1954,12 @@ def main():
     parser.add_argument(
         '--resume', default=None,
         help='Path to a .pt checkpoint to resume from (skips earlier (D,chi)).')
+    parser.add_argument(
+        '--resume-folder', default=None, dest='resume_folder',
+        help='Directory to scan for per-D warm-start checkpoints.  '
+             'For each D in D_bond_list, finds the highest-chi '
+             'sweep_D{D}_chi*_best.pt in the directory and uses it as '
+             'the starting point for that D\'s first chi level.')
     parser.add_argument(
         '--noise', type=float, default=PAD_NOISE,
         help='Gaussian noise amplitude when padding tensors for D→D+1 (= PAD_NOISE).')
@@ -2094,13 +2124,12 @@ def main():
         print(f"  CPU / Single-GPU : energy functions run sequentially "
               f"({'use --ngpu 2+ to enable multi-GPU' if _avail_gpus >= 2 else 'only CPUs / 1 GPU available'})")
         N_GPUS = 1  # ensure scalar is exactly 1 for the branch check
-    _core._SVD_CPU_OFFLOAD_THRESHOLD = SVD_CPU_OFFLOAD_THRESHOLD
+    _core._SVD_CPU_OFFLOAD_THRESHOLD = 0  # always GPU (SVD_CPU_OFFLOAD_THRESHOLD removed)
     _core.set_rsvd_mode(RSVD_MODE,
                         neumann_terms=RSVD_NEUMANN_TERMS,
                         power_iters=RSVD_POWER_ITERS)
     _core.set_ctm_conv_mode(CTM_CONV_MODE,
-                            e_threshold=CTM_E_CONV_THRESHOLD,
-                            e_proxy_interval=CTM_E_PROXY_INTERVAL)
+                            e_threshold=CTM_E_CONV_THRESHOLD)
 
     # ── parse D_bond list ─────────────────────────────────────────────────────
     D_bond_list: list[int] = [int(x) for x in args.D_bonds.split(',')]
@@ -2165,6 +2194,7 @@ def main():
                                    f'{ansatz_cfg["yaml_name"]}__{_J2_str}_{run_ts}')
     output_dir = args.output_dir or _default_outdir
     os.makedirs(output_dir, exist_ok=True)
+    _install_tee(output_dir)  # mirror all stdout to run.log
 
     # ── save hyperparameters to YAML (JSON fallback if PyYAML not installed) ──
     _hp = dict(
@@ -2216,10 +2246,10 @@ def main():
         adam_betas         = list(ADAM_BETAS),
         adam_eps           = ADAM_EPS,
         adam_weight_decay  = ADAM_WEIGHT_DECAY,
-        adam_steps_per_ctm = ADAM_STEPS_PER_CTM,
+        # (adam_steps_per_ctm removed — always 1)
 
         # ── SVD / rSVD ─────────────────────────────────────────────────────
-        svd_cpu_offload_threshold = SVD_CPU_OFFLOAD_THRESHOLD,
+        # (svd_cpu_offload_threshold removed — always 0 / GPU)
         rsvd_mode          = RSVD_MODE,
         rsvd_neumann_terms = RSVD_NEUMANN_TERMS,
         rsvd_power_iters   = RSVD_POWER_ITERS,
@@ -2229,7 +2259,7 @@ def main():
         ctm_conv_thr           = CTM_CONV_THR,
         ctm_conv_mode          = CTM_CONV_MODE,
         ctm_e_conv_threshold   = CTM_E_CONV_THRESHOLD,
-        ctm_e_proxy_interval   = CTM_E_PROXY_INTERVAL,
+        # (ctm_e_proxy_interval removed — always 1)
         env_identity_init      = ENV_IDENTITY_INIT,
 
         # ── tensor init & padding ──────────────────────────────────────────
@@ -2300,6 +2330,28 @@ def main():
         print(f"  Resumed from {args.resume}  "
               f"(D={resume_D}, chi={resume_chi}, "
               f"loss={ckpt_loss:.6f})\n")
+
+    # ── Resume-folder: per-D warm-start from highest-chi checkpoint ───────────
+    if args.resume_folder:
+        import glob as _glob, re as _re
+        def _chi_from_path(p: str) -> int:
+            m = _re.search(r'_chi(\d+)_best', p)
+            return int(m.group(1)) if m else -1
+        for _D in D_bond_list:
+            _pattern = os.path.join(args.resume_folder, f'sweep_D{_D}_chi*_best.pt')
+            _files = _glob.glob(_pattern)
+            if not _files:
+                print(f"  [resume-folder] D={_D}: no checkpoint found in "
+                      f"{args.resume_folder} — using default init")
+                continue
+            _best_f = max(_files, key=_chi_from_path)
+            _ckpt = torch.load(_best_f, map_location=_core.DEVICE)
+            _loaded = tuple(_ckpt[k] for k in ansatz_cfg['ckpt_keys'])
+            best_params_by_D[_D] = _new_tensors_from_data(_loaded)
+            print(f"  [resume-folder] D={_D}: loaded {os.path.basename(_best_f)} "
+                  f"(chi={_chi_from_path(_best_f)})")
+            del _ckpt, _loaded; gc.collect()
+        print()
 
     # ══════════════════════════════════════════════════════════════════════════
     # Outer loop: D_bond
@@ -2378,22 +2430,20 @@ def main():
                 loss_log: list = []
                 all_loss_logs[(D_bond, chi)] = loss_log
                 
-                """
                 # ── Chi init: mean-field / random / warm-start ─────────────────
-                if args.mean_field_init and D_bond == D_BOND_LIST[0] and chi == DEFAULT_CHI_SCHEDULES[D_BOND_LIST[0]][0]:
+                #print(cur_params)
+                if cur_params is None and args.mean_field_init:
                     _init_params = _make_mean_field_params(
                         ansatz_cfg, D_bond, d_PHYS, INIT_NOISE)
                     if chi_idx == 0:
                         print(f"  │  [mean-field] Néel product-state init for chi={chi}")
                     else:
                         print(f"  │  [mean-field] Néel product-state init for chi={chi} "
-                              f"(ignoring previous result)")
+                              f"(overrides warm-start)")
                 elif args.rand_init_new_chi and chi_idx > 0:
                     print(f"  │  [rand-chi] random init for chi={chi} (ignoring previous result)")
                     _init_params = None
                 else:
-                """
-                if True:
                     _init_params = cur_params
     
                 try:

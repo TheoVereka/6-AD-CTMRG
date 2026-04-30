@@ -66,7 +66,7 @@ _USE_FULL_SVD: bool = False
 # Default 512: small CTMRG matrices (low chi/D) go to CPU, large ones to GPU.
 # Change to 0 to always use GPU (best for large-chi runs on cluster A100).
 # Change to 99999 to always use CPU (best on MX250 / quick local testing).
-_SVD_CPU_OFFLOAD_THRESHOLD: int = 0
+# _SVD_CPU_OFFLOAD_THRESHOLD: int = 0
 
 # ── Truncation error recording ─────────────────────────────────────────────
 # Set _RECORD_TRUNC_ERROR=True (via set_record_trunc_error) before a clean-
@@ -221,12 +221,6 @@ _CTM_E_CONV_THRESHOLD: float = 1e-8
 #   Energy-proxy convergence threshold (|ΔE_proxy| < this → E-converged).
 #   Only used when _CTM_CONV_MODE is 'Edifference' or 'both'.
 
-_CTM_E_PROXY_INTERVAL: int = 1
-#   Compute energy proxy every this many CTMRG iterations.
-#   Reduces overhead: interval=5 means 4 proxy evaluations over 20 steps.
-#   Increasing to 10 halves the overhead; reducing to 1 checks every step.
-#   Must be ≥ 1.  Default 5 is a good balance between sensitivity and speed.
-
 
 def _adaptive_power_iters(k: int, N: int) -> int:
     """Return the number of rSVD power iterations appropriate for rank k out of N.
@@ -268,8 +262,7 @@ def set_rsvd_mode(mode: str,
 
 
 def set_ctm_conv_mode(mode: str,
-                      e_threshold: float = 1e-8,
-                      e_proxy_interval: int = 5) -> None:
+                      e_threshold: float = 1e-8,) -> None:
     """Set the CTMRG convergence criterion mode and associated parameters.
 
     Args:
@@ -293,17 +286,14 @@ def set_ctm_conv_mode(mode: str,
     during optimization to avoid this overhead; only pass a real callable
     during clean evaluation (evaluate_energy_clean, evaluate_observables).
     """
-    global _CTM_CONV_MODE, _CTM_E_CONV_THRESHOLD, _CTM_E_PROXY_INTERVAL
+    global _CTM_CONV_MODE, _CTM_E_CONV_THRESHOLD
     if mode not in ('SVdifference', 'Edifference', 'both'):
         raise ValueError(
             f"Unknown CTM convergence mode {mode!r}; "
             f"choose from 'SVdifference', 'Edifference', 'both'"
         )
-    if e_proxy_interval < 1:
-        raise ValueError(f"e_proxy_interval must be ≥ 1, got {e_proxy_interval}")
     _CTM_CONV_MODE = mode
     _CTM_E_CONV_THRESHOLD = float(e_threshold)
-    _CTM_E_PROXY_INTERVAL = int(e_proxy_interval)
 
 
 
@@ -754,7 +744,7 @@ class SVD_PROPACK(torch.autograd.Function):
             # Use _SVD_CPU_OFFLOAD_THRESHOLD to control dispatch per hardware.
             dev = A.device
             n_min = min(A.shape)
-            if dev.type == 'cuda' and n_min < _SVD_CPU_OFFLOAD_THRESHOLD:
+            if dev.type == 'cuda' :
                 A_cpu = A.detach().cpu()
                 U_cpu, S_cpu, Vh_cpu = torch.linalg.svd(A_cpu, full_matrices=False)
                 U = U_cpu.to(dev)
@@ -1633,36 +1623,19 @@ def initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=False):
         # physical corner contribution; 1e-3 is a reasonable starting point.
         id_noise_scale = 1e-2
 
-        if False: 
 
-            identityC = torch.eye(chi, dtype=A.dtype, device=A.device)
-            C21CD = identityC + id_noise_scale * torch.randn_like(identityC)
-            C32EF = identityC + id_noise_scale * torch.randn_like(identityC)
-            C13AB = identityC + id_noise_scale * torch.randn_like(identityC)
+        allOnesC = torch.ones((chi, chi), dtype=A.dtype, device=A.device)
+        C21CD = allOnesC + id_noise_scale * torch.randn_like(allOnesC)
+        C32EF = allOnesC + id_noise_scale * torch.randn_like(allOnesC)
+        C13AB = allOnesC + id_noise_scale * torch.randn_like(allOnesC)
 
-            identityT = torch.eye(chi*D_bond, dtype=A.dtype, device=A.device)
-            identityT = identityT.reshape(chi, D_bond, chi, D_bond).permute(0, 2, 1, 3).reshape(chi, chi, D_squared)
-            T1F = identityT + id_noise_scale * torch.randn_like(identityT)
-            T2A = identityT + id_noise_scale * torch.randn_like(identityT)
-            T2B = identityT + id_noise_scale * torch.randn_like(identityT)
-            T3C = identityT + id_noise_scale * torch.randn_like(identityT)
-            T3D = identityT + id_noise_scale * torch.randn_like(identityT)
-            T1E = identityT + id_noise_scale * torch.randn_like(identityT)
-
-        else:
-
-            allOnesC = torch.ones((chi, chi), dtype=A.dtype, device=A.device)
-            C21CD = allOnesC + id_noise_scale * torch.randn_like(allOnesC)
-            C32EF = allOnesC + id_noise_scale * torch.randn_like(allOnesC)
-            C13AB = allOnesC + id_noise_scale * torch.randn_like(allOnesC)
-
-            allOnesT = torch.ones((chi, chi, D_squared), dtype=A.dtype, device=A.device)
-            T1F = allOnesT + id_noise_scale * torch.randn_like(allOnesT)
-            T2A = allOnesT + id_noise_scale * torch.randn_like(allOnesT)
-            T2B = allOnesT + id_noise_scale * torch.randn_like(allOnesT)
-            T3C = allOnesT + id_noise_scale * torch.randn_like(allOnesT)
-            T3D = allOnesT + id_noise_scale * torch.randn_like(allOnesT)
-            T1E = allOnesT + id_noise_scale * torch.randn_like(allOnesT)
+        allOnesT = torch.ones((chi, chi, D_squared), dtype=A.dtype, device=A.device)
+        T1F = allOnesT + id_noise_scale * torch.randn_like(allOnesT)
+        T2A = allOnesT + id_noise_scale * torch.randn_like(allOnesT)
+        T2B = allOnesT + id_noise_scale * torch.randn_like(allOnesT)
+        T3C = allOnesT + id_noise_scale * torch.randn_like(allOnesT)
+        T3D = allOnesT + id_noise_scale * torch.randn_like(allOnesT)
+        T1E = allOnesT + id_noise_scale * torch.randn_like(allOnesT)
 
 
         C21CD = normalize_tensor(C21CD)
@@ -2730,31 +2703,31 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
                 # checked above — this block is unreachable in that case.
 
                 if energy_proxy_fn is not None and _effective_mode != 'SVdifference':
-                    if iteration % _CTM_E_PROXY_INTERVAL == 0:
-                        _curr_e = energy_proxy_fn(
-                                nowC21CD, nowC32EF, nowC13AB,
-                                nowT1F,  nowT2A,  nowT2B,
-                                nowT3C,  nowT3D,  nowT1E,
-                                nowC21EB, nowC32AD, nowC13CF,
-                                nowT1D,  nowT2C,  nowT2F,
-                                nowT3E,  nowT3B,  nowT1A,
-                                nowC21AF, nowC32CB, nowC13ED,
-                                nowT1B,  nowT2E,  nowT2D,
-                                nowT3A,  nowT3F,  nowT1C)
-                        _e_met = (_last_e_proxy is not None
-                                  and abs(_curr_e - _last_e_proxy)
-                                        < _CTM_E_CONV_THRESHOLD)
 
-                        #print(f"CTMRG iter {iteration+1:3d}: energy proxy = {_curr_e:.8f}")
-                        
-                        _last_e_proxy = _curr_e
+                    _curr_e = energy_proxy_fn(
+                            nowC21CD, nowC32EF, nowC13AB,
+                            nowT1F,  nowT2A,  nowT2B,
+                            nowT3C,  nowT3D,  nowT1E,
+                            nowC21EB, nowC32AD, nowC13CF,
+                            nowT1D,  nowT2C,  nowT2F,
+                            nowT3E,  nowT3B,  nowT1A,
+                            nowC21AF, nowC32CB, nowC13ED,
+                            nowT1B,  nowT2E,  nowT2D,
+                            nowT3A,  nowT3F,  nowT1C)
+                    _e_met = (_last_e_proxy is not None
+                                and abs(_curr_e - _last_e_proxy)
+                                    < _CTM_E_CONV_THRESHOLD)
 
-                        if _effective_mode == 'Edifference' and _e_met:
-                            ctm_steps = iteration + 1
-                            break
-                        if _effective_mode == 'both' and _sv_met and _e_met:
-                            ctm_steps = iteration + 1
-                            break
+                    #print(f"CTMRG iter {iteration+1:3d}: energy proxy = {_curr_e:.8f}")
+                    
+                    _last_e_proxy = _curr_e
+
+                    if _effective_mode == 'Edifference' and _e_met:
+                        ctm_steps = iteration + 1
+                        break
+                    if _effective_mode == 'both' and _sv_met and _e_met:
+                        ctm_steps = iteration + 1
+                        break
 
             # Update the environment corner and edge transfer tensors
             # match iteration % 3 :
