@@ -1,0 +1,7 @@
+source ${HOME}/venvs/6adctmrg/bin/activate
+
+python main_Jed.py --J2 [J2 value] --ansatz [ansatz label] --output-dir [output directory] \
+ --resume [resuming file name] OR --resume-folder [resuming folder path]
+
+ # currently it's using 25 CPUs.
+ # RAM demand: 60GB for D=9 may even not be enough.
