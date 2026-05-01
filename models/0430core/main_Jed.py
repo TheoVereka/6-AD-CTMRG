@@ -2484,6 +2484,9 @@ def main():
                     and _init_params is not None
                     and _init_params is cur_params
                 )
+
+                _skip_adam = True
+
                 if _skip_adam:
                     print(f"  │  [warm-start] chi_idx={chi_idx}>0: "
                           f"skipping Adam, starting directly with L-BFGS")
