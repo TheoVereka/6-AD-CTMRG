@@ -405,7 +405,7 @@ RSVD_POWER_ITERS = None
 #     3. Repeat until time budget is exhausted or OPT_CONV_THRESHOLD hit.
 #   This is the "cheap-environment" AD-CTMRG gradient scheme.
 
-LBFGS_MAX_ITER = 15
+LBFGS_MAX_ITER = 10
 #   Maximum L-BFGS sub-iterations per outer step (= max closure evaluations
 #   inside a single optimizer.step() call).  Each sub-iteration does a
 #   forward + backward pass through the energy formula.  30 gives a thorough
@@ -413,7 +413,7 @@ LBFGS_MAX_ITER = 15
 #   Applies UNIFORMLY to every (D, chi) level — no difference between small
 #   and large chi.
 
-LBFGS_LR = 1.0
+LBFGS_LR = 1e0
 #   Step-size seed for the strong-Wolfe line search.  The line search
 #   automatically scales the actual step, so lr=1.0 is the standard default
 #   and almost always correct.  Only change if you observe line-search
@@ -429,7 +429,7 @@ LBFGS_HISTORY = 150
 #   and wastes nothing.  Old values like 50–100 were appropriate for classical
 #   L-BFGS that runs continuously; they do not apply here.
 
-OPT_TOL_GRAD = 1e-8
+OPT_TOL_GRAD = 0.0 #1e-8
 #   L-BFGS inner convergence criterion on the infinity-norm of the gradient:
 #   the sub-iteration loop exits early if  ||∇loss||_∞ < OPT_TOL_GRAD.
 #   This is an inner stopping rule inside a single optimizer.step() call.
@@ -439,7 +439,7 @@ OPT_TOL_CHANGE = 3e-8
 #   sub-iteration exits if  |L_{k+1} – L_k| < OPT_TOL_CHANGE.
 #   Set tighter than OPT_TOL_GRAD to catch near-flat regions.
 
-OPT_CONV_THRESHOLD = 1e-7
+OPT_CONV_THRESHOLD = 5e-8
 # Outer-loop early-stop: disabled (= 0).
 # The outer delta |loss(k) - loss(k-1)| compares two L-BFGS final values that
 # used DIFFERENT CTMRG environments, so even near a true minimum the delta is
@@ -476,7 +476,7 @@ OPTIMIZER = 'lbfgs'
 
 # ── Adam hyperparameters (used only when OPTIMIZER='adam') ────────────────────
 
-ADAM_LR = 2e-3
+ADAM_LR = 1e-3
 #   Adam learning rate.  Typical range: 1e-4 – 1e-3.
 ADAM_BETAS = (0.9, 0.999)
 #   Exponential decay rates for 1st and 2nd moment estimates.
@@ -506,7 +506,7 @@ USE_ADAM_WARMUP_THEN_LBFGS = True
 #   False → use OPTIMIZER ('lbfgs' or 'adam') for the full optimization.
 #   Overrideable at runtime: --adam-warmup-lbfgs CLI flag.
 
-ADAM_TO_LBFGS_SWITCH_THRESHOLD = 4e-5
+ADAM_TO_LBFGS_SWITCH_THRESHOLD = 3e-5
 #   Loss-difference threshold for the Adam→L-BFGS switch.
 #   When |loss(k) - loss(k-1)| < this value for ADAM_SWITCH_PATIENCE
 #   consecutive outer steps, Adam is killed and a fresh L-BFGS is started.
@@ -599,7 +599,7 @@ CTM_E_CONV_THRESHOLD = 2e-8
 # step for the tightest convergence tracking.  Hard-coded; not a tunable.
 
 
-SAVE_EVERY = 10
+SAVE_EVERY = 1
 #   Frequency (in outer optimisation steps) at which the "latest" checkpoint
 #   is written.  The "best" checkpoint is written immediately whenever a new
 #   minimum energy is found, independently of SAVE_EVERY.  Lower = more I/O
@@ -617,13 +617,13 @@ N_SITES = 6
 
 # ── Tensor initialisation & padding ──────────────────────────────────────────
 
-INIT_NOISE = 5e-3
+INIT_NOISE = 1e-2
 # !!! NOTE: Only used as Mean-Field-Init's random noise!!!
 # should be at least 2e-4 otherwise the initial state is too 
 # close to the exact Néel product state and the optimizer gets 
 # stuck in a local minimum.
 
-PAD_NOISE = 5e-3
+PAD_NOISE = 1e-2
 #   Gaussian noise amplitude added to the ZERO-PADDED new indices when
 #   enlarging tensors from D → D+1.  Non-zero noise breaks the symmetry of
 #   subspace of the smaller-D manifold.  Keep comparable to INIT_NOISE.
@@ -1656,19 +1656,6 @@ def optimize_at_chi(
                 line_search_fn='strong_wolfe',
             )
 
-        def _lbfgs_reset_history() -> None:
-            """Clear L-BFGS curvature history, resetting the Hessian approx to
-            a scaled identity.  O(1): just drops the stored (s_k, y_k) vector
-            pairs; the next .step() call re-initialises state from scratch.
-
-            Call whenever accumulated curvature pairs would mislead the
-            Hessian approximation:
-              - after a penalty-closure contamination  (automatic, see Hook 1)
-              - after changing SVD hyperparameters (rel_cutoff, chi_extra)  <- Hook 2
-              - any other structural perturbation to the objective.
-            """
-            assert _lbfgs is not None
-            _lbfgs.state.clear()
 
         if _effective_optimizer == 'lbfgs' or skip_adam_warmup:
             # Pure L-BFGS mode (or skipping Adam warmup for warm-started chi):
@@ -1772,18 +1759,6 @@ def optimize_at_chi(
         if _effective_optimizer == 'lbfgs':
             if _lbfgs is None:
                 raise RuntimeError("L-BFGS optimizer requested but was not initialized")
-
-            # ── HISTORY-CLEAR HOOKS ───────────────────────────────────────────
-            # Hook 0 (MANDATORY, every outer step): reset L-BFGS state.
-            # Prevents prev_flat_grad from a converged inner loop from
-            # creating y = g_new - 0 = g_new with s=0 (degenerate pair).
-            _lbfgs_reset_history()
-            # Hook 1 (penalty path, already covered by Hook 0): no extra action.
-            # Hook 2 (SVD hyperparameter change, future): Hook 0 covers it;
-            #   add a diagnostic print here when rel_cutoff/chi_extra change:
-            # if <svd_params_changed>:
-            #     print("[lbfgs] SVD params changed; Hook 0 cleared history.")
-            # ─────────────────────────────────────────────────────────────────
 
             last_ctm_steps = None
             def closure():
@@ -2497,6 +2472,7 @@ def main():
                     and _init_params is not None
                     and _init_params is cur_params
                 )
+                #_skip_adam = True
                 if _skip_adam:
                     print(f"  │  [warm-start] chi_idx={chi_idx}>0: "
                           f"skipping Adam, starting directly with L-BFGS")
