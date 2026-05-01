@@ -9,13 +9,13 @@ MY_OUTPUT_OUTERDIR = '/home/chye/6ADctmrg/data/raw'
 
 # ── Sweep control ─────────────────────────────────────────────────────────────
 
-D_BOND_LIST = [3,4, 5, 6]#, 7, 8, 9, 10, 11]
+D_BOND_LIST = [4]#, 7, 8, 9, 10, 11]
 #   Ordered list of iPEPS virtual bond dimensions to sweep (outer loop).
 #   Each D is warm-started from the best tensors found at the previous D
 #   (zero-padded to the new size + PAD_NOISE Gaussian noise).
 
 
-DEFAULT_D_BUDGET_FRACS = {3:0.1,4: 0.1, 5:0.1, 6:0.1}#, 7:0.1, 8:0.1, 9:0.1, 10:0.1, 11:0.1}
+DEFAULT_D_BUDGET_FRACS = {4: 0.1}#, 7:0.1, 8:0.1, 9:0.1, 10:0.1, 11:0.1}
 #   Fraction of the total wall-clock budget allocated to each D_bond value.
 #   Normalised to sum=1 before use, so only the RATIOS matter.
 #   Rationale:
@@ -26,16 +26,16 @@ DEFAULT_D_BUDGET_FRACS = {3:0.1,4: 0.1, 5:0.1, 6:0.1}#, 7:0.1, 8:0.1, 9:0.1, 10:
 #   values have genuinely different computational costs and scientific weight.
 #   Within each D, every chi level gets equal time (see below).
 
-DEFAULT_CHI_MAX = {3:99,4: 80, 5:9999, 6:9999}#, 7:9999, 8:9999, 9:9999, 10:9999, 11:9999}
+DEFAULT_CHI_MAX = {4: 80}#, 7:9999, 8:9999, 9:9999, 10:9999, 11:9999}
 #   Largest chi to attempt for each D_bond.
 #   Increase if you have more memory; decrease if you hit OOM.
 
 DEFAULT_CHI_SCHEDULES = {
     #2: [10, 14, 16],
-    3: [15, 21, 24],
+    #3: [15, 21, 24],
     4: [20, 28, 32], 
-    5: [30, 40, 45],
-    6: [36, 48, 54],
+    #5: [30, 40, 45],
+    #6: [36, 48, 54],
     #7: [49, 63, 77, 84],
     #8: [56, 72, 88, 96],
     #9: [72, 90, 99,108],
@@ -2489,6 +2489,9 @@ def main():
                         or D_bond in _preoptimized_Ds  # checkpoint resume
                     )
                 )
+
+                #_skip_adam = True
+
                 if _skip_adam:
                     _reason = ('checkpoint resume'
                                if chi_idx == 0 else f'chi_idx={chi_idx}>0')

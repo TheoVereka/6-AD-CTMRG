@@ -2343,6 +2343,11 @@ def main():
     all_loss_logs: dict[tuple, list] = {}     # (D, chi) → list of step records
     energy_table: list[dict] = []             # [{D, chi, loss, energy, ...}, ...]
     best_params_by_D: dict[int, tuple | None] = {D: None for D in D_bond_list}
+    # D values whose starting tensors are pre-optimized (from --resume or
+    # --resume-folder).  Adam warmup is skipped for chi_idx==0 of these D's:
+    # their tensors are already near the minimum, and cold-starting Adam
+    # (zero momentum) causes full lr-sized blind steps away from it.
+    _preoptimized_Ds: set[int] = set()
     global_step = 0
 
     # ── Resume ────────────────────────────────────────────────────────────────
@@ -2355,6 +2360,7 @@ def main():
         ckpt_loss  = ckpt.get('loss', float('nan'))
         loaded = tuple(ckpt[k] for k in ansatz_cfg['ckpt_keys'])
         best_params_by_D[resume_D] = _new_tensors_from_data(loaded)
+        _preoptimized_Ds.add(resume_D)
         del ckpt, loaded; gc.collect()
         global_step = ckpt_step
         print(f"  Resumed from {args.resume}  "
@@ -2378,6 +2384,7 @@ def main():
             _ckpt = torch.load(_best_f, map_location=_core.DEVICE)
             _loaded = tuple(_ckpt[k] for k in ansatz_cfg['ckpt_keys'])
             best_params_by_D[_D] = _new_tensors_from_data(_loaded)
+            _preoptimized_Ds.add(_D)
             print(f"  [resume-folder] D={_D}: loaded {os.path.basename(_best_f)} "
                   f"(chi={_chi_from_path(_best_f)})")
             del _ckpt, _loaded; gc.collect()
@@ -2476,16 +2483,29 @@ def main():
                 else:
                     _init_params = cur_params
     
-                # Warm-started from the previous chi of the same D: the
-                # tensors are already near a local minimum, so skip Adam
-                # exploration and go straight to L-BFGS.
+                # Skip Adam when tensors are already near a minimum:
+                #   chi_idx > 0: inherited from previous chi of same D
+                #   chi_idx == 0 with pre-optimized params (--resume /
+                #     --resume-folder): cold Adam (zero momentum) takes
+                #     full lr-sized blind steps away from the minimum.
+                # Either way, go straight to L-BFGS (convergence guard
+                # still withheld for first 3 outer steps).
                 _skip_adam = (
-                    chi_idx > 0
-                    and _init_params is not None
-                    and _init_params is cur_params
+                    _init_params is not None
+                    and not args.mean_field_init
+                    and not (args.rand_init_new_chi and chi_idx > 0)
+                    and (
+                        chi_idx > 0      # previous chi of same D
+                        or D_bond in _preoptimized_Ds  # checkpoint resume
+                    )
                 )
+
+                #_skip_adam = True
+
                 if _skip_adam:
-                    print(f"  │  [warm-start] chi_idx={chi_idx}>0: "
+                    _reason = ('checkpoint resume'
+                               if chi_idx == 0 else f'chi_idx={chi_idx}>0')
+                    print(f"  │  [warm-start] {_reason}: "
                           f"skipping Adam, starting directly with L-BFGS")
 
                 try:
