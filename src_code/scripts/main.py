@@ -9,13 +9,13 @@ MY_OUTPUT_OUTERDIR = '/home/chye/6ADctmrg/data/raw'
 
 # ── Sweep control ─────────────────────────────────────────────────────────────
 
-D_BOND_LIST = [4]#, 7, 8, 9, 10, 11]
+D_BOND_LIST = [3,4, 5, 6]#, 7, 8, 9, 10, 11]
 #   Ordered list of iPEPS virtual bond dimensions to sweep (outer loop).
 #   Each D is warm-started from the best tensors found at the previous D
 #   (zero-padded to the new size + PAD_NOISE Gaussian noise).
 
 
-DEFAULT_D_BUDGET_FRACS = {4: 0.1}#, 7:0.1, 8:0.1, 9:0.1, 10:0.1, 11:0.1}
+DEFAULT_D_BUDGET_FRACS = {3:0.1,4: 0.1, 5:0.1, 6:0.1}#, 7:0.1, 8:0.1, 9:0.1, 10:0.1, 11:0.1}
 #   Fraction of the total wall-clock budget allocated to each D_bond value.
 #   Normalised to sum=1 before use, so only the RATIOS matter.
 #   Rationale:
@@ -26,16 +26,16 @@ DEFAULT_D_BUDGET_FRACS = {4: 0.1}#, 7:0.1, 8:0.1, 9:0.1, 10:0.1, 11:0.1}
 #   values have genuinely different computational costs and scientific weight.
 #   Within each D, every chi level gets equal time (see below).
 
-DEFAULT_CHI_MAX = {4: 80}#, 7:9999, 8:9999, 9:9999, 10:9999, 11:9999}
+DEFAULT_CHI_MAX = {3:99,4: 80, 5:9999, 6:9999}#, 7:9999, 8:9999, 9:9999, 10:9999, 11:9999}
 #   Largest chi to attempt for each D_bond.
 #   Increase if you have more memory; decrease if you hit OOM.
 
 DEFAULT_CHI_SCHEDULES = {
     #2: [10, 14, 16],
-    #3: [15, 21, 24],
+    3: [15, 21, 24],
     4: [20, 28, 32], 
-    #5: [30, 40, 45],
-    #6: [36, 48, 54],
+    5: [30, 40, 45],
+    6: [36, 48, 54],
     #7: [49, 63, 77, 84],
     #8: [56, 72, 88, 96],
     #9: [72, 90, 99,108],
@@ -505,7 +505,7 @@ ADAM_TO_LBFGS_SWITCH_THRESHOLD = 4e-5
 #     1e-5 : safe default (landscape is locally smooth, L-BFGS reliable)
 #     1e-7 : switch very late (near full convergence, L-BFGS fine-polishes)
 
-ADAM_SWITCH_PATIENCE = 7
+ADAM_SWITCH_PATIENCE = 6
 #   Number of consecutive outer steps with |Δloss| < ADAM_TO_LBFGS_SWITCH_THRESHOLD
 #   required before the switch is triggered.  Prevents premature switching
 #   caused by a single accidentally small step (e.g. after a stall where
@@ -1614,6 +1614,7 @@ def optimize_at_chi(
                                   else OPTIMIZER)
     _switch_patience_count: int = 0   # consecutive steps below threshold
     _prev_abs_delta: float | None = None  # for deceleration check in switch
+    _adam_steps_taken: int = 0  # counts Adam outer steps (for early-switch)
     _switched_to_lbfgs: bool   = False  # True after Adam→L-BFGS transition
 
     # ── pre-create Adam optimizer (state persists across outer steps) ─────────
@@ -1847,6 +1848,7 @@ def optimize_at_chi(
             _loss.backward()
             _adam.step()
             loss_item = _loss.detach().item()
+            _adam_steps_taken += 1
             # ── GPU memory cleanup after Adam micro-steps ────────────────
             if params[0].device.type == 'cuda':
                 gc.collect()
@@ -1886,37 +1888,48 @@ def optimize_at_chi(
         if (USE_ADAM_WARMUP_THEN_LBFGS
                 and _effective_optimizer == 'adam'
                 and prev_loss is not None):
-            # Switch fires only when BOTH conditions hold for every step in
-            # the patience window:
-            #   (a) |Δloss| < ADAM_TO_LBFGS_SWITCH_THRESHOLD  (converging)
-            #   (b) |Δloss| < |Δloss_prev|  (still decelerating)
-            # This ensures we don't switch while the loss is still falling
-            # quickly but has temporarily dipped below the threshold.
-            _is_decelerating = (
-                _prev_abs_delta is None or abs(delta) < _prev_abs_delta)
-            if abs(delta) < ADAM_TO_LBFGS_SWITCH_THRESHOLD and _is_decelerating:
-                _switch_patience_count += 1
-                if _switch_patience_count >= ADAM_SWITCH_PATIENCE:
-                    print(f"    [warmup] Adam\u2192L-BFGS switch at step {step} "
-                          f"(|\u0394loss|={abs(delta):.2e} < "
-                          f"{ADAM_TO_LBFGS_SWITCH_THRESHOLD:.2e}, "
-                          f"decelerating for {ADAM_SWITCH_PATIENCE} steps)")
-                    # Kill Adam: clear moment state, release reference
-                    del _adam
-                    _adam = None
-                    if params[0].device.type == 'cuda':
-                        gc.collect()
-                        torch.cuda.empty_cache()
-                    # Start a fresh L-BFGS (no stale curvature from Adam phase)
-                    _lbfgs = _make_lbfgs(*params)  # type: ignore[name-defined]
-                    _lbfgs_outer_steps = 0  # reset warmup counter
-                    _effective_optimizer = 'lbfgs'
-                    _switched_to_lbfgs   = True
-                    _switch_patience_count = 0
-                    _prev_abs_delta = None
+
+            def _do_switch_to_lbfgs(reason: str) -> None:
+                nonlocal _adam, _lbfgs, _lbfgs_outer_steps, _effective_optimizer
+                nonlocal _switched_to_lbfgs, _switch_patience_count, _prev_abs_delta
+                print(f"    [warmup] Adam→L-BFGS switch at step {step} ({reason})")
+                del _adam
+                _adam = None
+                if params[0].device.type == 'cuda':
+                    gc.collect()
+                    torch.cuda.empty_cache()
+                _lbfgs = _make_lbfgs(*params)  # type: ignore[name-defined]
+                _lbfgs_outer_steps = 0
+                _effective_optimizer = 'lbfgs'
+                _switched_to_lbfgs   = True
+                _switch_patience_count = 0
+                _prev_abs_delta = None
+
+            # ── Early near-optimal switch (first 3 Adam steps) ───────────
+            # If Δloss > -1e-5 on any of the first 3 steps, the starting
+            # point is already near the minimum — Adam's fixed-lr steps
+            # will only kick it away.  Switch to L-BFGS immediately.
+            if _adam_steps_taken <= 3 and delta > -1e-5:
+                _do_switch_to_lbfgs(
+                    f"Δ={delta:+.2e} > -1e-5 on Adam step {_adam_steps_taken} "
+                    f"(near-optimal start)")
             else:
-                _switch_patience_count = 0  # reset: condition broken
-            _prev_abs_delta = abs(delta)    # always update for next step
+                # ── Normal patience-based switch ─────────────────────────
+                # Both conditions must hold for ADAM_SWITCH_PATIENCE steps:
+                #   (a) |Δloss| < ADAM_TO_LBFGS_SWITCH_THRESHOLD
+                #   (b) |Δloss| < |Δloss_prev|  (still decelerating)
+                _is_decelerating = (
+                    _prev_abs_delta is None or abs(delta) < _prev_abs_delta)
+                if abs(delta) < ADAM_TO_LBFGS_SWITCH_THRESHOLD and _is_decelerating:
+                    _switch_patience_count += 1
+                    if _switch_patience_count >= ADAM_SWITCH_PATIENCE:
+                        _do_switch_to_lbfgs(
+                            f"|Δloss|={abs(delta):.2e} < "
+                            f"{ADAM_TO_LBFGS_SWITCH_THRESHOLD:.2e}, "
+                            f"decelerating for {ADAM_SWITCH_PATIENCE} steps")
+                else:
+                    _switch_patience_count = 0  # reset: condition broken
+                _prev_abs_delta = abs(delta)    # always update for next step
         # ─────────────────────────────────────────────────────────────────────
 
         # Skip convergence checks for the first 2 outer steps after LBFGS
@@ -2333,11 +2346,6 @@ def main():
     all_loss_logs: dict[tuple, list] = {}     # (D, chi) → list of step records
     energy_table: list[dict] = []             # [{D, chi, loss, energy, ...}, ...]
     best_params_by_D: dict[int, tuple | None] = {D: None for D in D_bond_list}
-    # D values whose starting tensors are pre-optimized (from --resume or
-    # --resume-folder).  Adam warmup is skipped for chi_idx==0 of these D's:
-    # their tensors are already near the minimum, and cold-starting Adam
-    # (zero momentum) causes full lr-sized blind steps away from it.
-    _preoptimized_Ds: set[int] = set()
     global_step = 0
 
     # ── Resume ────────────────────────────────────────────────────────────────
@@ -2350,7 +2358,6 @@ def main():
         ckpt_loss  = ckpt.get('loss', float('nan'))
         loaded = tuple(ckpt[k] for k in ansatz_cfg['ckpt_keys'])
         best_params_by_D[resume_D] = _new_tensors_from_data(loaded)
-        _preoptimized_Ds.add(resume_D)
         del ckpt, loaded; gc.collect()
         global_step = ckpt_step
         print(f"  Resumed from {args.resume}  "
@@ -2374,7 +2381,6 @@ def main():
             _ckpt = torch.load(_best_f, map_location=_core.DEVICE)
             _loaded = tuple(_ckpt[k] for k in ansatz_cfg['ckpt_keys'])
             best_params_by_D[_D] = _new_tensors_from_data(_loaded)
-            _preoptimized_Ds.add(_D)
             print(f"  [resume-folder] D={_D}: loaded {os.path.basename(_best_f)} "
                   f"(chi={_chi_from_path(_best_f)})")
             del _ckpt, _loaded; gc.collect()
@@ -2473,29 +2479,16 @@ def main():
                 else:
                     _init_params = cur_params
     
-                # Skip Adam when tensors are already near a minimum:
-                #   chi_idx > 0: inherited from previous chi of same D
-                #   chi_idx == 0 with pre-optimized params (--resume /
-                #     --resume-folder): cold Adam (zero momentum) takes
-                #     full lr-sized blind steps away from the minimum.
-                # Either way, go straight to L-BFGS (convergence guard
-                # still withheld for first 3 outer steps).
+                # Warm-started from the previous chi of the same D: the
+                # tensors are already near a local minimum, so skip Adam
+                # exploration and go straight to L-BFGS.
                 _skip_adam = (
-                    _init_params is not None
-                    and not args.mean_field_init
-                    and not (args.rand_init_new_chi and chi_idx > 0)
-                    and (
-                        chi_idx > 0      # previous chi of same D
-                        or D_bond in _preoptimized_Ds  # checkpoint resume
-                    )
+                    chi_idx > 0
+                    and _init_params is not None
+                    and _init_params is cur_params
                 )
-
-                #_skip_adam = True
-
                 if _skip_adam:
-                    _reason = ('checkpoint resume'
-                               if chi_idx == 0 else f'chi_idx={chi_idx}>0')
-                    print(f"  │  [warm-start] {_reason}: "
+                    print(f"  │  [warm-start] chi_idx={chi_idx}>0: "
                           f"skipping Adam, starting directly with L-BFGS")
 
                 try:
