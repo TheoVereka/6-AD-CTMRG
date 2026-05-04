@@ -405,7 +405,7 @@ RSVD_POWER_ITERS = None
 #     3. Repeat until time budget is exhausted or OPT_CONV_THRESHOLD hit.
 #   This is the "cheap-environment" AD-CTMRG gradient scheme.
 
-LBFGS_MAX_ITER = 15
+LBFGS_MAX_ITER = 10
 #   Maximum L-BFGS sub-iterations per outer step (= max closure evaluations
 #   inside a single optimizer.step() call).  Each sub-iteration does a
 #   forward + backward pass through the energy formula.  30 gives a thorough
@@ -413,7 +413,7 @@ LBFGS_MAX_ITER = 15
 #   Applies UNIFORMLY to every (D, chi) level — no difference between small
 #   and large chi.
 
-LBFGS_LR = 1.0
+LBFGS_LR = 1e0
 #   Step-size seed for the strong-Wolfe line search.  The line search
 #   automatically scales the actual step, so lr=1.0 is the standard default
 #   and almost always correct.  Only change if you observe line-search
@@ -429,7 +429,7 @@ LBFGS_HISTORY = 150
 #   and wastes nothing.  Old values like 50–100 were appropriate for classical
 #   L-BFGS that runs continuously; they do not apply here.
 
-OPT_TOL_GRAD = 1e-8
+OPT_TOL_GRAD = 0.0 #1e-8
 #   L-BFGS inner convergence criterion on the infinity-norm of the gradient:
 #   the sub-iteration loop exits early if  ||∇loss||_∞ < OPT_TOL_GRAD.
 #   This is an inner stopping rule inside a single optimizer.step() call.
@@ -439,7 +439,7 @@ OPT_TOL_CHANGE = 3e-8
 #   sub-iteration exits if  |L_{k+1} – L_k| < OPT_TOL_CHANGE.
 #   Set tighter than OPT_TOL_GRAD to catch near-flat regions.
 
-OPT_CONV_THRESHOLD = 1e-7
+OPT_CONV_THRESHOLD = 5e-8
 # Outer-loop early-stop: disabled (= 0).
 # The outer delta |loss(k) - loss(k-1)| compares two L-BFGS final values that
 # used DIFFERENT CTMRG environments, so even near a true minimum the delta is
@@ -476,7 +476,7 @@ OPTIMIZER = 'lbfgs'
 
 # ── Adam hyperparameters (used only when OPTIMIZER='adam') ────────────────────
 
-ADAM_LR = 2e-3
+ADAM_LR = 1e-3
 #   Adam learning rate.  Typical range: 1e-4 – 1e-3.
 ADAM_BETAS = (0.9, 0.999)
 #   Exponential decay rates for 1st and 2nd moment estimates.
@@ -515,7 +515,7 @@ ADAM_TO_LBFGS_SWITCH_THRESHOLD = 3e-5
 #     1e-5 : safe default (landscape is locally smooth, L-BFGS reliable)
 #     1e-7 : switch very late (near full convergence, L-BFGS fine-polishes)
 
-ADAM_SWITCH_PATIENCE = 4
+ADAM_SWITCH_PATIENCE = 6
 #   Number of consecutive outer steps with |Δloss| < ADAM_TO_LBFGS_SWITCH_THRESHOLD
 #   required before the switch is triggered.  Prevents premature switching
 #   caused by a single accidentally small step (e.g. after a stall where
@@ -599,7 +599,7 @@ CTM_E_CONV_THRESHOLD = 2e-8
 # step for the tightest convergence tracking.  Hard-coded; not a tunable.
 
 
-SAVE_EVERY = 10
+SAVE_EVERY = 1
 #   Frequency (in outer optimisation steps) at which the "latest" checkpoint
 #   is written.  The "best" checkpoint is written immediately whenever a new
 #   minimum energy is found, independently of SAVE_EVERY.  Lower = more I/O
@@ -617,13 +617,13 @@ N_SITES = 6
 
 # ── Tensor initialisation & padding ──────────────────────────────────────────
 
-INIT_NOISE = 5e-3
+INIT_NOISE = 1e-2
 # !!! NOTE: Only used as Mean-Field-Init's random noise!!!
 # should be at least 2e-4 otherwise the initial state is too 
 # close to the exact Néel product state and the optimizer gets 
 # stuck in a local minimum.
 
-PAD_NOISE = 5e-3
+PAD_NOISE = 1e-2
 #   Gaussian noise amplitude added to the ZERO-PADDED new indices when
 #   enlarging tensors from D → D+1.  Non-zero noise breaks the symmetry of
 #   subspace of the smaller-D manifold.  Keep comparable to INIT_NOISE.
@@ -848,7 +848,7 @@ def pad_tensor(t: torch.Tensor, old_D: int, new_D: int,
 
     out = noise * torch.randn(new_D, new_D, new_D, d_PHYS, dtype=TENSORDTYPE,
                               device=_core.DEVICE)
-    out[:old_D, :old_D, :old_D, :] += normalize_tensor(t.detach())#*torch.sqrt(torch.tensor(old_D**3 * d_PHYS, dtype=TENSORDTYPE))
+    out[:old_D, :old_D, :old_D, :] += normalize_tensor(t.detach())*torch.sqrt(torch.tensor(old_D**3 * d_PHYS, dtype=TENSORDTYPE))
     if symmetrize_fn is not None:
         out = symmetrize_fn(out)
     return out
@@ -1574,6 +1574,7 @@ def optimize_at_chi(
         loss_log: list | None = None,
         out_dir: str | None = None,
         ansatz_cfg: dict | None = None,
+        skip_adam_warmup: bool = False,
 ) -> tuple:
     """
     Outer L-BFGS loop at fixed (D_bond, chi) until budget_seconds elapsed
@@ -1615,9 +1616,15 @@ def optimize_at_chi(
     # ── effective optimizer — starts as 'adam' in warmup mode ─────────────────
     # USE_ADAM_WARMUP_THEN_LBFGS overrides OPTIMIZER for the exploration phase;
     # the variable is updated to 'lbfgs' when the switch fires.
-    _effective_optimizer: str = ('adam' if USE_ADAM_WARMUP_THEN_LBFGS
+    # skip_adam_warmup=True (inherited warm-start from previous chi of same D):
+    # tensors are already near the local minimum, so bypass Adam entirely and
+    # start directly with L-BFGS (convergence guard still active for first 3 steps).
+    _effective_optimizer: str = ('adam' if (USE_ADAM_WARMUP_THEN_LBFGS
+                                            and not skip_adam_warmup)
                                   else OPTIMIZER)
-    _switch_patience_count: int = 0   # consecutive steps under threshold
+    _switch_patience_count: int = 0   # consecutive steps below threshold
+    _prev_abs_delta: float | None = None  # for deceleration check in switch
+    _adam_steps_taken: int = 0  # counts Adam outer steps (for early-switch)
     _switched_to_lbfgs: bool   = False  # True after Adam→L-BFGS transition
 
     # ── pre-create Adam optimizer (state persists across outer steps) ─────────
@@ -1637,7 +1644,7 @@ def optimize_at_chi(
     _lbfgs: torch.optim.Optimizer | None = None
     last_ctm_steps: int | None = None
     last_cn: dict[str, float] | None = None
-    if OPTIMIZER == 'lbfgs' or USE_ADAM_WARMUP_THEN_LBFGS:
+    if OPTIMIZER == 'lbfgs' or USE_ADAM_WARMUP_THEN_LBFGS or skip_adam_warmup:
         def _make_lbfgs(*_tensors) -> torch.optim.LBFGS:
             return torch.optim.LBFGS(
                 list(_tensors),
@@ -1649,24 +1656,15 @@ def optimize_at_chi(
                 line_search_fn='strong_wolfe',
             )
 
-        def _lbfgs_reset_history() -> None:
-            """Clear L-BFGS curvature history, resetting the Hessian approx to
-            a scaled identity.  O(1): just drops the stored (s_k, y_k) vector
-            pairs; the next .step() call re-initialises state from scratch.
 
-            Call whenever accumulated curvature pairs would mislead the
-            Hessian approximation:
-              - after a penalty-closure contamination  (automatic, see Hook 1)
-              - after changing SVD hyperparameters (rel_cutoff, chi_extra)  <- Hook 2
-              - any other structural perturbation to the objective.
-            """
-            assert _lbfgs is not None
-            _lbfgs.state.clear()
-
-        if _effective_optimizer == 'lbfgs':
-            # Pure L-BFGS mode: create initial instance now.
+        if _effective_optimizer == 'lbfgs' or skip_adam_warmup:
+            # Pure L-BFGS mode (or skipping Adam warmup for warm-started chi):
+            # create initial LBFGS instance now.
             _lbfgs = _make_lbfgs(*params)
             _lbfgs_outer_steps: int = 0  # reset on fresh LBFGS creation
+            if skip_adam_warmup and USE_ADAM_WARMUP_THEN_LBFGS:
+                _effective_optimizer = 'lbfgs'  # ensure correct branch in loop
+                _switched_to_lbfgs   = True
 
     def _loss_with_differentiable_ctmrg() -> tuple[torch.Tensor, int]:
         """Compute loss with CTMRG inside the autograd graph.
@@ -1762,18 +1760,6 @@ def optimize_at_chi(
             if _lbfgs is None:
                 raise RuntimeError("L-BFGS optimizer requested but was not initialized")
 
-            # ── HISTORY-CLEAR HOOKS ───────────────────────────────────────────
-            # Hook 0 (MANDATORY, every outer step): reset L-BFGS state.
-            # Prevents prev_flat_grad from a converged inner loop from
-            # creating y = g_new - 0 = g_new with s=0 (degenerate pair).
-            _lbfgs_reset_history()
-            # Hook 1 (penalty path, already covered by Hook 0): no extra action.
-            # Hook 2 (SVD hyperparameter change, future): Hook 0 covers it;
-            #   add a diagnostic print here when rel_cutoff/chi_extra change:
-            # if <svd_params_changed>:
-            #     print("[lbfgs] SVD params changed; Hook 0 cleared history.")
-            # ─────────────────────────────────────────────────────────────────
-
             last_ctm_steps = None
             def closure():
                 nonlocal last_ctm_steps
@@ -1847,6 +1833,7 @@ def optimize_at_chi(
             _loss.backward()
             _adam.step()
             loss_item = _loss.detach().item()
+            _adam_steps_taken += 1
             # ── GPU memory cleanup after Adam micro-steps ────────────────
             if params[0].device.type == 'cuda':
                 gc.collect()
@@ -1886,27 +1873,48 @@ def optimize_at_chi(
         if (USE_ADAM_WARMUP_THEN_LBFGS
                 and _effective_optimizer == 'adam'
                 and prev_loss is not None):
-            if abs(delta) < ADAM_TO_LBFGS_SWITCH_THRESHOLD:
-                _switch_patience_count += 1
-                if _switch_patience_count >= ADAM_SWITCH_PATIENCE:
-                    print(f"    [warmup] Adam\u2192L-BFGS switch at step {step} "
-                          f"(|\u0394loss|={abs(delta):.2e} < "
-                          f"{ADAM_TO_LBFGS_SWITCH_THRESHOLD:.2e} "
-                          f"for {ADAM_SWITCH_PATIENCE} consecutive steps)")
-                    # Kill Adam: clear moment state, release reference
-                    del _adam
-                    _adam = None
-                    if params[0].device.type == 'cuda':
-                        gc.collect()
-                        torch.cuda.empty_cache()
-                    # Start a fresh L-BFGS (no stale curvature from Adam phase)
-                    _lbfgs = _make_lbfgs(*params)  # type: ignore[name-defined]
-                    _lbfgs_outer_steps = 0  # reset warmup counter
-                    _effective_optimizer = 'lbfgs'
-                    _switched_to_lbfgs   = True
-                    _switch_patience_count = 0
+
+            def _do_switch_to_lbfgs(reason: str) -> None:
+                nonlocal _adam, _lbfgs, _lbfgs_outer_steps, _effective_optimizer
+                nonlocal _switched_to_lbfgs, _switch_patience_count, _prev_abs_delta
+                print(f"    [warmup] Adam→L-BFGS switch at step {step} ({reason})")
+                del _adam
+                _adam = None
+                if params[0].device.type == 'cuda':
+                    gc.collect()
+                    torch.cuda.empty_cache()
+                _lbfgs = _make_lbfgs(*params)  # type: ignore[name-defined]
+                _lbfgs_outer_steps = 0
+                _effective_optimizer = 'lbfgs'
+                _switched_to_lbfgs   = True
+                _switch_patience_count = 0
+                _prev_abs_delta = None
+
+            # ── Early near-optimal switch (first 3 Adam steps) ───────────
+            # If Δloss > -1e-5 on any of the first 3 steps, the starting
+            # point is already near the minimum — Adam's fixed-lr steps
+            # will only kick it away.  Switch to L-BFGS immediately.
+            if _adam_steps_taken <= 3 and delta > -1e-5:
+                _do_switch_to_lbfgs(
+                    f"Δ={delta:+.2e} > -1e-5 on Adam step {_adam_steps_taken} "
+                    f"(near-optimal start)")
             else:
-                _switch_patience_count = 0  # reset: loss still dropping fast
+                # ── Normal patience-based switch ─────────────────────────
+                # Both conditions must hold for ADAM_SWITCH_PATIENCE steps:
+                #   (a) |Δloss| < ADAM_TO_LBFGS_SWITCH_THRESHOLD
+                #   (b) |Δloss| < |Δloss_prev|  (still decelerating)
+                _is_decelerating = (
+                    _prev_abs_delta is None or abs(delta) < _prev_abs_delta)
+                if abs(delta) < ADAM_TO_LBFGS_SWITCH_THRESHOLD and _is_decelerating:
+                    _switch_patience_count += 1
+                    if _switch_patience_count >= ADAM_SWITCH_PATIENCE:
+                        _do_switch_to_lbfgs(
+                            f"|Δloss|={abs(delta):.2e} < "
+                            f"{ADAM_TO_LBFGS_SWITCH_THRESHOLD:.2e}, "
+                            f"decelerating for {ADAM_SWITCH_PATIENCE} steps")
+                else:
+                    _switch_patience_count = 0  # reset: condition broken
+                _prev_abs_delta = abs(delta)    # always update for next step
         # ─────────────────────────────────────────────────────────────────────
 
         # Skip convergence checks for the first 2 outer steps after LBFGS
@@ -2381,9 +2389,28 @@ def main():
 
         _d_restart_count = 0
         while True:  # ── D-restart harness; re-entered if env collapses ──
-            # ── Warm-start from D-1 if available ─────────────────────────────────
-            prev_D = D_bond_list[D_bond_list.index(D_bond) - 1] \
-                     if D_bond_list.index(D_bond) > 0 else None
+            # ── Warm-start from closest available smaller D ───────────────────
+            # Primary: previous D in this run's schedule (D_bond_list order)
+            _d_idx = D_bond_list.index(D_bond)
+            prev_D = D_bond_list[_d_idx - 1] if _d_idx > 0 else None
+            # Secondary: tensors loaded by --resume that may be outside D_bond_list
+            # (e.g. --resume D6_chi54 while D_bond_list starts at D=7).
+            # Always prefer the closest D < D_bond regardless of source.
+            if best_params_by_D.get(D_bond) is None and not args.rand_init_new_d:
+                _resume_src = [
+                    d for d in best_params_by_D
+                    if d < D_bond
+                    and best_params_by_D.get(d) is not None
+                    and d not in D_bond_list
+                ]
+                if _resume_src:
+                    _best_resume_src = max(_resume_src)
+                    # Use it if closer to D_bond than the in-schedule prev_D,
+                    # or if prev_D has no tensors yet.
+                    if (prev_D is None
+                            or best_params_by_D.get(prev_D) is None
+                            or _best_resume_src > prev_D):
+                        prev_D = _best_resume_src
             if args.rand_init_new_d and prev_D is not None:
                 print(f"  [rand-D] random init for D={D_bond} (ignoring D={prev_D} tensors)")
             if (best_params_by_D.get(D_bond) is None
@@ -2441,6 +2468,7 @@ def main():
                 all_loss_logs[(D_bond, chi)] = loss_log
                 
                 # ── Chi init: mean-field / random / warm-start ─────────────────
+                #print(cur_params)
                 if cur_params is None and args.mean_field_init:
                     _init_params = _make_mean_field_params(
                         ansatz_cfg, D_bond, d_PHYS, INIT_NOISE)
@@ -2455,6 +2483,19 @@ def main():
                 else:
                     _init_params = cur_params
     
+                # Warm-started from the previous chi of the same D: the
+                # tensors are already near a local minimum, so skip Adam
+                # exploration and go straight to L-BFGS.
+                _skip_adam = (
+                    chi_idx > 0
+                    and _init_params is not None
+                    and _init_params is cur_params
+                )
+                #_skip_adam = True
+                if _skip_adam:
+                    print(f"  │  [warm-start] chi_idx={chi_idx}>0: "
+                          f"skipping Adam, starting directly with L-BFGS")
+
                 try:
                     best_params_tuple, best_loss, global_step = optimize_at_chi(
                         Js, SdotS, D_bond, chi, d_PHYS,
@@ -2467,6 +2508,7 @@ def main():
                         loss_log=loss_log,
                         out_dir=output_dir,
                         ansatz_cfg=ansatz_cfg,
+                        skip_adam_warmup=_skip_adam,
                     )
                 except _CollapseRestartD as _exc:
                     _chi_collapse = True
