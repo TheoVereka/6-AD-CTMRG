@@ -42,14 +42,14 @@ DEFAULT_CHI_MAX = {3:99,4: 80, 5:9999, 6:9999, 7:9999, 8:9999, 9:9999, 10:9999, 
 DEFAULT_CHI_SCHEDULES = {
     #2: [10, 14, 16],
     3: [15, 21, 24],
-    4: [20, 28, 32], 
-    5: [30, 40, 45],
-    6: [36, 48, 54],
-    7: [49, 63, 77, 84],
-    8: [56, 72, 88, 96],
-    9: [72, 90, 99,108],
-    10:[80, 90,100,110],
-    11:[88, 99,110,121],
+    4: [24, 32, 36], 
+    5: [35, 45, 50],
+    6: [48, 60, 66],
+    7: [63, 77, 84],
+    8: [80, 96,104],
+    9: [99,108,117],
+    10:[110,120],
+    11:[110],
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -90,7 +90,7 @@ J1_COUPLING = 1.0
 #   The nn Hamiltonian is  H_nn = J1 Σ_{<i,j>} S_i · S_j
 #   summed over all 9 nearest-neighbour pairs in the 6-site honeycomb unit cell.
 
-J2_COUPLING = 0.0
+J2_COUPLING = 0.32
 #   Next-nearest-neighbour (nnn) Heisenberg exchange coupling constant.
 #   J2 > 0 = frustrated AFM.  Set to 0 to recover the pure J1 model.
 #   The nnn Hamiltonian is  H_nnn = J2 Σ_{<<i,j>>} S_i · S_j

@@ -65,7 +65,7 @@ from main import (           # noqa: E402
     evaluate_observables,
     _save_observables_file,
     _print_observables_summary,
-    _ANSATZ_CONFIGS,
+    ANSATZ_REGISTRY,
     _ENV_BOND_LABELS,
     _SITE_LABELS,
     timestamp,
@@ -75,7 +75,6 @@ from main import (           # noqa: E402
     RSVD_MODE,
     RSVD_NEUMANN_TERMS,
     RSVD_POWER_ITERS,
-    SVD_CPU_OFFLOAD_THRESHOLD,
 )
 from core import build_heisenberg_H, set_dtype, set_device, set_rsvd_mode
 
@@ -84,7 +83,7 @@ from core import build_heisenberg_H, set_dtype, set_device, set_rsvd_mode
 def _detect_ansatz(ckpt: dict) -> str:
     """Guess the ansatz name from checkpoint keys.
 
-    Returns one of the _ANSATZ_CONFIGS keys, or raises ValueError.
+    Returns one of the ANSATZ_REGISTRY keys, or raises ValueError.
     """
     if 'ansatz' in ckpt:
         return ckpt['ansatz']
@@ -150,11 +149,11 @@ def process_one(pt_path: str, args: argparse.Namespace) -> bool:
     # Keep backward compat: old checkpoints may use 'plaq'
     if ansatz_name == 'plaq':
         ansatz_name = 'c6ypi'
-    if ansatz_name not in _ANSATZ_CONFIGS:
+    if ansatz_name not in ANSATZ_REGISTRY:
         print(f"  [ERROR] Unknown ansatz '{ansatz_name}'.  "
-              f"Valid: {list(_ANSATZ_CONFIGS.keys())}")
+              f"Valid: {list(ANSATZ_REGISTRY.keys())}")
         return False
-    ansatz_cfg = _ANSATZ_CONFIGS[ansatz_name]
+    ansatz_cfg = ANSATZ_REGISTRY[ansatz_name]
     print(f"  Ansatz : {ansatz_name}  ({ansatz_cfg['description']})")
     print(f"  D={D_bond}  chi={chi}  J1={args.J1}  J2={args.J2}  d_phys={args.d_phys}")
 
@@ -167,7 +166,6 @@ def process_one(pt_path: str, args: argparse.Namespace) -> bool:
     set_rsvd_mode(args.rsvd_mode,
                   neumann_terms=RSVD_NEUMANN_TERMS,
                   power_iters=RSVD_POWER_ITERS)
-    _core._SVD_CPU_OFFLOAD_THRESHOLD = SVD_CPU_OFFLOAD_THRESHOLD
     print(f"  Device : {device}   dtype : {'float64' if use_double else 'float32'}"
           f"{'(complex)' if not use_real else ''}")
 
@@ -229,7 +227,7 @@ def main() -> None:
     # ── Ansatz / physics ──────────────────────────────────────────────────
     parser.add_argument(
         '--ansatz', default=None,
-        choices=list(_ANSATZ_CONFIGS.keys()) + ['plaq'],
+        choices=list(ANSATZ_REGISTRY.keys()) + ['plaq'],
         help='Ansatz name (auto-detected from checkpoint keys if omitted).')
     parser.add_argument('--J1', type=float, default=1.0,
                         help='Nearest-neighbour coupling (default 1.0).')

@@ -3,19 +3,28 @@
 
 
 
+#NOTE:N_cores, USE_GPU (LINE UNDER TOO!!!!!)
+# _default_outdir = os.path.join('/scratch/chye/!!YOURDATE!!!core',   
+#!!!! for IZAR is ...atch/izar/chye/...
 
 
-MY_OUTPUT_OUTERDIR = '/home/chye/6ADctmrg/data/raw'
+# # sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+# sys.stdout.flush()*3
+
+
+
+
+MY_OUTPUT_OUTERDIR = '/scratch/chye/0430core'
 
 # ── Sweep control ─────────────────────────────────────────────────────────────
 
-D_BOND_LIST = [4, 5, 6]#, 7, 8, 9, 10, 11]
+D_BOND_LIST = [3,4, 5, 6, 7, 8, 9, 10, 11]
 #   Ordered list of iPEPS virtual bond dimensions to sweep (outer loop).
 #   Each D is warm-started from the best tensors found at the previous D
 #   (zero-padded to the new size + PAD_NOISE Gaussian noise).
 
 
-DEFAULT_D_BUDGET_FRACS = {4:0.1, 5:0.1, 6:0.1}#, 7:0.1, 8:0.1, 9:0.1, 10:0.1, 11:0.1}
+DEFAULT_D_BUDGET_FRACS = {3:0.1,4: 0.1, 5:0.1, 6:0.1, 7:0.1, 8:0.1, 9:0.1, 10:0.1, 11:0.1}
 #   Fraction of the total wall-clock budget allocated to each D_bond value.
 #   Normalised to sum=1 before use, so only the RATIOS matter.
 #   Rationale:
@@ -26,22 +35,23 @@ DEFAULT_D_BUDGET_FRACS = {4:0.1, 5:0.1, 6:0.1}#, 7:0.1, 8:0.1, 9:0.1, 10:0.1, 11
 #   values have genuinely different computational costs and scientific weight.
 #   Within each D, every chi level gets equal time (see below).
 
-DEFAULT_CHI_MAX = {4:9999, 5:9999, 6:9999}#, 7:9999, 8:9999, 9:9999, 10:9999, 11:9999}
+DEFAULT_CHI_MAX = {3:99,4: 80, 5:9999, 6:9999, 7:9999, 8:9999, 9:9999, 10:9999, 11:9999}
 #   Largest chi to attempt for each D_bond.
 #   Increase if you have more memory; decrease if you hit OOM.
 
 DEFAULT_CHI_SCHEDULES = {
     #2: [10, 14, 16],
-    #3: [15, 21, 24],
+    3: [15, 21, 24],
     4: [24, 32, 36], 
     5: [35, 45, 50],
     6: [48, 60, 66],
-    #7: [63, 77, 84],
-    #8: [80, 96,104],
-    #9: [99,108,117],
-    #10:[110,120],
-    #11:[110],
+    7: [63, 77, 84],
+    8: [80, 96,104],
+    9: [99,108,117],
+    10:[110,120],
+    11:[110],
 }
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Time Budget
 # ══════════════════════════════════════════════════════════════════════════════
@@ -51,7 +61,7 @@ TOTAL_BUDGET_HOURS = 99999
 # ── GPU/CPU intent ────────────────────────────────────────────────────────────
 # Duplicated below in the TUNABLE PARAMETERS section with full comments.
 
-USE_GPU = False
+USE_GPU = True
 
 # ── Multi-GPU (optional, CUDA only) ──────────────────────────────────────────
 
@@ -68,7 +78,7 @@ N_GPUS = 1
 #   Set automatically in main() from --ngpu or torch.cuda.device_count().
 #   Override at runtime:  --ngpu N
 
-_N_PHYSICAL_CORES = 4
+_N_PHYSICAL_CORES = 25
 
 ########################
 # ── Physical model ── # ────────────────────────────────────────────────────────────
@@ -168,7 +178,7 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+# sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 import matplotlib
 matplotlib.use('Agg')
@@ -1833,7 +1843,7 @@ def optimize_at_chi(
 
         print(f"    step {step:5d}  ctm={ctm_steps:3d}  loss={loss_item:+.10f}"
               f"  Δ={delta:+.3e}  {elapsed:.0f}/{budget_seconds:.0f}s")
-        # sys.stdout.flush()
+        sys.stdout.flush()
         loss_log.append({'step': step, 'ctm_steps': ctm_steps, 'loss': loss_item,
                          'D_bond': D_bond, 'chi': chi,
                          'elapsed': round(elapsed, 1)})
@@ -2448,7 +2458,7 @@ def main():
                 print(f"\n  ┌── D={D_bond}  chi={chi}"
                       f"  budget={chi_budget:.0f}s={chi_budget/60:.1f}min"
                       f"  [{timestamp()}]")
-                # sys.stdout.flush()
+                sys.stdout.flush()
     
                 best_path   = os.path.join(output_dir,
                                            f"sweep_D{D_bond}_chi{chi}_best.pt")
