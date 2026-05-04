@@ -14,7 +14,7 @@
 
 
 
-MY_OUTPUT_OUTERDIR = '/scratch/chye/0430core'
+MY_OUTPUT_OUTERDIR = '/scratch/izar/chye/0504core'
 
 # ── Sweep control ─────────────────────────────────────────────────────────────
 
