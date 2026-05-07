@@ -221,6 +221,16 @@ _CTM_E_CONV_THRESHOLD: float = 1e-8
 #   Energy-proxy convergence threshold (|ΔE_proxy| < this → E-converged).
 #   Only used when _CTM_CONV_MODE is 'Edifference' or 'both'.
 
+# ── Rho side-channel cache ────────────────────────────────────────────────────
+# When _CACHE_RHOS is True, each energy function's pre-build path writes all
+# 12 density matrices (6 NN + 6 NNN) for its environment into _RHO_CACHE.
+# This reuses the open/closed tensors already alive for energy computation —
+# zero extra tensor builds compared to the normal optimization step.
+# The lazy path (very large D where 6 opens > 35% GPU RAM) skips caching.
+# Usage: set _CACHE_RHOS=True before the optimizer loop; read _RHO_CACHE after.
+_CACHE_RHOS: bool = False
+_RHO_CACHE: dict = {}   # 'env1'/'env2'/'env3' → (rho_list_12, mag_dict_6sites)
+_RHO_ACC: list = []
 
 def _adaptive_power_iters(k: int, N: int) -> int:
     """Return the number of rSVD power iterations appropriate for rank k out of N.
@@ -1343,6 +1353,301 @@ def symmetrize_six_local_reflections(
     e_sym = (e + e.permute(1, 0, 2, 3)) / 2.0   # leg0 ↔ leg1
     f_sym = (f + f.permute(2, 1, 0, 3)) / 2.0   # leg0 ↔ leg2
     return (a_sym, b_sym, c_sym, d_sym, e_sym, f_sym)
+
+
+# ── Free-parameter morphisms for symmetry-projected ansatze ──────────────────
+#
+# For ansatze with exact symmetrize_fn constraints (neel, sym6), optimizing the
+# full D³·d parameter tensor and projecting at every forward pass has two costs:
+#   1. Gradient waste: the gradient component outside the symmetric subspace
+#      is silently discarded, so the effective learning rate is reduced.
+#   2. Spurious flat directions: the optimizer can move freely in the null space
+#      of the projection without changing the energy, wasting line-search steps.
+#
+# The fix: reparametrize so the optimizer's parameters ARE the free coordinates
+# of the symmetric subspace.  The morphism (a gather-based index expansion) maps
+# each free parameter tensor directly to the exact symmetric full tensor:
+#
+#   sym6 — 3 local mirror types, each with one 2-index swap:
+#     a, d  (leg1↔leg2):  full[i,j,k,s] = h[i, tri_idx[j,k], s]
+#     b, e  (leg0↔leg1):  full[i,j,k,s] = h[tri_idx[i,j], k, s]
+#     c, f  (leg0↔leg2):  full[i,j,k,s] = h[tri_idx[i,k], j, s]
+#   where tri_idx[p,q] = tri_idx[q,p] is a precomputed (D,D) table of unique
+#   indices 0..D*(D+1)//2-1.  Free param shapes (half of D³):
+#     h_a, h_d:  (D,  D*(D+1)//2, d_PHYS)
+#     h_b, h_e:  (D*(D+1)//2, D,  d_PHYS)
+#     h_c, h_f:  (D*(D+1)//2, D,  d_PHYS)
+#
+#   neel — full S₃ symmetry on all 3 virtual legs:
+#     full[i,j,k,s] = h[tri3_idx[i,j,k], s]
+#   where tri3_idx is a precomputed (D,D,D) table invariant under all 6
+#   permutations of (i,j,k).  Free param shape:
+#     h:  (D*(D+1)*(D+2)//6, d_PHYS)
+#
+# Both morphisms are pure tensor indexing — autograd differentiates through
+# them for free.  Index tables are cached in module-level dicts (computed once
+# per D on first call).
+#
+
+_TRI_IDX_CACHE:  dict = {}   # (D, device_str) → (D,D) long tensor
+_TRI3_IDX_CACHE: dict = {}   # (D, device_str) → (D,D,D) long tensor
+
+
+def _get_tri_idx(D: int, device: torch.device) -> torch.Tensor:
+    """Return (cached) (D,D) symmetric triangle-index table.
+
+    tri[j,k] == tri[k,j] == unique index in [0, D*(D+1)//2) for pair {j,k}.
+    Computed once per (D, device) then stored in _TRI_IDX_CACHE.
+    """
+    key = (D, str(device))
+    if key not in _TRI_IDX_CACHE:
+        idx = torch.zeros(D, D, dtype=torch.long, device=device)
+        m = 0
+        for j in range(D):
+            for k in range(j, D):
+                idx[j, k] = m
+                idx[k, j] = m
+                m += 1
+        _TRI_IDX_CACHE[key] = idx
+    return _TRI_IDX_CACHE[key]
+
+
+def _get_tri3_idx(D: int, device: torch.device) -> torch.Tensor:
+    """Return (cached) (D,D,D) S₃-symmetric triangle-index table.
+
+    tri3[i,j,k] is the same for all 6 permutations of (i,j,k).
+    Values in [0, D*(D+1)*(D+2)//6).
+    Computed once per (D, device) then stored in _TRI3_IDX_CACHE.
+    """
+    from itertools import permutations as _perms
+    key = (D, str(device))
+    if key not in _TRI3_IDX_CACHE:
+        idx = torch.zeros(D, D, D, dtype=torch.long, device=device)
+        m = 0
+        for i in range(D):
+            for j in range(i, D):
+                for k in range(j, D):
+                    for p in set(_perms((i, j, k))):
+                        idx[p] = m
+                    m += 1
+        _TRI3_IDX_CACHE[key] = idx
+    return _TRI3_IDX_CACHE[key]
+
+
+# ── sym6 morphism ─────────────────────────────────────────────────────────────
+
+def sym6_params_to_abcdef(
+        h_a: torch.Tensor, h_b: torch.Tensor, h_c: torch.Tensor,
+        h_d: torch.Tensor, h_e: torch.Tensor, h_f: torch.Tensor,
+) -> tuple:
+    """Map unconstrained sym6 free parameters → 6 exactly-symmetric tensors.
+
+    The map is a pure gather (advanced indexing) — autograd differentiates it
+    for free.  No projection needed; every value of h gives a valid symmetric
+    tensor.
+
+    Free parameter shapes:
+        h_a, h_d : (D, D*(D+1)//2, d_PHYS)   — leg1↔leg2 symmetry
+        h_b, h_e : (D*(D+1)//2, D,  d_PHYS)   — leg0↔leg1 symmetry
+        h_c, h_f : (D*(D+1)//2, D,  d_PHYS)   — leg0↔leg2 symmetry
+
+    Morphisms:
+        a[i,j,k,s] = h_a[i, tri[j,k], s]
+        b[i,j,k,s] = h_b[tri[i,j], k,  s]
+        c[i,j,k,s] = h_c[tri[i,k], j,  s]
+        (same for d,e,f with h_d,h_e,h_f)
+
+    Returns:
+        (a, b, c, d, e, f) each of shape (D, D, D, d_PHYS), exactly symmetric.
+    """
+    D   = h_a.shape[0]
+    tri = _get_tri_idx(D, h_a.device)
+
+    # a,d : h[:,  tri[j,k], :] — tri is (D,D); h[:,tri,:] broadcasts to (D,D,D,d)
+    a = h_a[:, tri, :]
+    d = h_d[:, tri, :]
+
+    # b,e : h[tri[i,j], :, :] — shape (D,D,D,d) with indices (i,j,k,s) directly
+    b = h_b[tri, :, :]
+    e = h_e[tri, :, :]
+
+    # c,f : h[tri[i,k], :, :] has index order (i,k,j,s); permute to (i,j,k,s)
+    c = h_c[tri, :, :].permute(0, 2, 1, 3)
+    f = h_f[tri, :, :].permute(0, 2, 1, 3)
+
+    return a, b, c, d, e, f
+
+
+def sym6_abcdef_to_free_params(
+        a: torch.Tensor, b: torch.Tensor, c: torch.Tensor,
+        d: torch.Tensor, e: torch.Tensor, f: torch.Tensor,
+) -> tuple:
+    """Extract sym6 free parameters from 6 already-symmetric site tensors.
+
+    Left inverse of sym6_params_to_abcdef: extracts the D*(D+1)//2 independent
+    entries for each tensor by selecting the upper-triangle (j ≤ k, i ≤ j,
+    i ≤ k respectively).  Used to convert full padded tensors back to the free
+    parametrization during warm-start.
+
+    Returns:
+        (h_a, h_b, h_c, h_d, h_e, h_f) with reduced shapes as above.
+    """
+    D   = a.shape[0]
+    dev = a.device
+    rows, cols = torch.triu_indices(D, D, device=dev)   # row ≤ col  (N_tri pairs)
+
+    h_a = a[:, rows, cols, :]      # (D, N_tri, d) : upper-tri of (j,k) for each i
+    h_d = d[:, rows, cols, :]
+
+    h_b = b[rows, cols, :, :]      # (N_tri, D, d) : upper-tri of (i,j)
+    h_e = e[rows, cols, :, :]
+
+    # c[i,j,k] symmetric in (i,k): extract upper-tri of (i,k) for each j
+    h_c = c[rows, :, cols, :]      # (N_tri, D, d)
+    h_f = f[rows, :, cols, :]
+
+    return h_a, h_b, h_c, h_d, h_e, h_f
+
+
+def initialize_sym6_free_params(D: int, d_PHYS: int,
+                                noise_scale: float = 1.0) -> tuple:
+    """Random initialization of the sym6 free parameters (6-tuple of reduced tensors).
+
+    Sets _USE_FULL_SVD = True so the first L-BFGS step uses full deterministic
+    SVD (avoids rSVD gradient noise on the fresh random point).
+
+    Returns:
+        (h_a, h_b, h_c, h_d, h_e, h_f) with shapes as in sym6_params_to_abcdef.
+    """
+    global _USE_FULL_SVD
+    N = D * (D + 1) // 2
+    kw = dict(dtype=TENSORDTYPE, device=DEVICE)
+    h_a = torch.randn(D, N, d_PHYS, **kw) * noise_scale
+    h_b = torch.randn(N, D, d_PHYS, **kw) * noise_scale
+    h_c = torch.randn(N, D, d_PHYS, **kw) * noise_scale
+    h_d = torch.randn(D, N, d_PHYS, **kw) * noise_scale
+    h_e = torch.randn(N, D, d_PHYS, **kw) * noise_scale
+    h_f = torch.randn(N, D, d_PHYS, **kw) * noise_scale
+    _USE_FULL_SVD = True
+    return (h_a, h_b, h_c, h_d, h_e, h_f)
+
+
+def pad_sym6_free_params(
+        old_params: tuple,
+        old_D: int, new_D: int,
+        d_PHYS: int, noise: float,
+) -> tuple:
+    """Warm-start sym6 free params from D=old_D to D=new_D.
+
+    1. Expand old free params → 6 full (old_D, old_D, old_D, d) tensors.
+    2. Normalize + zero-pad each to (new_D, new_D, new_D, d) with noise.
+    3. Project via symmetrize_six_local_reflections (exact symmetry).
+    4. Extract new free params.
+
+    Returns:
+        (h_a, h_b, h_c, h_d, h_e, h_f) for the new D.
+    """
+    global _USE_FULL_SVD
+    h_a, h_b, h_c, h_d, h_e, h_f = old_params
+    # Expand to full tensors (detached — warm-start is outside autograd)
+    a6 = sym6_params_to_abcdef(
+        h_a.detach(), h_b.detach(), h_c.detach(),
+        h_d.detach(), h_e.detach(), h_f.detach())
+    kw = dict(dtype=TENSORDTYPE, device=DEVICE)
+    padded = []
+    scale = float(torch.sqrt(torch.tensor(old_D**3 * d_PHYS, dtype=RDTYPE)))
+    for t in a6:
+        t_norm = normalize_tensor(t) * scale
+        new_t = noise * torch.randn(new_D, new_D, new_D, d_PHYS, **kw)
+        new_t[:old_D, :old_D, :old_D, :] += t_norm
+        padded.append(new_t)
+    # Project onto symmetric subspace and extract free params
+    sym6 = symmetrize_six_local_reflections(*padded)
+    _USE_FULL_SVD = True
+    return sym6_abcdef_to_free_params(*sym6)
+
+
+# ── neel morphism ─────────────────────────────────────────────────────────────
+
+def neel_param_to_a(h: torch.Tensor, D: int) -> torch.Tensor:
+    """Map unconstrained Néel free parameter → exactly S₃-symmetric tensor a.
+
+    h[m, s] is the unique value for all (i,j,k) in the equivalence class m
+    (i.e., all permutations of the canonical representative (i≤j≤k)).
+
+    The map  a[i,j,k,s] = h[tri3_idx[i,j,k], s]  is a pure gather —
+    differentiable for free.
+
+    Args:
+        h : Free parameter of shape (D*(D+1)*(D+2)//6, d_PHYS).
+        D : Virtual bond dimension.
+
+    Returns:
+        Tensor of shape (D, D, D, d_PHYS), exactly S₃-symmetric.
+    """
+    tri3 = _get_tri3_idx(D, h.device)
+    return h[tri3, :]
+
+
+def neel_a_to_free_param(a_sym: torch.Tensor) -> torch.Tensor:
+    """Extract Néel free parameter from an S₃-symmetric tensor a_sym.
+
+    Left inverse of neel_param_to_a: picks the canonical (i ≤ j ≤ k) entry
+    from each equivalence class.  Used to convert a padded/warm-started full
+    symmetric tensor back to the reduced free parameter.
+
+    Returns:
+        h of shape (D*(D+1)*(D+2)//6, d_PHYS).
+    """
+    D   = a_sym.shape[0]
+    dev = a_sym.device
+    triples = [(i, j, k)
+               for i in range(D) for j in range(i, D) for k in range(j, D)]
+    i_idx = torch.tensor([x[0] for x in triples], dtype=torch.long, device=dev)
+    j_idx = torch.tensor([x[1] for x in triples], dtype=torch.long, device=dev)
+    k_idx = torch.tensor([x[2] for x in triples], dtype=torch.long, device=dev)
+    return a_sym[i_idx, j_idx, k_idx, :]
+
+
+def initialize_neel_free_param(D: int, d_PHYS: int,
+                               noise_scale: float = 1.0) -> torch.Tensor:
+    """Random initialization of the Néel free parameter.
+
+    Returns h of shape (D*(D+1)*(D+2)//6, d_PHYS).
+    Sets _USE_FULL_SVD = True for the first L-BFGS step.
+    """
+    global _USE_FULL_SVD
+    N = D * (D + 1) * (D + 2) // 6
+    h = torch.randn(N, d_PHYS, dtype=TENSORDTYPE, device=DEVICE) * noise_scale
+    _USE_FULL_SVD = True
+    return h
+
+
+def pad_neel_free_param(
+        h_old: torch.Tensor,
+        old_D: int, new_D: int,
+        d_PHYS: int, noise: float,
+) -> torch.Tensor:
+    """Warm-start Néel free param from D=old_D to D=new_D.
+
+    1. Expand h_old → a_sym (old_D, old_D, old_D, d).
+    2. Normalize + zero-pad to (new_D, new_D, new_D, d) with noise.
+    3. Re-symmetrize (S₃) to land exactly in the symmetric subspace.
+    4. Extract new free param.
+
+    Returns:
+        h of shape (new_D*(new_D+1)*(new_D+2)//6, d_PHYS).
+    """
+    global _USE_FULL_SVD
+    a_old  = neel_param_to_a(h_old.detach(), old_D)
+    scale  = float(torch.sqrt(torch.tensor(old_D**3 * d_PHYS, dtype=RDTYPE)))
+    a_norm = normalize_tensor(a_old) * scale
+    kw     = dict(dtype=TENSORDTYPE, device=DEVICE)
+    a_new  = noise * torch.randn(new_D, new_D, new_D, d_PHYS, **kw)
+    a_new[:old_D, :old_D, :old_D, :] += a_norm
+    a_new  = symmetrize_virtual_legs(a_new)
+    _USE_FULL_SVD = True
+    return neel_a_to_free_param(a_new)
 
 
 def abcdef_to_ABCDEF(a,b,c,d,e,f, D_squared:int):
@@ -2817,6 +3122,9 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
         > torch.cuda.get_device_properties(DEVICE).total_memory * 0.35
     ) if _on_gpu else False
 
+    if _CACHE_RHOS:
+        _RHO_ACC.clear()
+
     # ── GPU + large-D: lazy-open closures + _ckpt ────────────────────────
     if _use_lazy:
         T1F_r = T1F.reshape(chi,chi,D_bond,D_bond)
@@ -2922,6 +3230,16 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
         E_BF = Jbf * _ckpt(_nnn_BF, closed_C, closed_A, closed_D, closed_E, SdotS, use_reentrant=False)
         E_FD = Jfd * _ckpt(_nnn_FD, closed_A, closed_E, closed_B, closed_C, SdotS, use_reentrant=False)
 
+        if _CACHE_RHOS:
+            # The order of entries in _RHO_ACC matches the call sequence:
+            #   NN: AD, CF, EB, FA, DE, BC
+            #   NNN: AE, EC, CA, DB, BF, FD
+            _r = list(_RHO_ACC)  # copy for safety
+            _RHO_CACHE['env1'] = (
+                _r,
+                {'E': (_r[0], 0), 'B': (_r[0], 1),
+                 'A': (_r[1], 0), 'D': (_r[1], 1),
+                 'C': (_r[2], 0), 'F': (_r[2], 1)})
         return torch.real((E_AD+E_CF+E_EB + E_FA+E_DE+E_BC)*0.5 +E_AE+E_EC+E_CA +E_DB+E_BF+E_FD)
 
     # ── Pre-build path: CPU (any D) or GPU (6 opens fit in memory) ────────
@@ -2961,6 +3279,17 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
         E_BF = Jbf * _compute_nnn_bond_energy(o['B'], cl['C'], o['F'], cl['A'], DE, SdotS)
         E_FD = Jfd * _compute_nnn_bond_energy(o['F'], cl['A'], o['D'], cl['E'], BC, SdotS)
 
+
+    if _CACHE_RHOS:
+        # The order of entries in _RHO_ACC matches the call sequence:
+        #   NN: AD, CF, EB, FA, DE, BC
+        #   NNN: AE, EC, CA, DB, BF, FD
+        _r = list(_RHO_ACC)  # copy for safety
+        _RHO_CACHE['env1'] = (
+            _r,
+            {'E': (_r[0], 0), 'B': (_r[0], 1),
+                'A': (_r[1], 0), 'D': (_r[1], 1),
+                'C': (_r[2], 0), 'F': (_r[2], 1)})
     return torch.real((E_AD+E_CF+E_EB + E_FA+E_DE+E_BC)*0.5 +E_AE+E_EC+E_CA +E_DB+E_BF+E_FD)
 
 
@@ -2978,6 +3307,9 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
         6 * _D2 * _D2 * d_PHYS * d_PHYS * a.element_size()
         > torch.cuda.get_device_properties(DEVICE).total_memory * 0.35
     ) if _on_gpu else False
+
+    if _CACHE_RHOS:
+        _RHO_ACC.clear()
 
     # ── GPU + large-D: lazy-open closures + _ckpt ────────────────────────
     if _use_lazy:
@@ -3081,7 +3413,14 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
         E_BF = Jbf * _ckpt(_nnn_BF, closed_A, closed_E, closed_D, closed_C, SdotS, use_reentrant=False)
         E_FD = Jfd * _ckpt(_nnn_FD, closed_E, closed_C, closed_B, closed_A, SdotS, use_reentrant=False)
         E_DB = Jdb * _ckpt(_nnn_DB, closed_C, closed_A, closed_F, closed_E, SdotS, use_reentrant=False)
-
+        
+        if _CACHE_RHOS:
+            _r = list(_RHO_ACC)
+            _RHO_CACHE['env2'] = (
+                _r,
+                {'C': (_r[0], 0), 'B': (_r[0], 1),
+                 'A': (_r[1], 0), 'F': (_r[1], 1),
+                 'E': (_r[2], 0), 'D': (_r[2], 1)})
         return torch.real((E_AF+E_CB+E_ED + E_DC+E_BA+E_FE)*0.5 +E_CA+E_AE+E_EC +E_BF+E_FD+E_DB)
 
     # ── Pre-build path: CPU (any D) or GPU (6 opens fit in memory) ────────
@@ -3119,6 +3458,13 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
         E_FD = Jfd * _compute_nnn_bond_energy(o['F'], cl['E'], o['D'], cl['C'], BA, SdotS)
         E_DB = Jdb * _compute_nnn_bond_energy(o['D'], cl['C'], o['B'], cl['A'], FE, SdotS)
 
+    if _CACHE_RHOS:
+        _r = list(_RHO_ACC)
+        _RHO_CACHE['env2'] = (
+            _r,
+            {'C': (_r[0], 0), 'B': (_r[0], 1),
+                'A': (_r[1], 0), 'F': (_r[1], 1),
+                'E': (_r[2], 0), 'D': (_r[2], 1)})
     return torch.real((E_AF+E_CB+E_ED + E_DC+E_BA+E_FE)*0.5 +E_CA+E_AE+E_EC +E_BF+E_FD+E_DB)
 
 
@@ -3168,6 +3514,9 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
         6 * _D2 * _D2 * d_PHYS * d_PHYS * a.element_size()
         > torch.cuda.get_device_properties(DEVICE).total_memory * 0.35
     ) if _on_gpu else False
+
+    if _CACHE_RHOS:
+        _RHO_ACC.clear()
 
     # ── GPU + large-D: lazy-open closures + _ckpt ────────────────────────
     if _use_lazy:
@@ -3271,7 +3620,15 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
         E_FD = Jfd * _ckpt(_nnn_FD, closed_C, closed_A, closed_B, closed_E, SdotS, use_reentrant=False)
         E_DB = Jdb * _ckpt(_nnn_DB, closed_A, closed_E, closed_F, closed_C, SdotS, use_reentrant=False)
         E_BF = Jbf * _ckpt(_nnn_BF, closed_E, closed_C, closed_D, closed_A, SdotS, use_reentrant=False)
-
+        
+        if _CACHE_RHOS:
+            _r = list(_RHO_ACC)
+            _RHO_CACHE['env3'] = (
+                _r,
+                {'E': (_r[0], 0), 'F': (_r[0], 1),
+                 'A': (_r[1], 0), 'B': (_r[1], 1),
+                 'C': (_r[2], 0), 'D': (_r[2], 1)})
+            
         return torch.real((E_EF+E_AB+E_CD + E_BE+E_FC+E_DA)*0.5 +E_EC+E_CA+E_AE +E_FD+E_DB+E_BF)
 
     # ── Pre-build path: CPU (any D) or GPU (6 opens fit in memory) ─────────
@@ -3309,6 +3666,13 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
         E_DB = Jdb * _compute_nnn_bond_energy(o['D'], cl['A'], o['B'], cl['E'], FC, SdotS)
         E_BF = Jbf * _compute_nnn_bond_energy(o['B'], cl['E'], o['F'], cl['C'], DA, SdotS)
 
+    if _CACHE_RHOS:
+        _r = list(_RHO_ACC)
+        _RHO_CACHE['env3'] = (
+            _r,
+            {'E': (_r[0], 0), 'F': (_r[0], 1),
+                'A': (_r[1], 0), 'B': (_r[1], 1),
+                'C': (_r[2], 0), 'D': (_r[2], 1)})
     return torch.real((E_EF+E_AB+E_CD + E_BE+E_FC+E_DA)*0.5 +E_EC+E_CA+E_AE +E_FD+E_DB+E_BF)
 
 
@@ -3433,6 +3797,8 @@ def _compute_nnn_bond_energy_seq(build_open_X, closed_Y, build_open_Z, closed_W,
     rho   = oe.contract("NEij,ENkl->ikjl", W, V, backend="torch")
     del W, V
     rho_nrm = _psd_normalize_rho(rho.reshape(d_PHYS*d_PHYS, d_PHYS*d_PHYS), d_PHYS)
+    if _CACHE_RHOS:
+        _RHO_ACC.append(rho_nrm.detach())
     return oe.contract("ikjl,ijkl->", rho_nrm, SdotS, backend="torch")
 
 
@@ -3449,6 +3815,8 @@ def _compute_nn_bond_energy(open_X, open_Y, pair1, pair2, SdotS):
     """
     d_PHYS = open_X.shape[2]
     rho = _build_nn_rho(open_X, open_Y, pair1, pair2, d_PHYS)
+    if _CACHE_RHOS:
+        _RHO_ACC.append(rho.detach())
     return oe.contract("ikjl,ijkl->", rho, SdotS, backend="torch")
 
 
@@ -3461,6 +3829,8 @@ def _compute_nnn_bond_energy(open_X, closed_Y, open_Z, closed_W,
     d_PHYS = open_X.shape[2]
     rho = _build_nnn_rho(open_X, closed_Y, open_Z, closed_W,
                          large_pair, d_PHYS)
+    if _CACHE_RHOS:
+        _RHO_ACC.append(rho.detach())
     return oe.contract("ikjl,ijkl->", rho, SdotS, backend="torch")
 
 
