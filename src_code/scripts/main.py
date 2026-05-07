@@ -464,6 +464,13 @@ ADAM_EPS = 1e-9
 #   Denominator epsilon for numerical stability.
 ADAM_WEIGHT_DECAY = 0.0
 #   L2 regularisation strength.  0.0 = no regularisation (recommended).
+ADAM_GRAD_CLIP = 1.0
+#   Max L2 norm of the gradient before Adam's step; None to disable.
+#   Prevents overshooting steps when all site tensors move together (e.g.
+#   neel ansatz: one h-step changes all 6 sites simultaneously, making
+#   the effective learning rate ~6× larger than for 6-independent-tensor
+#   ansatze like sym6).  1.0 is a standard conservative clip; raise to
+#   5.0 or disable for faster descent when sym6/c6ypi are used.
 # Adam always makes exactly 1 gradient step per CTMRG environment refresh;
 # ADAM_STEPS_PER_CTM is removed — it was always 1 and configuring otherwise
 # would bias the alternating-optimisation scheme.
@@ -1522,6 +1529,8 @@ def optimize_at_chi(
             _adam.zero_grad()
             _loss, ctm_steps = _loss_with_differentiable_ctmrg()
             _loss.backward()
+            if ADAM_GRAD_CLIP is not None:
+                torch.nn.utils.clip_grad_norm_(params, max_norm=ADAM_GRAD_CLIP)
             _adam.step()
             loss_item = _loss.detach().item()
             _adam_steps_taken += 1
@@ -1914,6 +1923,7 @@ def main():
         adam_betas         = list(ADAM_BETAS),
         adam_eps           = ADAM_EPS,
         adam_weight_decay  = ADAM_WEIGHT_DECAY,
+        adam_grad_clip     = ADAM_GRAD_CLIP,
         # (adam_steps_per_ctm removed — always 1)
 
         # ── SVD / rSVD ─────────────────────────────────────────────────────

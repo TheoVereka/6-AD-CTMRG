@@ -1391,6 +1391,7 @@ def symmetrize_six_local_reflections(
 
 _TRI_IDX_CACHE:  dict = {}   # (D, device_str) → (D,D) long tensor
 _TRI3_IDX_CACHE: dict = {}   # (D, device_str) → (D,D,D) long tensor
+_TRI3_MULT_CACHE: dict = {}  # (D, device_str) → (D,D,D) float64 tensor: sqrt(#permutations)
 
 
 def _get_tri_idx(D: int, device: torch.device) -> torch.Tensor:
@@ -1422,16 +1423,47 @@ def _get_tri3_idx(D: int, device: torch.device) -> torch.Tensor:
     from itertools import permutations as _perms
     key = (D, str(device))
     if key not in _TRI3_IDX_CACHE:
-        idx = torch.zeros(D, D, D, dtype=torch.long, device=device)
+        idx  = torch.zeros(D, D, D, dtype=torch.long,  device=device)
+        mult = torch.zeros(D, D, D, dtype=torch.float64, device=device)
         m = 0
         for i in range(D):
             for j in range(i, D):
                 for k in range(j, D):
-                    for p in set(_perms((i, j, k))):
-                        idx[p] = m
+                    perms = set(_perms((i, j, k)))
+                    n_perm = len(perms)
+                    for p in perms:
+                        idx[p]  = m
+                        mult[p] = n_perm
                     m += 1
         _TRI3_IDX_CACHE[key] = idx
+        _TRI3_MULT_CACHE[key] = mult.sqrt()   # store sqrt(multiplicity)
+    elif key not in _TRI3_MULT_CACHE:
+        # Rebuild mult if only idx was cached (older session)
+        from itertools import permutations as _perms2
+        mult = torch.zeros(D, D, D, dtype=torch.float64, device=device)
+        for i in range(D):
+            for j in range(i, D):
+                for k in range(j, D):
+                    perms = set(_perms2((i, j, k)))
+                    for p in perms:
+                        mult[p] = len(perms)
+        _TRI3_MULT_CACHE[key] = mult.sqrt()
     return _TRI3_IDX_CACHE[key]
+
+
+def _get_tri3_sqrt_mult(D: int, device: torch.device) -> torch.Tensor:
+    """Return (cached) (D,D,D) tensor of sqrt(#permutations) for each (i,j,k).
+
+    Used by neel_param_to_a to give every free parameter h[m] a unit-scale
+    gradient: a[i,j,k,s] = h[tri3[i,j,k], s] / sqrt_mult[i,j,k]  so that
+    ∂L/∂h[m] = Σ_{perms} ∂L/∂a[perm] / sqrt(n_perm)  has ||∂L/∂h||_F
+    equalized across m regardless of how many permutations class m has.
+    May trigger computation of tri3 idx as a side-effect.
+    """
+    key = (D, str(device))
+    if key not in _TRI3_MULT_CACHE:
+        _get_tri3_idx(D, device)   # fills both caches
+    return _TRI3_MULT_CACHE[key]
 
 
 # ── sym6 morphism ─────────────────────────────────────────────────────────────
@@ -1572,11 +1604,17 @@ def pad_sym6_free_params(
 def neel_param_to_a(h: torch.Tensor, D: int) -> torch.Tensor:
     """Map unconstrained Néel free parameter → exactly S₃-symmetric tensor a.
 
-    h[m, s] is the unique value for all (i,j,k) in the equivalence class m
-    (i.e., all permutations of the canonical representative (i≤j≤k)).
+    Uses sqrt-multiplicity re-weighting so that every free parameter h[m]
+    has the same gradient scale regardless of how many S₃ permutations its
+    equivalence class has (1 for (i,i,i), 3 for (i,i,j), 6 for (i,j,k)):
 
-    The map  a[i,j,k,s] = h[tri3_idx[i,j,k], s]  is a pure gather —
-    differentiable for free.
+        a[i,j,k,s] = h[tri3_idx[i,j,k], s] / sqrt_mult[i,j,k]
+
+    This means  ∂L/∂h[m] = Σ_{perms p} ∂L/∂a[p] / sqrt(n_p),  which
+    equalizes the gradient magnitude across all m and prevents L-BFGS
+    from taking large steps along the high-multiplicity directions.
+
+    The inverse (neel_a_to_free_param) undoes the same scaling.
 
     Args:
         h : Free parameter of shape (D*(D+1)*(D+2)//6, d_PHYS).
@@ -1585,16 +1623,18 @@ def neel_param_to_a(h: torch.Tensor, D: int) -> torch.Tensor:
     Returns:
         Tensor of shape (D, D, D, d_PHYS), exactly S₃-symmetric.
     """
-    tri3 = _get_tri3_idx(D, h.device)
-    return h[tri3, :]
+    tri3      = _get_tri3_idx(D, h.device)
+    sqrt_mult = _get_tri3_sqrt_mult(D, h.device).to(dtype=h.dtype)
+    # h[tri3] has shape (D,D,D,d_PHYS); sqrt_mult has shape (D,D,D)
+    return h[tri3, :] / sqrt_mult.unsqueeze(-1)
 
 
 def neel_a_to_free_param(a_sym: torch.Tensor) -> torch.Tensor:
     """Extract Néel free parameter from an S₃-symmetric tensor a_sym.
 
-    Left inverse of neel_param_to_a: picks the canonical (i ≤ j ≤ k) entry
-    from each equivalence class.  Used to convert a padded/warm-started full
-    symmetric tensor back to the reduced free parameter.
+    Left inverse of neel_param_to_a (with sqrt-mult scaling): picks the
+    canonical (i ≤ j ≤ k) entry and multiplies by sqrt(multiplicity) so
+    that neel_param_to_a(neel_a_to_free_param(a_sym), D) recovers a_sym.
 
     Returns:
         h of shape (D*(D+1)*(D+2)//6, d_PHYS).
@@ -1606,7 +1646,10 @@ def neel_a_to_free_param(a_sym: torch.Tensor) -> torch.Tensor:
     i_idx = torch.tensor([x[0] for x in triples], dtype=torch.long, device=dev)
     j_idx = torch.tensor([x[1] for x in triples], dtype=torch.long, device=dev)
     k_idx = torch.tensor([x[2] for x in triples], dtype=torch.long, device=dev)
-    return a_sym[i_idx, j_idx, k_idx, :]
+    # Extract canonical values and multiply by sqrt(#perms) to invert the scaling
+    sqrt_mult = _get_tri3_sqrt_mult(D, dev).to(dtype=a_sym.dtype)
+    scale = sqrt_mult[i_idx, j_idx, k_idx]       # (N3,)
+    return a_sym[i_idx, j_idx, k_idx, :] * scale.unsqueeze(-1)
 
 
 def initialize_neel_free_param(D: int, d_PHYS: int,
@@ -3231,15 +3274,18 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
         E_FD = Jfd * _ckpt(_nnn_FD, closed_A, closed_E, closed_B, closed_C, SdotS, use_reentrant=False)
 
         if _CACHE_RHOS:
-            # The order of entries in _RHO_ACC matches the call sequence:
-            #   NN: AD, CF, EB, FA, DE, BC
-            #   NNN: AE, EC, CA, DB, BF, FD
+            # NN order: AD, CF, EB, FA, DE, BC → _r[0..5]
+            # NNN order: AE, EC, CA, DB, BF, FD → _r[6..11]
+            # Mag dict: one-body rho from the NN bond containing that site.
+            #   AD bond (_r[0]): A=idx0, D=idx1
+            #   CF bond (_r[1]): C=idx0, F=idx1
+            #   EB bond (_r[2]): E=idx0, B=idx1
             _r = list(_RHO_ACC)  # copy for safety
             _RHO_CACHE['env1'] = (
                 _r,
-                {'E': (_r[0], 0), 'B': (_r[0], 1),
-                 'A': (_r[1], 0), 'D': (_r[1], 1),
-                 'C': (_r[2], 0), 'F': (_r[2], 1)})
+                {'A': (_r[0], 0), 'D': (_r[0], 1),
+                 'C': (_r[1], 0), 'F': (_r[1], 1),
+                 'E': (_r[2], 0), 'B': (_r[2], 1)})
         return torch.real((E_AD+E_CF+E_EB + E_FA+E_DE+E_BC)*0.5 +E_AE+E_EC+E_CA +E_DB+E_BF+E_FD)
 
     # ── Pre-build path: CPU (any D) or GPU (6 opens fit in memory) ────────
@@ -3281,15 +3327,14 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
 
 
     if _CACHE_RHOS:
-        # The order of entries in _RHO_ACC matches the call sequence:
-        #   NN: AD, CF, EB, FA, DE, BC
-        #   NNN: AE, EC, CA, DB, BF, FD
+        # NN order: AD, CF, EB, FA, DE, BC → _r[0..5]
+        # NNN order: AE, EC, CA, DB, BF, FD → _r[6..11]
         _r = list(_RHO_ACC)  # copy for safety
         _RHO_CACHE['env1'] = (
             _r,
-            {'E': (_r[0], 0), 'B': (_r[0], 1),
-                'A': (_r[1], 0), 'D': (_r[1], 1),
-                'C': (_r[2], 0), 'F': (_r[2], 1)})
+            {'A': (_r[0], 0), 'D': (_r[0], 1),
+             'C': (_r[1], 0), 'F': (_r[1], 1),
+             'E': (_r[2], 0), 'B': (_r[2], 1)})
     return torch.real((E_AD+E_CF+E_EB + E_FA+E_DE+E_BC)*0.5 +E_AE+E_EC+E_CA +E_DB+E_BF+E_FD)
 
 
