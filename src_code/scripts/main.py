@@ -411,13 +411,12 @@ LBFGS_LR = 1e0
 
 LBFGS_HISTORY = 150
 #   Number of (s, y) curvature vector pairs retained for the L-BFGS inverse-
-#   Hessian approximation.  In our alternating-optimisation scheme the LBFGS
-#   instance is RECREATED from scratch at every outer step, so curvature pairs
-#   accumulate only within a single optimizer.step() call (≤ LBFGS_MAX_ITER
-#   sub-iterations).  Any history_size > LBFGS_MAX_ITER allocates buffer
-#   memory that is never filled — setting it equal to LBFGS_MAX_ITER is exact
-#   and wastes nothing.  Old values like 50–100 were appropriate for classical
-#   L-BFGS that runs continuously; they do not apply here.
+#   Hessian approximation.  The LBFGS instance is created ONCE per chi level
+#   (on Adam→LBFGS switch or at chi start if skip_adam_warmup) and its history
+#   accumulates across ALL outer steps for that chi.  The circular buffer evicts
+#   the oldest pair when full, so memory cost is fixed at
+#   2 × LBFGS_HISTORY × |params| floats regardless of run length.
+#   150 gives ≈13 MB at D=9 unrestricted — negligible.
 
 OPT_TOL_GRAD = 0.0 #1e-8
 #   L-BFGS inner convergence criterion on the infinity-norm of the gradient:
@@ -594,6 +593,17 @@ SAVE_EVERY = 1
 #   is written.  The "best" checkpoint is written immediately whenever a new
 #   minimum energy is found, independently of SAVE_EVERY.  Lower = more I/O
 #   but safer against crashes; higher = less I/O.
+
+DO_CLEAN_EVAL = True
+#   True  → after each optimize_at_chi call: re-converge CTMRG under no_grad
+#            and compute the full energy, 36 bond correlations, 54 site
+#            magnetizations, and CTMRG truncation error.  Write an observables
+#            .txt file and run the chi-convergence lookahead (+D and +2D).
+#   False → skip all of the above; immediately advance to the next chi (or D).
+#            Use this during exploratory runs to maximize optimization time;
+#            run recompute_observables.py afterwards on the saved .pt checkpoints.
+#   Recorded in hyperparams.yaml as do_clean_eval.
+#   Overrideable at runtime: --no-clean-eval CLI flag.
 
 D_PHYS = 2
 #   Physical Hilbert-space dimension per lattice site.
@@ -1982,6 +1992,13 @@ def main():
         help='Skip warm-starting from previous chi; use fully random init for each '
              'chi level within the same D (= RAND_INIT_NEW_CHI).')
     parser.add_argument(
+        '--no-clean-eval', dest='no_clean_eval', action='store_true',
+        default=not DO_CLEAN_EVAL,
+        help='Skip the post-optimisation clean energy+observables evaluation '
+             'and chi-convergence lookahead after each (D,chi) level. '
+             'Maximises optimisation time; use recompute_observables.py '
+             'to evaluate saved checkpoints afterwards (= not DO_CLEAN_EVAL).')
+    parser.add_argument(
         '--mean-field-init', dest='mean_field_init', action='store_true',
         default=MEAN_FIELD_INIT,
         help='Initialise EVERY chi level (for all D) from a mean-field Néel '
@@ -2279,6 +2296,7 @@ def main():
 
         # ── I/O ────────────────────────────────────────────────────────────
         save_every         = SAVE_EVERY,
+        do_clean_eval      = not args.no_clean_eval,
 
         # ── CPU threading ──────────────────────────────────────────────────
         n_physical_cores   = _N_PHYSICAL_CORES,
@@ -2511,18 +2529,24 @@ def main():
                     torch.cuda.empty_cache()  # return freed CUDA blocks to driver
     
     
-                # Clean energy evaluation + observables
-                print(f"  │  Evaluating energy & observables at (D={D_bond}, chi={chi}) ...")
-                energy, correlations, magnetizations, trunc_error = evaluate_observables(
-                    list(cur_params), Js, SdotS, chi, D_bond, d_PHYS, ansatz_cfg)
-                energy_per_site = energy / N_SITES
-                _save_observables_file(
-                    os.path.join(output_dir,
-                                 f"D_{D_bond}_chi_{chi}"
-                                 f"_energy_magnetization_correlation.txt"),
-                    D_bond, chi, energy, correlations, magnetizations, trunc_error)
-                _print_observables_summary(
-                    'OBS', D_bond, chi, energy, correlations, magnetizations, trunc_error)
+                # ── Clean energy evaluation + observables ─────────────────
+                # Skipped when DO_CLEAN_EVAL=False (--no-clean-eval).
+                # energy=None is safe: save_checkpoint already handles None;
+                # energy_table records it as null for JSON.
+                energy = None
+                energy_per_site = None
+                if not args.no_clean_eval:
+                    print(f"  │  Evaluating energy & observables at (D={D_bond}, chi={chi}) ...")
+                    energy, correlations, magnetizations, trunc_error = evaluate_observables(
+                        list(cur_params), Js, SdotS, chi, D_bond, d_PHYS, ansatz_cfg)
+                    energy_per_site = energy / N_SITES
+                    _save_observables_file(
+                        os.path.join(output_dir,
+                                     f"D_{D_bond}_chi_{chi}"
+                                     f"_energy_magnetization_correlation.txt"),
+                        D_bond, chi, energy, correlations, magnetizations, trunc_error)
+                    _print_observables_summary(
+                        'OBS', D_bond, chi, energy, correlations, magnetizations, trunc_error)
     
                 # Save final checkpoint for this (D, chi)
                 save_checkpoint(best_path, cur_params, D_bond, chi,
@@ -2538,28 +2562,26 @@ def main():
                 }
                 energy_table.append(record)
                 wall = time.perf_counter() - t_global_start
-                print(f"  └── E={energy:+.10f}  E/site={energy_per_site:+.10f}"
-                      f"  wall={wall/3600:.2f}h")
+                if not args.no_clean_eval:
+                    print(f"  └── E={energy:+.10f}  E/site={energy_per_site:+.10f}"
+                          f"  wall={wall/3600:.2f}h")
+                else:
+                    print(f"  └── (D={D_bond}, chi={chi})  loss={best_loss:+.10f}"
+                          f"  wall={wall/3600:.2f}h  [no clean eval]")
     
                 # ── Chi-convergence lookahead ─────────────────────────────────────
-                # Evaluate energy at chi+D and chi+2D (using current optimised
-                # tensors, no further optimisation) to test if chi is converged.
+                # Only runs when DO_CLEAN_EVAL is active (needs a clean energy
+                # baseline to compare against chi+D and chi+2D).
                 # BOTH |E(chi)-E(chi+D)| and |E(chi)-E(chi+2D)| must be below
                 # CHI_CONVERGENCE_THRESHOLD to declare chi convergence.
-                # Each lookahead env is fully freed before the next is built:
-                # del + gc.collect() + empty_cache() between the two evals so
-                # at no point are two lookahead envs live simultaneously.
-                # The finishing chi for D_next schedule filtering is the CURRENT
-                # chi (not chi_la), per the protocol.
-                if chi_idx < len(chis):
+                if not args.no_clean_eval and chi_idx < len(chis):
                     # ── Lookahead 1: chi + D ─────────────────────────────────────
                     chi_la_1 = chis[chi_idx] + D_bond
                     print(f"  │  [Lookahead+D] evaluating (D={D_bond}, chi={chi_la_1}) "
                           f"with current tensors ...")
-                    with torch.no_grad():
-                        energy_la_1, corr_la_1, mag_la_1, trunc_la_1 = evaluate_observables(
-                            list(cur_params), Js, SdotS, chi_la_1, D_bond, d_PHYS,
-                            ansatz_cfg)
+                    energy_la_1, corr_la_1, mag_la_1, trunc_la_1 = evaluate_observables(
+                        list(cur_params), Js, SdotS, chi_la_1, D_bond, d_PHYS,
+                        ansatz_cfg)
                     _save_observables_file(
                         os.path.join(output_dir,
                                      f"D_{D_bond}_chi_{chi}+D_equals_chi_{chi_la_1}"
@@ -2586,10 +2608,9 @@ def main():
                     chi_la_2 = chis[chi_idx] + D_bond * 2
                     print(f"  │  [Lookahead+2D] evaluating (D={D_bond}, chi={chi_la_2}) "
                           f"with current tensors ...")
-                    with torch.no_grad():
-                        energy_la_2, corr_la_2, mag_la_2, trunc_la_2 = evaluate_observables(
-                            list(cur_params), Js, SdotS, chi_la_2, D_bond, d_PHYS,
-                            ansatz_cfg)
+                    energy_la_2, corr_la_2, mag_la_2, trunc_la_2 = evaluate_observables(
+                        list(cur_params), Js, SdotS, chi_la_2, D_bond, d_PHYS,
+                        ansatz_cfg)
                     _save_observables_file(
                         os.path.join(output_dir,
                                      f"D_{D_bond}_chi_{chi}+2D_equals_chi_{chi_la_2}"

@@ -71,12 +71,14 @@ from main import (           # noqa: E402
     timestamp,
     CTM_MAX_STEPS,
     CTM_CONV_THR,
+    CTM_CONV_MODE,
+    CTM_E_CONV_THRESHOLD,
     ENV_IDENTITY_INIT,
     RSVD_MODE,
     RSVD_NEUMANN_TERMS,
     RSVD_POWER_ITERS,
 )
-from core import build_heisenberg_H, set_dtype, set_device, set_rsvd_mode
+from core import build_heisenberg_H, set_dtype, set_device, set_rsvd_mode, set_ctm_conv_mode
 
 # ── Ansatz key detection ───────────────────────────────────────────────────────
 
@@ -166,6 +168,11 @@ def process_one(pt_path: str, args: argparse.Namespace) -> bool:
     set_rsvd_mode(args.rsvd_mode,
                   neumann_terms=RSVD_NEUMANN_TERMS,
                   power_iters=RSVD_POWER_ITERS)
+    # Set CTM convergence mode to match main's clean-eval path.
+    # evaluate_observables always passes energy_proxy_fn=None to CTMRG, which
+    # forces SVdifference mode internally regardless of this setting.  Setting
+    # it explicitly here makes intent clear and future-proofs against any change.
+    set_ctm_conv_mode(CTM_CONV_MODE, e_threshold=CTM_E_CONV_THRESHOLD)
     print(f"  Device : {device}   dtype : {'float64' if use_double else 'float32'}"
           f"{'(complex)' if not use_real else ''}")
 
@@ -186,11 +193,12 @@ def process_one(pt_path: str, args: argparse.Namespace) -> bool:
     params = [p.to(_core.TENSORDTYPE) for p in params]
 
     # ── Evaluate observables ──────────────────────────────────────────────
+    # evaluate_observables wraps CTMRG + rho builds in torch.no_grad() internally
+    # (same as main's post-optimize clean eval call).  No outer no_grad needed.
     print(f"  Running evaluate_observables (CTM_MAX_STEPS={CTM_MAX_STEPS}, "
           f"CTM_CONV_THR={CTM_CONV_THR:.1e}) ...")
-    with torch.no_grad():
-        energy, correlations, magnetizations, trunc_error = evaluate_observables(
-            params, Js, SdotS, chi, D_bond, d_PHYS, ansatz_cfg)
+    energy, correlations, magnetizations, trunc_error = evaluate_observables(
+        params, Js, SdotS, chi, D_bond, d_PHYS, ansatz_cfg)
 
     if energy != energy:   # NaN check
         print(f"  [WARN] energy = NaN — CTMRG did not converge.  "
