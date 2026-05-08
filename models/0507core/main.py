@@ -1253,10 +1253,11 @@ def optimize_at_chi(
     Outer L-BFGS loop at fixed (D_bond, chi) until budget_seconds elapsed
     or opt_conv_threshold hit.
 
-    Returns (best_params_tuple, best_loss, steps_done).
+    Returns (best_params_tuple, best_loss, steps_done, cached_rhos, switched_to_lbfgs).
     best_params_tuple contains 1 tensor for single-tensor ansätze (neel/c6ypi/c3vypi),
     2 tensors for two-tensor ansätze (twoc3),
     or 6 tensors for 6-tensor ansätze (unrestricted/sym6), matching ansatz_cfg['n_params'].
+    switched_to_lbfgs is True if the optimizer switched from Adam to LBFGS during this run.
     """
     if loss_log is None:
         loss_log = []
@@ -1284,7 +1285,8 @@ def optimize_at_chi(
         t.requires_grad_(True)
 
     if ansatz_cfg == ANSATZ_REGISTRY['neel']:
-        effective_ADAM_LR = ADAM_LR/22
+        effective_ADAM_LR = ADAM_LR/27
+        ADAM_GRAD_CLIP = 1.0
     elif ansatz_cfg == ANSATZ_REGISTRY['twoc3']:
         effective_ADAM_LR = ADAM_LR/3
     elif ansatz_cfg == ANSATZ_REGISTRY['c3vypi'] or ansatz_cfg == ANSATZ_REGISTRY['c6ypi']:
@@ -1726,7 +1728,8 @@ def optimize_at_chi(
     return (tuple(best_params), best_loss, step,
             (_core._RHO_CACHE.get('env1'),
              _core._RHO_CACHE.get('env2'),
-             _core._RHO_CACHE.get('env3')))
+             _core._RHO_CACHE.get('env3')),
+            _switched_to_lbfgs)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2316,7 +2319,7 @@ def main():
                           f"skipping Adam, starting directly with L-BFGS")
 
                 try:
-                    best_params_tuple, best_loss, global_step, _cached_rhos = optimize_at_chi(
+                    best_params_tuple, best_loss, global_step, _cached_rhos, _switched_to_lbfgs = optimize_at_chi(
                         Js, SdotS, D_bond, chi, d_PHYS,
                         budget_seconds=chi_budget,
                         lbfgs_max_iter=lbfgs_iters,
@@ -2451,8 +2454,10 @@ def main():
                         magnetizations_la, None)
                     
                     # ── Chi convergence check ────────────────────────────────
-                    # If |E(chi) - E(chi_la)| <= threshold, chi series converged
-                    if CHI_CONVERGENCE_THRESHOLD > 0:
+                    # Only check convergence if LBFGS was reached (not during Adam phase).
+                    # Adam can never converge — it only triggers the switch to LBFGS.
+                    # LBFGS is the one that determines optimization convergence.
+                    if CHI_CONVERGENCE_THRESHOLD > 0 and _switched_to_lbfgs:
                         _delta_E = abs(energy - energy_la)
                         if _delta_E <= CHI_CONVERGENCE_THRESHOLD:
                             print(f"  │  [chi-converged] |ΔE|={_delta_E:.2e} <= "
@@ -2463,6 +2468,9 @@ def main():
                             _chi_converged = False
                     else:
                         _chi_converged = False
+                        if CHI_CONVERGENCE_THRESHOLD > 0 and not _switched_to_lbfgs:
+                            print(f"  │  [chi-convergence] skipped: still in Adam phase "
+                                  f"(LBFGS not reached yet)")
                     # ─────────────────────────────────────────────────────────
                     
                     del _la_params, _la_lbfgs
