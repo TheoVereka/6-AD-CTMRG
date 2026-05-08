@@ -440,11 +440,11 @@ OPTIMIZER = 'lbfgs'
 
 # ── Adam hyperparameters (used only when OPTIMIZER='adam') ────────────────────
 
-ADAM_LR = 3e-4
+ADAM_LR = 6e-4
 #   Adam learning rate.  Reduced from standard 1e-3 for ansätze with highly
 #   coupled parameters (e.g. neel: ~20 params control all 6 sites → each grad
 #   step has 6× effective reach vs independent-tensor ansätze like sym6).
-ADAM_BETAS = (0.5, 0.8)
+ADAM_BETAS = (0.8, 0.9999)
 #   (β₁, β₂): exponential decay rates for 1st/2nd moment estimates.
 #   β₁=0.5 (not 0.9): less momentum → prevents overshoot near minima in
 #      tightly-coupled parameter spaces (neel D=6: only 20 DOF for 6 tensors).
@@ -1247,6 +1247,7 @@ def optimize_at_chi(
         out_dir: str | None = None,
         ansatz_cfg: dict | None = None,
         skip_adam_warmup: bool = False,
+        first_chi_of_D: bool = False,
 ) -> tuple:
     """
     Outer L-BFGS loop at fixed (D_bond, chi) until budget_seconds elapsed
@@ -1282,6 +1283,11 @@ def optimize_at_chi(
     for t in params:
         t.requires_grad_(True)
 
+    if ansatz_cfg == ANSATZ_REGISTRY['neel']:
+        effective_ADAM_LR = ADAM_LR/10
+    else:
+        effective_ADAM_LR = ADAM_LR
+
 
     best_loss     = float('inf')
     best_params   = [t.detach().clone() for t in params]
@@ -1308,7 +1314,7 @@ def optimize_at_chi(
     if _effective_optimizer == 'adam':
         _adam = torch.optim.Adam(
             params,
-            lr=ADAM_LR, betas=ADAM_BETAS, eps=ADAM_EPS,
+            lr=effective_ADAM_LR, betas=ADAM_BETAS, eps=ADAM_EPS,
             weight_decay=ADAM_WEIGHT_DECAY)
 
     # ── L-BFGS factory + optional initial instance ────────────────────────────
@@ -1669,12 +1675,12 @@ def optimize_at_chi(
                 _prev_abs_delta = None
 
             # ── Early near-optimal switch (first 3 Adam steps) ───────────
-            # If Δloss > -1e-5 on any of the first 3 steps, the starting
+            # If Δloss > -1e-6 on any of the first 3 steps, the starting
             # point is already near the minimum — Adam's fixed-lr steps
             # will only kick it away.  Switch to L-BFGS immediately.
-            if _adam_steps_taken <= 3 and delta > -5e-6:
+            if (not first_chi_of_D) and _adam_steps_taken <= 3 and delta > -1e-5:
                 _do_switch_to_lbfgs(
-                    f"Δ={delta:+.2e} > -5e-6 on Adam step {_adam_steps_taken} "
+                    f"Δ={delta:+.2e} > -1e-6 on Adam step {_adam_steps_taken} "
                     f"(near-optimal start)")
             else:
                 # ── Normal patience-based switch ─────────────────────────
@@ -2316,6 +2322,7 @@ def main():
                         out_dir=output_dir,
                         ansatz_cfg=ansatz_cfg,
                         skip_adam_warmup=_skip_adam,
+                        first_chi_of_D=(chi_idx == 0),
                     )
                 except _CollapseRestartD as _exc:
                     _chi_collapse = True
