@@ -1284,7 +1284,7 @@ def optimize_at_chi(
         t.requires_grad_(True)
 
     if ansatz_cfg == ANSATZ_REGISTRY['neel']:
-        effective_ADAM_LR = ADAM_LR/11
+        effective_ADAM_LR = ADAM_LR/22
     elif ansatz_cfg == ANSATZ_REGISTRY['twoc3']:
         effective_ADAM_LR = ADAM_LR/3
     elif ansatz_cfg == ANSATZ_REGISTRY['c3vypi'] or ansatz_cfg == ANSATZ_REGISTRY['c6ypi']:
@@ -1495,7 +1495,7 @@ def optimize_at_chi(
                 
         all28 = CTMRG_from_init_to_stop(
             A, B, C, Dt, E, F, chi, D_sq,
-            CTM_MAX_STEPS, 10*CTM_CONV_THR, ENV_IDENTITY_INIT, energy_proxy_fn = _proxy_fn)
+            CTM_MAX_STEPS, 5*CTM_CONV_THR, ENV_IDENTITY_INIT, energy_proxy_fn = _proxy_fn)
 
 
         (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
@@ -1613,7 +1613,7 @@ def optimize_at_chi(
                 torch.cuda.empty_cache()
         else:  # adam (initial or full run) — 1 gradient step per env refresh
             _core.set_ctm_conv_mode(CTM_CONV_MODE,
-                        e_threshold=10*CTM_E_CONV_THRESHOLD)
+                        e_threshold=5*CTM_E_CONV_THRESHOLD)
             if _adam is None:
                 raise RuntimeError("Adam optimizer requested but was not initialized")
             _adam.zero_grad()
