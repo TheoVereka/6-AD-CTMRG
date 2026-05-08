@@ -1614,19 +1614,41 @@ def neel_param_to_a(h: torch.Tensor, D: int) -> torch.Tensor:
     equalizes the gradient magnitude across all m and prevents L-BFGS
     from taking large steps along the high-multiplicity directions.
 
-    The inverse (neel_a_to_free_param) undoes the same scaling.
+    The result is **unit-normalised** (Frobenius norm = 1).  This is
+    essential to prevent Adam from running away into an ever-growing
+    ||h|| regime.  The energy E is exactly scale-invariant in the pure
+    tensor-network sense (E(λa) = E(a)), but CTMRG with a fixed bond
+    dimension chi introduces a truncation-induced scale bias: the
+    double-layer tensors A = a⊗a* are not renormalised inside CTMRG
+    (the `normalize_tensor(A)` calls are commented out in
+    `abcdef_to_ABCDEF`), so ||A||_F ∝ ||a||².  As a result the
+    effective gradient in h-space has a radial component that grows
+    with ||h||, creating a runaway where ||h|| → ∞ and CTMRG needs
+    ever more iterations to converge (observed: ctm count 4 → 10 over
+    ~1400 steps, then oscillations begin).  Fixing ||a||_F = 1 removes
+    this degree of freedom, constraining Adam to Riemannian gradient
+    descent on the unit sphere and restoring finite, well-conditioned
+    gradient magnitudes throughout optimisation.
+
+    The inverse (neel_a_to_free_param) undoes the same scaling but
+    does NOT re-add the norm; warm-start (pad_neel_free_param) already
+    calls normalize_tensor on a_old, so it is fully compatible.
 
     Args:
         h : Free parameter of shape (D*(D+1)*(D+2)//6, d_PHYS).
         D : Virtual bond dimension.
 
     Returns:
-        Tensor of shape (D, D, D, d_PHYS), exactly S₃-symmetric.
+        Tensor of shape (D, D, D, d_PHYS), exactly S₃-symmetric,
+        with unit Frobenius norm.
     """
     tri3      = _get_tri3_idx(D, h.device)
     sqrt_mult = _get_tri3_sqrt_mult(D, h.device).to(dtype=h.dtype)
     # h[tri3] has shape (D,D,D,d_PHYS); sqrt_mult has shape (D,D,D)
-    return h[tri3, :] / sqrt_mult.unsqueeze(-1)
+    a = h[tri3, :] / sqrt_mult.unsqueeze(-1)
+    # Fix scale gauge: constrain a to the unit sphere in a-space.
+    # This prevents Adam's CTMRG-truncation-induced radial drift (see docstring).
+    return a / (a.norm() + 1e-12)
 
 
 def neel_a_to_free_param(a_sym: torch.Tensor) -> torch.Tensor:
