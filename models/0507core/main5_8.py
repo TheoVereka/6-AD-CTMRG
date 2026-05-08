@@ -5,9 +5,9 @@
 
 
 
-MY_OUTPUT_OUTERDIR = '/home/chye/6ADctmrg/data/raw'
+MY_OUTPUT_OUTERDIR = '/scratch/izar/chye/0507core'
 
-USE_GPU = False
+USE_GPU = True
 
 # ── Multi-GPU (optional, CUDA only) ──────────────────────────────────────────
 
@@ -24,7 +24,7 @@ N_GPUS = 1
 #   Set automatically in main() from --ngpu or torch.cuda.device_count().
 #   Override at runtime:  --ngpu N
 
-_N_PHYSICAL_CORES = 4
+_N_PHYSICAL_CORES = 25
 
 
 # ── Sweep control ─────────────────────────────────────────────────────────────
@@ -444,7 +444,7 @@ ADAM_LR = 1e-3
 #   Adam learning rate.  Reduced from standard 1e-3 for ansätze with highly
 #   coupled parameters (e.g. neel: ~20 params control all 6 sites → each grad
 #   step has 6× effective reach vs independent-tensor ansätze like sym6).
-ADAM_BETAS = (0.8, 0.9999)
+ADAM_BETAS = (0.5, 0.8)
 #   (β₁, β₂): exponential decay rates for 1st/2nd moment estimates.
 #   β₁=0.5 (not 0.9): less momentum → prevents overshoot near minima in
 #      tightly-coupled parameter spaces (neel D=6: only 20 DOF for 6 tensors).
