@@ -41,7 +41,7 @@ TOTAL_BUDGET_HOURS = 99999
 # ── GPU/CPU intent ────────────────────────────────────────────────────────────
 # Duplicated below in the TUNABLE PARAMETERS section with full comments.
 
-USE_GPU = False
+USE_GPU = True
 
 # ── Multi-GPU (optional, CUDA only) ──────────────────────────────────────────
 
@@ -58,7 +58,7 @@ N_GPUS = 1
 #   Set automatically in main() from --ngpu or torch.cuda.device_count().
 #   Override at runtime:  --ngpu N
 
-_N_PHYSICAL_CORES = 4
+_N_PHYSICAL_CORES = 25
 
 ########################
 # ── Physical model ── # ────────────────────────────────────────────────────────────
