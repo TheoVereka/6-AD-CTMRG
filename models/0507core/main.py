@@ -440,7 +440,7 @@ OPTIMIZER = 'lbfgs'
 
 # ── Adam hyperparameters (used only when OPTIMIZER='adam') ────────────────────
 
-ADAM_LR = 1e-3
+ADAM_LR = 4e-3
 #   Adam learning rate.  Reduced from standard 1e-3 for ansätze with highly
 #   coupled parameters (e.g. neel: ~20 params control all 6 sites → each grad
 #   step has 6× effective reach vs independent-tensor ansätze like sym6).
@@ -1284,7 +1284,13 @@ def optimize_at_chi(
         t.requires_grad_(True)
 
     if ansatz_cfg == ANSATZ_REGISTRY['neel']:
+        effective_ADAM_LR = ADAM_LR/11
+    elif ansatz_cfg == ANSATZ_REGISTRY['twoc3']:
+        effective_ADAM_LR = ADAM_LR/3
+    elif ansatz_cfg == ANSATZ_REGISTRY['c3vypi'] or ansatz_cfg == ANSATZ_REGISTRY['c6ypi']:
         effective_ADAM_LR = ADAM_LR/5
+    elif ansatz_cfg == ANSATZ_REGISTRY['sym6']:
+        effective_ADAM_LR = ADAM_LR/2
     else:
         effective_ADAM_LR = ADAM_LR
 
