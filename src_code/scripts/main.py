@@ -70,7 +70,7 @@ J1_COUPLING = 1.0
 #   The nn Hamiltonian is  H_nn = J1 Σ_{<i,j>} S_i · S_j
 #   summed over all 9 nearest-neighbour pairs in the 6-site honeycomb unit cell.
 
-J2_COUPLING = 0.32
+J2_COUPLING = 0.26
 #   Next-nearest-neighbour (nnn) Heisenberg exchange coupling constant.
 #   J2 > 0 = frustrated AFM.  Set to 0 to recover the pure J1 model.
 #   The nnn Hamiltonian is  H_nnn = J2 Σ_{<<i,j>>} S_i · S_j
@@ -431,7 +431,7 @@ OPT_CONV_THRESHOLD = 5e-8
 #   next (D, chi) level.  Set to 0 to disable early stopping and always
 #   run until the time budget is exhausted.
 
-CHI_CONVERGENCE_THRESHOLD = 1e-5
+CHI_CONVERGENCE_THRESHOLD = 3e-5
 #   Chi-level early-exit criterion (lookahead).
 #   After optimisation at (D, chi) is complete and a clean energy evaluation
 #   is done, also evaluate the energy at (D, chi_next) using the SAME (already
@@ -456,12 +456,19 @@ OPTIMIZER = 'lbfgs'
 
 # ── Adam hyperparameters (used only when OPTIMIZER='adam') ────────────────────
 
-ADAM_LR = 1e-3
-#   Adam learning rate.  Typical range: 1e-4 – 1e-3.
-ADAM_BETAS = (0.9, 0.999)
-#   Exponential decay rates for 1st and 2nd moment estimates.
-ADAM_EPS = 1e-9
-#   Denominator epsilon for numerical stability.
+ADAM_LR = 5e-4
+#   Adam learning rate.  Reduced from standard 1e-3 for ansätze with highly
+#   coupled parameters (e.g. neel: ~20 params control all 6 sites → each grad
+#   step has 6× effective reach vs independent-tensor ansätze like sym6).
+ADAM_BETAS = (0.8, 0.999)
+#   (β₁, β₂): exponential decay rates for 1st/2nd moment estimates.
+#   β₁=0.5 (not 0.9): less momentum → prevents overshoot near minima in
+#      tightly-coupled parameter spaces (neel D=6: only 20 DOF for 6 tensors).
+#   β₂=0.9 (not 0.999): faster adaptation → 10% decay vs 0.1%, responds
+#      quicker to changing curvature without building excessive inertia.
+ADAM_EPS = 1e-7
+#   Denominator epsilon for numerical stability (increased from 1e-9 to dampen
+#   adaptive scaling in small-parameter regimes).
 ADAM_WEIGHT_DECAY = 0.0
 #   L2 regularisation strength.  0.0 = no regularisation (recommended).
 ADAM_GRAD_CLIP = 1.0
@@ -523,7 +530,7 @@ ADAM_SWITCH_PATIENCE = 6
 
 
 
-ENV_IDENTITY_INIT = False
+ENV_IDENTITY_INIT = True
 
 
 
@@ -2198,6 +2205,109 @@ def main():
                     D_bond, chi, energy, correlations, magnetizations, None)
                 _print_observables_summary(
                     'OBS', D_bond, chi, energy, correlations, magnetizations, None)
+
+                # ── Lookahead: chi_la = chi + D_bond (one LBFGS inner step) ──
+                # Create temporary LBFGS with max_iter=1, run one outer step
+                # (= one closure call = CTMRG + energy with _CACHE_RHOS), then
+                # extract observables from cached rhos. Reuses all existing
+                # machinery from optimize_at_chi instead of manually coding CTMRG.
+                chi_la = chi + D_bond
+                print(f"  │  [lookahead] one fwd step at chi_la={chi_la} (D={D_bond})")
+                sys.stdout.flush()
+                try:
+                    _la_params = [p.detach().clone().requires_grad_(True) for p in cur_params]
+                    _core._CACHE_RHOS = True
+                    _core._RHO_CACHE.clear()
+                    
+                    D_sq_la = D_bond ** 2
+                    # Closure for lookahead (identical to optimize_at_chi logic)
+                    def _la_closure():
+                        a_la, b_la, c_la, d_la, e_la, f_la = _derive_abcdef(
+                            _la_params, ansatz_cfg, D_bond)
+                        aN_la = normalize_single_layer_tensor_for_double_layer(a_la)
+                        bN_la = normalize_single_layer_tensor_for_double_layer(b_la)
+                        cN_la = normalize_single_layer_tensor_for_double_layer(c_la)
+                        dN_la = normalize_single_layer_tensor_for_double_layer(d_la)
+                        eN_la = normalize_single_layer_tensor_for_double_layer(e_la)
+                        fN_la = normalize_single_layer_tensor_for_double_layer(f_la)
+                        A_la, B_la, C_la, Dt_la, E_la, F_la = abcdef_to_ABCDEF(
+                            aN_la, bN_la, cN_la, dN_la, eN_la, fN_la, D_sq_la)
+                        
+                        proxy_fn = None
+                        if _core._CTM_CONV_MODE != 'SVdifference':
+                            def _proxy_fn(
+                                    C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E,
+                                    C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A,
+                                    C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C):
+                                with torch.no_grad():
+                                    _e1 = energy_expectation_nearest_neighbor_3ebadcf_bonds(
+                                        aN_la, bN_la, cN_la, dN_la, eN_la, fN_la, *Js[0:12], SdotS,
+                                        chi_la, D_bond, d_PHYS,
+                                        C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E)
+                                    _e2 = energy_expectation_nearest_neighbor_3afcbed_bonds(
+                                        aN_la, bN_la, cN_la, dN_la, eN_la, fN_la, *Js[12:24], SdotS,
+                                        chi_la, D_bond, d_PHYS,
+                                        C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A)
+                                    _e3 = energy_expectation_nearest_neighbor_other_3_bonds(
+                                        aN_la, bN_la, cN_la, dN_la, eN_la, fN_la, *Js[24:36], SdotS,
+                                        chi_la, D_bond, d_PHYS,
+                                        C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C)
+                                    return (_e1 + _e2 + _e3).item()
+ 
+                        all28_la = CTMRG_from_init_to_stop(
+                            A_la, B_la, C_la, Dt_la, E_la, F_la, chi_la, D_sq_la,
+                            CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT,
+                            energy_proxy_fn=_proxy_fn)
+                        (C21CD_la, C32EF_la, C13AB_la, T1F_la, T2A_la, T2B_la,
+                         T3C_la, T3D_la, T1E_la,
+                         C21EB_la, C32AD_la, C13CF_la, T1D_la, T2C_la, T2F_la,
+                         T3E_la, T3B_la, T1A_la,
+                         C21AF_la, C32CB_la, C13ED_la, T1B_la, T2E_la, T2D_la,
+                         T3A_la, T3F_la, T1C_la, _) = all28_la
+                        loss_la = _three_env_energy_loss_parallel(
+                            aN_la, bN_la, cN_la, dN_la, eN_la, fN_la, Js, SdotS,
+                            chi_la, D_bond, d_PHYS,
+                            env1=(C21CD_la, C32EF_la, C13AB_la, T1F_la, T2A_la, T2B_la,
+                                  T3C_la, T3D_la, T1E_la),
+                            env2=(C21EB_la, C32AD_la, C13CF_la, T1D_la, T2C_la, T2F_la,
+                                  T3E_la, T3B_la, T1A_la),
+                            env3=(C21AF_la, C32CB_la, C13ED_la, T1B_la, T2E_la, T2D_la,
+                                  T3A_la, T3F_la, T1C_la))
+                        return loss_la
+                    
+                    # LBFGS with max_iter=1 → one inner step only
+                    _la_lbfgs = torch.optim.LBFGS(
+                        _la_params, lr=LBFGS_LR, max_iter=1,
+                        tolerance_grad=0.0, tolerance_change=0.0,
+                        history_size=1, line_search_fn='strong_wolfe')
+                    _la_lbfgs.step(_la_closure)  # one outer step = one closure call
+                    
+                    # Extract observables from cached rhos
+                    _la_cached_rhos = (
+                        _core._RHO_CACHE.get('env1'),
+                        _core._RHO_CACHE.get('env2'),
+                        _core._RHO_CACHE.get('env3'))
+                    with torch.no_grad():
+                        energy_la, correlations_la, magnetizations_la = \
+                            _observables_from_rhos(_la_cached_rhos, Js, SdotS, d_PHYS)
+                    _save_observables_file(
+                        os.path.join(output_dir,
+                                     f"D_{D_bond}_chi_{chi}_lookahead_{chi_la}"
+                                     f"_energy_magnetization_correlation.txt"),
+                        D_bond, chi_la, energy_la, correlations_la,
+                        magnetizations_la, None)
+                    _print_observables_summary(
+                        'LA ', D_bond, chi_la, energy_la, correlations_la,
+                        magnetizations_la, None)
+                    del _la_params, _la_lbfgs
+                    gc.collect()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                except Exception as _la_exc:
+                    print(f"  │  [lookahead] failed: {_la_exc}")
+                finally:
+                    _core._CACHE_RHOS = False
+                # ─────────────────────────────────────────────────────────────
 
                 # Save final checkpoint for this (D, chi)
                 save_checkpoint(best_path, cur_params, D_bond, chi,
