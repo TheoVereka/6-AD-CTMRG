@@ -455,7 +455,7 @@ ADAM_EPS = 1e-7
 #   adaptive scaling in small-parameter regimes).
 ADAM_WEIGHT_DECAY = 0.0
 #   L2 regularisation strength.  0.0 = no regularisation (recommended).
-ADAM_GRAD_CLIP = 1.0
+ADAM_GRAD_CLIP = None
 #   Max L2 norm of the gradient before Adam's step; None to disable.
 #   Prevents overshooting steps when all site tensors move together (e.g.
 #   neel ansatz: one h-step changes all 6 sites simultaneously, making
@@ -1284,7 +1284,7 @@ def optimize_at_chi(
         t.requires_grad_(True)
 
     if ansatz_cfg == ANSATZ_REGISTRY['neel']:
-        effective_ADAM_LR = ADAM_LR/13
+        effective_ADAM_LR = ADAM_LR/5
     else:
         effective_ADAM_LR = ADAM_LR
 
