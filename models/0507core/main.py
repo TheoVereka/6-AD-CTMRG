@@ -7,40 +7,6 @@
 
 MY_OUTPUT_OUTERDIR = '/scratch/izar/chye/0507core'
 
-# ── Sweep control ─────────────────────────────────────────────────────────────
-
-D_BOND_LIST = [2,3,4, 5, 6,7,8,9,10]
-#   Default D_bond list used when --Ds is not given on the CLI.
-#   Override at runtime: --Ds 3 7 4  (space-separated integers).
-
-# ══════════════════════════════════════════════════════════════════════════════
-# !! SACRED CONSTANT — DO NOT MODIFY AT RUNTIME OR IN CODE !!
-# DEFAULT_CHI_SCHEDULES is the single source of truth for chi schedules.
-# It maps each D_bond to its ordered list of chi values.
-# The schedule is used EXACTLY as written — no appending, no geometric
-# fallback, no chi_max clipping.  If D is not in this dict, a KeyError
-# is raised.  To change a schedule, edit this dict and ONLY this dict.
-# ══════════════════════════════════════════════════════════════════════════════
-DEFAULT_CHI_SCHEDULES = {
-    2: [ 16],
-    3: [ 27],
-    4: [ 40],
-    5: [ 55],
-    6: [ 72],
-    7: [ 91],
-    8: [104],
-    9: [117],
-    10:[120],
-}
-# ══════════════════════════════════════════════════════════════════════════════
-# Time Budget
-# ══════════════════════════════════════════════════════════════════════════════
-
-TOTAL_BUDGET_HOURS = 99999
-
-# ── GPU/CPU intent ────────────────────────────────────────────────────────────
-# Duplicated below in the TUNABLE PARAMETERS section with full comments.
-
 USE_GPU = True
 
 # ── Multi-GPU (optional, CUDA only) ──────────────────────────────────────────
@@ -59,6 +25,30 @@ N_GPUS = 1
 #   Override at runtime:  --ngpu N
 
 _N_PHYSICAL_CORES = 25
+
+
+# ── Sweep control ─────────────────────────────────────────────────────────────
+
+D_BOND_LIST   = [  2,  3,  4,  5,  6,  7,  8,  9, 10]
+CHI_MIN_LIST  = [ 10, 21, 32, 45, 60, 77, 88, 99,100]
+CHI_MAX_LIST  = [ 14, 27, 40, 55, 72, 91,104,117,120]
+CHI_STEP_LIST = [  4,  6,  8, 10, 12, 14, 16, 18, 20]
+#   Default chi schedule parameters (one per D in D_BOND_LIST).
+#   For each D_bond, the chi schedule is generated as:
+#     range(chi_min, chi_max+1, chi_step)  (Python range semantics)
+#   Example: chi_min=40, chi_max=80, chi_step=10 → [40, 50, 60, 70, 80]
+#   Must satisfy: len(CHI_MIN_LIST) == len(CHI_MAX_LIST) == len(CHI_STEP_LIST) == len(D_BOND_LIST)
+#   Override at runtime: --chi-min 40 55 72  --chi-max 80 100 120  --chi-step 10 10 10
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Time Budget
+# ══════════════════════════════════════════════════════════════════════════════
+
+TOTAL_BUDGET_HOURS = 99999
+
+# ── GPU/CPU intent ────────────────────────────────────────────────────────────
+# Duplicated below in the TUNABLE PARAMETERS section with full comments.
+
 
 ########################
 # ── Physical model ── # ────────────────────────────────────────────────────────────
@@ -93,11 +83,10 @@ honeycomb unit cell, using AD-CTMRG.
 
 Usage
 -----
-  python scripts/main_sweep.py                       # all defaults (11 h)
+  python scripts/main_sweep.py                       # all defaults
   python scripts/main_sweep.py --hours 11
-  python scripts/main_sweep.py --hours 6 --D-bonds 2,3
-  python scripts/main_sweep.py --hours 11 --chi-maxes 16,81,100
-  python scripts/main_sweep.py --resume log/sweep_D3_chi81_best.pt --D-bonds 3,4
+  python scripts/main_sweep.py --Ds 4 5 6 --chi-min 40 50 60 --chi-max 80 100 120 --chi-step 10 10 10
+  python scripts/main_sweep.py --resume log/sweep_D3_chi81_best.pt --Ds 3 4
 
 Outputs (all in log/)
 ---------------------
@@ -432,17 +421,12 @@ OPT_CONV_THRESHOLD = 5e-8
 #   run until the time budget is exhausted.
 
 CHI_CONVERGENCE_THRESHOLD = 3e-5
-#   Chi-level early-exit criterion (lookahead).
-#   After optimisation at (D, chi) is complete and a clean energy evaluation
-#   is done, also evaluate the energy at (D, chi_next) using the SAME (already
-#   optimised) tensors before running any optimisation at chi_next.  If
-#   |E(chi) − E(chi_next)| < CHI_CONVERGENCE_THRESHOLD, the
-#   chi series for the current D is considered converged and we immediately
-#   jump to the next D, skipping the remaining chi levels.  On entering
-#   D_next the chi schedule is filtered to start from the first chi that is
-#   strictly larger than the finishing chi of D (not chi_next), so low-chi
-#   environments already covered by the previous D are not repeated.
-#   Recorded in hyperparams.yaml as chi_convergence_threshold.
+#   Chi-level early-exit criterion (lookahead comparison).
+#   After optimisation at (D, chi) completes, a lookahead evaluation is run
+#   at chi_la = chi + D_bond. If |E(chi) − E(chi_la)| < CHI_CONVERGENCE_THRESHOLD,
+#   the chi series for this D is considered converged and we skip remaining
+#   chi levels, immediately proceeding to the next D.
+#   Set to 0 to disable (always run full chi schedule).
 
 # ── Optimizer choice ──────────────────────────────────────────────────────────
 
@@ -456,14 +440,16 @@ OPTIMIZER = 'lbfgs'
 
 # ── Adam hyperparameters (used only when OPTIMIZER='adam') ────────────────────
 
-ADAM_LR = 5e-4
+ADAM_LR = 3e-4
 #   Adam learning rate.  Reduced from standard 1e-3 for ansätze with highly
 #   coupled parameters (e.g. neel: ~20 params control all 6 sites → each grad
 #   step has 6× effective reach vs independent-tensor ansätze like sym6).
-ADAM_BETAS = (0.8, 0.999)
+ADAM_BETAS = (0.5, 0.8)
 #   (β₁, β₂): exponential decay rates for 1st/2nd moment estimates.
-#   β₁=0.8 (not 0.5): more momentum → smoother updates in tightly-coupled parameter spaces.
-#   β₂=0.999 (not 0.9): slower adaptation → more stable second moment estimates.
+#   β₁=0.5 (not 0.9): less momentum → prevents overshoot near minima in
+#      tightly-coupled parameter spaces (neel D=6: only 20 DOF for 6 tensors).
+#   β₂=0.9 (not 0.999): faster adaptation → 10% decay vs 0.1%, responds
+#      quicker to changing curvature without building excessive inertia.
 ADAM_EPS = 1e-7
 #   Denominator epsilon for numerical stability (increased from 1e-9 to dampen
 #   adaptive scaling in small-parameter regimes).
@@ -1449,6 +1435,89 @@ def optimize_at_chi(
 
         return loss, int(ctm_steps)
 
+
+    def _loss_with_differentiable_ctmrg_ADAMlooser() -> tuple[torch.Tensor, int]:
+        """Compute loss with CTMRG inside the autograd graph.
+
+        LBFGS calls its closure multiple times per step; therefore this
+        function must be called fresh on every closure evaluation.
+        Never reuse environment tensors across calls.
+        """
+        # Derive all 6 single-layer tensors from the optimized parameters.
+        # For unrestricted: params = [a, b, c, d, e, f] directly.
+        # For single-tensor ansätze: symmetrize params[0] and derive (a..f).
+        a, b, c, d, e, f = _derive_abcdef(params, ansatz_cfg, D_bond)
+        # IMPORTANT: Make the single-layer tensors consistent with the CTMRG
+        # convention (double-layer tensors are Frobenius-normalized). Without
+        # this, the energy routines' printed <iPEPS|iPEPS> denominators can be
+        # far from 1 even when CTMRG normalization is correct.
+        aN = normalize_single_layer_tensor_for_double_layer(a)
+        bN = normalize_single_layer_tensor_for_double_layer(b)
+        cN = normalize_single_layer_tensor_for_double_layer(c)
+        dN = normalize_single_layer_tensor_for_double_layer(d)
+        eN = normalize_single_layer_tensor_for_double_layer(e)
+        fN = normalize_single_layer_tensor_for_double_layer(f)
+
+        A, B, C, Dt, E, F = abcdef_to_ABCDEF(aN, bN, cN, dN, eN, fN, D_sq)
+        
+        _proxy_fn = None
+        if _core._CTM_CONV_MODE != 'SVdifference':
+            def _proxy_fn(
+                    C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E,
+                    C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A,
+                    C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C):
+                with torch.no_grad():
+                    _e1 = energy_expectation_nearest_neighbor_3ebadcf_bonds(
+                        aN, bN, cN, dN, eN, fN, *Js[0:12], SdotS,
+                        chi, D_bond, d_PHYS,
+                        C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E)
+                    _e2 = energy_expectation_nearest_neighbor_3afcbed_bonds(
+                        aN, bN, cN, dN, eN, fN, *Js[12:24], SdotS,
+                        chi, D_bond, d_PHYS,
+                        C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A)
+                    _e3 = energy_expectation_nearest_neighbor_other_3_bonds(
+                        aN, bN, cN, dN, eN, fN, *Js[24:36], SdotS,
+                        chi, D_bond, d_PHYS,
+                        C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C)
+                    return (_e1 + _e2 + _e3).item()
+                
+        all28 = CTMRG_from_init_to_stop(
+            A, B, C, Dt, E, F, chi, D_sq,
+            CTM_MAX_STEPS, 10*CTM_CONV_THR, ENV_IDENTITY_INIT, energy_proxy_fn = _proxy_fn)
+
+
+        (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
+         C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A,
+         C21AF, C32CB, C13ED, T1B,  T2E,  T2D,  T3A,  T3F,  T1C,
+         ctm_steps) = all28
+
+        # ── Last-resort zero-env guard (gradient path) ────────────────────
+        # CTMRG already retried with escalating noise internally.
+        # If it STILL returned zero, skip the expensive energy computation
+        # and raise so the closure handler returns a penalty loss.
+        _env_corners = (C21CD, C32EF, C13AB,
+                        C21EB, C32AD, C13CF,
+                        C21AF, C32CB, C13ED)
+        if all(torch.linalg.norm(c).item() < 1e-30 for c in _env_corners):
+            raise FloatingPointError(
+                "CTMRG env collapsed to zero after all internal retries")
+
+        # ── Compute the three energy expectations (checkpointed, optionally multi-GPU) ─
+        # _three_env_energy_loss_parallel wraps each energy call in
+        # _ckpt(use_reentrant=False), saving ~5 GB (D=7) / ~15 GB (D=8) of
+        # autograd intermediates.  With N_GPUS >= 2 (CUDA), the three calls
+        # run concurrently on separate GPUs via a thread pool (see --ngpu).
+        # When _core._CACHE_RHOS is True, each energy function also writes its
+        # 12 density matrices into _core._RHO_CACHE — zero extra tensor builds.
+        loss = _three_env_energy_loss_parallel(
+            aN, bN, cN, dN, eN, fN, Js, SdotS, chi, D_bond, d_PHYS,
+            env1=(C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E),
+            env2=(C21EB, C32AD, C13CF, T1D,  T2C,  T2F,  T3E,  T3B,  T1A),
+            env3=(C21AF, C32CB, C13ED, T1B,  T2E,  T2D,  T3A,  T3F,  T1C),
+        )
+
+        return loss, int(ctm_steps)
+
     while True:
         elapsed = time.perf_counter() - t_start
         if elapsed >= budget_seconds:
@@ -1460,6 +1529,8 @@ def optimize_at_chi(
         #  both crash autograd and give incorrect gradients.)
         ctm_steps = -1
         if _effective_optimizer == 'lbfgs':
+            _core.set_ctm_conv_mode(CTM_CONV_MODE,
+                        e_threshold=CTM_E_CONV_THRESHOLD)
             if _lbfgs is None:
                 raise RuntimeError("L-BFGS optimizer requested but was not initialized")
 
@@ -1529,10 +1600,12 @@ def optimize_at_chi(
                 gc.collect()
                 torch.cuda.empty_cache()
         else:  # adam (initial or full run) — 1 gradient step per env refresh
+            _core.set_ctm_conv_mode(CTM_CONV_MODE,
+                        e_threshold=10*CTM_E_CONV_THRESHOLD)
             if _adam is None:
                 raise RuntimeError("Adam optimizer requested but was not initialized")
             _adam.zero_grad()
-            _loss, ctm_steps = _loss_with_differentiable_ctmrg()
+            _loss, ctm_steps = _loss_with_differentiable_ctmrg_ADAMlooser()
             _loss.backward()
             if ADAM_GRAD_CLIP is not None:
                 torch.nn.utils.clip_grad_norm_(params, max_norm=ADAM_GRAD_CLIP)
@@ -1599,9 +1672,9 @@ def optimize_at_chi(
             # If Δloss > -1e-5 on any of the first 3 steps, the starting
             # point is already near the minimum — Adam's fixed-lr steps
             # will only kick it away.  Switch to L-BFGS immediately.
-            if _adam_steps_taken <= 3 and delta > -1e-5:
+            if _adam_steps_taken <= 3 and delta > -5e-6:
                 _do_switch_to_lbfgs(
-                    f"Δ={delta:+.2e} > -1e-5 on Adam step {_adam_steps_taken} "
+                    f"Δ={delta:+.2e} > -5e-6 on Adam step {_adam_steps_taken} "
                     f"(near-optimal start)")
             else:
                 # ── Normal patience-based switch ─────────────────────────
@@ -1658,10 +1731,31 @@ def main():
         '--hours', type=float, default=TOTAL_BUDGET_HOURS,
         help='Total wall-clock budget in hours.')
     parser.add_argument(
-        '--Ds', nargs='+', type=int, default=D_BOND_LIST, dest='D_bonds',
+        '--config', type=str, default=None,
+        help='Path to YAML config file with hyperparameters. Values from file '
+             'override defaults but are overridden by explicit CLI arguments. '
+             'Example: --config sweep_hyperparams.yaml')
+    parser.add_argument(
+        '--Ds', nargs='+', type=int, default=None, dest='D_bonds',
         help='Space-separated list of D_bond values to sweep. '
              'Example: --Ds 3 7 4  (sweeps D=3,7,4 in that order). '
-             'Each D must have an entry in DEFAULT_CHI_SCHEDULES.')
+             'If provided, chi-min/max/step must either match length or be omitted '
+             '(defaults will be inferred).')
+    parser.add_argument(
+        '--chi-min', nargs='+', type=int, default=None, dest='chi_min',
+        help='Minimum chi for each D (space-separated). If length differs from '
+             '--Ds, missing values are taken from CHI_MIN_LIST defaults. '
+             'Example: --chi-min 40 55 72')
+    parser.add_argument(
+        '--chi-max', nargs='+', type=int, default=None, dest='chi_max',
+        help='Maximum chi for each D (space-separated). If length differs from '
+             '--Ds, missing values are taken from CHI_MAX_LIST defaults. '
+             'Example: --chi-max 80 100 120')
+    parser.add_argument(
+        '--chi-step', nargs='+', type=int, default=None, dest='chi_step',
+        help='Chi step size for each D (space-separated). If length differs from '
+             '--Ds, missing values are taken from CHI_STEP_LIST defaults. '
+             'Example: --chi-step 10 10 10  → schedules will be range(min, max+1, step)')
     parser.add_argument(
         '--d-phys', type=int, default=D_PHYS,
         help='Physical Hilbert-space dimension (d=2 for spin-1/2).')
@@ -1861,14 +1955,59 @@ def main():
     total_budget = args.hours * 3600.0
     t_global_start = time.perf_counter()
 
-    # ── chi schedules (sacred constant — read directly from DEFAULT_CHI_SCHEDULES) ──
-    schedules = {}
-    for D in D_bond_list:
-        if D not in DEFAULT_CHI_SCHEDULES:
+    # ── chi schedules (generated from chi_min/max/step) ───────────────────────
+    # Smart inference: if chi param not provided, look up defaults by D index
+    _n_D = len(D_bond_list)
+    
+    def _infer_chi_param(user_vals, default_vals, default_D_list, param_name):
+        """Infer chi parameter list from user input + defaults.
+        
+        Logic:
+        - If None (not provided): for each D in D_bond_list, find its index
+          in default_D_list and use the corresponding value from default_vals
+        - If provided: length MUST equal len(D_bond_list), otherwise ERROR
+        """
+        if user_vals is None:
+            # No user input: look up defaults by D index
+            result = []
+            for D in D_bond_list:
+                if D in default_D_list:
+                    idx = default_D_list.index(D)
+                    if idx < len(default_vals):
+                        result.append(default_vals[idx])
+                    else:
+                        raise ValueError(
+                            f"{param_name}: D={D} found at index {idx} in D_BOND_LIST, "
+                            f"but {param_name[2:].upper()}_LIST only has {len(default_vals)} values.")
+                else:
+                    raise ValueError(
+                        f"{param_name}: D={D} not found in default D_BOND_LIST={default_D_list}. "
+                        f"When {param_name} is not provided, all D values must exist in D_BOND_LIST "
+                        f"so defaults can be looked up.")
+            return result
+        
+        user_list = list(user_vals)
+        if len(user_list) != _n_D:
             raise ValueError(
-                f"D={D} has no entry in DEFAULT_CHI_SCHEDULES. "
-                f"Add it to the DEFAULT_CHI_SCHEDULES dict in main.py.")
-        schedules[D] = list(DEFAULT_CHI_SCHEDULES[D])
+                f"{param_name}: length mismatch. --Ds has {_n_D} values, "
+                f"but {param_name} has {len(user_list)} values. "
+                f"They must be equal (or omit {param_name} to use defaults).")
+        return user_list
+    
+    chi_min_list  = _infer_chi_param(args.chi_min,  CHI_MIN_LIST,  D_BOND_LIST, '--chi-min')
+    chi_max_list  = _infer_chi_param(args.chi_max,  CHI_MAX_LIST,  D_BOND_LIST, '--chi-max')
+    chi_step_list = _infer_chi_param(args.chi_step, CHI_STEP_LIST, D_BOND_LIST, '--chi-step')
+    
+    schedules = {}
+    for i, D in enumerate(D_bond_list):
+        chi_min  = chi_min_list[i]
+        chi_max  = chi_max_list[i]
+        chi_step = chi_step_list[i]
+        schedules[D] = list(range(chi_min, chi_max + 1, chi_step))
+        if not schedules[D]:
+            raise ValueError(
+                f"Empty chi schedule for D={D}: chi_min={chi_min}, chi_max={chi_max}, "
+                f"chi_step={chi_step} produces no values.")
 
     # ── time budget: equal split across D values ──────────────────────────────
     d_budgets = {D: total_budget / len(D_bond_list) for D in D_bond_list}
@@ -2137,7 +2276,7 @@ def main():
                 
                 # ── Chi init: mean-field / random / warm-start ─────────────────
                 #print(cur_params)
-                if cur_params is None and args.mean_field_init:
+                if chi_idx==0 and args.mean_field_init:
                     _init_params = _make_mean_field_params(
                         ansatz_cfg, D_bond, d_PHYS, INIT_NOISE)
                     if chi_idx == 0:
@@ -2297,12 +2436,29 @@ def main():
                     _print_observables_summary(
                         'LA ', D_bond, chi_la, energy_la, correlations_la,
                         magnetizations_la, None)
+                    
+                    # ── Chi convergence check ────────────────────────────────
+                    # If |E(chi) - E(chi_la)| <= threshold, chi series converged
+                    if CHI_CONVERGENCE_THRESHOLD > 0:
+                        _delta_E = abs(energy - energy_la)
+                        if _delta_E <= CHI_CONVERGENCE_THRESHOLD:
+                            print(f"  │  [chi-converged] |ΔE|={_delta_E:.2e} <= "
+                                  f"{CHI_CONVERGENCE_THRESHOLD:.2e} → skipping "
+                                  f"remaining chi levels, moving to next D")
+                            _chi_converged = True
+                        else:
+                            _chi_converged = False
+                    else:
+                        _chi_converged = False
+                    # ─────────────────────────────────────────────────────────
+                    
                     del _la_params, _la_lbfgs
                     gc.collect()
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
                 except Exception as _la_exc:
                     print(f"  │  [lookahead] failed: {_la_exc}")
+                    _chi_converged = False
                 finally:
                     _core._CACHE_RHOS = False
                 # ─────────────────────────────────────────────────────────────
@@ -2323,6 +2479,11 @@ def main():
                 wall = time.perf_counter() - t_global_start
                 print(f"  └── E={energy:+.10f}  E/site={energy_per_site:+.10f}"
                       f"  wall={wall/3600:.2f}h")
+                
+                # Early exit from chi loop if converged
+                if _chi_converged:
+                    print(f"  [chi-series-complete] D={D_bond} converged at chi={chi}")
+                    break
 
             if _chi_collapse:
                 _d_restart_count += 1
