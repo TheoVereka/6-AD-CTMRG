@@ -510,12 +510,22 @@ ADAM_TO_LBFGS_SWITCH_THRESHOLD = 1e-5
 #     1e-5 : safe default (landscape is locally smooth, L-BFGS reliable)
 #     1e-7 : switch very late (near full convergence, L-BFGS fine-polishes)
 
-ADAM_SWITCH_PATIENCE = 20
+ADAM_SWITCH_PATIENCE = 9
 #   Number of consecutive outer steps with |Δloss| < ADAM_TO_LBFGS_SWITCH_THRESHOLD
 #   required before the switch is triggered.  Prevents premature switching
 #   caused by a single accidentally small step (e.g. after a stall where
 #   Adam momentarily makes no progress).  3 is safe; increase to 5 on
 #   oscillating or noisy landscapes.
+
+ADAM_FLAT_PATIENCE = 90
+#   Flat-landscape escape: if the Adam loss window of this many steps has
+#   max(window) - min(window) < ADAM_TO_LBFGS_SWITCH_THRESHOLD, switch to
+#   L-BFGS even when the step-by-step deceleration condition never fired.
+#   Covers the case where Adam oscillates on a plateau without cumulative
+#   deceleration signal: individual |Δloss| values alternate sign and never
+#   consistently stay below threshold, so ADAM_SWITCH_PATIENCE never fills,
+#   yet the total progress over 300 steps is negligible.
+#   300 steps is ~5 min on CPU for D=4; raise to 500 on GPU-heavy runs.
 
 # ── CTMRG algorithm ──────────────────────────────────────────────────────────
 #
@@ -1369,6 +1379,10 @@ def optimize_at_chi(
     _adam_steps_taken: int = 0  # counts Adam outer steps (for early-switch)
     _switched_to_lbfgs: bool   = False  # True after Adam→L-BFGS transition
     _final_lbfgs_run:  bool   = False  # True on the terminal LBFGS (early-switch)
+    # Sliding window of the last ADAM_FLAT_PATIENCE Adam loss values.
+    # Used to detect a flat plateau independently of the step-by-step
+    # deceleration signal.  Reset on every Adam→LBFGS or LBFGS→Adam switch.
+    _adam_loss_window: collections.deque = collections.deque(maxlen=ADAM_FLAT_PATIENCE)
     # _final_lbfgs_run is set when the EARLY NEAR-OPTIMAL SWITCH fires (Adam
     # step ≤3 with Δ > -1e-6).  When that LBFGS run converges the loop exits.
     # All other LBFGS runs cycle back to Adam on convergence.
@@ -1783,6 +1797,7 @@ def optimize_at_chi(
                         _m_leg.sub_((_m_leg.reshape(-1) @ _a_dir.reshape(-1)) * _a_dir)
             loss_item = _loss.detach().item()
             _adam_steps_taken += 1
+            _adam_loss_window.append(loss_item)  # feed flat-landscape tracker
             # ── GPU memory cleanup after Adam micro-steps ────────────────
             if params[0].device.type == 'cuda':
                 gc.collect()
@@ -1831,6 +1846,7 @@ def optimize_at_chi(
                 print(f"    {_tag} Adam→L-BFGS switch at step {step} ({reason})")
                 del _adam
                 _adam = None
+                _adam_loss_window.clear()  # reset for any future Adam phase
                 if params[0].device.type == 'cuda':
                     gc.collect()
                     torch.cuda.empty_cache()
@@ -1882,6 +1898,7 @@ def optimize_at_chi(
                 # step count and the convergence check fires spuriously on Adam deltas.
                 _lbfgs_outer_steps = 0
                 loss_history.clear()  # fresh history for new Adam phase
+                _adam_loss_window.clear()  # reset flat-landscape window
                 # Keep _switched_to_lbfgs=True and _final_lbfgs_run unchanged.
 
             # ── Early near-optimal switch (first 3 Adam steps) ───────────
@@ -1914,6 +1931,21 @@ def optimize_at_chi(
                 else:
                     _switch_patience_count = 0  # reset: condition broken
                 _prev_Adamdelta = delta    # always update for next step
+                # ── Flat-landscape escape (window-based) ─────────────────
+                # Independent of the step-by-step deceleration signal: if the
+                # loss has barely moved over the last ADAM_FLAT_PATIENCE steps,
+                # Adam is stuck on a plateau (oscillating or stalling).  Switch
+                # to L-BFGS to attempt a curvature-guided escape.  This fires
+                # only when the deceleration check above did NOT already switch
+                # (to avoid double-switch on the same step).
+                if (_effective_optimizer == 'adam'
+                        and len(_adam_loss_window) == ADAM_FLAT_PATIENCE
+                        and (max(_adam_loss_window) - min(_adam_loss_window))
+                             < ADAM_TO_LBFGS_SWITCH_THRESHOLD):
+                    _spread = max(_adam_loss_window) - min(_adam_loss_window)
+                    _do_switch_to_lbfgs(
+                        f"flat plateau over {ADAM_FLAT_PATIENCE} Adam steps "
+                        f"(spread={_spread:.2e} < {ADAM_TO_LBFGS_SWITCH_THRESHOLD:.2e})")
         # ─────────────────────────────────────────────────────────────────────
 
         # Convergence / cycle-detection checks are ONLY active after the switch
@@ -1958,7 +1990,7 @@ def optimize_at_chi(
 # ══════════════════════════════════════════════════════════════════════════════
 
 def main():
-    global TENSORDTYPE, OPTIMIZER, USE_ADAM_WARMUP_THEN_LBFGS, ADAM_SWITCH_PATIENCE, ADAM_TO_LBFGS_SWITCH_THRESHOLD
+    global TENSORDTYPE, OPTIMIZER, USE_ADAM_WARMUP_THEN_LBFGS, ADAM_SWITCH_PATIENCE, ADAM_FLAT_PATIENCE, ADAM_TO_LBFGS_SWITCH_THRESHOLD
     parser = argparse.ArgumentParser(
         description="10-12 h iPEPS benchmark: sweep D_bond (outer) × chi (inner)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -2083,6 +2115,13 @@ def main():
              'required before the switch fires (= ADAM_SWITCH_PATIENCE). '
              'Only active when --adam-warmup-lbfgs is set.')
     parser.add_argument(
+        '--adam-flat-patience', type=int, default=ADAM_FLAT_PATIENCE,
+        dest='adam_flat_patience',
+        help='Number of Adam steps in the sliding window for flat-plateau detection '
+             '(= ADAM_FLAT_PATIENCE). If max-min of window < switch threshold, '
+             'triggers a non-final switch to L-BFGS. '
+             'Only active when --adam-warmup-lbfgs is set.')
+    parser.add_argument(
         '--ansatz', choices=list(ANSATZ_REGISTRY.keys()), default='unrestricted',
         help=('iPEPS ansatz to optimize. Available: '
               + ', '.join(f"'{k}' ({v['description']})"
@@ -2127,10 +2166,12 @@ def main():
         USE_ADAM_WARMUP_THEN_LBFGS = True
     ADAM_TO_LBFGS_SWITCH_THRESHOLD = args.adam_switch_thr
     ADAM_SWITCH_PATIENCE           = args.adam_switch_patience
+    ADAM_FLAT_PATIENCE             = args.adam_flat_patience
     if True: #USE_ADAM_WARMUP_THEN_LBFGS:
         print(f"  Optimizer: Adam warmup \u2192 L-BFGS "
               f"(switch when |\u0394loss| < {ADAM_TO_LBFGS_SWITCH_THRESHOLD:.1e} "
-              f"for {ADAM_SWITCH_PATIENCE} steps)")
+              f"for {ADAM_SWITCH_PATIENCE} steps, "
+              f"or flat plateau over {ADAM_FLAT_PATIENCE} steps)")
     # Float32 spectral noise floor is ~5e-5–2e-4; CTM_CONV_THR=3e-7 is below
     # that floor and will never trigger in single precision — CTMRG would
     # always burn all CTM_MAX_STEPS steps and return a non-converged (garbage)
@@ -2291,6 +2332,7 @@ def main():
         use_adam_warmup_then_lbfgs    = USE_ADAM_WARMUP_THEN_LBFGS,
         adam_to_lbfgs_switch_thr      = ADAM_TO_LBFGS_SWITCH_THRESHOLD,
         adam_switch_patience          = ADAM_SWITCH_PATIENCE,
+        adam_flat_patience            = ADAM_FLAT_PATIENCE,
         # L-BFGS
         lbfgs_lr           = LBFGS_LR,
         lbfgs_max_iter     = LBFGS_MAX_ITER,
