@@ -24,7 +24,7 @@ N_GPUS = 1
 #   Set automatically in main() from --ngpu or torch.cuda.device_count().
 #   Override at runtime:  --ngpu N
 
-_N_PHYSICAL_CORES = 25
+_N_PHYSICAL_CORES = 35
 
 
 # ── Sweep control ─────────────────────────────────────────────────────────────
@@ -522,9 +522,13 @@ ADAM_FLAT_PATIENCE = 170
 #   max(window) - min(window) < ADAM_TO_LBFGS_SWITCH_THRESHOLD, switch to
 #   L-BFGS even when the step-by-step deceleration condition never fired.
 #   Covers the case where Adam oscillates on a plateau without cumulative
-#   deceleration signal: individual |Δloss| values alternate sign and never
-#   consistently stay below threshold, so ADAM_SWITCH_PATIENCE never fills,
-#   yet the total progress over 300 steps is negligible.
+#   deceleration signal.  Switch is suppressed if EITHER:
+#     (A) same-sign:  the last ADAM_SWITCH_PATIENCE first-diffs d_i are all
+#         strictly the same sign (all <0 or all >0) — Adam still descending
+#         or ascending consistently.
+#     (B) monotone:   the second-diffs d_i - d_{i+1} are all strictly the
+#         same sign — first-diffs themselves accelerating/decelerating
+#         monotonically (even if sign alternates).
 #   300 steps is ~5 min on CPU for D=4; raise to 500 on GPU-heavy runs.
 
 # ── CTMRG algorithm ──────────────────────────────────────────────────────────
@@ -1932,20 +1936,39 @@ def optimize_at_chi(
                     _switch_patience_count = 0  # reset: condition broken
                 _prev_Adamdelta = delta    # always update for next step
                 # ── Flat-landscape escape (window-based) ─────────────────
-                # Independent of the step-by-step deceleration signal: if the
-                # loss has barely moved over the last ADAM_FLAT_PATIENCE steps,
-                # Adam is stuck on a plateau (oscillating or stalling).  Switch
-                # to L-BFGS to attempt a curvature-guided escape.  This fires
-                # only when the deceleration check above did NOT already switch
-                # (to avoid double-switch on the same step).
+                # Fires when the total spread over ADAM_FLAT_PATIENCE steps
+                # is negligible (< threshold).  Suppressed if EITHER:
+                #   (A) same-sign:  all first-diffs d_i = loss[i+1]-loss[i]
+                #       are strictly same sign (Adam making directional steps)
+                #   (B) monotone:   all second-diffs d_i-d_{i+1} are strictly
+                #       same sign (first-diffs themselves accelerating/decelerating
+                #       consistently), even if sign alternates
+                # Both checked over the last ADAM_SWITCH_PATIENCE recent losses.
                 if (_effective_optimizer == 'adam'
-                        and len(_adam_loss_window) == ADAM_FLAT_PATIENCE
-                        and (max(_adam_loss_window) - min(_adam_loss_window))
-                             < ADAM_TO_LBFGS_SWITCH_THRESHOLD):
-                    _spread = max(_adam_loss_window) - min(_adam_loss_window)
-                    _do_switch_to_lbfgs(
-                        f"flat plateau over {ADAM_FLAT_PATIENCE} Adam steps "
-                        f"(spread={_spread:.2e} < {ADAM_TO_LBFGS_SWITCH_THRESHOLD:.2e})")
+                        and len(_adam_loss_window) == ADAM_FLAT_PATIENCE):
+                    _wmin = min(_adam_loss_window)
+                    _spread = max(_adam_loss_window) - _wmin
+                    if _spread < ADAM_TO_LBFGS_SWITCH_THRESHOLD:
+                        # First-diffs: d[0]=window[-1]-window[-2], ...
+                        # Use deque negative indexing — no list copy.
+                        _N  = ADAM_SWITCH_PATIENCE
+                        _d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
+                               for j in range(1, _N)]      # _N-1 values
+                        # (A) same-sign check (strict < or strict >)
+                        _d0 = _d[0]
+                        _same_sign = ((_d0 < 0 and all(v < 0 for v in _d[1:])) or
+                                      (_d0 > 0 and all(v > 0 for v in _d[1:])))
+                        if not _same_sign:
+                            # (B) monotone check on second-diffs
+                            _dd  = [_d[j] - _d[j+1] for j in range(len(_d) - 1)]
+                            _dd0 = _dd[0]
+                            _monotone = ((_dd0 < 0 and all(v < 0 for v in _dd[1:])) or
+                                         (_dd0 > 0 and all(v > 0 for v in _dd[1:])))
+                            if not _monotone:
+                                _do_switch_to_lbfgs(
+                                    f"flat plateau over {ADAM_FLAT_PATIENCE} Adam steps "
+                                    f"(spread={_spread:.2e} < "
+                                    f"{ADAM_TO_LBFGS_SWITCH_THRESHOLD:.2e})")
         # ─────────────────────────────────────────────────────────────────────
 
         # Convergence / cycle-detection checks are ONLY active after the switch
