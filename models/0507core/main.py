@@ -1321,6 +1321,12 @@ def optimize_at_chi(
         # structurally bounded.  Clipping would double-normalise (Adam already
         # normalises via v̂) and kill large-but-consistent exploration steps.
         effective_ADAM_LR = ADAM_LR/9
+    elif ansatz_cfg == ANSATZ_REGISTRY['neel_legacy']:
+        # Same physical coupling factor as 'neel': /6 (6 sites from 1 tensor).
+        # With Riemannian Adam the S3 concentration is absorbed by Adam's v̂;
+        # no extra divisor needed.  No grad_clip override — sphere retraction
+        # structurally bounds step size after each iteration.
+        effective_ADAM_LR = ADAM_LR/6
     elif ansatz_cfg == ANSATZ_REGISTRY['twoc3']:
         effective_ADAM_LR = ADAM_LR/3
     elif ansatz_cfg == ANSATZ_REGISTRY['c3vypi'] or ansatz_cfg == ANSATZ_REGISTRY['c6ypi']:
@@ -1384,6 +1390,20 @@ def optimize_at_chi(
                 h_dir = h_now / (h_now.norm() + 1e-30)
                 return grad - (grad.reshape(-1) @ h_dir.reshape(-1)) * h_dir
             _neel_h_param.register_hook(_neel_tangent_hook)
+
+        # ── Riemannian gradient hook for neel_legacy (sphere tangent projection) ──
+        # The parameter a_raw is a S3-symmetric unit-norm tensor.  Gradients that
+        # flow back through _derive_abcdef → symmetrize_virtual_legs are already
+        # S3-symmetric (symmetric projection is self-adjoint).  We only need to
+        # subtract the radial component (sphere tangent constraint).
+        if ansatz_cfg == ANSATZ_REGISTRY['neel_legacy'] and len(params) == 1:
+            _neel_leg_param = params[0]
+            def _neel_legacy_tangent_hook(grad: torch.Tensor) -> torch.Tensor:
+                """Project gradient to tangent plane of S^(N-1) at current a."""
+                a_now = _neel_leg_param.detach()
+                a_dir = a_now / (a_now.norm() + 1e-30)
+                return grad - (grad.reshape(-1) @ a_dir.reshape(-1)) * a_dir
+            _neel_leg_param.register_hook(_neel_legacy_tangent_hook)
 
     # ── L-BFGS factory + optional initial instance ────────────────────────────
     # _make_lbfgs is always defined when lbfgs might be used (both in pure-lbfgs
@@ -1667,6 +1687,17 @@ def optimize_at_chi(
                     if _hn > 1e-30:
                         _nh.data.div_(_hn)
 
+            # ── Sphere retraction for neel_legacy after L-BFGS step ───────
+            # L-BFGS may move a off S^(N-1).  Resymmetrize for safety and
+            # renormalize so the next linearisation is at a valid base-point.
+            if ansatz_cfg == ANSATZ_REGISTRY['neel_legacy'] and len(params) == 1:
+                with torch.no_grad():
+                    _na = params[0]
+                    _na.data.copy_(symmetrize_virtual_legs(_na.data))
+                    _an = _na.data.norm()
+                    if _an > 1e-30:
+                        _na.data.div_(_an)
+
             # After a successful step with full SVD, revert to partial for all
             # subsequent steps (the noisy initial basin has been escaped).
             if _core._USE_FULL_SVD:
@@ -1713,6 +1744,23 @@ def optimize_at_chi(
                         _h_dir = _nh.data / (_nh.data.norm() + 1e-30)
                         _m = _state['exp_avg']
                         _m.sub_((_m.reshape(-1) @ _h_dir.reshape(-1)) * _h_dir)
+            # ── Riemannian sphere retraction for neel_legacy ──────────────
+            # Resymmetrize + renormalize a, then project Adam's first moment
+            # to the new tangent plane.  Resymmetrizing each step is a no-op
+            # when gradients flow through symmetrize_virtual_legs (self-adjoint
+            # proj preserves symmetry), but guards against floating-point drift.
+            if ansatz_cfg == ANSATZ_REGISTRY['neel_legacy'] and len(params) == 1:
+                with torch.no_grad():
+                    _na = params[0]
+                    _na.data.copy_(symmetrize_virtual_legs(_na.data))
+                    _an = _na.data.norm()
+                    if _an > 1e-30:
+                        _na.data.div_(_an)   # retract to S^(N-1)
+                    _state_leg = _adam.state.get(_na)
+                    if _state_leg and 'exp_avg' in _state_leg:
+                        _a_dir = _na.data / (_na.data.norm() + 1e-30)
+                        _m_leg = _state_leg['exp_avg']
+                        _m_leg.sub_((_m_leg.reshape(-1) @ _a_dir.reshape(-1)) * _a_dir)
             loss_item = _loss.detach().item()
             _adam_steps_taken += 1
             # ── GPU memory cleanup after Adam micro-steps ────────────────
@@ -2262,6 +2310,13 @@ def main():
                 _n = _p.data.norm()
                 if _n > 1e-30:
                     _p.data.div_(_n)
+        if ansatz_cfg == ANSATZ_REGISTRY['neel_legacy']:
+            with torch.no_grad():
+                _p = best_params_by_D[resume_D][0]
+                _p.data.copy_(symmetrize_virtual_legs(_p.data))
+                _n = _p.data.norm()
+                if _n > 1e-30:
+                    _p.data.div_(_n)
         del ckpt, loaded; gc.collect()
         global_step = ckpt_step
         print(f"  Resumed from {args.resume}  "
@@ -2288,6 +2343,13 @@ def main():
             if ansatz_cfg == ANSATZ_REGISTRY['neel']:
                 with torch.no_grad():
                     _rp = best_params_by_D[_D][0]
+                    _rn = _rp.data.norm()
+                    if _rn > 1e-30:
+                        _rp.data.div_(_rn)
+            if ansatz_cfg == ANSATZ_REGISTRY['neel_legacy']:
+                with torch.no_grad():
+                    _rp = best_params_by_D[_D][0]
+                    _rp.data.copy_(symmetrize_virtual_legs(_rp.data))
                     _rn = _rp.data.norm()
                     if _rn > 1e-30:
                         _rp.data.div_(_rn)
