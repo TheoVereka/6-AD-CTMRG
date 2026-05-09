@@ -444,12 +444,12 @@ ADAM_LR = 4e-3
 #   Base Adam learning rate.  Per-ansatz effective LR is derived below
 #   from the coupling factor: how many site tensors are controlled by one
 #   parameter block.  See optimize_at_chi for the per-ansatz divisors.
-ADAM_BETAS = (0.9, 0.99)
+ADAM_BETAS = (0.8, 0.95)
 #   (β₁, β₂): exponential decay rates for 1st/2nd moment estimates.
 #   Derived from first principles for the Adam→L-BFGS warmup scheme:
 #
-#   β₁ = 0.90:  look-back window τ₁ = 1/(1−β₁) = 10 steps.
-#     Momentum decays within ~10 steps once Adam decelerates near the basin,
+#   β₁ = 0.80:  look-back window τ₁ = 1/(1−β₁) = 5 steps.
+#     Momentum decays within ~5 steps once Adam decelerates near the basin,
 #     so |Δloss| reported to the patience counter reflects the CURRENT
 #     gradient, not stale momentum from the rugged mid-landscape phase.
 #     Higher β₁ (e.g. 0.99, τ₁=100) delays the switch because inflated
@@ -463,7 +463,7 @@ ADAM_BETAS = (0.9, 0.99)
 #     effective step α/√v̂ never shrinks even when the true gradient is small
 #     near the basin → |Δloss| stays large → patience counter never fires →
 #     the Adam→L-BFGS switch is indefinitely delayed.
-#     With β₂=0.99 (τ₂=100): once Adam decelerates, v̂ adapts in 100 steps,
+#     With β₂=0.95 (τ₂=20): once Adam decelerates, v̂ adapts in 20 steps,
 #     the effective step genuinely shrinks, |Δloss| falls below threshold,
 #     and the patience counter fires correctly.  Constraint: τ₂ < T_adam
 #     (estimated 300–1000 steps from logs), so β₂ < 0.997 — 0.99 with margin.
@@ -501,7 +501,7 @@ USE_ADAM_WARMUP_THEN_LBFGS = True
 #   False → use OPTIMIZER ('lbfgs' or 'adam') for the full optimization.
 #   Overrideable at runtime: --adam-warmup-lbfgs CLI flag.
 
-ADAM_TO_LBFGS_SWITCH_THRESHOLD = 3e-5
+ADAM_TO_LBFGS_SWITCH_THRESHOLD = 1e-5
 #   Loss-difference threshold for the Adam→L-BFGS switch.
 #   When |loss(k) - loss(k-1)| < this value for ADAM_SWITCH_PATIENCE
 #   consecutive outer steps, Adam is killed and a fresh L-BFGS is started.
@@ -510,7 +510,7 @@ ADAM_TO_LBFGS_SWITCH_THRESHOLD = 3e-5
 #     1e-5 : safe default (landscape is locally smooth, L-BFGS reliable)
 #     1e-7 : switch very late (near full convergence, L-BFGS fine-polishes)
 
-ADAM_SWITCH_PATIENCE = 7
+ADAM_SWITCH_PATIENCE = 30
 #   Number of consecutive outer steps with |Δloss| < ADAM_TO_LBFGS_SWITCH_THRESHOLD
 #   required before the switch is triggered.  Prevents premature switching
 #   caused by a single accidentally small step (e.g. after a stall where
@@ -1365,7 +1365,7 @@ def optimize_at_chi(
                                             and not skip_adam_warmup)
                                   else OPTIMIZER)
     _switch_patience_count: int = 0   # consecutive steps below threshold
-    _prev_abs_delta: float | None = None  # for deceleration check in switch
+    _prev_Adamdelta: float | None = None  # for deceleration check in switch
     _adam_steps_taken: int = 0  # counts Adam outer steps (for early-switch)
     _switched_to_lbfgs: bool   = False  # True after Adam→L-BFGS transition
 
@@ -1835,9 +1835,9 @@ def optimize_at_chi(
             # If Δloss > -1e-6 on any of the first 3 steps, the starting
             # point is already near the minimum — Adam's fixed-lr steps
             # will only kick it away.  Switch to L-BFGS immediately.
-            if (not first_chi_of_D) and _adam_steps_taken <= 3 and delta > -1e-5:
+            if (not first_chi_of_D) and _adam_steps_taken <= 3 and delta > -1e-6:
                 _do_switch_to_lbfgs(
-                    f"Δ={delta:+.2e} > -1e-5 on Adam step {_adam_steps_taken} "
+                    f"Δ={delta:+.2e} > -1e-6 on Adam step {_adam_steps_taken} "
                     f"(near-optimal start)")
             else:
                 # ── Normal patience-based switch ─────────────────────────
