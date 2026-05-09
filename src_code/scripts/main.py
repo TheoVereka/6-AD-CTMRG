@@ -934,7 +934,19 @@ def _make_mean_field_params(
 
     if n == 1:
         # Single raw tensor; derive_fn maps it to both sublattices.
-        return (_up(),)
+        t = _up()
+        # For ansatze with a symmetrize constraint (e.g. neel_legacy),
+        # project the initial tensor onto the symmetric subspace and normalise
+        # to the unit sphere.  Without this, the parameter starts outside the
+        # constraint manifold and the gradient hook projects relative to the
+        # wrong base-point for the first step.
+        sym_fn = ansatz_cfg.get('symmetrize_fn')
+        if sym_fn is not None:
+            t = sym_fn(t)
+            _tn = t.norm()
+            if _tn > 1e-30:
+                t = t / _tn
+        return (t,)
     elif n == 2:
         # twoc3: first tensor → A-sublattice (up), second → B-sublattice (down).
         return (_up(), _down())
@@ -1805,7 +1817,7 @@ def optimize_at_chi(
 
             def _do_switch_to_lbfgs(reason: str) -> None:
                 nonlocal _adam, _lbfgs, _lbfgs_outer_steps, _effective_optimizer
-                nonlocal _switched_to_lbfgs, _switch_patience_count, _prev_abs_delta
+                nonlocal _switched_to_lbfgs, _switch_patience_count, _prev_Adamdelta
                 print(f"    [warmup] Adam→L-BFGS switch at step {step} ({reason})")
                 del _adam
                 _adam = None
@@ -1817,7 +1829,7 @@ def optimize_at_chi(
                 _effective_optimizer = 'lbfgs'
                 _switched_to_lbfgs   = True
                 _switch_patience_count = 0
-                _prev_abs_delta = None
+                _prev_Adamdelta = None
 
             # ── Early near-optimal switch (first 3 Adam steps) ───────────
             # If Δloss > -1e-6 on any of the first 3 steps, the starting
@@ -1825,7 +1837,7 @@ def optimize_at_chi(
             # will only kick it away.  Switch to L-BFGS immediately.
             if (not first_chi_of_D) and _adam_steps_taken <= 3 and delta > -1e-5:
                 _do_switch_to_lbfgs(
-                    f"Δ={delta:+.2e} > -1e-6 on Adam step {_adam_steps_taken} "
+                    f"Δ={delta:+.2e} > -1e-5 on Adam step {_adam_steps_taken} "
                     f"(near-optimal start)")
             else:
                 # ── Normal patience-based switch ─────────────────────────
@@ -1833,8 +1845,8 @@ def optimize_at_chi(
                 #   (a) |Δloss| < ADAM_TO_LBFGS_SWITCH_THRESHOLD
                 #   (b) |Δloss| < |Δloss_prev|  (still decelerating)
                 _is_decelerating = (
-                    _prev_abs_delta is None or abs(delta) < _prev_abs_delta)
-                if abs(delta) < ADAM_TO_LBFGS_SWITCH_THRESHOLD and delta<1e-6 and _is_decelerating:
+                    _prev_Adamdelta is None or (abs(delta) < abs(_prev_Adamdelta) and delta>_prev_Adamdelta))
+                if abs(delta) < ADAM_TO_LBFGS_SWITCH_THRESHOLD and delta<1e-8 and _is_decelerating:
                     _switch_patience_count += 1
                     if _switch_patience_count >= ADAM_SWITCH_PATIENCE:
                         _do_switch_to_lbfgs(
@@ -1843,7 +1855,7 @@ def optimize_at_chi(
                             f"decelerating for {ADAM_SWITCH_PATIENCE} steps")
                 else:
                     _switch_patience_count = 0  # reset: condition broken
-                _prev_abs_delta = abs(delta)    # always update for next step
+                _prev_Adamdelta = delta    # always update for next step
         # ─────────────────────────────────────────────────────────────────────
 
         # Convergence / cycle-detection checks are ONLY active after the switch
@@ -2424,6 +2436,17 @@ def main():
                         for t in prev_tensors)
                 best_params_by_D[D_bond] = _new_tensors_from_data(padded)
                 del padded
+                # Normalise sphere-constrained single-tensor ansatze after padding.
+                # pad_tensor (symmetrize_fn path) symmetrizes but does not normalise;
+                # the result has ||a|| ≈ √(D_new³·d) ≫ 1.  Without this, multiple
+                # Adam steps elapse with the parameter far from the unit sphere.
+                if ansatz_cfg == ANSATZ_REGISTRY['neel_legacy']:
+                    with torch.no_grad():
+                        _p = best_params_by_D[D_bond][0]
+                        _p.data.copy_(symmetrize_virtual_legs(_p.data))
+                        _pn = _p.data.norm()
+                        if _pn > 1e-30:
+                            _p.data.div_(_pn)
     
             # current best tensors at this D (None = random init at first chi)
             cur_params = best_params_by_D.get(D_bond)

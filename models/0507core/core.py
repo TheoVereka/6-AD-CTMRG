@@ -1137,6 +1137,14 @@ def initialize_neel(D_bond: int, d_PHYS: int, noise_scale: float = 1.0) -> torch
     global _USE_FULL_SVD
     a = torch.randn(D_bond, D_bond, D_bond, d_PHYS, dtype=TENSORDTYPE, device=DEVICE)
     a = symmetrize_virtual_legs(a)
+    # Normalise to unit sphere so that the Riemannian Adam retraction (which
+    # expects the parameter to start on S^(N_tri3·d-1)) is a no-op on the first
+    # step.  Without this, ||a|| ≈ √(N_tri3·d) ≫ 1 and the first Adam step is
+    # computed at the wrong geometric basepoint (though the retraction corrects
+    # it one step later, the first gradient direction is slightly off-sphere).
+    _n = a.norm()
+    if _n > 1e-30:
+        a = a / _n
     _USE_FULL_SVD = True
     return a
 
