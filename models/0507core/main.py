@@ -441,15 +441,32 @@ OPTIMIZER = 'lbfgs'
 # ── Adam hyperparameters (used only when OPTIMIZER='adam') ────────────────────
 
 ADAM_LR = 4e-3
-#   Adam learning rate.  Reduced from standard 1e-3 for ansätze with highly
-#   coupled parameters (e.g. neel: ~20 params control all 6 sites → each grad
-#   step has 6× effective reach vs independent-tensor ansätze like sym6).
-ADAM_BETAS = (0.5, 0.8)
+#   Base Adam learning rate.  Per-ansatz effective LR is derived below
+#   from the coupling factor: how many site tensors are controlled by one
+#   parameter block.  See optimize_at_chi for the per-ansatz divisors.
+ADAM_BETAS = (0.9, 0.99)
 #   (β₁, β₂): exponential decay rates for 1st/2nd moment estimates.
-#   β₁=0.5 (not 0.9): less momentum → prevents overshoot near minima in
-#      tightly-coupled parameter spaces (neel D=6: only 20 DOF for 6 tensors).
-#   β₂=0.9 (not 0.999): faster adaptation → 10% decay vs 0.1%, responds
-#      quicker to changing curvature without building excessive inertia.
+#   Derived from first principles for the Adam→L-BFGS warmup scheme:
+#
+#   β₁ = 0.90:  look-back window τ₁ = 1/(1−β₁) = 10 steps.
+#     Momentum decays within ~10 steps once Adam decelerates near the basin,
+#     so |Δloss| reported to the patience counter reflects the CURRENT
+#     gradient, not stale momentum from the rugged mid-landscape phase.
+#     Higher β₁ (e.g. 0.99, τ₁=100) delays the switch because inflated
+#     momentum keeps |Δloss| > threshold even when the true gradient is small.
+#     β₁=0.9 still provides enough inertia for barrier crossing (gradient
+#     is consistently downhill over many steps during directed descent).
+#
+#   β₂ = 0.99:  RMS look-back window τ₂ = 1/(1−β₂) = 100 steps.
+#     With β₂=0.999 (τ₂=1000), v̂_t carries the large-gradient memory from
+#     the initial rugged phase for the entire Adam run.  This means the
+#     effective step α/√v̂ never shrinks even when the true gradient is small
+#     near the basin → |Δloss| stays large → patience counter never fires →
+#     the Adam→L-BFGS switch is indefinitely delayed.
+#     With β₂=0.99 (τ₂=100): once Adam decelerates, v̂ adapts in 100 steps,
+#     the effective step genuinely shrinks, |Δloss| falls below threshold,
+#     and the patience counter fires correctly.  Constraint: τ₂ < T_adam
+#     (estimated 300–1000 steps from logs), so β₂ < 0.997 — 0.99 with margin.
 ADAM_EPS = 1e-7
 #   Denominator epsilon for numerical stability (increased from 1e-9 to dampen
 #   adaptive scaling in small-parameter regimes).
@@ -1285,8 +1302,25 @@ def optimize_at_chi(
         t.requires_grad_(True)
 
     if ansatz_cfg == ANSATZ_REGISTRY['neel']:
-        effective_ADAM_LR = ADAM_LR/27
-        ADAM_GRAD_CLIP = 1.0
+        # LR divisor for the neel ansatz after Riemannian Adam.
+        # Decomposition of the old /27:
+        #   /5  — one free tensor controls all 6 sites (same as c6ypi/c3vypi),
+        #          so ∂E/∂h ≈ 6 × per-site gradient → coupling factor.
+        #   ×6  — OLD CODE ONLY: ||h|| drifted to O(D³/N_tri3) ≈ 6×, shrinking
+        #          the Jacobian ∂a/∂h by 1/||h||.  Adam's v̂ tracked the shrunk
+        #          gradient, so the effective step grew by ×6 → needed ÷6 extra.
+        # With Riemannian Adam (h on S^(N-1) always), the drift factor is zero.
+        # The S3 concentration (N_tri3 ≈ D³/6 free params) does NOT add another
+        # ÷6: Adam's second-moment v̂ tracks per-component gradient variance and
+        # automatically absorbs the concentration — that is Adam's core property.
+        # Remaining factor: the 6-site coupling alone → divisor /6
+        # (same reasoning as c6ypi's /5; difference /5 vs /6 is conventional).
+        #
+        # ADAM_GRAD_CLIP: not overridden here (global default None applies).
+        # With sphere retraction, ||Δa||_F = ||Δh|| ≤ α×√N_tri3 ≈ 2e-3,
+        # structurally bounded.  Clipping would double-normalise (Adam already
+        # normalises via v̂) and kill large-but-consistent exploration steps.
+        effective_ADAM_LR = ADAM_LR/9
     elif ansatz_cfg == ANSATZ_REGISTRY['twoc3']:
         effective_ADAM_LR = ADAM_LR/3
     elif ansatz_cfg == ANSATZ_REGISTRY['c3vypi'] or ansatz_cfg == ANSATZ_REGISTRY['c6ypi']:
@@ -1752,7 +1786,7 @@ def optimize_at_chi(
                 #   (b) |Δloss| < |Δloss_prev|  (still decelerating)
                 _is_decelerating = (
                     _prev_abs_delta is None or abs(delta) < _prev_abs_delta)
-                if abs(delta) < ADAM_TO_LBFGS_SWITCH_THRESHOLD and _is_decelerating:
+                if abs(delta) < ADAM_TO_LBFGS_SWITCH_THRESHOLD and delta<1e-6 and _is_decelerating:
                     _switch_patience_count += 1
                     if _switch_patience_count >= ADAM_SWITCH_PATIENCE:
                         _do_switch_to_lbfgs(
@@ -1764,11 +1798,14 @@ def optimize_at_chi(
                 _prev_abs_delta = abs(delta)    # always update for next step
         # ─────────────────────────────────────────────────────────────────────
 
-        # Skip convergence checks for the first 2 outer steps after LBFGS
-        # creation: the Hessian approximation is still bootstrapping from
-        # identity, so the energy drop may be artificially small.
-        _lbfgs_warmed_up = (
-            _effective_optimizer != 'lbfgs' or _lbfgs_outer_steps >= 3)
+        # Convergence / cycle-detection checks are ONLY active after the switch
+        # to L-BFGS.  Adam must run freely until _do_switch_to_lbfgs fires —
+        # stopping it early on a small Δ or a loss-history repeat defeats the
+        # entire purpose of the Adam warmup.
+        # Additionally skip the first 3 L-BFGS outer steps: the Hessian
+        # approximation is still bootstrapping from identity, so the energy
+        # drop there may be artificially small.
+        _lbfgs_warmed_up = _switched_to_lbfgs and _lbfgs_outer_steps >= 3
         if _lbfgs_warmed_up and prev_loss is not None and abs(delta) < OPT_CONV_THRESHOLD:
             print(f"    Outer convergence at step {step} (\u0394={delta:.2e})")
             break
