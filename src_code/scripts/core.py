@@ -1602,53 +1602,50 @@ def pad_sym6_free_params(
 # ── neel morphism ─────────────────────────────────────────────────────────────
 
 def neel_param_to_a(h: torch.Tensor, D: int) -> torch.Tensor:
-    """Map unconstrained Néel free parameter → exactly S₃-symmetric tensor a.
+    """Map Néel free parameter h → S₃-symmetric unit-norm tensor a.
 
-    Uses sqrt-multiplicity re-weighting so that every free parameter h[m]
-    has the same gradient scale regardless of how many S₃ permutations its
-    equivalence class has (1 for (i,i,i), 3 for (i,i,j), 6 for (i,j,k)):
+    Forward pass:
+        h_unit = h / ||h||      (project h onto S^(N-1))
+        a[i,j,k,s] = h_unit[tri3[i,j,k], s] / sqrt(mult[i,j,k])
 
-        a[i,j,k,s] = h[tri3_idx[i,j,k], s] / sqrt_mult[i,j,k]
+    **Why normalise h here?**
+    This is the ONLY place h enters the computation graph.  Normalising
+    h → h_unit = h/||h|| makes autograd automatically include the factor
 
-    This means  ∂L/∂h[m] = Σ_{perms p} ∂L/∂a[p] / sqrt(n_p),  which
-    equalizes the gradient magnitude across all m and prevents L-BFGS
-    from taking large steps along the high-multiplicity directions.
+        ∂h_unit/∂h = (I − ĥĥᵀ) / ||h||
 
-    The result is **unit-normalised** (Frobenius norm = 1).  This is
-    essential to prevent Adam from running away into an ever-growing
-    ||h|| regime.  The energy E is exactly scale-invariant in the pure
-    tensor-network sense (E(λa) = E(a)), but CTMRG with a fixed bond
-    dimension chi introduces a truncation-induced scale bias: the
-    double-layer tensors A = a⊗a* are not renormalised inside CTMRG
-    (the `normalize_tensor(A)` calls are commented out in
-    `abcdef_to_ABCDEF`), so ||A||_F ∝ ||a||².  As a result the
-    effective gradient in h-space has a radial component that grows
-    with ||h||, creating a runaway where ||h|| → ∞ and CTMRG needs
-    ever more iterations to converge (observed: ctm count 4 → 10 over
-    ~1400 steps, then oscillations begin).  Fixing ||a||_F = 1 removes
-    this degree of freedom, constraining Adam to Riemannian gradient
-    descent on the unit sphere and restoring finite, well-conditioned
-    gradient magnitudes throughout optimisation.
+    in every gradient, i.e. the gradient is always projected onto the
+    tangent plane of S^(N-1) at ĥ.  This gives L-BFGS correct Riemannian
+    gradients (and correct curvature pairs (s,y)) for every line-search
+    closure call, without requiring an explicit hook.  It is *orthogonal*
+    to the Riemannian Adam hook registered in optimize_at_chi, which
+    additionally projects the first moment.
 
-    The inverse (neel_a_to_free_param) undoes the same scaling but
-    does NOT re-add the norm; warm-start (pad_neel_free_param) already
-    calls normalize_tensor on a_old, so it is fully compatible.
+    **Isometric property** (when ||h||=1, so h_unit=h):
+        ||a||² = Σ_{i,j,k} h[tri3[i,j,k],s]² / mult[i,j,k]
+               = Σ_m  n_m · |h[m,:]|² / n_m  =  ||h||²  =  1  ✓
+    The scaling also makes the gradient magnitudes uniform across
+    permutation classes (all classes contribute equally to ||∇h||).
 
     Args:
-        h : Free parameter of shape (D*(D+1)*(D+2)//6, d_PHYS).
+        h : Free parameter of shape (D*(D+1)*(D+2)//6, d_PHYS), any norm.
         D : Virtual bond dimension.
 
     Returns:
         Tensor of shape (D, D, D, d_PHYS), exactly S₃-symmetric,
-        with unit Frobenius norm.
+        unit Frobenius norm.
     """
     tri3      = _get_tri3_idx(D, h.device)
     sqrt_mult = _get_tri3_sqrt_mult(D, h.device).to(dtype=h.dtype)
-    # h[tri3] has shape (D,D,D,d_PHYS); sqrt_mult has shape (D,D,D)
-    a = h[tri3, :] / sqrt_mult.unsqueeze(-1)
-    # Fix scale gauge: constrain a to the unit sphere in a-space.
-    # This prevents Adam's CTMRG-truncation-induced radial drift (see docstring).
-    return a / (a.norm() + 1e-12)
+    # Project h onto the unit sphere before gathering.  This ensures that:
+    #   (a) The physical tensor a has unit Frobenius norm regardless of ||h||.
+    #   (b) Autograd automatically includes (I - ĥĥᵀ)/||h|| in ∂a/∂h, which
+    #       is the tangent-space projection at ĥ.  This gives L-BFGS the
+    #       correct Riemannian gradient for every closure call without needing
+    #       an explicit hook — orthogonal to the Adam-specific hook + retraction
+    #       registered in optimize_at_chi.
+    h_unit = h / (h.norm() + 1e-30)
+    return h_unit[tri3, :] / sqrt_mult.unsqueeze(-1)
 
 
 def neel_a_to_free_param(a_sym: torch.Tensor) -> torch.Tensor:
@@ -1676,14 +1673,17 @@ def neel_a_to_free_param(a_sym: torch.Tensor) -> torch.Tensor:
 
 def initialize_neel_free_param(D: int, d_PHYS: int,
                                noise_scale: float = 1.0) -> torch.Tensor:
-    """Random initialization of the Néel free parameter.
+    """Random initialization of the Néel free parameter on the unit sphere.
 
-    Returns h of shape (D*(D+1)*(D+2)//6, d_PHYS).
+    Returns h of shape (D*(D+1)*(D+2)//6, d_PHYS) with ||h||_F = 1.
+    The unit-sphere constraint is maintained throughout optimisation by
+    Riemannian Adam retraction in optimize_at_chi.
     Sets _USE_FULL_SVD = True for the first L-BFGS step.
     """
     global _USE_FULL_SVD
     N = D * (D + 1) * (D + 2) // 6
-    h = torch.randn(N, d_PHYS, dtype=TENSORDTYPE, device=DEVICE) * noise_scale
+    h = torch.randn(N, d_PHYS, dtype=TENSORDTYPE, device=DEVICE)
+    h = h / (h.norm() + 1e-30)   # initialise on unit sphere in h-space
     _USE_FULL_SVD = True
     return h
 
@@ -1712,7 +1712,8 @@ def pad_neel_free_param(
     a_new[:old_D, :old_D, :old_D, :] += a_norm
     a_new  = symmetrize_virtual_legs(a_new)
     _USE_FULL_SVD = True
-    return neel_a_to_free_param(a_new)
+    h_new  = neel_a_to_free_param(a_new)
+    return h_new / (h_new.norm() + 1e-30)   # warm-start h on unit sphere
 
 
 def abcdef_to_ABCDEF(a,b,c,d,e,f, D_squared:int):

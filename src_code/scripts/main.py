@@ -1324,6 +1324,32 @@ def optimize_at_chi(
             params,
             lr=effective_ADAM_LR, betas=ADAM_BETAS, eps=ADAM_EPS,
             weight_decay=ADAM_WEIGHT_DECAY)
+        # ── Riemannian Adam for neel ansatz ─────────────────────────────────
+        # The neel free param h lives on the unit sphere S^(N-1) in h-space.
+        # Standard (Euclidean) Adam ignores this constraint: its accumulated
+        # first moment m_t = β₁·m_{t-1} + (1-β₁)·g_t averages tangential
+        # gradients from DIFFERENT sphere basepoints, so m_t drifts radially.
+        # When m_t has a radial component, Adam overshoots the sphere,
+        # causing oscillations in the loss after ~O(1/lr) steps.
+        #
+        # Fix: register a gradient hook that projects ∂E/∂h to the tangent
+        # plane at the CURRENT h before Adam sees it.  Combined with:
+        #   (a) post-step sphere retraction  (h ← h/||h||)
+        #   (b) first-moment projection      (m ← m - (m·ĥ)ĥ)
+        # this implements Riemannian Adam on S^(N-1) at negligible extra cost.
+        #
+        # Algebraic identity used: ||gather_scale(h)||_F = ||h||_F exactly
+        # (the sqrt_mult weights are chosen to make the map isometric), so
+        # keeping h on S^(N-1) automatically gives a unit-norm physical tensor
+        # without any explicit normalisation in neel_param_to_a.
+        if ansatz_cfg == ANSATZ_REGISTRY['neel'] and len(params) == 1:
+            _neel_h_param = params[0]  # closed over in the hook (current ref)
+            def _neel_tangent_hook(grad: torch.Tensor) -> torch.Tensor:
+                """Project gradient to tangent plane at current h."""
+                h_now = _neel_h_param.detach()
+                h_dir = h_now / (h_now.norm() + 1e-30)
+                return grad - (grad.reshape(-1) @ h_dir.reshape(-1)) * h_dir
+            _neel_h_param.register_hook(_neel_tangent_hook)
 
     # ── L-BFGS factory + optional initial instance ────────────────────────────
     # _make_lbfgs is always defined when lbfgs might be used (both in pure-lbfgs
@@ -1595,6 +1621,18 @@ def optimize_at_chi(
                     return torch.tensor(1.0e6, dtype=_real_dtype, device=_p0.device)
             loss_val  = _lbfgs.step(closure)
 
+            # ── Sphere retraction for neel ansatz after L-BFGS step ──────
+            # L-BFGS line search may move h off S^(N-1).  neel_param_to_a
+            # normalises h internally so energy values are always correct,
+            # but the stored parameter can drift.  Retract it now so the
+            # next step's linearisation is at the correct basepoint.
+            if ansatz_cfg == ANSATZ_REGISTRY['neel'] and len(params) == 1:
+                with torch.no_grad():
+                    _nh = params[0]
+                    _hn = _nh.data.norm()
+                    if _hn > 1e-30:
+                        _nh.data.div_(_hn)
+
             # After a successful step with full SVD, revert to partial for all
             # subsequent steps (the noisy initial basin has been escaped).
             if _core._USE_FULL_SVD:
@@ -1624,6 +1662,23 @@ def optimize_at_chi(
             if ADAM_GRAD_CLIP is not None:
                 torch.nn.utils.clip_grad_norm_(params, max_norm=ADAM_GRAD_CLIP)
             _adam.step()
+            # ── Riemannian sphere retraction for neel ansatz ─────────────
+            # After every Adam step, h has moved off the unit sphere by
+            # O(lr²) (tangential step + discretisation error).  Retract it
+            # back to S^(N-1) and project Adam's first moment to the new
+            # tangent plane.  Together with the gradient hook registered at
+            # Adam creation, this completes the Riemannian Adam update.
+            if ansatz_cfg == ANSATZ_REGISTRY['neel'] and len(params) == 1:
+                with torch.no_grad():
+                    _nh = params[0]
+                    _hn = _nh.data.norm()
+                    if _hn > 1e-30:
+                        _nh.data.div_(_hn)   # retract to S^(N-1)
+                    _state = _adam.state.get(_nh)
+                    if _state and 'exp_avg' in _state:
+                        _h_dir = _nh.data / (_nh.data.norm() + 1e-30)
+                        _m = _state['exp_avg']
+                        _m.sub_((_m.reshape(-1) @ _h_dir.reshape(-1)) * _h_dir)
             loss_item = _loss.detach().item()
             _adam_steps_taken += 1
             # ── GPU memory cleanup after Adam micro-steps ────────────────
@@ -2161,6 +2216,15 @@ def main():
         ckpt_loss  = ckpt.get('loss', float('nan'))
         loaded = tuple(ckpt[k] for k in ansatz_cfg['ckpt_keys'])
         best_params_by_D[resume_D] = _new_tensors_from_data(loaded)
+        # Normalise neel free param to unit sphere — old checkpoints may have
+        # stored h with arbitrary norm; the first gradient step would otherwise
+        # have degraded scaling until the Adam retraction fixes it.
+        if ansatz_cfg == ANSATZ_REGISTRY['neel']:
+            with torch.no_grad():
+                _p = best_params_by_D[resume_D][0]
+                _n = _p.data.norm()
+                if _n > 1e-30:
+                    _p.data.div_(_n)
         del ckpt, loaded; gc.collect()
         global_step = ckpt_step
         print(f"  Resumed from {args.resume}  "
@@ -2184,6 +2248,12 @@ def main():
             _ckpt = torch.load(_best_f, map_location=_core.DEVICE)
             _loaded = tuple(_ckpt[k] for k in ansatz_cfg['ckpt_keys'])
             best_params_by_D[_D] = _new_tensors_from_data(_loaded)
+            if ansatz_cfg == ANSATZ_REGISTRY['neel']:
+                with torch.no_grad():
+                    _rp = best_params_by_D[_D][0]
+                    _rn = _rp.data.norm()
+                    if _rn > 1e-30:
+                        _rp.data.div_(_rn)
             print(f"  [resume-folder] D={_D}: loaded {os.path.basename(_best_f)} "
                   f"(chi={_chi_from_path(_best_f)})")
             del _ckpt, _loaded; gc.collect()
