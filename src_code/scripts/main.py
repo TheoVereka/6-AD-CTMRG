@@ -444,12 +444,12 @@ ADAM_LR = 4e-3
 #   Base Adam learning rate.  Per-ansatz effective LR is derived below
 #   from the coupling factor: how many site tensors are controlled by one
 #   parameter block.  See optimize_at_chi for the per-ansatz divisors.
-ADAM_BETAS = (0.8, 0.95)
+ADAM_BETAS = (0.85, 0.96)
 #   (β₁, β₂): exponential decay rates for 1st/2nd moment estimates.
 #   Derived from first principles for the Adam→L-BFGS warmup scheme:
 #
-#   β₁ = 0.80:  look-back window τ₁ = 1/(1−β₁) = 5 steps.
-#     Momentum decays within ~5 steps once Adam decelerates near the basin,
+#   β₁ = 0.85:  look-back window τ₁ = 1/(1−β₁) = 6.67 steps.
+#     Momentum decays within ~6.67 steps once Adam decelerates near the basin,
 #     so |Δloss| reported to the patience counter reflects the CURRENT
 #     gradient, not stale momentum from the rugged mid-landscape phase.
 #     Higher β₁ (e.g. 0.99, τ₁=100) delays the switch because inflated
@@ -510,7 +510,7 @@ ADAM_TO_LBFGS_SWITCH_THRESHOLD = 1e-5
 #     1e-5 : safe default (landscape is locally smooth, L-BFGS reliable)
 #     1e-7 : switch very late (near full convergence, L-BFGS fine-polishes)
 
-ADAM_SWITCH_PATIENCE = 30
+ADAM_SWITCH_PATIENCE = 20
 #   Number of consecutive outer steps with |Δloss| < ADAM_TO_LBFGS_SWITCH_THRESHOLD
 #   required before the switch is triggered.  Prevents premature switching
 #   caused by a single accidentally small step (e.g. after a stall where
@@ -1368,6 +1368,10 @@ def optimize_at_chi(
     _prev_Adamdelta: float | None = None  # for deceleration check in switch
     _adam_steps_taken: int = 0  # counts Adam outer steps (for early-switch)
     _switched_to_lbfgs: bool   = False  # True after Adam→L-BFGS transition
+    _final_lbfgs_run:  bool   = False  # True on the terminal LBFGS (early-switch)
+    # _final_lbfgs_run is set when the EARLY NEAR-OPTIMAL SWITCH fires (Adam
+    # step ≤3 with Δ > -1e-6).  When that LBFGS run converges the loop exits.
+    # All other LBFGS runs cycle back to Adam on convergence.
 
     # ── pre-create Adam optimizer (state persists across outer steps) ─────────
     _adam: torch.optim.Optimizer | None = None
@@ -1447,6 +1451,10 @@ def optimize_at_chi(
             if skip_adam_warmup and USE_ADAM_WARMUP_THEN_LBFGS:
                 _effective_optimizer = 'lbfgs'  # ensure correct branch in loop
                 _switched_to_lbfgs   = True
+                _final_lbfgs_run     = True  # warm-start: skip-Adam path is always the final run
+                # _do_switch_to_adam is never defined in this code path (no Adam phase
+                # was entered), but it's also never called: _final_lbfgs_run=True means
+                # the convergence check hits `break` every time.
 
     # ── Density-matrix cache (fed by every closure call; read after loop) ──────
     # The three energy expectation functions in core.py write all 36 density
@@ -1815,10 +1823,12 @@ def optimize_at_chi(
                 and _effective_optimizer == 'adam'
                 and prev_loss is not None):
 
-            def _do_switch_to_lbfgs(reason: str) -> None:
+            def _do_switch_to_lbfgs(reason: str, final: bool = False) -> None:
                 nonlocal _adam, _lbfgs, _lbfgs_outer_steps, _effective_optimizer
                 nonlocal _switched_to_lbfgs, _switch_patience_count, _prev_Adamdelta
-                print(f"    [warmup] Adam→L-BFGS switch at step {step} ({reason})")
+                nonlocal _final_lbfgs_run
+                _tag = '[warmup-final]' if final else '[warmup]'
+                print(f"    {_tag} Adam→L-BFGS switch at step {step} ({reason})")
                 del _adam
                 _adam = None
                 if params[0].device.type == 'cuda':
@@ -1828,17 +1838,65 @@ def optimize_at_chi(
                 _lbfgs_outer_steps = 0
                 _effective_optimizer = 'lbfgs'
                 _switched_to_lbfgs   = True
+                _final_lbfgs_run     = final
                 _switch_patience_count = 0
                 _prev_Adamdelta = None
+                loss_history.clear()  # don't let stale Adam losses trigger cycle check
+
+            def _do_switch_to_adam(reason: str) -> None:
+                """Switch from L-BFGS back to Adam for another exploration round.
+
+                Called whenever a non-final LBFGS run converges or detects a
+                cycle.  Deletes the LBFGS instance, creates a fresh Adam (starting
+                from zero moments — this is intentional: Adam re-warms momentum
+                from the current LBFGS minimum rather than from stale history),
+                and resets all Adam tracking counters.  Gradient hooks registered
+                at the very first Adam creation persist on the param tensors and
+                are NOT re-registered (they close over the params list which
+                never changes).  _switched_to_lbfgs is kept True so that the
+                next LBFGS run's _lbfgs_warmed_up guard still fires correctly.
+                """
+                nonlocal _adam, _lbfgs, _effective_optimizer, _lbfgs_outer_steps
+                nonlocal _adam_steps_taken, _switch_patience_count, _prev_Adamdelta
+                print(f"    [cycle] L-BFGS→Adam switch at step {step} ({reason})")
+                _lbfgs = None  # clear ref; existing LBFGS object GC'd naturally
+                if params[0].device.type == 'cuda':
+                    gc.collect()
+                    torch.cuda.empty_cache()
+                # Fresh Adam with zero state: re-warms momentum from the
+                # current point (the LBFGS minimum), not from stale Adam history.
+                _adam = torch.optim.Adam(
+                    params,
+                    lr=effective_ADAM_LR, betas=ADAM_BETAS, eps=ADAM_EPS,
+                    weight_decay=ADAM_WEIGHT_DECAY)
+                # Gradient hooks are already registered on the param tensors
+                # from the first Adam creation and persist across optimizer swaps.
+                # Do NOT re-register them.
+                _adam_steps_taken = 0
+                _switch_patience_count = 0
+                _prev_Adamdelta = None
+                _effective_optimizer = 'adam'
+                # CRITICAL: reset _lbfgs_outer_steps to 0.  During the new Adam
+                # phase _lbfgs_warmed_up = _switched_to_lbfgs and _lbfgs_outer_steps >= 3.
+                # Without this reset, _lbfgs_warmed_up stays True with the old LBFGS
+                # step count and the convergence check fires spuriously on Adam deltas.
+                _lbfgs_outer_steps = 0
+                loss_history.clear()  # fresh history for new Adam phase
+                # Keep _switched_to_lbfgs=True and _final_lbfgs_run unchanged.
 
             # ── Early near-optimal switch (first 3 Adam steps) ───────────
             # If Δloss > -1e-6 on any of the first 3 steps, the starting
             # point is already near the minimum — Adam's fixed-lr steps
-            # will only kick it away.  Switch to L-BFGS immediately.
-            if (not first_chi_of_D) and _adam_steps_taken <= 3 and delta > -1e-6:
+            # will only kick it away.  Switch to the FINAL L-BFGS run.
+            # This can happen on any Adam phase (initial or after cycling back),
+            # not just the first one.  We do NOT gate on first_chi_of_D here:
+            # the "first 3 steps" condition is enough to detect near-optimality
+            # regardless of how this chi was initialised.
+            if _adam_steps_taken <= 3 and delta > -1e-7:
                 _do_switch_to_lbfgs(
-                    f"Δ={delta:+.2e} > -1e-6 on Adam step {_adam_steps_taken} "
-                    f"(near-optimal start)")
+                    f"Δ={delta:+.2e} > -1e-7 on Adam step {_adam_steps_taken} "
+                    f"(near-optimal start → final LBFGS)",
+                    final=True)
             else:
                 # ── Normal patience-based switch ─────────────────────────
                 # Both conditions must hold for ADAM_SWITCH_PATIENCE steps:
@@ -1867,12 +1925,23 @@ def optimize_at_chi(
         # drop there may be artificially small.
         _lbfgs_warmed_up = _switched_to_lbfgs and _lbfgs_outer_steps >= 3
         if _lbfgs_warmed_up and prev_loss is not None and abs(delta) < OPT_CONV_THRESHOLD:
-            print(f"    Outer convergence at step {step} (\u0394={delta:.2e})")
-            break
-        if _lbfgs_warmed_up and any(abs(loss_item - h) < 1e-9 for h in loss_history):
-            print(f"    Cycle detected at step {step} "
-                  f"(amplitude={abs(delta):.3e}); stopping.")
-            break
+            if _final_lbfgs_run:
+                print(f"    Outer convergence at step {step} (Δ={delta:.2e}) — final LBFGS done.")
+                break
+            else:
+                # Normal (non-final) LBFGS converged: cycle back to Adam for
+                # further exploration, then LBFGS again until early switch fires.
+                _do_switch_to_adam(
+                    f"LBFGS converged (Δ={delta:.2e}), cycling back to Adam")
+        elif _lbfgs_warmed_up and any(abs(loss_item - h) < 1e-9 for h in loss_history):
+            if _final_lbfgs_run:
+                print(f"    Cycle detected at step {step} "
+                      f"(amplitude={abs(delta):.3e}); stopping (final LBFGS).")
+                break
+            else:
+                _do_switch_to_adam(
+                    f"LBFGS cycle detected (amplitude={abs(delta):.3e}), cycling back to Adam")
+        # ─────────────────────────────────────────────────────────────────────
         loss_history.append(loss_item)
         prev_loss = loss_item
         step += 1
