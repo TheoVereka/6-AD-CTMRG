@@ -510,7 +510,7 @@ ADAM_TO_LBFGS_SWITCH_THRESHOLD = 3e-5
 #     1e-5 : safe default (landscape is locally smooth, L-BFGS reliable)
 #     1e-7 : switch very late (near full convergence, L-BFGS fine-polishes)
 
-ADAM_SWITCH_PATIENCE = 6
+ADAM_SWITCH_PATIENCE = 7
 #   Number of consecutive outer steps with |Δloss| < ADAM_TO_LBFGS_SWITCH_THRESHOLD
 #   required before the switch is triggered.  Prevents premature switching
 #   caused by a single accidentally small step (e.g. after a stall where
@@ -1326,7 +1326,7 @@ def optimize_at_chi(
         # With Riemannian Adam the S3 concentration is absorbed by Adam's v̂;
         # no extra divisor needed.  No grad_clip override — sphere retraction
         # structurally bounds step size after each iteration.
-        effective_ADAM_LR = ADAM_LR/6
+        effective_ADAM_LR = ADAM_LR/5
     elif ansatz_cfg == ANSATZ_REGISTRY['twoc3']:
         effective_ADAM_LR = ADAM_LR/3
     elif ansatz_cfg == ANSATZ_REGISTRY['c3vypi'] or ansatz_cfg == ANSATZ_REGISTRY['c6ypi']:
