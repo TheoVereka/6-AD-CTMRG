@@ -6,8 +6,8 @@
 
 
 MY_OUTPUT_OUTERDIR = '/scratch/izar/chye/0507core'
-
 USE_GPU = True
+_N_PHYSICAL_CORES = 25
 
 # ── Multi-GPU (optional, CUDA only) ──────────────────────────────────────────
 
@@ -23,8 +23,6 @@ N_GPUS = 1
 #        Expected speedup: ~2.5× energy phase → ~1.5× overall.
 #   Set automatically in main() from --ngpu or torch.cuda.device_count().
 #   Override at runtime:  --ngpu N
-
-_N_PHYSICAL_CORES = 35
 
 
 # ── Sweep control ─────────────────────────────────────────────────────────────
@@ -108,6 +106,9 @@ import os
 import sys
 import time
 
+# if MY_OUTPUT_OUTERDIR contain izar then automatically set USE_GPU = True
+if "izar" in MY_OUTPUT_OUTERDIR:
+    USE_GPU = True
 
 # ── CPU threading ─────────────────────────────────────────────────────────────
 # MUST be set BEFORE importing NumPy / PyTorch / MKL — they read these at init.
@@ -440,7 +441,7 @@ OPTIMIZER = 'lbfgs'
 
 # ── Adam hyperparameters (used only when OPTIMIZER='adam') ────────────────────
 
-ADAM_LR = 4e-3
+ADAM_LR = 5e-3
 #   Base Adam learning rate.  Per-ansatz effective LR is derived below
 #   from the coupling factor: how many site tensors are controlled by one
 #   parameter block.  See optimize_at_chi for the per-ansatz divisors.
@@ -1327,32 +1328,8 @@ def optimize_at_chi(
     for t in params:
         t.requires_grad_(True)
 
-    if ansatz_cfg == ANSATZ_REGISTRY['neel']:
-        # LR divisor for the neel ansatz after Riemannian Adam.
-        # Decomposition of the old /27:
-        #   /5  — one free tensor controls all 6 sites (same as c6ypi/c3vypi),
-        #          so ∂E/∂h ≈ 6 × per-site gradient → coupling factor.
-        #   ×6  — OLD CODE ONLY: ||h|| drifted to O(D³/N_tri3) ≈ 6×, shrinking
-        #          the Jacobian ∂a/∂h by 1/||h||.  Adam's v̂ tracked the shrunk
-        #          gradient, so the effective step grew by ×6 → needed ÷6 extra.
-        # With Riemannian Adam (h on S^(N-1) always), the drift factor is zero.
-        # The S3 concentration (N_tri3 ≈ D³/6 free params) does NOT add another
-        # ÷6: Adam's second-moment v̂ tracks per-component gradient variance and
-        # automatically absorbs the concentration — that is Adam's core property.
-        # Remaining factor: the 6-site coupling alone → divisor /6
-        # (same reasoning as c6ypi's /5; difference /5 vs /6 is conventional).
-        #
-        # ADAM_GRAD_CLIP: not overridden here (global default None applies).
-        # With sphere retraction, ||Δa||_F = ||Δh|| ≤ α×√N_tri3 ≈ 2e-3,
-        # structurally bounded.  Clipping would double-normalise (Adam already
-        # normalises via v̂) and kill large-but-consistent exploration steps.
-        effective_ADAM_LR = ADAM_LR/9
-    elif ansatz_cfg == ANSATZ_REGISTRY['neel_legacy']:
-        # Same physical coupling factor as 'neel': /6 (6 sites from 1 tensor).
-        # With Riemannian Adam the S3 concentration is absorbed by Adam's v̂;
-        # no extra divisor needed.  No grad_clip override — sphere retraction
-        # structurally bounds step size after each iteration.
-        effective_ADAM_LR = ADAM_LR/5
+    if ansatz_cfg == ANSATZ_REGISTRY['neel'] or ansatz_cfg == ANSATZ_REGISTRY['neel_legacy']:
+        effective_ADAM_LR = ADAM_LR/6
     elif ansatz_cfg == ANSATZ_REGISTRY['twoc3']:
         effective_ADAM_LR = ADAM_LR/3
     elif ansatz_cfg == ANSATZ_REGISTRY['c3vypi'] or ansatz_cfg == ANSATZ_REGISTRY['c6ypi']:
@@ -2786,14 +2763,17 @@ def main():
                     # Adam can never converge — it only triggers the switch to LBFGS.
                     # LBFGS is the one that determines optimization convergence.
                     if CHI_CONVERGENCE_THRESHOLD > 0 and _switched_to_lbfgs:
-                        _delta_E = abs(energy - energy_la)
-                        if _delta_E <= CHI_CONVERGENCE_THRESHOLD:
-                            print(f"  │  [chi-converged] |ΔE|={_delta_E:.2e} <= "
+                        _delta_E = energy - energy_la
+                        if abs(_delta_E) <= CHI_CONVERGENCE_THRESHOLD:
+                            print(f"  │  [chi-converged] ΔE={_delta_E:.2e} <= "
                                   f"{CHI_CONVERGENCE_THRESHOLD:.2e} → skipping "
                                   f"remaining chi levels, moving to next D")
                             _chi_converged = True
                         else:
                             _chi_converged = False
+                            print(f"  │  [chi-not-converged] ΔE={_delta_E:.2e} > "
+                                  f"{CHI_CONVERGENCE_THRESHOLD:.2e} → continuing "
+                                  f"to next chi level")
                     else:
                         _chi_converged = False
                         if CHI_CONVERGENCE_THRESHOLD > 0 and not _switched_to_lbfgs:
