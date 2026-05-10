@@ -510,14 +510,14 @@ ADAM_TO_LBFGS_SWITCH_THRESHOLD = 3e-7
 #     1e-5 : safe default (landscape is locally smooth, L-BFGS reliable)
 #     1e-7 : switch very late (near full convergence, L-BFGS fine-polishes)
 
-ADAM_SWITCH_PATIENCE = 15
+ADAM_SWITCH_PATIENCE = 17
 #   Number of consecutive outer steps with |Δloss| < ADAM_TO_LBFGS_SWITCH_THRESHOLD
 #   required before the switch is triggered.  Prevents premature switching
 #   caused by a single accidentally small step (e.g. after a stall where
 #   Adam momentarily makes no progress).  3 is safe; increase to 5 on
 #   oscillating or noisy landscapes.
 
-ADAM_FLAT_PATIENCE = 110
+ADAM_FLAT_PATIENCE = 87
 #   Flat-landscape escape: if the Adam loss window of this many steps has
 #   max(window) - min(window) < ADAM_TO_LBFGS_SWITCH_THRESHOLD, switch to
 #   L-BFGS even when the step-by-step deceleration condition never fired.
