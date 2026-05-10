@@ -374,7 +374,7 @@ RSVD_POWER_ITERS = None
 #     3. Repeat until time budget is exhausted or OPT_CONV_THRESHOLD hit.
 #   This is the "cheap-environment" AD-CTMRG gradient scheme.
 
-LBFGS_MAX_ITER = 10
+LBFGS_MAX_ITER = 15
 #   Maximum L-BFGS sub-iterations per outer step (= max closure evaluations
 #   inside a single optimizer.step() call).  Each sub-iteration does a
 #   forward + backward pass through the energy formula.  30 gives a thorough
@@ -403,12 +403,12 @@ OPT_TOL_GRAD = 0.0 #1e-8
 #   the sub-iteration loop exits early if  ||∇loss||_∞ < OPT_TOL_GRAD.
 #   This is an inner stopping rule inside a single optimizer.step() call.
 
-OPT_TOL_CHANGE = 3e-8
+OPT_TOL_CHANGE = 2e-8
 #   L-BFGS inner convergence criterion on consecutive loss change:
 #   sub-iteration exits if  |L_{k+1} – L_k| < OPT_TOL_CHANGE.
 #   Set tighter than OPT_TOL_GRAD to catch near-flat regions.
 
-OPT_CONV_THRESHOLD = 5e-8
+OPT_CONV_THRESHOLD = 3e-8
 # Outer-loop early-stop: disabled (= 0).
 # The outer delta |loss(k) - loss(k-1)| compares two L-BFGS final values that
 # used DIFFERENT CTMRG environments, so even near a true minimum the delta is
@@ -467,7 +467,7 @@ ADAM_BETAS = (0.85, 0.96)
 #     the effective step genuinely shrinks, |Δloss| falls below threshold,
 #     and the patience counter fires correctly.  Constraint: τ₂ < T_adam
 #     (estimated 300–1000 steps from logs), so β₂ < 0.997 — 0.99 with margin.
-ADAM_EPS = 1e-7
+ADAM_EPS = 1e-8
 #   Denominator epsilon for numerical stability (increased from 1e-9 to dampen
 #   adaptive scaling in small-parameter regimes).
 ADAM_WEIGHT_DECAY = 0.0
@@ -501,7 +501,7 @@ USE_ADAM_WARMUP_THEN_LBFGS = True
 #   False → use OPTIMIZER ('lbfgs' or 'adam') for the full optimization.
 #   Overrideable at runtime: --adam-warmup-lbfgs CLI flag.
 
-ADAM_TO_LBFGS_SWITCH_THRESHOLD = 1e-5
+ADAM_TO_LBFGS_SWITCH_THRESHOLD = 1e-7
 #   Loss-difference threshold for the Adam→L-BFGS switch.
 #   When |loss(k) - loss(k-1)| < this value for ADAM_SWITCH_PATIENCE
 #   consecutive outer steps, Adam is killed and a fresh L-BFGS is started.
@@ -510,14 +510,14 @@ ADAM_TO_LBFGS_SWITCH_THRESHOLD = 1e-5
 #     1e-5 : safe default (landscape is locally smooth, L-BFGS reliable)
 #     1e-7 : switch very late (near full convergence, L-BFGS fine-polishes)
 
-ADAM_SWITCH_PATIENCE = 13
+ADAM_SWITCH_PATIENCE = 15
 #   Number of consecutive outer steps with |Δloss| < ADAM_TO_LBFGS_SWITCH_THRESHOLD
 #   required before the switch is triggered.  Prevents premature switching
 #   caused by a single accidentally small step (e.g. after a stall where
 #   Adam momentarily makes no progress).  3 is safe; increase to 5 on
 #   oscillating or noisy landscapes.
 
-ADAM_FLAT_PATIENCE = 170
+ADAM_FLAT_PATIENCE = 110
 #   Flat-landscape escape: if the Adam loss window of this many steps has
 #   max(window) - min(window) < ADAM_TO_LBFGS_SWITCH_THRESHOLD, switch to
 #   L-BFGS even when the step-by-step deceleration condition never fired.
@@ -552,7 +552,7 @@ ENV_IDENTITY_INIT = True
 
 
 
-CTM_MAX_STEPS = 100
+CTM_MAX_STEPS = 130
 #   Hard cap on CTMRG iterations per environment convergence call.
 #   With the singular-value convergence criterion and CTM_CONV_THR=1e-3,
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
@@ -1948,7 +1948,7 @@ def optimize_at_chi(
                         and len(_adam_loss_window) == ADAM_FLAT_PATIENCE):
                     _wmin = min(_adam_loss_window)
                     _spread = max(_adam_loss_window) - _wmin
-                    if _spread < ADAM_TO_LBFGS_SWITCH_THRESHOLD:
+                    if _spread < 2e-5:
                         # First-diffs: d[0]=window[-1]-window[-2], ...
                         # Use deque negative indexing — no list copy.
                         _N  = ADAM_SWITCH_PATIENCE
@@ -1968,7 +1968,7 @@ def optimize_at_chi(
                                 _do_switch_to_lbfgs(
                                     f"flat plateau over {ADAM_FLAT_PATIENCE} Adam steps "
                                     f"(spread={_spread:.2e} < "
-                                    f"{ADAM_TO_LBFGS_SWITCH_THRESHOLD:.2e})")
+                                    f"2e-5)")
         # ─────────────────────────────────────────────────────────────────────
 
         # Convergence / cycle-detection checks are ONLY active after the switch
