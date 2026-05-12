@@ -1925,7 +1925,7 @@ def optimize_at_chi(
                         and len(_adam_loss_window) == ADAM_FLAT_PATIENCE):
                     _wmin = min(_adam_loss_window)
                     _spread = max(_adam_loss_window) - _wmin
-                    if _spread < 4e-5:
+                    if _spread < 6e-5:
                         # First-diffs: d[0]=window[-1]-window[-2], ...
                         # Use deque negative indexing — no list copy.
                         _N  = ADAM_SWITCH_PATIENCE
@@ -1945,7 +1945,7 @@ def optimize_at_chi(
                                 _do_switch_to_lbfgs(
                                     f"flat plateau over {ADAM_FLAT_PATIENCE} Adam steps "
                                     f"(spread={_spread:.2e} < "
-                                    f"4e-5)")
+                                    f"6e-5)")
         # ─────────────────────────────────────────────────────────────────────
 
         # Convergence / cycle-detection checks are ONLY active after the switch
