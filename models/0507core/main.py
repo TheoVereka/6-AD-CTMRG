@@ -34,7 +34,6 @@ CHI_STEP_LIST = [  4,  6,  8, 10, 12, 14, 16, 18, 20]
 #   Default chi schedule parameters (one per D in D_BOND_LIST).
 #   For each D_bond, the chi schedule is generated as:
 #     range(chi_min, chi_max+1, chi_step)  (Python range semantics)
-#   Example: chi_min=40, chi_max=80, chi_step=10 → [40, 50, 60, 70, 80]
 #   Must satisfy: len(CHI_MIN_LIST) == len(CHI_MAX_LIST) == len(CHI_STEP_LIST) == len(D_BOND_LIST)
 #   Override at runtime: --chi-min 40 55 72  --chi-max 80 100 120  --chi-step 10 10 10
 
@@ -518,9 +517,9 @@ ADAM_SWITCH_PATIENCE = 17
 #   Adam momentarily makes no progress).  3 is safe; increase to 5 on
 #   oscillating or noisy landscapes.
 
-ADAM_FLAT_PATIENCE = 87
+ADAM_FLAT_PATIENCE = 70
 #   Flat-landscape escape: if the Adam loss window of this many steps has
-#   max(window) - min(window) < ADAM_TO_LBFGS_SWITCH_THRESHOLD, switch to
+#   max(window) - min(window) < 6e-5 (hardcoded spread threshold), switch to
 #   L-BFGS even when the step-by-step deceleration condition never fired.
 #   Covers the case where Adam oscillates on a plateau without cumulative
 #   deceleration signal.  Switch is suppressed if EITHER:
@@ -530,7 +529,11 @@ ADAM_FLAT_PATIENCE = 87
 #     (B) monotone:   the second-diffs d_i - d_{i+1} are all strictly the
 #         same sign — first-diffs themselves accelerating/decelerating
 #         monotonically (even if sign alternates).
-#   300 steps is ~5 min on CPU for D=4; raise to 500 on GPU-heavy runs.
+#   If the first L-BFGS run from a false-early fire converges quickly, the
+#   code cycles back to Adam automatically, so early fires are self-healing.
+#   Reduced from 87 to 40: data analysis shows 87 causes 1000-3500 wasted
+#   Adam steps across multiple runs (i62, i33, i34) where the true plateau
+#   oscillates for far longer than necessary before the 87-step window fills.
 
 # ── CTMRG algorithm ──────────────────────────────────────────────────────────
 #
@@ -1356,7 +1359,6 @@ def optimize_at_chi(
                                             and not skip_adam_warmup)
                                   else OPTIMIZER)
     _switch_patience_count: int = 0   # consecutive steps below threshold
-    _prev_Adamdelta: float | None = None  # for deceleration check in switch
     _adam_steps_taken: int = 0  # counts Adam outer steps (for early-switch)
     _switched_to_lbfgs: bool   = False  # True after Adam→L-BFGS transition
     _final_lbfgs_run:  bool   = False  # True on the terminal LBFGS (early-switch)
@@ -1821,7 +1823,7 @@ def optimize_at_chi(
 
             def _do_switch_to_lbfgs(reason: str, final: bool = False) -> None:
                 nonlocal _adam, _lbfgs, _lbfgs_outer_steps, _effective_optimizer
-                nonlocal _switched_to_lbfgs, _switch_patience_count, _prev_Adamdelta
+                nonlocal _switched_to_lbfgs, _switch_patience_count
                 nonlocal _final_lbfgs_run
                 _tag = '[warmup-final]' if final else '[warmup]'
                 print(f"    {_tag} Adam→L-BFGS switch at step {step} ({reason})")
@@ -1837,7 +1839,6 @@ def optimize_at_chi(
                 _switched_to_lbfgs   = True
                 _final_lbfgs_run     = final
                 _switch_patience_count = 0
-                _prev_Adamdelta = None
                 loss_history.clear()  # don't let stale Adam losses trigger cycle check
 
             def _do_switch_to_adam(reason: str) -> None:
@@ -1854,7 +1855,7 @@ def optimize_at_chi(
                 next LBFGS run's _lbfgs_warmed_up guard still fires correctly.
                 """
                 nonlocal _adam, _lbfgs, _effective_optimizer, _lbfgs_outer_steps
-                nonlocal _adam_steps_taken, _switch_patience_count, _prev_Adamdelta
+                nonlocal _adam_steps_taken, _switch_patience_count
                 print(f"    [cycle] L-BFGS→Adam switch at step {step} ({reason})")
                 _lbfgs = None  # clear ref; existing LBFGS object GC'd naturally
                 if params[0].device.type == 'cuda':
@@ -1871,7 +1872,6 @@ def optimize_at_chi(
                 # Do NOT re-register them.
                 _adam_steps_taken = 0
                 _switch_patience_count = 0
-                _prev_Adamdelta = None
                 _effective_optimizer = 'adam'
                 # CRITICAL: reset _lbfgs_outer_steps to 0.  During the new Adam
                 # phase _lbfgs_warmed_up = _switched_to_lbfgs and _lbfgs_outer_steps >= 3.
@@ -1897,21 +1897,21 @@ def optimize_at_chi(
                     final=True)
             else:
                 # ── Normal patience-based switch ─────────────────────────
-                # Both conditions must hold for ADAM_SWITCH_PATIENCE steps:
-                #   (a) |Δloss| < ADAM_TO_LBFGS_SWITCH_THRESHOLD
-                #   (b) |Δloss| < |Δloss_prev|  (still decelerating)
-                _is_decelerating = (
-                    _prev_Adamdelta is None or (abs(delta) < abs(_prev_Adamdelta) and delta>_prev_Adamdelta))
-                if abs(delta) < ADAM_TO_LBFGS_SWITCH_THRESHOLD and delta<1e-8 and _is_decelerating:
+                # Fires when |Δloss| < ADAM_TO_LBFGS_SWITCH_THRESHOLD for
+                # ADAM_SWITCH_PATIENCE consecutive downward steps.
+                # Deceleration requirement removed: at a local summit Adam
+                # can decelerate then bounce back, falsely triggering the
+                # old (abs(delta)<abs(prev) and delta>prev) condition.
+                # Without it, the threshold 3e-7 alone is tight enough.
+                if abs(delta) < ADAM_TO_LBFGS_SWITCH_THRESHOLD and delta < 1e-8:
                     _switch_patience_count += 1
                     if _switch_patience_count >= ADAM_SWITCH_PATIENCE:
                         _do_switch_to_lbfgs(
                             f"|Δloss|={abs(delta):.2e} < "
-                            f"{ADAM_TO_LBFGS_SWITCH_THRESHOLD:.2e}, "
-                            f"decelerating for {ADAM_SWITCH_PATIENCE} steps")
+                            f"{ADAM_TO_LBFGS_SWITCH_THRESHOLD:.2e} "
+                            f"for {ADAM_SWITCH_PATIENCE} steps")
                 else:
                     _switch_patience_count = 0  # reset: condition broken
-                _prev_Adamdelta = delta    # always update for next step
                 # ── Flat-landscape escape (window-based) ─────────────────
                 # Fires when the total spread over ADAM_FLAT_PATIENCE steps
                 # is negligible (< threshold).  Suppressed if EITHER:
@@ -1925,7 +1925,7 @@ def optimize_at_chi(
                         and len(_adam_loss_window) == ADAM_FLAT_PATIENCE):
                     _wmin = min(_adam_loss_window)
                     _spread = max(_adam_loss_window) - _wmin
-                    if _spread < 4e-5:
+                    if _spread < 6e-5:
                         # First-diffs: d[0]=window[-1]-window[-2], ...
                         # Use deque negative indexing — no list copy.
                         _N  = ADAM_SWITCH_PATIENCE
@@ -1945,7 +1945,7 @@ def optimize_at_chi(
                                 _do_switch_to_lbfgs(
                                     f"flat plateau over {ADAM_FLAT_PATIENCE} Adam steps "
                                     f"(spread={_spread:.2e} < "
-                                    f"4e-5)")
+                                    f"6e-5)")
         # ─────────────────────────────────────────────────────────────────────
 
         # Convergence / cycle-detection checks are ONLY active after the switch
