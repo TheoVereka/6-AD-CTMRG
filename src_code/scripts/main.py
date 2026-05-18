@@ -1487,7 +1487,8 @@ def optimize_at_chi(
                 
         all28 = CTMRG_from_init_to_stop(
             A, B, C, Dt, E, F, chi, D_sq,
-            CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT, energy_proxy_fn = _proxy_fn)
+            CTM_MAX_STEPS, CTM_CONV_THR, ENV_IDENTITY_INIT,
+            energy_proxy_fn=_proxy_fn)
 
 
         (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
@@ -1570,7 +1571,8 @@ def optimize_at_chi(
                 
         all28 = CTMRG_from_init_to_stop(
             A, B, C, Dt, E, F, chi, D_sq,
-            CTM_MAX_STEPS, 5*CTM_CONV_THR, ENV_IDENTITY_INIT, energy_proxy_fn = _proxy_fn)
+            CTM_MAX_STEPS, 5*CTM_CONV_THR, ENV_IDENTITY_INIT,
+            energy_proxy_fn=_proxy_fn)
 
 
         (C21CD, C32EF, C13AB, T1F,  T2A,  T2B,  T3C,  T3D,  T1E,
@@ -1717,9 +1719,14 @@ def optimize_at_chi(
             _adam.zero_grad()
             _loss, ctm_steps = _loss_with_differentiable_ctmrg_ADAMlooser()
             _loss.backward()
+            del _loss   # release graph immediately before Adam updates params
             if ADAM_GRAD_CLIP is not None:
                 torch.nn.utils.clip_grad_norm_(params, max_norm=ADAM_GRAD_CLIP)
             _adam.step()
+            # ── GPU memory cleanup after Adam step ───────────────────────
+            if params[0].device.type == 'cuda':
+                gc.collect()
+                torch.cuda.empty_cache()
             # ── Riemannian sphere retraction for neel ansatz ─────────────
             # After every Adam step, h has moved off the unit sphere by
             # O(lr²) (tangential step + discretisation error).  Retract it
@@ -2540,10 +2547,10 @@ def main():
                 
                 # ── Chi init: mean-field / random / warm-start ─────────────────
                 #print(cur_params)
-                if chi_idx==0 and args.mean_field_init:
+                if chi_idx==0 and args.mean_field_init and not args.resume_folder:
                     _init_params = _make_mean_field_params(
                         ansatz_cfg, D_bond, d_PHYS, INIT_NOISE)
-                    if chi_idx == 0:
+                    if chi_idx == 0 and (D_bond != resume_D):
                         print(f"  │  [mean-field] Néel product-state init for chi={chi}")
                     else:
                         print(f"  │  [mean-field] Néel product-state init for chi={chi} "
