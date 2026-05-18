@@ -81,6 +81,7 @@ def cur_alloc() -> float:
 
 # ── Import core ───────────────────────────────────────────────────────────────
 import core as _core
+import core
 from core import (
     set_dtype, set_device,
     normalize_single_layer_tensor_for_double_layer,
@@ -128,7 +129,9 @@ SdotS = SdotS.to(DEVICE)  # shape (d,d,d,d)
 D_sq   = D_BOND * D_BOND
 CTM_MAX_STEPS   = 130
 CTM_CONV_THR    = 1e-7
-ENV_IDENTITY_INIT = False
+# True = production behaviour (identity + noise init, O(chi²D²) init peak).
+# False = contraction-based init, O(D^10) tensors → 13.5 GB for D=7, OOM for D=8.
+ENV_IDENTITY_INIT = True
 
 _core.set_rsvd_mode('neumann', neumann_terms=2)
 _core.set_ctm_conv_mode('both', e_threshold=2e-8)
@@ -145,33 +148,98 @@ if USE_GPU:
 mem("INITIAL (after setup)", reset_peak=True)
 print()
 
-# ── Monkey-patch CTMRG to print per-iteration memory ─────────────────────────
-_original_CTMRG = CTMRG_from_init_to_stop
+# ── Monkey-patch for fine-grained per-substep memory tracing ─────────────────
+# Patches CTMRG + all 3 update functions + trunc_rhoCCC to print memory at:
+#   • entry of each update_environmentCTs call (inside _ckpt forward)
+#   • just before trunc_rhoCCC (grown corners alive = 3 × chi²D⁴)
+#   • just after trunc_rhoCCC (corners compressed, grown corners freed)
+#   • after all T projections (output T's alive)
+# Also patches CTMRG_from_init_to_stop to print per-iteration peak.
+#
+# NOTE: these wrappers run inside _ckpt, so during the FORWARD pass only
+# (no autograd graph is built yet).  The backward rerun will trigger a
+# second pass of all prints; look for the SECOND occurrence to diagnose
+# backward peak.
 
+_original_CTMRG      = core.CTMRG_from_init_to_stop
+_original_trunc      = core.trunc_rhoCCC
+_original_upd1       = core.update_environmentCTs_1to2
+_original_upd2       = core.update_environmentCTs_2to3
+_original_upd3       = core.update_environmentCTs_3to1
+
+_ctm_iter_counter = [0]   # mutable list so inner functions can increment
+
+# ── trunc_rhoCCC wrapper ──────────────────────────────────────────────────────
+def _instrumented_trunc(matC21, matC32, matC13, chi, D_sq):
+    """Print memory before/after the corner SVD truncation."""
+    if USE_GPU:
+        _grown_MB = (matC21.nelement() * matC21.element_size() / 1024**2)
+        _pk = torch.cuda.max_memory_allocated() / 1024**2
+        _al = torch.cuda.memory_allocated()    / 1024**2
+        print(f"      [trunc_rho IN ] grown-C size={_grown_MB:.1f}MB each  "
+              f"alloc={_al:.1f}MB  peak={_pk:.1f}MB")
+    result = _original_trunc(matC21, matC32, matC13, chi, D_sq)
+    if USE_GPU:
+        _pk2 = torch.cuda.max_memory_allocated() / 1024**2
+        _al2 = torch.cuda.memory_allocated()     / 1024**2
+        print(f"      [trunc_rho OUT] alloc={_al2:.1f}MB  peak={_pk2:.1f}MB")
+    return result
+
+# ── update wrapper factory ────────────────────────────────────────────────────
+def _make_upd_wrapper(fn, label):
+    def _wrapper(*args, **kwargs):
+        if USE_GPU:
+            torch.cuda.reset_peak_memory_stats()
+            _al = torch.cuda.memory_allocated() / 1024**2
+            print(f"    [{label} start] alloc={_al:.1f}MB  peak_reset")
+        result = fn(*args, **kwargs)
+        if USE_GPU:
+            _al2 = torch.cuda.memory_allocated() / 1024**2
+            _pk2 = torch.cuda.max_memory_allocated() / 1024**2
+            print(f"    [{label} end  ] alloc={_al2:.1f}MB  peak={_pk2:.1f}MB")
+        return result
+    return _wrapper
+
+# ── CTMRG wrapper ─────────────────────────────────────────────────────────────
 def _instrumented_CTMRG(A, B, C, D_, E, F, chi, D_squared,
-                          a_third_max_iterations, env_conv_threshold,
-                          identity_init=False, energy_proxy_fn=None, **kw):
-    """Wrapper that prints mem every 5 CTMRG iterations."""
-    # We run the real function but intercept internal state by counting
-    # the number of trunc_rhoCCC calls via a counter hook.
-    # Simplest approach: measure before + after + print a few snapshots.
+                         a_third_max_iterations, env_conv_threshold,
+                         identity_init=False, energy_proxy_fn=None, **kw):
     if USE_GPU:
         torch.cuda.reset_peak_memory_stats()
+    mem("  CTMRG enter", reset_peak=True)
     mem_before = cur_alloc()
-    mem("  CTMRG enter")
+
+    # Install fine-grained sub-patches for this run
+    core.trunc_rhoCCC                    = _instrumented_trunc
+    core.update_environmentCTs_1to2      = _make_upd_wrapper(_original_upd1, "upd1→2")
+    core.update_environmentCTs_2to3      = _make_upd_wrapper(_original_upd2, "upd2→3")
+    core.update_environmentCTs_3to1      = _make_upd_wrapper(_original_upd3, "upd3→1")
+    # trunc_rhoCCC is called inside the update functions which reference
+    # core.trunc_rhoCCC at import time; patch the module attribute so calls
+    # from update_* (which do  from core import trunc_rhoCCC  at definition
+    # time) still hit the wrapper.  Since update_* is already patched to call
+    # the original via _original_upd*, we need to re-patch _original_upd* to
+    # use instrumented trunc.  Simplest: rely on module-level lookup in core.py.
+    # The update functions reference trunc_rhoCCC as a module global, so patching
+    # core.trunc_rhoCCC is sufficient.
 
     result = _original_CTMRG(A, B, C, D_, E, F, chi, D_squared,
                               a_third_max_iterations, env_conv_threshold,
                               identity_init, energy_proxy_fn, **kw)
+
+    # Restore
+    core.trunc_rhoCCC               = _original_trunc
+    core.update_environmentCTs_1to2 = _original_upd1
+    core.update_environmentCTs_2to3 = _original_upd2
+    core.update_environmentCTs_3to1 = _original_upd3
+
     ctm_steps = result[-1]
     mem_delta(f"  CTMRG exit  (ctm_steps={ctm_steps})", mem_before)
     return result
 
-# Patch into the module namespace so the local calls use the instrumented version
-import core
+# Install top-level patches
 core.CTMRG_from_init_to_stop = _instrumented_CTMRG
-# Also patch the local reference
-CTMRG_from_init_to_stop = _instrumented_CTMRG
+CTMRG_from_init_to_stop      = _instrumented_CTMRG
 
 
 # ── Energy helper (mirrors _three_env_energy_loss_parallel) ──────────────────

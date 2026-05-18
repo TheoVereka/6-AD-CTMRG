@@ -2535,21 +2535,21 @@ def update_environmentCTs_1to2(C21CD, C32EF, C13AB, T1F, T2A, T2B, T3C, T3D, T1E
                            C21CD,T1F,T2A,E,B,
                            optimize=[(0,1),(1,3),(0,1),(0,1)],
                            backend='torch')
-    
+
     C21EB = C21EB.reshape(chi*D_squared,chi*D_squared)
-    
+
     C32AD = oe.contract("ZY,NZb,MYg,abn,amg->NnMm",
                            C32EF,T2B,T3C,A,D,
                            optimize=[(0,1),(1,3),(0,1),(0,1)],
                            backend='torch')
-    
+
     C32AD = C32AD.reshape(chi*D_squared,chi*D_squared)
-    
+
     C13CF = oe.contract("XZ,LXg,NZa,lbg,abn->LlNn",
                            C13AB,T3D,T1E,C,F,
                            optimize=[(0,1),(1,3),(0,1),(0,1)],
                            backend='torch')
-    
+
     C13CF = C13CF.reshape(chi*D_squared,chi*D_squared)
 
 
@@ -2676,21 +2676,21 @@ def update_environmentCTs_2to3(C21EB, C32AD, C13CF, T1D, T2C, T2F, T3E, T3B, T1A
                            C21EB,T1D,T2C,A,F,
                            optimize=[(0,1),(1,3),(0,1),(0,1)],
                            backend='torch')
-    
+
     C21AF = C21AF.reshape(chi*D_squared,chi*D_squared)
-    
+
     C32CB = oe.contract("ZY,NZb,MYg,abn,amg->NnMm",
                            C32AD,T2F,T3E,C,B,
                            optimize=[(0,1),(1,3),(0,1),(0,1)],
                            backend='torch')
-    
+
     C32CB = C32CB.reshape(chi*D_squared,chi*D_squared)
-    
+
     C13ED = oe.contract("XZ,LXg,NZa,lbg,abn->LlNn",
                            C13CF,T3B,T1A,E,D,
                            optimize=[(0,1),(1,3),(0,1),(0,1)],
                            backend='torch')
-    
+
     C13ED = C13ED.reshape(chi*D_squared,chi*D_squared)
 
     V2C, C21AF, U1D, V3E, C32CB, U2F, V1A, C13ED, U3B = trunc_rhoCCC(
@@ -2811,21 +2811,21 @@ def update_environmentCTs_3to1(C21AF, C32CB, C13ED, T1B, T2E, T2D, T3A, T3F, T1C
                            C21AF,T1B,T2E,C,D,
                            optimize=[(0,1),(1,3),(0,1),(0,1)],
                            backend='torch')
-    
+
     C21CD = C21CD.reshape(chi*D_squared,chi*D_squared)
-    
+
     C32EF = oe.contract("ZY,NZb,MYg,abn,amg->NnMm",
                            C32CB,T2D,T3A,E,F,
                            optimize=[(0,1),(1,3),(0,1),(0,1)],
                            backend='torch')
-    
+
     C32EF = C32EF.reshape(chi*D_squared,chi*D_squared)
-    
+
     C13AB = oe.contract("XZ,LXg,NZa,lbg,abn->LlNn",
                            C13ED,T3F,T1C,A,B,
                            optimize=[(0,1),(1,3),(0,1),(0,1)],
                            backend='torch')
-    
+
     C13AB = C13AB.reshape(chi*D_squared,chi*D_squared)
 
     V2E, C21CD, U1B, V3A, C32EF, U2D, V1C, C13AB, U3F = trunc_rhoCCC(
@@ -3014,10 +3014,11 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
         # from being kept alive in the autograd graph (saves ~75 MB for D=5).
         with torch.no_grad():
             _D_bond = round(D_squared ** 0.5)
-            # D ≥ 8: pre-truncation T tensors are (D^4, D^4, D^2) ≥ 8 GiB — OOM
-            # even in no_grad.  Force identity_init so only (chi,chi) and
-            # (chi,chi,D²) tensors are allocated.
-            if _D_bond >= 8 and not _use_identity:
+            # D ≥ 7: non-identity init builds T tensors of shape (D^4,D^4,D^2)
+            #   D=7: 6 × (2401,2401,49) × 8B ≈ 13.5 GB transient
+            #   D=8: 6 × (4096,4096,64) × 8B ≈ 51.5 GB → always OOM
+            # Force identity_init to keep peak at O(chi²·D²) instead.
+            if _D_bond >= 7 and not _use_identity:
                 _use_identity = True
             nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E = initialize_envCTs_1(A,B,C,D,E,F, chi, D_squared, identity_init=_use_identity)
             # ── Inject escalating random noise for restarts ──────────────

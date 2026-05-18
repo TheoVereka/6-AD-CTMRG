@@ -1718,6 +1718,7 @@ def optimize_at_chi(
                 raise RuntimeError("Adam optimizer requested but was not initialized")
             _adam.zero_grad()
             _loss, ctm_steps = _loss_with_differentiable_ctmrg_ADAMlooser()
+            loss_item = _loss.detach().item()  # save scalar before releasing graph
             _loss.backward()
             del _loss   # release graph immediately before Adam updates params
             if ADAM_GRAD_CLIP is not None:
@@ -1761,7 +1762,7 @@ def optimize_at_chi(
                         _a_dir = _na.data / (_na.data.norm() + 1e-30)
                         _m_leg = _state_leg['exp_avg']
                         _m_leg.sub_((_m_leg.reshape(-1) @ _a_dir.reshape(-1)) * _a_dir)
-            loss_item = _loss.detach().item()
+            # loss_item already saved above before del _loss
             _adam_steps_taken += 1
             _adam_loss_window.append(loss_item)  # feed flat-landscape tracker
             # ── GPU memory cleanup after Adam micro-steps ────────────────
@@ -2370,7 +2371,7 @@ def main():
     # ── Resume ────────────────────────────────────────────────────────────────
     resume_D, resume_chi = None, None
     if args.resume:
-        ckpt = torch.load(args.resume, map_location=_core.DEVICE)
+        ckpt = torch.load(args.resume, map_location=_core.DEVICE, weights_only=False)
         resume_D   = ckpt.get('D_bond')
         resume_chi = ckpt.get('chi')
         ckpt_step  = ckpt.get('step', 0) + 1
@@ -2413,7 +2414,7 @@ def main():
                       f"{args.resume_folder} — using default init")
                 continue
             _best_f = max(_files, key=_chi_from_path)
-            _ckpt = torch.load(_best_f, map_location=_core.DEVICE)
+            _ckpt = torch.load(_best_f, map_location=_core.DEVICE, weights_only=False)
             _loaded = tuple(_ckpt[k] for k in ansatz_cfg['ckpt_keys'])
             best_params_by_D[_D] = _new_tensors_from_data(_loaded)
             if ansatz_cfg == ANSATZ_REGISTRY['neel']:
