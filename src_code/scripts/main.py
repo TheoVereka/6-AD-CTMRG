@@ -2519,6 +2519,7 @@ def main():
             # ── Inner loop: chi ───────────────────────────────────────────────────
             _chi_collapse = False
             for chi_idx, chi in enumerate(chis):
+                resumeEqulCurrent = False
                 # Skip (D, chi) pairs that come before the resume point
                 if resume_D is not None and resume_chi is not None:
                     if D_bond < resume_D:
@@ -2527,6 +2528,7 @@ def main():
                         continue
                     if D_bond == resume_D and chi == resume_chi:
                         resume_D = None   # resume point reached; continue normally
+                        resumeEqulCurrent = True
                         cur_params = best_params_by_D.get(D_bond)
     
                 # equal time budget for every chi level within this D
@@ -2548,10 +2550,10 @@ def main():
                 
                 # ── Chi init: mean-field / random / warm-start ─────────────────
                 #print(cur_params)
-                if chi_idx==0 and args.mean_field_init and not args.resume_folder:
+                if chi_idx==0 and args.mean_field_init and not args.resume_folder and not resumeEqulCurrent:
                     _init_params = _make_mean_field_params(
                         ansatz_cfg, D_bond, d_PHYS, INIT_NOISE)
-                    if chi_idx == 0 and (D_bond != resume_D):
+                    if chi_idx == 0:
                         print(f"  │  [mean-field] Néel product-state init for chi={chi}")
                     else:
                         print(f"  │  [mean-field] Néel product-state init for chi={chi} "

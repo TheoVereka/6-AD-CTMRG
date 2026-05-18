@@ -3184,17 +3184,17 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
     """Energy for 3 ebadcf bonds.
 
     Memory strategy (GPU only):
-      6 opens < 35% GPU : pre-build all 6 once, _ckpt per bond.
-        (D≤9 on 32 GB: 6 opens ≤ 9.5 GB — always pre-build, 5× faster.)
-      6 opens ≥ 35% GPU : lazy-open closures, at most 2 opens alive at once.
-        (D≥10 on 32 GB: 6 opens ≥ 11.4 GB — lazy required.)
+      6 opens < 15% GPU : pre-build all 6 once, _ckpt per bond.
+        (D≤7 on 32 GB: 6 opens ≤ 2.7 GB = 8.6% — pre-build, 5× faster.)
+      6 opens ≥ 15% GPU : lazy-open closures, at most 2 opens alive at once.
+        (D≥8 on 32 GB: 6 opens ≥ 6.1 GB = 19% — lazy required to fit backward.)
     CPU: no checkpoint, no closure — pre-build all 6 once, direct calls.
     """
     _on_gpu = DEVICE.type == 'cuda'
     _D2 = chi * D_bond * D_bond
     _use_lazy = _on_gpu and (
         6 * _D2 * _D2 * d_PHYS * d_PHYS * a.element_size()
-        > torch.cuda.get_device_properties(DEVICE).total_memory * 0.35
+        > torch.cuda.get_device_properties(DEVICE).total_memory * 0.15
     ) if _on_gpu else False
 
     if _CACHE_RHOS:
@@ -3377,12 +3377,12 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
                 SdotS,
                 chi, D_bond, d_PHYS, 
                 C21EB, C32AD,C13CF,T1D,T2C,T2F,T3E,T3B,T1A):
-    """Energy for 3 afcbed bonds.  GPU+large-D: lazy-open+_ckpt.  CPU: no checkpoint."""
+    """Energy for 3 afcbed bonds.  GPU D>=8: lazy-open+_ckpt (6 opens>=15% GPU).  CPU: no checkpoint."""
     _on_gpu = DEVICE.type == 'cuda'
     _D2 = chi * D_bond * D_bond
     _use_lazy = _on_gpu and (
         6 * _D2 * _D2 * d_PHYS * d_PHYS * a.element_size()
-        > torch.cuda.get_device_properties(DEVICE).total_memory * 0.35
+        > torch.cuda.get_device_properties(DEVICE).total_memory * 0.15
     ) if _on_gpu else False
 
     if _CACHE_RHOS:
@@ -3589,7 +3589,7 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
     _D2 = chi * D_bond * D_bond
     _use_lazy = _on_gpu and (
         6 * _D2 * _D2 * d_PHYS * d_PHYS * a.element_size()
-        > torch.cuda.get_device_properties(DEVICE).total_memory * 0.35
+        > torch.cuda.get_device_properties(DEVICE).total_memory * 0.15
     ) if _on_gpu else False
 
     if _CACHE_RHOS:
