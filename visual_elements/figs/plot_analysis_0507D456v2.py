@@ -24,13 +24,13 @@ from scipy.optimize import curve_fit
 # ──────────────────────────────────────────────────────────────────────────────
 # PATHS
 # ──────────────────────────────────────────────────────────────────────────────
-DATA_DIR   = '/home/chye/6ADctmrg/data/0507core/D456'
+DATA_DIR   = '/home/chye/6ADctmrg/data/0507core/D4567'
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-OUT_DIR    = os.path.join(SCRIPT_DIR, 'analysis_plots_0507D456v2')
+OUT_DIR    = os.path.join(SCRIPT_DIR, 'analysis_plots_0507D4567')
 os.makedirs(OUT_DIR, exist_ok=True)
 
 # Only these D values
-D_ALLOWED = {4, 5, 6}
+D_ALLOWED = {4, 5, 6, 7}
 
 # Bond group raw definitions (env-index, pair-label)
 NN_GROUPS_RAW = [
