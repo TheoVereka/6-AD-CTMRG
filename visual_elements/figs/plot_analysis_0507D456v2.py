@@ -24,13 +24,13 @@ from scipy.optimize import curve_fit
 # ──────────────────────────────────────────────────────────────────────────────
 # PATHS
 # ──────────────────────────────────────────────────────────────────────────────
-DATA_DIR   = '/home/chye/6ADctmrg/data/0507core/D4567'
+DATA_DIR   = '/home/chye/6ADctmrg/data/0507core/D45678'
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-OUT_DIR    = os.path.join(SCRIPT_DIR, 'analysis_plots_0507D4567')
+OUT_DIR    = os.path.join(SCRIPT_DIR, 'analysis_plots_0507D45678')
 os.makedirs(OUT_DIR, exist_ok=True)
 
 # Only these D values
-D_ALLOWED = {4, 5, 6, 7}
+D_ALLOWED = {4, 5, 6, 7, 8}
 
 # Bond group raw definitions (env-index, pair-label)
 NN_GROUPS_RAW = [
@@ -494,6 +494,228 @@ def plot_j2_figure(j2, ansatz_map, out_dir):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# PART 2 & 3: Summary vs J2
+# ──────────────────────────────────────────────────────────────────────────────
+
+def compute_m_lin3_extrap_with_error(Ds, mlist):
+    """
+    Fit m = k*(1/D) + b using last min(3, n) valid Ds via polyfit with cov.
+    Returns (b, b_lo_clipped, b_hi) with b_lo >= 0.
+    """
+    Ds_f = np.array(Ds, dtype=float)
+    m_f  = np.array(mlist, dtype=float)
+    valid = ~np.isnan(m_f)
+    if valid.sum() < 2:
+        return float('nan'), float('nan'), float('nan')
+    Dv = Ds_f[valid]; mv = m_f[valid]
+    inv = 1.0 / Dv
+    n = min(3, len(Dv))
+    try:
+        if n >= 3:
+            coeffs, cov = np.polyfit(inv[-n:], mv[-n:], 1, cov=True)
+            sigma_b = float(np.sqrt(abs(cov[1, 1])))
+        else:
+            coeffs  = np.polyfit(inv[-n:], mv[-n:], 1)
+            sigma_b = 0.0
+    except Exception:
+        return float(mv[-1]), float(mv[-1]), float(mv[-1])
+    b     = float(coeffs[1])
+    b_lo  = max(0.0, b - sigma_b)
+    b_hi  = max(0.0, b + sigma_b)
+    return b, b_lo, b_hi
+
+
+def _all_ansatze(all_data):
+    keys = set()
+    for v_map in all_data.values():
+        keys.update(v_map.keys())
+    return ([a for a in ANSATZ_ORDER if a in keys] +
+            sorted(a for a in keys if a not in ANSATZ_ORDER))
+
+
+def _all_Ds_for_ansatz(all_data, ansatz_key):
+    Ds = set()
+    for v_map in all_data.values():
+        if ansatz_key in v_map:
+            Ds.update(v_map[ansatz_key]['Ds'])
+    return sorted(Ds)
+
+
+# ── Drawing helpers ────────────────────────────────────────────────────────────
+
+def _draw_E_raw(ax, all_data, ansatz_key):
+    all_Ds = _all_Ds_for_ansatz(all_data, ansatz_key)
+    n_D    = max(len(all_Ds) - 1, 1)
+    for D in all_Ds:
+        j2s, Es = [], []
+        for j2 in sorted(all_data.keys()):
+            if ansatz_key not in all_data[j2]:
+                continue
+            v = all_data[j2][ansatz_key]
+            if D in v['Ds']:
+                idx = v['Ds'].index(D)
+                j2s.append(j2); Es.append(v['energy_per_site'][idx])
+        if not j2s:
+            continue
+        alpha = 0.25 + 0.75 * all_Ds.index(D) / n_D
+        ax.plot(j2s, Es, 'o-', color='#1f77b4', alpha=alpha, ms=5, lw=1.4,
+                label=f'D={D}')
+    ax.set_xlabel('J₂', fontsize=10)
+    ax.set_ylabel('Energy per site', fontsize=10)
+    ax.set_title(ANSATZ_LABEL.get(ansatz_key, ansatz_key), fontsize=11)
+    ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
+    ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
+    ax.legend(fontsize=8)
+
+
+def _draw_E_extrap(ax, all_data, ansatz_key):
+    """Asymmetric errorbars: center=E_exp (or E_lin3), upper=E_horiz, lower=E_lin3."""
+    j2s, centers, uppers, lowers = [], [], [], []
+    for j2 in sorted(all_data.keys()):
+        if ansatz_key not in all_data[j2]:
+            continue
+        ex       = all_data[j2][ansatz_key]['extrap']
+        E_center = ex['E_exp'] if ex['E_exp'] is not None else ex['E_lin3']
+        E_upper  = ex['E_horiz']   # last D (less negative)
+        E_lower  = ex['E_lin3']    # linear extrap (more negative)
+        j2s.append(j2)
+        centers.append(E_center)
+        uppers.append(max(0.0, E_upper  - E_center))
+        lowers.append(max(0.0, E_center - E_lower))
+    if not j2s:
+        return
+    ax.errorbar(j2s, centers, yerr=[lowers, uppers],
+                fmt='*-', color='#1f77b4', ms=10, lw=1.4,
+                capsize=4, elinewidth=1.1,
+                markeredgewidth=0.5, markeredgecolor='k',
+                label='extrap (exp|lin3 center, last-D upper, lin3 lower)')
+    ax.set_xlabel('J₂', fontsize=10)
+    ax.set_ylabel('Energy per site', fontsize=10)
+    ax.set_title(ANSATZ_LABEL.get(ansatz_key, ansatz_key), fontsize=11)
+    ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
+    ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
+    ax.legend(fontsize=7)
+
+
+def _draw_m_raw(ax, all_data, ansatz_key):
+    all_Ds = _all_Ds_for_ansatz(all_data, ansatz_key)
+    n_D    = max(len(all_Ds) - 1, 1)
+    for D in all_Ds:
+        j2s, ms = [], []
+        for j2 in sorted(all_data.keys()):
+            if ansatz_key not in all_data[j2]:
+                continue
+            v = all_data[j2][ansatz_key]
+            if D in v['Ds']:
+                idx = v['Ds'].index(D)
+                j2s.append(j2); ms.append(v['mneel_list'][idx])
+        if not j2s:
+            continue
+        alpha = 0.25 + 0.75 * all_Ds.index(D) / n_D
+        ax.plot(j2s, ms, 'o-', color='#9467bd', alpha=alpha, ms=5, lw=1.4,
+                label=f'D={D}')
+    ax.set_xlabel('J₂', fontsize=10)
+    ax.set_ylabel(r'm$_\mathrm{N\acute{e}el}$', fontsize=10)
+    ax.set_ylim(bottom=0.0)
+    ax.set_title(ANSATZ_LABEL.get(ansatz_key, ansatz_key), fontsize=11)
+    ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
+    ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.4g'))
+    ax.legend(fontsize=8)
+
+
+def _draw_m_extrap(ax, all_data, ansatz_key):
+    """Asymmetric errorbars from lin3 polyfit intercept ± sigma_b, clipped to >=0."""
+    j2s, centers, lowers, uppers = [], [], [], []
+    for j2 in sorted(all_data.keys()):
+        if ansatz_key not in all_data[j2]:
+            continue
+        v = all_data[j2][ansatz_key]
+        b, b_lo, b_hi = compute_m_lin3_extrap_with_error(v['Ds'], v['mneel_list'])
+        if np.isnan(b):
+            continue
+        b_c = max(0.0, b)
+        j2s.append(j2)
+        centers.append(b_c)
+        lowers.append(b_c - b_lo)          # b_lo already clipped >=0
+        uppers.append(b_hi - b_c)
+    if not j2s:
+        return
+    ax.errorbar(j2s, centers, yerr=[lowers, uppers],
+                fmt='*-', color='#9467bd', ms=10, lw=1.4,
+                capsize=4, elinewidth=1.1,
+                markeredgewidth=0.5, markeredgecolor='k',
+                label='lin3 extrap ± σ (clipped ≥0)')
+    ax.set_xlabel('J₂', fontsize=10)
+    ax.set_ylabel(r'm$_\mathrm{N\acute{e}el}$', fontsize=10)
+    ax.set_ylim(bottom=0.0)
+    ax.set_title(ANSATZ_LABEL.get(ansatz_key, ansatz_key), fontsize=11)
+    ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
+    ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.4g'))
+    ax.legend(fontsize=7)
+
+
+# ── Three-figure generators ───────────────────────────────────────────────────
+
+def plot_e_vs_j2_figures(all_data, out_dir):
+    ansatze = _all_ansatze(all_data)
+    n = len(ansatze)
+
+    fig1, axes1 = plt.subplots(1, n, figsize=(5 * n, 4.5), squeeze=False)
+    for i, a in enumerate(ansatze):
+        _draw_E_raw(axes1[0, i], all_data, a)
+    fig1.suptitle('Energy per site vs J₂  —  raw D curves', fontsize=13)
+    fig1.tight_layout()
+    _save(fig1, os.path.join(out_dir, 'summary_E_vs_J2_fig1_raw.pdf'))
+
+    fig2, axes2 = plt.subplots(1, n, figsize=(5 * n, 4.5), squeeze=False)
+    for i, a in enumerate(ansatze):
+        _draw_E_extrap(axes2[0, i], all_data, a)
+    fig2.suptitle('Energy per site vs J₂  —  extrapolated', fontsize=13)
+    fig2.tight_layout()
+    _save(fig2, os.path.join(out_dir, 'summary_E_vs_J2_fig2_extrap.pdf'))
+
+    fig3, axes3 = plt.subplots(1, n, figsize=(5 * n, 4.5), squeeze=False)
+    for i, a in enumerate(ansatze):
+        ax = axes3[0, i]
+        _draw_E_raw(ax, all_data, a)
+        _draw_E_extrap(ax, all_data, a)
+        ax.legend(fontsize=7)
+    fig3.suptitle('Energy per site vs J₂  —  combined', fontsize=13)
+    fig3.tight_layout()
+    _save(fig3, os.path.join(out_dir, 'summary_E_vs_J2_fig3_combined.pdf'))
+
+
+def plot_m_vs_j2_figures(all_data, out_dir):
+    ansatze = _all_ansatze(all_data)
+    n = len(ansatze)
+
+    fig1, axes1 = plt.subplots(1, n, figsize=(5 * n, 4.5), squeeze=False)
+    for i, a in enumerate(ansatze):
+        _draw_m_raw(axes1[0, i], all_data, a)
+    fig1.suptitle(r'm$_\mathrm{N\acute{e}el}$ vs J₂  —  raw D curves', fontsize=13)
+    fig1.tight_layout()
+    _save(fig1, os.path.join(out_dir, 'summary_m_vs_J2_fig1_raw.pdf'))
+
+    fig2, axes2 = plt.subplots(1, n, figsize=(5 * n, 4.5), squeeze=False)
+    for i, a in enumerate(ansatze):
+        _draw_m_extrap(axes2[0, i], all_data, a)
+    fig2.suptitle(r'm$_\mathrm{N\acute{e}el}$ vs J₂  —  lin3 extrapolated ± σ', fontsize=13)
+    fig2.tight_layout()
+    _save(fig2, os.path.join(out_dir, 'summary_m_vs_J2_fig2_extrap.pdf'))
+
+    fig3, axes3 = plt.subplots(1, n, figsize=(5 * n, 4.5), squeeze=False)
+    for i, a in enumerate(ansatze):
+        ax = axes3[0, i]
+        _draw_m_raw(ax, all_data, a)
+        _draw_m_extrap(ax, all_data, a)
+        ax.set_ylim(bottom=0.0)
+        ax.legend(fontsize=7)
+    fig3.suptitle(r'm$_\mathrm{N\acute{e}el}$ vs J₂  —  combined', fontsize=13)
+    fig3.tight_layout()
+    _save(fig3, os.path.join(out_dir, 'summary_m_vs_J2_fig3_combined.pdf'))
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # MAIN
 # ──────────────────────────────────────────────────────────────────────────────
 def main():
@@ -504,12 +726,18 @@ def main():
         return
 
     print(f"\nFound {len(all_data)} J2 values: {sorted(all_data.keys())}")
-    print(f"Generating {len(all_data)} figures ...\n")
+    print(f"Generating {len(all_data)} per-J2 figures ...\n")
 
     for j2, ansatz_map in sorted(all_data.items()):
         ansatze = sorted(ansatz_map.keys())
         print(f"  J2={j2:.4g}  ansatze: {ansatze}")
         plot_j2_figure(j2, ansatz_map, OUT_DIR)
+
+    print("\nGenerating E vs J2 summary figures ...")
+    plot_e_vs_j2_figures(all_data, OUT_DIR)
+
+    print("Generating m vs J2 summary figures ...")
+    plot_m_vs_j2_figures(all_data, OUT_DIR)
 
     print(f"\nDone.  Figures in: {OUT_DIR}")
 
