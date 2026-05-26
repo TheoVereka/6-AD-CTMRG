@@ -4,11 +4,10 @@
 #SBATCH -e ./job-%N-%j.error
 #SBATCH -o ./job-%N-%j.out
 #SBATCH --ntasks 1
-#SBATCH --cpus-per-task 16
-#SBATCH --time 5-00:06:00
-#SBATCH --mem 100G
+#SBATCH --cpus-per-task 25
+#SBATCH --time 1-00:06:00
+#SBATCH --mem 140G
 
-export SOU=/home/chye/1stTrial/
 
 echo "***** START OF JOB ***** "
 
@@ -19,10 +18,9 @@ module load gcc
 echo STARTING AT `date`
 
 source /home/chye/venvs/6adctmrg/bin/activate
-python /home/chye/1stTrial/main_sweep_CPU_1stTrial.py
+python /home/chye/0507core/recompute_obs.py --J2 0.27 --file /home/chye/0507core/27_D9_unfinished.pt
 
 echo FINISHED at `date`
 
 echo " ***** END OF JOB ***** "
 
-cp -r ../1stTrialRun  /home/chye/1stTrial/

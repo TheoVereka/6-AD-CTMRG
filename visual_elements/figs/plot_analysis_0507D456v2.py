@@ -42,13 +42,15 @@ SPECIAL_MAG_N = {
 
 
 # Preferred column order for ansatze
-ANSATZ_ORDER = ['neel_symmetrized', '1tensor_C6Ypi', '1tensor_C3Vypi']
+ANSATZ_ORDER = ['neel_symmetrized', '1tensor_C6Ypi', '1tensor_C3Vypi', '2tensor_twoC3', '6tensors']
 
 # Pretty labels for ansatze
 ANSATZ_LABEL = {
     'neel_symmetrized': 'Néel',
     '1tensor_C6Ypi':   'C6Yπ',
     '1tensor_C3Vypi':  'C3vYπ',
+    '2tensor_twoC3':   '2 C3',
+    '6tensors':       'unres',
 }
 
 
