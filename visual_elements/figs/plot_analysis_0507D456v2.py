@@ -32,15 +32,14 @@ os.makedirs(OUT_DIR, exist_ok=True)
 # Only these D values
 D_ALLOWED = {4, 5, 6, 7, 8}
 
-# Bond group raw definitions (env-index, pair-label)
-NN_GROUPS_RAW = [
-    [(1,'EB'),(1,'AD'),(1,'CF'),(3,'BE'),(3,'FC'),(3,'DA')],
-    [(2,'CB'),(2,'AF'),(2,'ED'),(1,'FA'),(1,'DE'),(1,'BC')],
-    [(3,'EF'),(3,'AB'),(3,'CD'),(2,'DC'),(2,'BA'),(2,'FE')],
-]
 
-RANK_COLORS = {1: 'tab:red', 2: 'tab:green', 3: 'tab:blue'}
-RANK_LABELS = {1: 'rank 1 (most neg)', 2: 'rank 2 (mid)', 3: 'rank 3 (least neg)'}
+
+# Special-case override: (j2, ansatz_key) → n points for the main extrap linear fit
+SPECIAL_MAG_N = {
+    (0.25, 'neel_symmetrized'): 4,
+}
+
+
 
 # Preferred column order for ansatze
 ANSATZ_ORDER = ['neel_symmetrized', '1tensor_C6Ypi', '1tensor_C3Vypi']
@@ -51,6 +50,19 @@ ANSATZ_LABEL = {
     '1tensor_C6Ypi':   'C6Yπ',
     '1tensor_C3Vypi':  'C3vYπ',
 }
+
+
+
+
+# Bond group raw definitions (env-index, pair-label)
+NN_GROUPS_RAW = [
+    [(1,'EB'),(1,'AD'),(1,'CF'),(3,'BE'),(3,'FC'),(3,'DA')],
+    [(2,'CB'),(2,'AF'),(2,'ED'),(1,'FA'),(1,'DE'),(1,'BC')],
+    [(3,'EF'),(3,'AB'),(3,'CD'),(2,'DC'),(2,'BA'),(2,'FE')],
+]
+
+RANK_COLORS = {1: 'tab:red', 2: 'tab:green', 3: 'tab:blue'}
+RANK_LABELS = {1: 'rank 1 (most neg)', 2: 'rank 2 (mid)', 3: 'rank 3 (least neg)'}
 
 # ──────────────────────────────────────────────────────────────────────────────
 # REGEXES
@@ -245,20 +257,20 @@ def compute_energy_extrap(Ds, eps):
     }
 
 
-def compute_mag_extrap(Ds, mneel_list):
+def compute_mag_extrap(Ds, mneel_list, n_extrap=3):
     Ds_f = np.array(Ds,        dtype=float)
     m_f  = np.array(mneel_list, dtype=float)
     inv  = 1.0 / Ds_f
 
     n2 = min(2, len(Ds_f)); c2 = np.polyfit(inv[-n2:], m_f[-n2:], 1)
-    n3 = min(3, len(Ds_f)); c3 = np.polyfit(inv[-n3:], m_f[-n3:], 1)
+    n3 = min(n_extrap, len(Ds_f)); c3 = np.polyfit(inv[-n3:], m_f[-n3:], 1)
     m_lin2 = float(c2[1]); m_lin3 = float(c3[1])
     return m_lin2, m_lin3, c2, c3
 
 # ──────────────────────────────────────────────────────────────────────────────
 # LOAD ALL DATA
 # ──────────────────────────────────────────────────────────────────────────────
-def load_ansatz_data(folder_path):
+def load_ansatz_data(folder_path, n_mag=3):
     """Return processed data dict for one ansatz folder."""
     D_data = load_folder_data(folder_path)
     if not D_data:
@@ -269,7 +281,7 @@ def load_ansatz_data(folder_path):
     nn_groups = compute_bond_groups(D_data, NN_GROUPS_RAW)
     order     = compute_order_param(D_data)
     mlist     = [order[D]['m_neel'] for D in Ds]
-    m_lin2, m_lin3, c2, c3 = compute_mag_extrap(Ds, mlist)
+    m_lin2, m_lin3, c2, c3 = compute_mag_extrap(Ds, mlist, n_extrap=n_mag)
     return {
         'Ds':              Ds,
         'energy_per_site': eps,
@@ -280,6 +292,7 @@ def load_ansatz_data(folder_path):
         'm_lin3':          m_lin3,
         'm_c2':            c2,
         'm_c3':            c3,
+        'm_n_extrap':      n_mag,
     }
 
 
@@ -291,7 +304,8 @@ def load_all():
         ansatz_data = {}
         for ansatz, path in folder_map[j2].items():
             print(f"  Loading J2={j2:.4g}  {ansatz} ...")
-            d = load_ansatz_data(path)
+            n_mag = SPECIAL_MAG_N.get((round(j2, 6), ansatz), 3)
+            d = load_ansatz_data(path, n_mag=n_mag)
             if d:
                 ansatz_data[ansatz] = d
             else:
@@ -382,14 +396,15 @@ def plot_col_mag(ax, v, show_xlabel):
 
     valid = ~np.isnan(ms)
     inv_v, m_v = inv[valid], ms[valid]
+    n_ex = v.get('m_n_extrap', 3)
     if len(m_v) >= 2:
         ax.plot(inv_line, np.polyval(v['m_c2'], inv_line),
                 color='tab:orange', ls='--', lw=1.0, alpha=0.85,
                 label=f'lin(2): {v["m_lin2"]:.4f}')
-    if len(m_v) >= 3:
+    if len(m_v) >= min(n_ex, 3):
         ax.plot(inv_line, np.polyval(v['m_c3'], inv_line),
                 color='tab:red', ls='-.', lw=1.0, alpha=0.85,
-                label=f'lin(3): {v["m_lin3"]:.4f}')
+                label=f'lin({min(n_ex, len(m_v))}): {v["m_lin3"]:.4f}')
 
     m_lastD = float(ms[-1]) if not np.isnan(ms[-1]) else 0.0
     three   = sorted([m_lastD, v['m_lin2'], v['m_lin3']])
@@ -497,9 +512,9 @@ def plot_j2_figure(j2, ansatz_map, out_dir):
 # PART 2 & 3: Summary vs J2
 # ──────────────────────────────────────────────────────────────────────────────
 
-def compute_m_lin3_extrap_with_error(Ds, mlist):
+def compute_m_lin3_extrap_with_error(Ds, mlist, n_extrap=3):
     """
-    Fit m = k*(1/D) + b using last min(3, n) valid Ds via polyfit with cov.
+    Fit m = k*(1/D) + b using last min(n_extrap, n) valid Ds via polyfit with cov.
     Returns (b, b_lo_clipped, b_hi) with b_lo >= 0.
     """
     Ds_f = np.array(Ds, dtype=float)
@@ -509,7 +524,7 @@ def compute_m_lin3_extrap_with_error(Ds, mlist):
         return float('nan'), float('nan'), float('nan')
     Dv = Ds_f[valid]; mv = m_f[valid]
     inv = 1.0 / Dv
-    n = min(3, len(Dv))
+    n = min(n_extrap, len(Dv))
     try:
         if n >= 3:
             coeffs, cov = np.polyfit(inv[-n:], mv[-n:], 1, cov=True)
@@ -630,7 +645,8 @@ def _draw_m_extrap(ax, all_data, ansatz_key):
         if ansatz_key not in all_data[j2]:
             continue
         v = all_data[j2][ansatz_key]
-        b, b_lo, b_hi = compute_m_lin3_extrap_with_error(v['Ds'], v['mneel_list'])
+        b, b_lo, b_hi = compute_m_lin3_extrap_with_error(
+            v['Ds'], v['mneel_list'], n_extrap=v.get('m_n_extrap', 3))
         if np.isnan(b):
             continue
         b_c = max(0.0, b)
