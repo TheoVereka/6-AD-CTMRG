@@ -37,6 +37,9 @@ D_ALLOWED = {4, 5, 6, 7, 8}
 # Special-case override: (j2, ansatz_key) → n points for the main extrap linear fit
 SPECIAL_MAG_N = {
     (0.25, 'neel_symmetrized'): 4,
+    (0.20, 'neel_symmetrized'): 4,
+    (0.23, 'neel_symmetrized'): 4,
+    (0.22, 'neel_symmetrized'): 4,
 }
 
 
