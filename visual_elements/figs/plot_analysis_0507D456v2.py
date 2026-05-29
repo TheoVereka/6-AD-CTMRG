@@ -26,11 +26,11 @@ from scipy.optimize import curve_fit
 # ──────────────────────────────────────────────────────────────────────────────
 DATA_DIR   = '/home/chye/6ADctmrg/data/0507core/D45678'
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-OUT_DIR    = os.path.join(SCRIPT_DIR, 'analysis_plots_0507D45678')
+OUT_DIR    = os.path.join(SCRIPT_DIR, 'analysis_plots_0507D45678910')
 os.makedirs(OUT_DIR, exist_ok=True)
 
 # Only these D values
-D_ALLOWED = {4, 5, 6, 7, 8}
+D_ALLOWED = {4, 5, 6, 7, 8, 9, 10}
 
 
 
