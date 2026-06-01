@@ -473,7 +473,7 @@ def main():
     # ── device + dtype ────────────────────────────────────────────────────────
     use_double = not args.single
     set_dtype(use_double, use_real=True)
-    if args.gpu and torch.cuda.is_available():
+    if torch.cuda.is_available():
         dev = torch.device('cuda')
         torch.set_num_threads(1)
         print(f"  Using GPU: {dev} ({torch.cuda.get_device_name(dev)})")

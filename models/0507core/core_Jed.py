@@ -3385,6 +3385,7 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
         6 * _D2 * _D2 * d_PHYS * d_PHYS * a.element_size()
         > torch.cuda.get_device_properties(DEVICE).total_memory * 0.15
     ) if _on_gpu else False
+    if not _on_gpu : _use_lazy = True
 
     if _CACHE_RHOS:
         _RHO_ACC.clear()
@@ -3592,6 +3593,7 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
         6 * _D2 * _D2 * d_PHYS * d_PHYS * a.element_size()
         > torch.cuda.get_device_properties(DEVICE).total_memory * 0.15
     ) if _on_gpu else False
+    if not _on_gpu : _use_lazy = True
 
     if _CACHE_RHOS:
         _RHO_ACC.clear()
