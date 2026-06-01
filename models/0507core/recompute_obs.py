@@ -22,7 +22,7 @@ matching main.py exactly.
 
 # ── threading env (must be before numpy/torch) ────────────────────────────────
 import os
-_N_CORES = 25
+_N_CORES = 9
 os.environ.setdefault("OMP_NUM_THREADS", str(_N_CORES))
 os.environ.setdefault("MKL_NUM_THREADS", str(_N_CORES))
 os.environ.setdefault("MKL_DYNAMIC", "FALSE")
