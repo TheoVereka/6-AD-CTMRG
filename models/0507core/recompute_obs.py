@@ -22,7 +22,7 @@ matching main.py exactly.
 
 # ── threading env (must be before numpy/torch) ────────────────────────────────
 import os
-_N_CORES = 9
+_N_CORES = 35
 os.environ.setdefault("OMP_NUM_THREADS", str(_N_CORES))
 os.environ.setdefault("MKL_NUM_THREADS", str(_N_CORES))
 os.environ.setdefault("MKL_DYNAMIC", "FALSE")
@@ -536,6 +536,7 @@ def main():
     # OBS pass: fresh CTMRG at chi
     # ══════════════════════════════════════════════════════════════════════════
     print(f"\n  Running CTMRG at chi={chi} …")
+    sys.stdout.flush()
     t0 = time.perf_counter()
     energy, correlations, magnetizations = _run_ctmrg_and_cache_rhos(
         params, cfg, D_bond, chi, Js, SdotS, d_PHYS)
