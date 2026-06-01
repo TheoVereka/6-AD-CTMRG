@@ -736,6 +736,66 @@ def plot_m_vs_j2_figures(all_data, out_dir):
     _save(fig3, os.path.join(out_dir, 'summary_m_vs_J2_fig3_combined.pdf'))
 
 
+# ── Part 4: ΔNN (rank3 − rank1) vs J2 ────────────────────────────────────────
+
+D_CORR_SHOW = [8, 9, 10]   # only these D values; skip if absent
+CORR_ANSATZ_SKIP = {'neel_symmetrized'}   # excluded ansatze
+
+D_CORR_COLORS = {8: '#fdae6b', 9: '#f16913', 10: '#8c2d04'}   # Oranges
+
+
+def _rank_mean(nn_grp_D, target_rank):
+    """Mean of all group means that were assigned target_rank for a given D entry."""
+    vals = [nn_grp_D['means'][g]
+            for g, r in enumerate(nn_grp_D['ranks']) if r == target_rank]
+    return float(np.mean(vals)) if vals else float('nan')
+
+
+def _draw_delta_nn(ax, all_data, ansatz_key):
+    """Plot (rank3 − rank1) NN bond mean vs J2 for D in D_CORR_SHOW."""
+    for D in D_CORR_SHOW:
+        j2s, deltas = [], []
+        for j2 in sorted(all_data.keys()):
+            if ansatz_key not in all_data[j2]:
+                continue
+            v = all_data[j2][ansatz_key]
+            if D not in v['nn_groups']:
+                continue
+            entry = v['nn_groups'][D]
+            r1 = _rank_mean(entry, 1)
+            r3 = _rank_mean(entry, 3)
+            if np.isnan(r1) or np.isnan(r3):
+                continue
+            j2s.append(j2)
+            deltas.append(r3 - r1)
+        if not j2s:
+            continue
+        ax.plot(j2s, deltas, 'o-', color=D_CORR_COLORS.get(D, 'tab:orange'),
+                ms=6, lw=1.4, label=f'D={D}')
+
+    ax.set_xlabel('J₂', fontsize=10)
+    ax.set_ylabel(r'$\Delta_\mathrm{NN}$ = rank3 $-$ rank1', fontsize=10)
+    ax.set_ylim(bottom=0.0)
+    ax.set_title(ANSATZ_LABEL.get(ansatz_key, ansatz_key), fontsize=11)
+    ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
+    ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.4g'))
+    ax.legend(fontsize=8)
+
+
+def plot_delta_nn_vs_j2(all_data, out_dir):
+    ansatze = [a for a in _all_ansatze(all_data) if a not in CORR_ANSATZ_SKIP]
+    if not ansatze:
+        print("  (no eligible ansatze for ΔNN plot)")
+        return
+    n = len(ansatze)
+    fig, axes = plt.subplots(1, n, figsize=(5 * n, 4.5), squeeze=False)
+    for i, a in enumerate(ansatze):
+        _draw_delta_nn(axes[0, i], all_data, a)
+    fig.suptitle(r'NN bond splitting $\Delta_\mathrm{NN}$ vs J₂  (D=8,9,10)', fontsize=13)
+    fig.tight_layout()
+    _save(fig, os.path.join(out_dir, 'summary_deltaNNN_vs_J2.pdf'))
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # MAIN
 # ──────────────────────────────────────────────────────────────────────────────
@@ -759,6 +819,9 @@ def main():
 
     print("Generating m vs J2 summary figures ...")
     plot_m_vs_j2_figures(all_data, OUT_DIR)
+
+    print("Generating ΔNN vs J2 figure ...")
+    plot_delta_nn_vs_j2(all_data, OUT_DIR)
 
     print(f"\nDone.  Figures in: {OUT_DIR}")
 
