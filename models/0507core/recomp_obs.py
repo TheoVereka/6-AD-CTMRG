@@ -321,6 +321,7 @@ def _save_observables_file(filepath, D_bond, chi,
                 fp.write(f"localmag_env{env_idx+1}_{s}  |m|={loc_mag:+.12e}\n")
             fp.write("\n")
     print(f"  │  Observables saved → {filepath}")
+    sys.stdout.flush()
 
 
 # ── print summary (identical format to main.py) ───────────────────────────────
@@ -350,6 +351,7 @@ def _print_observables_summary(tag, D_bond, chi,
     _sy_note = "  (=0 for real iPEPS)" if all(abs(v) < 1e-12 for v in all_my) else ""
     print(f"  │    <Sy>      ({len(all_my):>2d}): {_stat(all_my)}{_sy_note}")
     print(f"  │    <Sz>      ({len(all_mz):>2d}): {_stat(all_mz)}")
+    sys.stdout.flush()
 
     def _site_localmag(s_idx):
         vals = []
@@ -371,6 +373,7 @@ def _print_observables_summary(tag, D_bond, chi,
     print(f"  │    |m| mean±se/env:")
     print(f"  │      ACE  {' | '.join(ace_parts)}")
     print(f"  │      BDF  {' | '.join(bdf_parts)}")
+    sys.stdout.flush()
 
 
 # ── single CTMRG + rho-cache pass ─────────────────────────────────────────────
@@ -484,6 +487,7 @@ def main():
     set_device(dev)
     _core.set_rsvd_mode('neumann', neumann_terms=2, power_iters=None)
     _core.set_ctm_conv_mode('SVdifference', e_threshold=2e-8)
+    sys.stdout.flush()
 
     # ── load checkpoint ───────────────────────────────────────────────────────
     ckpt_path = os.path.abspath(args.file)
@@ -501,6 +505,7 @@ def main():
     cfg = ANSATZ_REGISTRY[ansatz_name]
     print(f"  Ansatz: {ansatz_name}  D={D_bond}  chi={chi}  "
           f"J1={args.J1}  J2={args.J2}")
+    sys.stdout.flush()
 
     # load tensors
     params = tuple(ckpt[k].to(dev) for k in cfg['ckpt_keys'])
@@ -531,10 +536,12 @@ def main():
     # OBS pass: fresh CTMRG at chi
     # ══════════════════════════════════════════════════════════════════════════
     print(f"\n  Running CTMRG at chi={chi} …")
+    sys.stdout.flush()
     t0 = time.perf_counter()
     energy, correlations, magnetizations = _run_ctmrg_and_cache_rhos(
         params, cfg, D_bond, chi, Js, SdotS, d_PHYS)
     print(f"  CTMRG done in {time.perf_counter()-t0:.1f}s")
+    sys.stdout.flush()
 
     obs_path = os.path.join(out_dir,
         f"D_{D_bond}_chi_{chi}_energy_magnetization_correlation.txt")
@@ -568,8 +575,9 @@ def main():
                   f"({'converged' if abs(_delta_E) <= 3e-5 else 'not converged'})")
         except Exception as exc:
             print(f"  [lookahead] failed: {exc}")
-
+            sys.stdout.flush()  
     print(f"\n  Done.  Output in {out_dir}")
+    sys.stdout.flush()
 
 
 if __name__ == '__main__':
