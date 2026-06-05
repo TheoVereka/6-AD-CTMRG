@@ -31,6 +31,7 @@ os.makedirs(OUT_DIR, exist_ok=True)
 
 # Only these D values
 D_ALLOWED = {4, 5, 6, 7, 8, 9, 10}
+#D_ALLOWED = {9}
 
 
 
