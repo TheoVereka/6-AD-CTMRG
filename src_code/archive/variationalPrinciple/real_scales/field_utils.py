@@ -1,3 +1,6 @@
+
+# old scaled-𝐾+,0 version, not the current full_grid version.
+
 """
 field_utils.py
 --------------

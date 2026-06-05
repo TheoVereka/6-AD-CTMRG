@@ -1,3 +1,6 @@
+
+# This has direct and FFT matvecs, but it is the older scaled-𝐾+,0 version, not the current full_grid version.
+
 """
 operator_L.py
 -------------

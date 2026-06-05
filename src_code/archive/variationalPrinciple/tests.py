@@ -18,8 +18,20 @@ All assertions should pass with default CG tolerance 1e-10.
 """
 
 import time
+import sys
+from pathlib import Path
 import numpy as np
 from solver import solve, solve_stage1, solve_stage2
+
+# Ensure legacy archived modules with absolute intra-folder imports are resolvable
+THIS_DIR = Path(__file__).resolve().parent
+if str(THIS_DIR) not in sys.path:
+    sys.path.insert(0, str(THIS_DIR))
+OLD_SCALE_DIR = THIS_DIR / "real_scales"
+if str(OLD_SCALE_DIR) not in sys.path:
+    sys.path.insert(0, str(OLD_SCALE_DIR))
+
+from solver_real_archive import solve_variational
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -53,6 +65,13 @@ def _norm2(A: dict, keys: list) -> float:
 def _diff_norm2(A: dict, B: dict, keys: list) -> float:
     """||A - B||²"""
     return sum(np.linalg.norm(A[k] - B[k], 'fro')**2 for k in keys)
+
+
+def _rel_diff(A: dict, B: dict, keys: list) -> float:
+    """Relative Frobenius error: ||A-B|| / ||A|| over all mode matrices."""
+    num = _diff_norm2(A, B, keys)**0.5
+    den = _norm2(A, keys)**0.5
+    return float(num / max(den, 1e-30))
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -184,10 +203,68 @@ def test_benchmark() -> None:
 
 # ──────────────────────────────────────────────────────────────────────────────
 
+def test_complex_vs_real_archive() -> None:
+    """
+    Compare current complex full-grid CG solver vs archived reduced-real solver
+    on two deterministic problems.
+
+    They solve (almost) the same projected problem, but the archived solver uses
+    a regularized normal equation (A + reg I)phi = b.  Therefore we expect very
+    close, not bitwise-identical, X.
+    """
+    print("=" * 60)
+    print("Test 6: current complex solver vs archived real solver")
+
+    problems = [
+        (2, 2, 2, np.array([1.0, np.sqrt(2.0)]), 123),
+        (3, 3, 2, np.array([1.0, np.sqrt(3.0)]), 77),
+    ]
+
+    # Strict but realistic tolerance for cross-implementation agreement
+    x_rel_tol = 1e-6
+
+    for idx, (K1, K2, d, omega, seed) in enumerate(problems, 1):
+        H, full_grid = _make_H(K1, K2, d, seed=seed)
+
+        r_complex = solve(H, K1, K2, d, omega,
+                          tol=1e-10, maxiter=10_000, verbose=False)
+
+        r_real = solve_variational(
+            H, K1, K2, d, omega,
+            tol=1e-10,
+            maxiter=10_000,
+            reg=1e-12,
+            fft_threshold=25,
+            force_direct=False,
+            force_fft=False,
+            verbose=False,
+        )
+
+        x_rel = _rel_diff(r_complex.X, r_real.X_unscaled, full_grid)
+
+        print(f"  problem {idx}: K=({K1},{K2}), d={d}, seed={seed}")
+        print(f"    complex: conv={r_complex.converged}  it={r_complex.n_iter:4d}  "
+              f"cv={r_complex.constraint_violation:.2e}  res={r_complex.residual:.2e}")
+        print(f"    real   : conv={r_real.converged}  it={r_real.n_iter:4d}  "
+              f"cv={r_real.constraint_violation:.2e}  res={r_real.residual:.2e}")
+        print(f"    rel ||X_complex - X_real|| / ||X_complex|| = {x_rel:.3e}")
+
+        assert r_complex.converged, "complex solver did not converge"
+        assert r_real.converged, "archived real solver did not converge"
+        assert x_rel < x_rel_tol, (
+            f"solver mismatch too large on problem {idx}: rel_diff={x_rel:.3e}"
+        )
+
+    print("  PASSED\n")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+
 if __name__ == "__main__":
     test_constraint()
     test_pythagorean()
     test_direct_vs_fft()
     test_trivial()
     test_benchmark()
+    test_complex_vs_real_archive()
     print("All tests passed.")
