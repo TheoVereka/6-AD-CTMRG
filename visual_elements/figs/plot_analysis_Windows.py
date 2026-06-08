@@ -24,7 +24,7 @@ from scipy.optimize import curve_fit
 # ──────────────────────────────────────────────────────────────────────────────
 # PATHS
 # ──────────────────────────────────────────────────────────────────────────────
-DATA_DIR   = r'D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\0507core\D45678'
+DATA_DIR   = r'C:\Users\TestAccount\Downloads\D45678'
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR    = os.path.join(SCRIPT_DIR, 'analysis_plots_0507D45678910')
 os.makedirs(OUT_DIR, exist_ok=True)
