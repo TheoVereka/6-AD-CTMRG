@@ -30,7 +30,7 @@ OUT_DIR    = os.path.join(SCRIPT_DIR, 'analysis_plots_0507D45678910')
 os.makedirs(OUT_DIR, exist_ok=True)
 
 # Only these D values
-D_ALLOWED = {4, 5, 6, 7, 8, 9, 10}
+D_ALLOWED = {4, 5, 6, 7, 8, 9,} #10}
 #D_ALLOWED = {9}
 
 
@@ -812,6 +812,84 @@ def plot_delta_nn_vs_j2(all_data, out_dir):
     _save(fig, os.path.join(out_dir, 'summary_deltaNNN_vs_J2.pdf'))
 
 
+# ──────────────────────────────────────────────────────────────────
+# Extra: m_Néel extrapolated vs J2 for Néel ansatz, J2 ∈ [0.20, 0.28]
+# ──────────────────────────────────────────────────────────────────
+def plot_m_vs_j2_neel_020_028(all_data, out_dir):
+    # Filter J2 values in [0.20, 0.28]
+    j2s_subset = sorted([j2 for j2 in all_data if 0.20 <= j2 <= 0.28 and 'neel_symmetrized' in all_data[j2]])
+    if not j2s_subset:
+        print("No Néel data in the range 0.20 ≤ J2 ≤ 0.28")
+        return
+
+    # Temporary dict containing only the relevant J2 + ansatz entries
+    subset = {j2: {'neel_symmetrized': all_data[j2]['neel_symmetrized']} for j2 in j2s_subset}
+
+    fig, ax = plt.subplots(figsize=(4, 3))
+    _draw_m_extrap(ax, subset, 'neel_symmetrized')   # exactly the same drawing as in the summary figure
+
+    ax.set_xlim(0.195, 0.285)          # tight x‑limits around the requested interval
+    ax.set_ylim(bottom=0.0)            # as in the original, bottom at zero
+    ax.set_title(r'm$_\mathrm{N\acute{e}el}$ extrapolated (Néel, $0.20 \leq J_2 \leq 0.28$)', fontsize=12)
+    fig.tight_layout()
+
+    fpath = os.path.join(out_dir, 'm_neel_extrap_J2_020_028.pdf')
+    fig.savefig(fpath, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"  Saved: {os.path.relpath(fpath)}")
+
+
+
+# ─────────────────────────────────────────────────────────────────
+# Extra: ΔNN (rank3 − rank1) for 2C3 (D=8) vs C6Yπ (D=9)
+# ─────────────────────────────────────────────────────────────────
+def plot_delta_2C3_D8_vs_C6Ypi_D9(all_data, out_dir):
+    ansatz_D_spec = [
+        ('2tensor_twoC3', 8,  '#fdae6b', '^', '2 C3 (D=8)'),      # light orange, triangle
+        ('1tensor_C6Ypi', 9,  '#d94801', 'H', 'C6Yπ (D=9)'),      # dark orange, hexagon
+    ]
+
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    any_data = False
+
+    for ansatz_key, D_target, color, marker, label in ansatz_D_spec:
+        j2s, deltas = [], []
+        for j2 in sorted(all_data.keys()):
+            if ansatz_key not in all_data[j2]:
+                continue
+            v = all_data[j2][ansatz_key]
+            if D_target not in v['nn_groups']:
+                continue
+            entry = v['nn_groups'][D_target]
+            r1 = _rank_mean(entry, 1)
+            r3 = _rank_mean(entry, 3)
+            if np.isnan(r1) or np.isnan(r3):
+                continue
+            j2s.append(j2)
+            deltas.append(r3 - r1)
+        if not j2s:
+            continue
+        any_data = True
+        ax.plot(j2s, deltas, marker=marker, linestyle='-', color=color,
+                ms=8, lw=1.4, label=label)
+
+    if not any_data:
+        print("  No data for the requested 2C3/D=8 or C6Yπ/D=9 ΔNN plot.")
+        plt.close(fig)
+        return
+
+    ax.set_xlabel('J₂', fontsize=12)
+    ax.set_ylabel(r'$\Delta_\mathrm{NN}$ = rank3 $-$ rank1', fontsize=12)
+    ax.set_title(r'NN bond splitting: 2C3 (D=8) vs C6Y$\pi$ (D=9)', fontsize=12)
+    ax.set_ylim(bottom=0.0)
+    ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
+    ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.4g'))
+    ax.legend(fontsize=9)
+
+    fig.tight_layout()
+    fpath = os.path.join(out_dir, 'delta_NN_2C3_D8_vs_C6Ypi_D9.pdf')
+    _save(fig, fpath)
+
 # ──────────────────────────────────────────────────────────────────────────────
 # MAIN
 # ──────────────────────────────────────────────────────────────────────────────
@@ -839,7 +917,10 @@ def main():
     print("Generating ΔNN vs J2 figure ...")
     plot_delta_nn_vs_j2(all_data, OUT_DIR)
 
+    plot_m_vs_j2_neel_020_028(all_data, OUT_DIR)
+    plot_delta_2C3_D8_vs_C6Ypi_D9(all_data, OUT_DIR)
     print(f"\nDone.  Figures in: {OUT_DIR}")
+
 
 
 if __name__ == '__main__':
