@@ -24,7 +24,7 @@ from scipy.optimize import curve_fit
 # ──────────────────────────────────────────────────────────────────────────────
 # PATHS
 # ──────────────────────────────────────────────────────────────────────────────
-DATA_DIR   = r'C:\Users\TestAccount\Downloads\D45678'
+DATA_DIR   = r'/home/chye/6ADctmrg/data/0507core/D45678'
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR    = os.path.join(SCRIPT_DIR, 'analysis_plots_0507D45678910')
 os.makedirs(OUT_DIR, exist_ok=True)
@@ -1008,6 +1008,104 @@ def plot_m_extrap_and_delta_combined(all_data, out_dir):
     fpath = os.path.join(out_dir, 'combined_m_extrap_delta_020_032.pdf')
     _save(fig, fpath)
 
+def plot_energy_Neel_c6_88(all_data, out_dir):
+    ansatz_D_spec = [
+        ('neel_symmetrized', 8,  "#6b40ee", '^', 'Néel (D=8)'),
+        ('1tensor_C6Ypi', 8,  '#d94801', 'H', 'C6Yπ (D=8)'),
+    ]
+
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    any_data = False
+
+    for ansatz_key, D_target, color, marker, label in ansatz_D_spec:
+        j2s, energies = [], []
+        for j2 in sorted(all_data.keys()):
+            if ansatz_key not in all_data[j2]:
+                continue
+            v = all_data[j2][ansatz_key]
+            # v['Ds'] is a sorted list of D values; find the index of D_target
+            if D_target not in v['Ds']:
+                continue
+            idx = v['Ds'].index(D_target)
+            energy_val = v['energy_per_site'][idx]
+            j2s.append(j2)
+            energies.append(energy_val)
+
+        if not j2s:
+            continue
+        any_data = True
+        ax.plot(j2s, energies, marker=marker, linestyle='-', color=color,
+                ms=8, lw=1.4, label=label)
+
+    if not any_data:
+        print("  No data for the requested Neel/D=8 or C6Yπ/D=8 energy plot.")
+        plt.close(fig)
+        return
+
+    ax.set_xlabel('J₂', fontsize=12)
+    ax.set_ylabel('Energy per site', fontsize=12)
+    ax.set_title(r'Energy: Néel (D=8) vs C6Y$\pi$ (D=8)', fontsize=12)
+    # Remove the fixed bottom=0; energy is negative, let matplotlib auto-scale
+    # ax.set_ylim(bottom=0.0)   # <-- not appropriate for energy
+    ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
+    ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
+    ax.legend(fontsize=9)
+
+    fig.tight_layout()
+    fpath = os.path.join(out_dir, 'energy_Neel_D8_vs_C6Ypi_D8.pdf')
+    _save(fig, fpath)
+
+def plot_energy_extrap_Neel_C6(all_data, out_dir):
+    """Extrapolated energy (E_best) with error bars for Néel and C6Yπ."""
+    ansatz_keys = [
+        ('neel_symmetrized', '#6b40ee', '^', 'Néel'),
+        ('1tensor_C6Ypi', '#d94801', 'H', 'C6Yπ'),
+    ]
+
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    any_data = False
+
+    for ansatz_key, color, marker, label in ansatz_keys:
+        j2s, centers, uppers, lowers = [], [], [], []
+        for j2 in sorted(all_data.keys()):
+            if ansatz_key not in all_data[j2]:
+                continue
+            ex = all_data[j2][ansatz_key]['extrap']
+            E_center = ex['E_exp'] if ex['E_exp'] is not None else ex['E_lin3']
+            E_upper  = ex['E_horiz']
+            E_lower  = ex['E_lin3']
+            # Skip if any essential quantity is missing
+            if E_center is None or E_upper is None or E_lower is None:
+                continue
+            j2s.append(j2)
+            centers.append(E_center)
+            uppers.append(max(0.0, E_upper - E_center))
+            lowers.append(max(0.0, E_center - E_lower))
+
+        if not j2s:
+            continue
+        any_data = True
+        ax.errorbar(j2s, centers, yerr=[lowers, uppers],
+                    fmt='-', marker=marker, color=color,
+                    ms=8, lw=1.4, capsize=4, elinewidth=1.1,
+                    markeredgewidth=0.5, markeredgecolor='k',
+                    label=label)
+
+    if not any_data:
+        print("  No extrapolated energy data for Néel or C6Yπ.")
+        plt.close(fig)
+        return
+
+    ax.set_xlabel('J₂', fontsize=12)
+    ax.set_ylabel('Extrapolated energy per site', fontsize=12)
+    ax.set_title('Energy extrapolation: Néel vs C6Yπ', fontsize=12)
+    ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
+    ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
+    ax.legend(fontsize=9)
+
+    fig.tight_layout()
+    fpath = os.path.join(out_dir, 'energy_extrap_Neel_vs_C6Ypi.pdf')
+    _save(fig, fpath)
 # ──────────────────────────────────────────────────────────────────────────────
 # MAIN
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1018,6 +1116,9 @@ def main():
         print("No data found — check DATA_DIR.")
         return
 
+    #plot_energy_Neel_c6(all_data, OUT_DIR)
+    plot_energy_Neel_c6_88(all_data, OUT_DIR)
+    plot_energy_extrap_Neel_C6(all_data, OUT_DIR)
     print(f"\nFound {len(all_data)} J2 values: {sorted(all_data.keys())}")
     print(f"Generating {len(all_data)} per-J2 figures ...\n")
 
