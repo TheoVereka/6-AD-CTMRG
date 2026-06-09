@@ -24,14 +24,14 @@ from scipy.optimize import curve_fit
 # ──────────────────────────────────────────────────────────────────────────────
 # PATHS
 # ──────────────────────────────────────────────────────────────────────────────
-DATA_DIR   = '/home/chye/6ADctmrg/data/0507core/D45678'
+DATA_DIR   = r'/home/chye/6ADctmrg/data/0507core/D45678'
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR    = os.path.join(SCRIPT_DIR, 'analysis_plots_0507D45678910')
 os.makedirs(OUT_DIR, exist_ok=True)
 
 # Only these D values
-#D_ALLOWED = {4, 5, 6, 7, 8, 9 }#10}
-D_ALLOWED = {9}
+D_ALLOWED = {4, 5, 6, 7, 8, 9,} #10}
+#D_ALLOWED = {9}
 
 
 
@@ -132,13 +132,28 @@ def discover_folders(data_dir):
 # ──────────────────────────────────────────────────────────────────────────────
 # FILE PARSING
 # ──────────────────────────────────────────────────────────────────────────────
-def parse_plain_file(fpath):
+def parse_plain_file_UBUNTU(fpath):
     txt     = open(fpath).read()
     energy  = float(RE_ENERGY.search(txt).group(1))
     corr    = {}
     for m in RE_CORR.finditer(txt):
         corr[(int(m.group(1)), m.group(2))] = float(m.group(3))
     mag     = {}
+    for m in RE_MAG.finditer(txt):
+        mag[(int(m.group(1)), m.group(2))] = {
+            'Sx': float(m.group(3)), 'Sy': float(m.group(4)), 'Sz': float(m.group(5)),
+        }
+    return {'energy_per_site': energy, 'corr': corr, 'mag': mag}
+
+def parse_plain_file(fpath):
+    with open(fpath, encoding='utf-8') as f:
+        txt = f.read()
+
+    energy = float(RE_ENERGY.search(txt).group(1))
+    corr = {}
+    for m in RE_CORR.finditer(txt):
+        corr[(int(m.group(1)), m.group(2))] = float(m.group(3))
+    mag = {}
     for m in RE_MAG.finditer(txt):
         mag[(int(m.group(1)), m.group(2))] = {
             'Sx': float(m.group(3)), 'Sy': float(m.group(4)), 'Sz': float(m.group(5)),
@@ -229,17 +244,30 @@ def _exp_model(D, E0, c, Dchar):
 def compute_energy_extrap(Ds, eps):
     Ds_f  = np.array(Ds, dtype=float)
     eps_f = np.array(eps, dtype=float)
-    inv   = 1.0 / Ds_f
+    n     = len(Ds_f)
 
+    if n == 1:
+        E0 = float(eps_f[0])
+        return {
+            'E_horiz':   E0,
+            'E_lin3':    None,          # no linear extrapolation possible
+            'E_exp':     None,          # exponential fit disabled
+            'E_best':    E0,
+            'exp_popt':  None,
+            'poly_lin3': None,
+        }
+
+    inv   = 1.0 / Ds_f
     E_horiz = float(eps_f[-1])
 
-    n3 = min(3, len(Ds_f))
+    # linear fit using last min(3, n) points – requires n>=2
+    n3 = min(3, n)
     c3 = np.polyfit(inv[-n3:], eps_f[-n3:], 1)
     E_lin3 = float(c3[1])
 
     E_exp    = None
     exp_popt = None
-    if len(Ds_f) >= 3:
+    if n >= 3:               # exponential fit needs at least 3 points
         try:
             p0 = [eps_f[-1] - 0.1, 0.1, float(Ds_f.mean())]
             popt, _ = curve_fit(_exp_model, Ds_f, eps_f, p0=p0, maxfev=5000)
@@ -369,14 +397,17 @@ def plot_col_energy(ax, v, show_xlabel):
                label=f'E(D={int(Ds[-1])})')
 
     n3 = min(3, len(Ds))
-    ax.plot(inv_line, np.polyval(ex['poly_lin3'], inv_line),
-            color='tab:orange', ls='--', lw=1.0, alpha=0.85,
-            label=f'lin({n3}D)')
+    if ex['poly_lin3'] is not None:                # draw only if lin3 was computed
+        ax.plot(inv_line, np.polyval(ex['poly_lin3'], inv_line),
+                color='tab:orange', ls='--', lw=1.0, alpha=0.85,
+                label=f'lin({n3}D)')
 
-    if ex['exp_popt'] is not None:
+    if ex['exp_popt'] is not None:                # draw only if exp fit succeeded
         D_line = np.where(inv_line > 1e-12, 1.0 / np.maximum(inv_line, 1e-12), 1e12)
         ax.plot(inv_line, _exp_model(D_line, *ex['exp_popt']),
                 color='tab:green', ls='-.', lw=1.0, alpha=0.85, label='exp fit')
+
+# ... (star marker at E_best remains – always drawn)
 
     ax.plot(0, ex['E_best'], '*', color=col, ms=13, zorder=7,
             markeredgewidth=0.5, markeredgecolor='k',
@@ -590,18 +621,22 @@ def _draw_E_raw(ax, all_data, ansatz_key):
 
 
 def _draw_E_extrap(ax, all_data, ansatz_key):
-    """Asymmetric errorbars: center=E_exp (or E_lin3), upper=E_horiz, lower=E_lin3."""
+    """Asymmetric errorbars: center=E_exp (or E_lin3), upper=E_horiz, lower=E_lin3.
+    Skip points where any of these values is None (i.e. insufficient D data)."""
     j2s, centers, uppers, lowers = [], [], [], []
     for j2 in sorted(all_data.keys()):
         if ansatz_key not in all_data[j2]:
             continue
         ex       = all_data[j2][ansatz_key]['extrap']
         E_center = ex['E_exp'] if ex['E_exp'] is not None else ex['E_lin3']
-        E_upper  = ex['E_horiz']   # last D (less negative)
-        E_lower  = ex['E_lin3']    # linear extrap (more negative)
+        E_upper  = ex['E_horiz']
+        E_lower  = ex['E_lin3']
+        # Skip if any essential quantity is missing (e.g. only one D)
+        if E_center is None or E_upper is None or E_lower is None:
+            continue
         j2s.append(j2)
         centers.append(E_center)
-        uppers.append(max(0.0, E_upper  - E_center))
+        uppers.append(max(0.0, E_upper - E_center))
         lowers.append(max(0.0, E_center - E_lower))
     if not j2s:
         return
@@ -797,6 +832,280 @@ def plot_delta_nn_vs_j2(all_data, out_dir):
     _save(fig, os.path.join(out_dir, 'summary_deltaNNN_vs_J2.pdf'))
 
 
+# ──────────────────────────────────────────────────────────────────
+# Extra: m_Néel extrapolated vs J2 for Néel ansatz, J2 ∈ [0.20, 0.28]
+# ──────────────────────────────────────────────────────────────────
+def plot_m_vs_j2_neel_020_028(all_data, out_dir):
+    # Filter J2 values in [0.20, 0.28]
+    j2s_subset = sorted([j2 for j2 in all_data if 0.20 <= j2 <= 0.28 and 'neel_symmetrized' in all_data[j2]])
+    if not j2s_subset:
+        print("No Néel data in the range 0.20 ≤ J2 ≤ 0.28")
+        return
+
+    # Temporary dict containing only the relevant J2 + ansatz entries
+    subset = {j2: {'neel_symmetrized': all_data[j2]['neel_symmetrized']} for j2 in j2s_subset}
+
+    fig, ax = plt.subplots(figsize=(4, 3))
+    _draw_m_extrap(ax, subset, 'neel_symmetrized')   # exactly the same drawing as in the summary figure
+
+    ax.set_xlim(0.195, 0.285)          # tight x‑limits around the requested interval
+    ax.set_ylim(bottom=0.0)            # as in the original, bottom at zero
+    ax.set_title(r'm$_\mathrm{N\acute{e}el}$ extrapolated (Néel, $0.20 \leq J_2 \leq 0.28$)', fontsize=12)
+    fig.tight_layout()
+
+    fpath = os.path.join(out_dir, 'm_neel_extrap_J2_020_028.pdf')
+    fig.savefig(fpath, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"  Saved: {os.path.relpath(fpath)}")
+
+
+
+# ─────────────────────────────────────────────────────────────────
+# Extra: ΔNN (rank3 − rank1) for 2C3 (D=8) vs C6Yπ (D=9)
+# ─────────────────────────────────────────────────────────────────
+def plot_delta_2C3_D8_vs_C6Ypi_D9(all_data, out_dir):
+    ansatz_D_spec = [
+        ('2tensor_twoC3', 8,  '#fdae6b', '^', '2 C3 (D=8)'),      # light orange, triangle
+        ('1tensor_C6Ypi', 9,  '#d94801', 'H', 'C6Yπ (D=9)'),      # dark orange, hexagon
+    ]
+
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    any_data = False
+
+    for ansatz_key, D_target, color, marker, label in ansatz_D_spec:
+        j2s, deltas = [], []
+        for j2 in sorted(all_data.keys()):
+            if ansatz_key not in all_data[j2]:
+                continue
+            v = all_data[j2][ansatz_key]
+            if D_target not in v['nn_groups']:
+                continue
+            entry = v['nn_groups'][D_target]
+            r1 = _rank_mean(entry, 1)
+            r3 = _rank_mean(entry, 3)
+            if np.isnan(r1) or np.isnan(r3):
+                continue
+            j2s.append(j2)
+            deltas.append(r3 - r1)
+        if not j2s:
+            continue
+        any_data = True
+        ax.plot(j2s, deltas, marker=marker, linestyle='-', color=color,
+                ms=8, lw=1.4, label=label)
+
+    if not any_data:
+        print("  No data for the requested 2C3/D=8 or C6Yπ/D=9 ΔNN plot.")
+        plt.close(fig)
+        return
+
+    ax.set_xlabel('J₂', fontsize=12)
+    ax.set_ylabel(r'$\Delta_\mathrm{NN}$ = rank3 $-$ rank1', fontsize=12)
+    ax.set_title(r'NN bond splitting: 2C3 (D=8) vs C6Y$\pi$ (D=9)', fontsize=12)
+    ax.set_ylim(bottom=0.0)
+    ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
+    ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.4g'))
+    ax.legend(fontsize=9)
+
+    fig.tight_layout()
+    fpath = os.path.join(out_dir, 'delta_NN_2C3_D8_vs_C6Ypi_D9.pdf')
+    _save(fig, fpath)
+
+def plot_m_extrap_and_delta_combined(all_data, out_dir):
+    ansatz_neel = 'neel_symmetrized'
+    ansatz_2c3  = '2tensor_twoC3'
+    ansatz_c6y  = '1tensor_C6Ypi'
+
+    # --- 1. Néel magnetization extrapolation (left axis) ---
+    j2s_subset = sorted([j2 for j2 in all_data
+                         if 0.20 <= j2 <= 0.32 and ansatz_neel in all_data[j2]])
+    if not j2s_subset:
+        print("No Néel data in [0.20,0.32] for combined plot.")
+        return
+
+    j2_m, m_c, m_lo, m_hi = [], [], [], []
+    for j2 in j2s_subset:
+        v = all_data[j2][ansatz_neel]
+        b, b_lo, b_hi = compute_m_lin3_extrap_with_error(
+            v['Ds'], v['mneel_list'], n_extrap=v.get('m_n_extrap', 3))
+        if np.isnan(b):
+            continue
+        b_c = max(0.0, b)
+        j2_m.append(j2)
+        m_c.append(b_c)
+        m_lo.append(b_c - b_lo)   # b_lo already ≥0
+        m_hi.append(b_hi - b_c)
+
+    # --- 2. ΔNN data (right axis) ---
+    delta_2c3_x, delta_2c3_y = [], []
+    delta_c6y_x, delta_c6y_y = [], []
+    for j2 in sorted(all_data.keys()):
+        if not (0.20 <= j2 <= 0.32):
+            continue
+        if ansatz_2c3 in all_data[j2]:
+            v = all_data[j2][ansatz_2c3]
+            if 8 in v['nn_groups']:
+                entry = v['nn_groups'][8]
+                r1 = _rank_mean(entry, 1)
+                r3 = _rank_mean(entry, 3)
+                if not np.isnan(r1) and not np.isnan(r3):
+                    delta_2c3_x.append(j2)
+                    delta_2c3_y.append(r3 - r1)
+        if ansatz_c6y in all_data[j2]:
+            v = all_data[j2][ansatz_c6y]
+            if 9 in v['nn_groups']:
+                entry = v['nn_groups'][9]
+                r1 = _rank_mean(entry, 1)
+                r3 = _rank_mean(entry, 3)
+                if not np.isnan(r1) and not np.isnan(r3):
+                    delta_c6y_x.append(j2)
+                    delta_c6y_y.append(r3 - r1)
+
+    # --- 3. Create figure with twin axes ---
+    fig, ax1 = plt.subplots(figsize=(7, 5))
+
+    # Left axis: magnetization
+    ax1.errorbar(j2_m, m_c, yerr=[m_lo, m_hi],
+                 fmt='*-', color='#9467bd', ms=10, lw=1.4,
+                 capsize=4, elinewidth=1.1,
+                 label=r'm$_\mathrm{N\acute{e}el}$ extrap (lin3)')
+    ax1.set_xlabel('J₂', fontsize=12)
+    ax1.set_ylabel(r'm$_\mathrm{N\acute{e}el}$', fontsize=12, color='#9467bd')
+    ax1.tick_params(axis='y', labelcolor='#9467bd')
+
+    # Right axis: ΔNN
+    ax2 = ax1.twinx()
+    ax2.plot(delta_2c3_x, delta_2c3_y, marker='^', linestyle='-',
+             color='#fdae6b', ms=8, lw=1.4, label='2 C3 D=8')
+    ax2.plot(delta_c6y_x, delta_c6y_y, marker='H', linestyle='-',
+             color='#d94801', ms=8, lw=1.4, label='C6Yπ D=9')
+    ax2.set_ylabel(r'$\Delta_\mathrm{NN}$ (rank3 $-$ rank1)', fontsize=12, color='#d94801')
+    ax2.tick_params(axis='y', labelcolor='#d94801')
+
+    # --- 4. Adjust both y-limits: bottom = 0, top = max(data) * 1.1 ---
+    # Left axis top
+    if m_hi:
+        left_max = max(c + u for c, u in zip(m_c, m_hi))
+    else:
+        left_max = max(m_c) if m_c else 0.0
+    ax1.set_ylim(0, left_max * 1.1 if left_max > 0 else 0.1)
+
+    # Right axis top
+    all_delta = delta_2c3_y + delta_c6y_y
+    if all_delta:
+        right_max = max(all_delta)
+    else:
+        right_max = 0.0
+    ax2.set_ylim(0, right_max * 1.1 if right_max > 0 else 0.1)
+
+    # --- 5. Combined legend ---
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc='lower left', fontsize=8)
+
+    ax1.set_title(r'Néel m$_\mathrm{N\acute{e}el}$ extrap & NN splitting (0.20 ≤ J₂ ≤ 0.32)', fontsize=12)
+    fig.tight_layout()
+
+    fpath = os.path.join(out_dir, 'combined_m_extrap_delta_020_032.pdf')
+    _save(fig, fpath)
+
+def plot_energy_Neel_c6_88(all_data, out_dir):
+    ansatz_D_spec = [
+        ('neel_symmetrized', 8,  "#6b40ee", '^', 'Néel (D=8)'),
+        ('1tensor_C6Ypi', 8,  '#d94801', 'H', 'C6Yπ (D=8)'),
+    ]
+
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    any_data = False
+
+    for ansatz_key, D_target, color, marker, label in ansatz_D_spec:
+        j2s, energies = [], []
+        for j2 in sorted(all_data.keys()):
+            if ansatz_key not in all_data[j2]:
+                continue
+            v = all_data[j2][ansatz_key]
+            # v['Ds'] is a sorted list of D values; find the index of D_target
+            if D_target not in v['Ds']:
+                continue
+            idx = v['Ds'].index(D_target)
+            energy_val = v['energy_per_site'][idx]
+            j2s.append(j2)
+            energies.append(energy_val)
+
+        if not j2s:
+            continue
+        any_data = True
+        ax.plot(j2s, energies, marker=marker, linestyle='-', color=color,
+                ms=8, lw=1.4, label=label)
+
+    if not any_data:
+        print("  No data for the requested Neel/D=8 or C6Yπ/D=8 energy plot.")
+        plt.close(fig)
+        return
+
+    ax.set_xlabel('J₂', fontsize=12)
+    ax.set_ylabel('Energy per site', fontsize=12)
+    ax.set_title(r'Energy: Néel (D=8) vs C6Y$\pi$ (D=8)', fontsize=12)
+    # Remove the fixed bottom=0; energy is negative, let matplotlib auto-scale
+    # ax.set_ylim(bottom=0.0)   # <-- not appropriate for energy
+    ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
+    ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
+    ax.legend(fontsize=9)
+
+    fig.tight_layout()
+    fpath = os.path.join(out_dir, 'energy_Neel_D8_vs_C6Ypi_D8.pdf')
+    _save(fig, fpath)
+
+def plot_energy_extrap_Neel_C6(all_data, out_dir):
+    """Extrapolated energy (E_best) with error bars for Néel and C6Yπ."""
+    ansatz_keys = [
+        ('neel_symmetrized', '#6b40ee', '^', 'Néel'),
+        ('1tensor_C6Ypi', '#d94801', 'H', 'C6Yπ'),
+    ]
+
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    any_data = False
+
+    for ansatz_key, color, marker, label in ansatz_keys:
+        j2s, centers, uppers, lowers = [], [], [], []
+        for j2 in sorted(all_data.keys()):
+            if ansatz_key not in all_data[j2]:
+                continue
+            ex = all_data[j2][ansatz_key]['extrap']
+            E_center = ex['E_exp'] if ex['E_exp'] is not None else ex['E_lin3']
+            E_upper  = ex['E_horiz']
+            E_lower  = ex['E_lin3']
+            # Skip if any essential quantity is missing
+            if E_center is None or E_upper is None or E_lower is None:
+                continue
+            j2s.append(j2)
+            centers.append(E_center)
+            uppers.append(max(0.0, E_upper - E_center))
+            lowers.append(max(0.0, E_center - E_lower))
+
+        if not j2s:
+            continue
+        any_data = True
+        ax.errorbar(j2s, centers, yerr=[lowers, uppers],
+                    fmt='-', marker=marker, color=color,
+                    ms=8, lw=1.4, capsize=4, elinewidth=1.1,
+                    markeredgewidth=0.5, markeredgecolor='k',
+                    label=label)
+
+    if not any_data:
+        print("  No extrapolated energy data for Néel or C6Yπ.")
+        plt.close(fig)
+        return
+
+    ax.set_xlabel('J₂', fontsize=12)
+    ax.set_ylabel('Extrapolated energy per site', fontsize=12)
+    ax.set_title('Energy extrapolation: Néel vs C6Yπ', fontsize=12)
+    ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
+    ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
+    ax.legend(fontsize=9)
+
+    fig.tight_layout()
+    fpath = os.path.join(out_dir, 'energy_extrap_Neel_vs_C6Ypi.pdf')
+    _save(fig, fpath)
 # ──────────────────────────────────────────────────────────────────────────────
 # MAIN
 # ──────────────────────────────────────────────────────────────────────────────
@@ -807,6 +1116,9 @@ def main():
         print("No data found — check DATA_DIR.")
         return
 
+    #plot_energy_Neel_c6(all_data, OUT_DIR)
+    plot_energy_Neel_c6_88(all_data, OUT_DIR)
+    plot_energy_extrap_Neel_C6(all_data, OUT_DIR)
     print(f"\nFound {len(all_data)} J2 values: {sorted(all_data.keys())}")
     print(f"Generating {len(all_data)} per-J2 figures ...\n")
 
@@ -824,7 +1136,11 @@ def main():
     print("Generating ΔNN vs J2 figure ...")
     plot_delta_nn_vs_j2(all_data, OUT_DIR)
 
+    plot_m_vs_j2_neel_020_028(all_data, OUT_DIR)
+    plot_delta_2C3_D8_vs_C6Ypi_D9(all_data, OUT_DIR)
+    plot_m_extrap_and_delta_combined(all_data, OUT_DIR)
     print(f"\nDone.  Figures in: {OUT_DIR}")
+
 
 
 if __name__ == '__main__':
