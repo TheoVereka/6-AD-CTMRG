@@ -4,8 +4,8 @@ Definitive Benchmark: Double-Precision vs Arbitrary-Precision Damped LSMR
 """
 import argparse
 import numpy as np
-import time
-from solver import solve_d_lsmr, solve_d_lsmr_arbitraryPrecision, solve_eigreg
+#import time
+from solver import solve_eigreg
 import sys
 
 GOLDEN_RATIO = (1 + np.sqrt(5)) / 2
@@ -251,13 +251,13 @@ def _AE_theta_nonAbel(
 
 
 
+
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--K', type=int, default=15, help='truncation radius')
-    parser.add_argument('--prec', type=int, default=20, help='mp precision digits')
-    parser.add_argument('--lam', type=float, default=1e-6, help='Tikhonov damping')
-    parser.add_argument('--tol', type=float, default=1e-10)
-    parser.add_argument('--maxiter', type=int, default=10_000)
+    parser.add_argument('--K', type=int, default=5, help='truncation harmonics')
+    parser.add_argument('--lam', type=float, default=1e-6, help='spectral regularization strength')
     args = parser.parse_args()
 
     K1, K2 = args.K, args.K
