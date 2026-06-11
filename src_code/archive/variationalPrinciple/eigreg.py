@@ -1,7 +1,4 @@
 #!/usr/bin/env python
-"""
-Definitive Benchmark: Double-Precision vs Arbitrary-Precision Damped LSMR
-"""
 import argparse
 import numpy as np
 #import time
