@@ -245,30 +245,22 @@ def load_solver_result(file_path: str | Path) -> tuple[SolverResult, dict]:
 
 
 def _build_L_matvec_fast_vectorized(
-    H: dict, full_grid: list, fg_idx: dict, d: int, omega: np.ndarray
+    H: dict, full_grid: list, fg_idx: dict, d: int, omega: np.ndarray,
+    dtype=None   
 ) -> np.ndarray:
-    """
-    Dense L-matrix builder, fully vectorized over mode indices.
-    Eliminates internal Python loops over the grid and utilizes 3D NumPy broadcasting.
-    """
+    if dtype is None: dtype = np.complex128
     d2 = d * d
     N_modes = len(full_grid)
     N = N_modes * d2
-
-    # Pre-compute the mode grid as a NumPy array
-    modes = np.array(full_grid, dtype=np.intp)  # shape (M, 2)
-    
-    # Safely extract maximum grid extents
+    modes = np.array(full_grid, dtype=np.intp)
     K1 = max(abs(i) for i, j in full_grid)
     K2 = max(abs(j) for i, j in full_grid)
-    
-    # Static look-up grid for mapping coordinate pairs to flat mode indices
-    mode_idx_grid = np.full((2 * K1 + 1, 2 * K2 + 1), -1, dtype=np.intp)
+    mode_idx_grid = np.full((2*K1+1, 2*K2+1), -1, dtype=np.intp)
     for idx, (i, j) in enumerate(modes):
-        mode_idx_grid[i + K1, j + K2] = idx
+        mode_idx_grid[i+K1, j+K2] = idx
 
-    L_mat = np.zeros((N, N), dtype=complex)
-    I_d = np.eye(d, dtype=complex)
+    L_mat = np.zeros((N, N), dtype=dtype)          # use dtype
+    I_d = np.eye(d, dtype=dtype)                   # use dtype
 
     # --- 1. Commutator terms (Vectorized over grid modes) ---
     for p_key, H_p in H.items():
@@ -395,7 +387,8 @@ class SpectralBumpResult:
             eigenvalues=self.eigenvalues,
             eigenvectors=self.eigenvectors,
             c_proj=self.c_proj,
-            reg=np.float64(self.reg)
+            reg=np.float64(self.reg),
+            X=np.array([self.X[tuple(k)] for k in self.full_grid_arr], dtype=complex)
         )
         return file_path
 
@@ -412,7 +405,8 @@ class SpectralBumpResult:
                 eigenvalues=np.asarray(data["eigenvalues"], dtype=complex),
                 eigenvectors=np.asarray(data["eigenvectors"], dtype=complex),
                 c_proj=np.asarray(data["c_proj"], dtype=complex),
-                reg=float(data["reg"])
+                reg=float(data["reg"]),
+                X={tuple(k): data["X"][idx] for idx, k in enumerate(data["full_grid_arr"])}
             )
 
 
@@ -421,33 +415,30 @@ class SpectralBumpResult:
 # ==============================================================================
 
 def solve_eigreg(
-    H: dict,
-    K1: int, K2: int,
-    d: int,
-    omega,
+    H: dict, K1: int, K2: int, d: int, omega,
     reg: float = 1e-6,
+    use_float32: bool = False,          # <-- the magic switch
     verbose: bool = True,
     save_result: bool = False,
     save_dir: Optional[Union[str, Path]] = None,
 ) -> SpectralBumpResult:
-    """
-    Dense exact eigendecomposition solver with a smooth bump filter.
-    Calculates AE via: X* = sum_i f(lambda_i) <v_i, H> v_i
-    """
     omega = np.asarray(omega, dtype=float)
     full_grid, _, _, fg_idx = _build_modes(K1, K2)
     d2 = d * d
     N = len(full_grid) * d2
 
-    h_flat = _build_h_flat(H, full_grid, fg_idx, d)
+    # choose dtypes
+    complex_dtype = np.complex64 if use_float32 else np.complex128
+    real_dtype    = np.float32   if use_float32 else np.float64
 
-    # 1. Build the dense skew-Hermitian matrix L
+    h_flat = _build_h_flat(H, full_grid, fg_idx, d).astype(complex_dtype)
+
     if verbose:
-        print(f"Building dense L matrix (N={N}) ...")
+        print(f"Building dense L matrix (N={N}, dtype={complex_dtype.__name__}) ...")
     sys.stdout.flush()
-    L_mat = _build_L_matvec_fast_vectorized(H, full_grid, fg_idx, d, omega)
+    L_mat = _build_L_matvec_fast_vectorized(H, full_grid, fg_idx, d, omega,
+                                            dtype=complex_dtype)
 
-    # 2. Dense Eigendecomposition
     if verbose:
         print("Computing dense eigendecomposition (eigh on i*L) ...")
     sys.stdout.flush()
@@ -484,7 +475,7 @@ def solve_eigreg(
         eigenvalues=eigenvalues_7k,
         eigenvectors=V_7k,
         c_proj=c_7k,
-        reg=reg
+        reg=reg,
     )
 
 

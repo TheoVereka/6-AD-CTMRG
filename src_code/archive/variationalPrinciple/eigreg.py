@@ -5,7 +5,7 @@ Definitive Benchmark: Double-Precision vs Arbitrary-Precision Damped LSMR
 import argparse
 import numpy as np
 #import time
-from solver import solve_eigreg
+from solver import solve_eigreg, SpectralBumpResult
 import sys
 
 GOLDEN_RATIO = (1 + np.sqrt(5)) / 2
@@ -256,8 +256,8 @@ def _AE_theta_nonAbel(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--K', type=int, default=5, help='truncation harmonics')
-    parser.add_argument('--lam', type=float, default=1e-6, help='spectral regularization strength')
+    parser.add_argument('--K', type=int, default=15, help='truncation harmonics')
+    parser.add_argument('--lam', type=float, default=1e-5, help='spectral regularization strength')
     args = parser.parse_args()
 
     K1, K2 = args.K, args.K
@@ -277,7 +277,7 @@ def main():
     AE = _make_AE(K1, K2, N_HILBERT, Delta, m, epsilon, omega)
 
     # Call the dense solver
-    result = solve_eigreg(H, K1, K2, 4, omega, reg=args.lam, verbose=True, save_result=True, save_dir=f'/scratch/chye/varPri/eigreg{args.K}')
+    result = solve_eigreg(H, K1, K2, 4, omega, reg=args.lam, verbose=True, save_result=True, save_dir=f'/scratch/chye/varPri/eig{args.K}')
 
     # The Almost-Invariant Envelope (AE) is natively returned as result.X
     AE_eigreg = result.X
@@ -287,6 +287,22 @@ def main():
 
 
     sys.stdout.flush()
+
+    if False:
+
+        # test load and new regularization
+        loaded_result = SpectralBumpResult.load(f'/tmp/eigreg_K{K1}_lam{args.lam:.0e}/*.npz')
+        assert loaded_result is not None, "Failed to load saved result"
+        print(f"Loaded result from disk. Verifying consistency with original result...")
+        assert np.allclose(loaded_result.eigenvalues, result.eigenvalues), "Eigenvalues mismatch after loading"
+        assert np.allclose(loaded_result.eigenvectors, result.eigenvectors), "Eigenvectors mismatch after loading"
+        print(f"Consistency check passed. Now testing new regularization logic on loaded result...")
+        # Re-apply the spectral bump regularization with a different reg value and check that it produces a different AE_eigreg
+        new_reg = args.lam * 10
+        new_AE_eigreg = loaded_result.recompose_with_new_reg(new_reg)
+        new_AE_rel_error = _rel_diff(AE, new_AE_eigreg, full_grid)
+        print(f"After applying new regularization with reg={new_reg:.0e}:")
+        print(f"    rel ||AE - AE_eigreg|| / ||AE|| = {new_AE_rel_error:.3e}")
 
 
 if __name__ == '__main__':
