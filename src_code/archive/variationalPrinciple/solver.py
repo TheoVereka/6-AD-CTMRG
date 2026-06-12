@@ -1,9 +1,10 @@
 from __future__ import annotations
 import os
 import sys
+import gc
 
 # ==============================================================================
-# 1. CLUSTER THREAD PINNING (Robust Fallback Layout)
+# 1. CLUSTER THREAD PINNING & TORCH INITIALIZATION
 # ==============================================================================
 try:
     NUM_CORES = len(os.sched_getaffinity(0))
@@ -20,7 +21,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional, Union
 import numpy as np
-import scipy.linalg
+import torch
+
+# Explicitly bind PyTorch CPU threading to match cluster environment allocations
+torch.set_num_threads(NUM_CORES)
+torch.set_num_interop_threads(1)
 
 DEFAULT_RESULT_DIR = Path(r"/scratch/chye/varPri")
 
@@ -64,15 +69,12 @@ def _build_L_matvec_fast_vectorized(
     for idx, (i, j) in enumerate(modes):
         mode_idx_grid[i + K1, j + K2] = idx
 
-    # FINAL OPTIMIZATION: Allocate directly as Fortran-contiguous memory
-    L_mat = np.zeros((N, N), dtype=dtype, order='F')
-    I_d = np.eye(d, dtype=dtype, order='F')  # Match identity layout as well
+    L_mat = np.zeros((N, N), dtype=dtype, order='C')   # was order='F' for scipy
+    I_d = np.eye(d, dtype=dtype, order='C')
     d2_range = np.arange(d2)
 
     for p_key, H_p in H.items():
         H_p_work = np.asarray(H_p, dtype=dtype)
-        
-        # CLEAN MATH FIX: Reverse subtraction order to inherit the (i * i = -1) multiplier cleanly
         C_p_herm = np.kron(I_d, H_p_work.T) - np.kron(H_p_work, I_d)
         
         k_coords = modes + np.array(p_key)
@@ -104,8 +106,6 @@ def _build_L_matvec_fast_vectorized(
     if len(diag_modes_idx) > 0:
         diag_starts = diag_modes_idx * d2
         diag_rows = (diag_starts[:, None] + d2_range[None, :]).ravel()
-        
-        # CLEAN MATH FIX: i * (1j * freq) = -freq
         diag_vals = (-np.repeat(freqs[diag_modes_idx], d2)).astype(dtype, copy=False)
         L_mat[diag_rows, diag_rows] += diag_vals
 
@@ -137,7 +137,7 @@ class SpectralBumpResult:
         x2 = (np.abs(self.eigenvalues) / reg_val)**2
         mask = x2 < 1.0
         
-        f_val = np.zeros_like(self.eigenvalues, dtype=float)
+        f_val = np.zeros(len(self.eigenvalues), dtype=np.float64)
         f_val[mask] = np.exp(1.0 - 1.0 / (1.0 - x2[mask]))
 
         c_filtered = f_val * self.c_proj
@@ -191,7 +191,6 @@ def solve_eigreg(
     save_result: bool = False,
     save_dir: Optional[Union[str, Path]] = None,
 ) -> SpectralBumpResult:
-    # RIGOROUS FIX: Match real precision right at entry
     real_dtype = np.float32 if use_float32 else np.float64
     omega = np.asarray(omega, dtype=real_dtype)
     
@@ -206,39 +205,39 @@ def solve_eigreg(
         print(f"Building dense Hermitian matrix (N={N}, threads={NUM_CORES}, precision={complex_dtype.__name__}) ...")
     sys.stdout.flush()
     
-    # Directly generates the target Hermitian execution matrix
     L_herm = _build_L_matvec_fast_vectorized(H, full_grid, fg_idx, d, omega, dtype=complex_dtype)
 
     if verbose:
-        print(f"Eigendecomposition Phase 1/2: Resolving algebraic spectrum via parallel LAPACK...")
+        print(f"Eigendecomposition: Executing single-shot ILP64 PyTorch CPU Core Solver...")
     sys.stdout.flush()
     
-    # Run spectrum discovery directly on the primary allocated matrix variable
-    evals_all = scipy.linalg.eigh(L_herm, eigvals_only=True, overwrite_a=False)
+    # 1. Wrap numpy array directly into PyTorch without a memory copy
+    L_tens = torch.from_numpy(L_herm)
+    
+    # 2. Run standard high-performance full spectral solver (Uses 64-bit integer indexing)
+    evals_tens, vecs_tens = torch.linalg.eigh(L_tens)
+    
+    # 3. Pull out full eigenvalues to extract index coordinates
+    evals_all = evals_tens.numpy()
     
     sort_idx = np.argsort(np.abs(evals_all))
     max_modes = min(7000, N)
-    closest_indices = sort_idx[:max_modes]
+    final_sort_idx = sort_idx[:max_modes]
     
-    min_idx = int(np.min(closest_indices))
-    max_idx = int(np.max(closest_indices))
-
+    evals_7k = evals_all[final_sort_idx]
+    
     if verbose:
-        print(f"Eigendecomposition Phase 2/2: Fetching thin index window ({min_idx} to {max_idx}) ...")
+        print(f"Slicing out targeted invariant subspace ({max_modes} modes) and releasing base memory...")
     sys.stdout.flush()
+
+    # 4. Slice out the 7,000 vectors from PyTorch and perform an explicit copy to NumPy.
+    # The .copy() completely decouples the sliced array from the large parent tensor.
+    V_7k = vecs_tens[:, final_sort_idx].numpy().copy()
     
-    # overwrite_a=True is now fully functional because L_herm is a direct variable reference
-    evals_sub, V_sub = scipy.linalg.eigh(
-        L_herm, 
-        subset_by_index=(min_idx, max_idx), 
-        overwrite_a=True
-    )
-    
-    sub_sort_idx = np.argsort(np.abs(evals_sub))
-    final_sort_idx = sub_sort_idx[:max_modes]
-    
-    evals_7k = evals_sub[final_sort_idx]
-    V_7k = V_sub[:, final_sort_idx]
+    # 5. ABSOLUTE PURGE: Wipe out the massive multi-gigabyte tensors immediately
+    del L_tens, evals_tens, vecs_tens, L_herm
+    gc.collect()  # Force Python to release unreferenced blocks back to the OS heap
+
     eigenvalues_7k = -1j * evals_7k
 
     if verbose:

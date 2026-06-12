@@ -253,7 +253,7 @@ def _AE_theta_nonAbel(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--K', type=int, default=15, help='truncation harmonics')
+    parser.add_argument('--K', type=int, default=5, help='truncation harmonics')
     parser.add_argument('--lam', type=float, default=1e-5, help='spectral regularization strength')
     args = parser.parse_args()
 
