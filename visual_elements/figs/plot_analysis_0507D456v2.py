@@ -1055,6 +1055,53 @@ def plot_energy_Neel_c6_88(all_data, out_dir):
     fpath = os.path.join(out_dir, 'energy_Neel_D8_vs_C6Ypi_D8.pdf')
     _save(fig, fpath)
 
+def plot_energy_Neel_c6_89(all_data, out_dir):
+    ansatz_D_spec = [
+        ('neel_symmetrized', 8,  "#6b40ee", '^', 'Néel (D=8)'),
+        ('1tensor_C6Ypi', 9,  '#d94801', 'H', 'C6Yπ (D=9)'),
+    ]
+
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    any_data = False
+
+    for ansatz_key, D_target, color, marker, label in ansatz_D_spec:
+        j2s, energies = [], []
+        for j2 in sorted(all_data.keys()):
+            if ansatz_key not in all_data[j2]:
+                continue
+            v = all_data[j2][ansatz_key]
+            # v['Ds'] is a sorted list of D values; find the index of D_target
+            if D_target not in v['Ds']:
+                continue
+            idx = v['Ds'].index(D_target)
+            energy_val = v['energy_per_site'][idx]
+            j2s.append(j2)
+            energies.append(energy_val)
+
+        if not j2s:
+            continue
+        any_data = True
+        ax.plot(j2s, energies, marker=marker, linestyle='-', color=color,
+                ms=8, lw=1.4, label=label)
+
+    if not any_data:
+        print("  No data for the requested Neel/D=8 or C6Yπ/D=9 energy plot.")
+        plt.close(fig)
+        return
+
+    ax.set_xlabel('J₂', fontsize=12)
+    ax.set_ylabel('Energy per site', fontsize=12)
+    ax.set_title(r'Energy: Néel (D=8) vs C6Y$\pi$ (D=9)', fontsize=12)
+    # Remove the fixed bottom=0; energy is negative, let matplotlib auto-scale
+    # ax.set_ylim(bottom=0.0)   # <-- not appropriate for energy
+    ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
+    ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
+    ax.legend(fontsize=9)
+
+    fig.tight_layout()
+    fpath = os.path.join(out_dir, 'energy_Neel_D8_vs_C6Ypi_D9.pdf')
+    _save(fig, fpath)
+
 def plot_energy_extrap_Neel_C6(all_data, out_dir):
     """Extrapolated energy (E_best) with error bars for Néel and C6Yπ."""
     ansatz_keys = [
@@ -1118,6 +1165,7 @@ def main():
 
     #plot_energy_Neel_c6(all_data, OUT_DIR)
     plot_energy_Neel_c6_88(all_data, OUT_DIR)
+    plot_energy_Neel_c6_89(all_data, OUT_DIR)
     plot_energy_extrap_Neel_C6(all_data, OUT_DIR)
     print(f"\nFound {len(all_data)} J2 values: {sorted(all_data.keys())}")
     print(f"Generating {len(all_data)} per-J2 figures ...\n")
