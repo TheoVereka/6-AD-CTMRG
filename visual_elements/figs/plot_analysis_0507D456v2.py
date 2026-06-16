@@ -30,7 +30,7 @@ OUT_DIR    = os.path.join(SCRIPT_DIR, 'analysis_plots_0507D45678910')
 os.makedirs(OUT_DIR, exist_ok=True)
 
 # Only these D values
-D_ALLOWED = {4, 5, 6, 7, 8, 9, 10}
+D_ALLOWED = {3, 4, 5, 6, 7, 8, 9, 10}
 #D_ALLOWED = {9}
 
 
@@ -774,10 +774,10 @@ def plot_m_vs_j2_figures(all_data, out_dir):
 
 # ── Part 4: ΔNN (rank3 − rank1) vs J2 ────────────────────────────────────────
 
-D_CORR_SHOW = [8, 9, 10]   # only these D values; skip if absent
+D_CORR_SHOW = [3,4,5,6,7,8, 9, 10]   # only these D values; skip if absent
 CORR_ANSATZ_SKIP = {'neel_symmetrized'}   # excluded ansatze
 
-D_CORR_COLORS = {8: '#fdae6b', 9: '#f16913', 10: '#8c2d04'}   # Oranges
+D_CORR_COLORS = {3:"#fbfabc",4:"#ffefa9",5:"#fed78d",6:"#f9b664",7:"#db7a24",8: "#ae4829", 9: "#731608", 10: "#3B0202"}   # Oranges
 
 
 def _rank_mean(nn_grp_D, target_rank):
@@ -1055,6 +1055,54 @@ def plot_energy_Neel_c6_88(all_data, out_dir):
     fpath = os.path.join(out_dir, 'energy_Neel_D8_vs_C6Ypi_D8.pdf')
     _save(fig, fpath)
 
+
+def plot_energy_2c3_c6_88(all_data, out_dir):
+    ansatz_D_spec = [
+        ('2tensor_twoC3', 8,  "#6b40ee", '^', 'twoC3 (D=8)'),
+        ('1tensor_C6Ypi', 8,  '#d94801', 'H', 'C6Yπ (D=8)'),
+    ]
+
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    any_data = False
+
+    for ansatz_key, D_target, color, marker, label in ansatz_D_spec:
+        j2s, energies = [], []
+        for j2 in sorted(all_data.keys()):
+            if ansatz_key not in all_data[j2]:
+                continue
+            v = all_data[j2][ansatz_key]
+            # v['Ds'] is a sorted list of D values; find the index of D_target
+            if D_target not in v['Ds']:
+                continue
+            idx = v['Ds'].index(D_target)
+            energy_val = v['energy_per_site'][idx]
+            j2s.append(j2)
+            energies.append(energy_val)
+
+        if not j2s:
+            continue
+        any_data = True
+        ax.plot(j2s, energies, marker=marker, linestyle='-', color=color,
+                ms=8, lw=1.4, label=label)
+
+    if not any_data:
+        print("  No data for the requested Neel/D=8 or C6Yπ/D=8 energy plot.")
+        plt.close(fig)
+        return
+
+    ax.set_xlabel('J₂', fontsize=12)
+    ax.set_ylabel('Energy per site', fontsize=12)
+    ax.set_title(r'Energy: twoC3 (D=8) vs C6Y$\pi$ (D=8)', fontsize=12)
+    # Remove the fixed bottom=0; energy is negative, let matplotlib auto-scale
+    # ax.set_ylim(bottom=0.0)   # <-- not appropriate for energy
+    ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
+    ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
+    ax.legend(fontsize=9)
+
+    fig.tight_layout()
+    fpath = os.path.join(out_dir, 'energy_twoC3_D8_vs_C6Ypi_D8.pdf')
+    _save(fig, fpath)
+
 def plot_energy_Neel_c6_89(all_data, out_dir):
     ansatz_D_spec = [
         ('neel_symmetrized', 8,  "#6b40ee", '^', 'Néel (D=8)'),
@@ -1164,6 +1212,7 @@ def main():
         return
 
     #plot_energy_Neel_c6(all_data, OUT_DIR)
+    plot_energy_2c3_c6_88(all_data, OUT_DIR)
     plot_energy_Neel_c6_88(all_data, OUT_DIR)
     plot_energy_Neel_c6_89(all_data, OUT_DIR)
     plot_energy_extrap_Neel_C6(all_data, OUT_DIR)
