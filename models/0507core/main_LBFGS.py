@@ -29,49 +29,8 @@ N_GPUS = 1
 
 D_BOND_LIST   = [  2,  3,  4,  5,  6,  7,  8,  9, 10]
 CHI_MIN_LIST  = [ 10, 21, 32, 45, 60, 77, 96, 117,140]
-CHI_MAX_LIST  = [ 14, 27, 40, 55, 72, 91,112,135,160]
+CHI_MAX_LIST  = [ 14, 27, 40, 55, 72, 91,112,117,140]
 CHI_STEP_LIST = [  4,  6,  8, 10, 12, 14, 16, 18, 20]
-I have a repository containing 34 .pt data file under name "{100*J2 value or 1000*J2 value, c.f. the "ls" command result under}{abbrevation for ansatz}D{D value}.pt", now I want to launch 34 SLURM jobs with only one bash file containing 34 sbatch command that has same purporse as "sbatch myRun.run" where myRun.run looks like 
-#!/bin/bash
-#SBATCH --job-name=my_gpu_job       # Job name
-#SBATCH --partition=h100             # Partition (queue) to submit to
-#SBATCH --gres=gpu:1                # Request one GPU
-#SBATCH --ntasks=1                  # Run on a single CPU
-#SBATCH --cpus-per-task=16           # Number of CPU cores per task
-#SBATCH --mem=90G                   # Job memory request
-#SBATCH --time=71:50:00             # Time limit 
-#SBATCH --output=output_%j.log      # Standard output and error log
-
-module load nvhpc/24.7-mpi
-module load cuda/12.5.1
-
-source /home/pghosh/venvs/6adctmrg_Kuma/bin/activate
-
-D=10
-J2=0.32
-
-OUTDIR=./Results_LBFGS_J2_${J2}/D_${D}
-
-mkdir -p "${OUTDIR}"
-
-python PathToFolder1/main_LBFGS.py \
-    --J2 "${J2}" \
-    --ansatz c6ypi \
-    --Ds "${D}" \
-    --output-dir "${OUTDIR}" \
-    --resume PathToFolder2/32c6D10.pt
-
-echo "END OF JOB"
----
-The 34 complicate 100*J2 and 1000*J2 file names are:
-ls
-0legD10.pt   22legD10.pt   23c6D9.pt     255legD9.pt   26legD9.pt
-20c6D10.pt   22legD9.pt    23legD10.pt   25legD10.pt   27c6D10.pt
-20c6D9.pt    235c6D10.pt   23legD9.pt    25legD9.pt    27legD10.pt
-20legD10.pt  235c6D9.pt    245legD9.pt   265c6D10.pt   27legD9.pt
-20legD9.pt   235legD10.pt  246legD10.pt  265legD10.pt  28legD10.pt
-22c6D10.pt   235legD9.pt   24legD10.pt   265legD9.pt   28legD9.pt
-22c6D9.pt    23c6D10.pt    24legD9.pt    26c6D10.pt  
 
 #   Default chi schedule parameters (one per D in D_BOND_LIST).
 #   For each D_bond, the chi schedule is generated as:
