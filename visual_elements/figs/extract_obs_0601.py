@@ -100,7 +100,7 @@ def parse_plain_file(fpath):
     or None on failure.
     """
     try:
-        txt = open(fpath).read()
+        txt = open(fpath, encoding='utf-8').read()
     except OSError as e:
         print(f"  Warning: cannot read {fpath}: {e}")
         return None
