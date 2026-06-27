@@ -3158,6 +3158,17 @@ def CTMRG_from_init_to_stop(A,B,C,D,E,F,
         if not _collapsed:
             break   # success — exit restart loop
         # else: escalate noise and retry
+    
+    print()
+    print(f"{torch.linalg.norm(nowC21CD.detach()-nowC32EF.detach()):.6f} {torch.linalg.norm(nowC21CD.detach()-nowC13AB.detach()):.6f} {torch.linalg.norm(nowC13AB.detach()-nowC32EF.detach()):.6f} - 1st C Ta Tb")
+    print(f"{torch.linalg.norm(nowT3C.detach()-nowT1E.detach()):.6f} {torch.linalg.norm(nowT3C.detach()-nowT2A.detach()):.6f} {torch.linalg.norm(nowT2A.detach()-nowT1E.detach()):.6f}")
+    print(f"{torch.linalg.norm(nowT3D.detach()-nowT1F.detach()):.6f} {torch.linalg.norm(nowT3D.detach()-nowT2B.detach()):.6f} {torch.linalg.norm(nowT2B.detach()-nowT1F.detach()):.6f}")
+    print(f"{torch.linalg.norm(nowC21EB.detach()-nowC32AD.detach()):.6f} {torch.linalg.norm(nowC21EB.detach()-nowC13CF.detach()):.6f} {torch.linalg.norm(nowC13CF.detach()-nowC32AD.detach()):.6f} - 2nd C Ta Tb")
+    print(f"{torch.linalg.norm(nowT3E.detach()-nowT1A.detach()):.6f} {torch.linalg.norm(nowT3E.detach()-nowT2C.detach()):.6f} {torch.linalg.norm(nowT2C.detach()-nowT1A.detach()):.6f}")
+    print(f"{torch.linalg.norm(nowT3B.detach()-nowT1D.detach()):.6f} {torch.linalg.norm(nowT3B.detach()-nowT2F.detach()):.6f} {torch.linalg.norm(nowT2F.detach()-nowT1D.detach()):.6f}")
+    print(f"{torch.linalg.norm(nowC21AF.detach()-nowC32CB.detach()):.6f} {torch.linalg.norm(nowC21AF.detach()-nowC13ED.detach()):.6f} {torch.linalg.norm(nowC13ED.detach()-nowC32CB.detach()):.6f} - 3rd C Ta Tb")
+    print(f"{torch.linalg.norm(nowT3A.detach()-nowT1C.detach()):.6f} {torch.linalg.norm(nowT3A.detach()-nowT2E.detach()):.6f} {torch.linalg.norm(nowT2E.detach()-nowT1C.detach()):.6f}")
+    print(f"{torch.linalg.norm(nowT3F.detach()-nowT1B.detach()):.6f} {torch.linalg.norm(nowT3F.detach()-nowT2D.detach()):.6f} {torch.linalg.norm(nowT2D.detach()-nowT1B.detach()):.6f}")
 
     return  nowC21CD, nowC32EF, nowC13AB, nowT1F, nowT2A, nowT2B, nowT3C, nowT3D, nowT1E, \
             nowC21EB, nowC32AD, nowC13CF, nowT1D, nowT2C, nowT2F, nowT3E, nowT3B, nowT1A, \
@@ -3196,7 +3207,6 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
         6 * _D2 * _D2 * d_PHYS * d_PHYS * a.element_size()
         > torch.cuda.get_device_properties(DEVICE).total_memory * 0.15
     ) if _on_gpu else False
-    # if not _on_gpu: _use_lazy = True
 
     if _CACHE_RHOS:
         _RHO_ACC.clear()
@@ -3385,7 +3395,6 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
         6 * _D2 * _D2 * d_PHYS * d_PHYS * a.element_size()
         > torch.cuda.get_device_properties(DEVICE).total_memory * 0.15
     ) if _on_gpu else False
-    # if not _on_gpu: _use_lazy = True
 
     if _CACHE_RHOS:
         _RHO_ACC.clear()
@@ -3593,7 +3602,6 @@ def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f,
         6 * _D2 * _D2 * d_PHYS * d_PHYS * a.element_size()
         > torch.cuda.get_device_properties(DEVICE).total_memory * 0.15
     ) if _on_gpu else False
-    # if not _on_gpu: _use_lazy = True
 
     if _CACHE_RHOS:
         _RHO_ACC.clear()

@@ -5,9 +5,9 @@
 
 
 
-MY_OUTPUT_OUTERDIR = '/home/chye/6ADctmrg/data/raw'
-USE_GPU = False
-_N_PHYSICAL_CORES = 4
+MY_OUTPUT_OUTERDIR = '/scratch/izar/chye/0507core'
+USE_GPU = True
+_N_PHYSICAL_CORES = 25
 
 # ── Multi-GPU (optional, CUDA only) ──────────────────────────────────────────
 
@@ -28,8 +28,8 @@ N_GPUS = 1
 # ── Sweep control ─────────────────────────────────────────────────────────────
 
 D_BOND_LIST   = [  2,  3,  4,  5,  6,  7,  8,  9, 10]
-CHI_MIN_LIST  = [ 16, 24, 36, 50, 60, 77, 96, 117,140]
-CHI_MAX_LIST  = [ 20, 30, 44, 60, 72, 91,112,135,160]
+CHI_MIN_LIST  = [ 10, 21, 32, 45, 72, 91, 104, 117,140]
+CHI_MAX_LIST  = [ 14, 27, 40, 55, 72, 91,104,117,140]
 CHI_STEP_LIST = [  4,  6,  8, 10, 12, 14, 16, 18, 20]
 #   Default chi schedule parameters (one per D in D_BOND_LIST).
 #   For each D_bond, the chi schedule is generated as:
@@ -1899,7 +1899,7 @@ def optimize_at_chi(
                         and len(_adam_loss_window) == ADAM_FLAT_PATIENCE):
                     _wmin = min(_adam_loss_window)
                     _spread = max(_adam_loss_window) - _wmin
-                    if _spread < 1e-3:
+                    if _spread < 2e-3:
                         # First-diffs: d[0]=window[-1]-window[-2], ...
                         # Use deque negative indexing — no list copy.
                         _N  = 17
@@ -1919,7 +1919,7 @@ def optimize_at_chi(
                                 _do_switch_to_lbfgs(
                                     f"flat plateau over {ADAM_FLAT_PATIENCE} Adam steps "
                                     f"(spread={_spread:.2e} < "
-                                    f"1e-3)")
+                                    f"2e-3)")
         # ─────────────────────────────────────────────────────────────────────
 
         # Convergence / cycle-detection checks are ONLY active after the switch
@@ -2127,7 +2127,7 @@ def main():
     ADAM_FLAT_PATIENCE = args.adam_flat_patience
     if True: #USE_ADAM_WARMUP_THEN_LBFGS:
         print(f"  Optimizer: Adam warmup \u2192 L-BFGS "
-              f"(flat-plateau switch over {ADAM_FLAT_PATIENCE} steps, spread < 1e-3)")
+              f"(flat-plateau switch over {ADAM_FLAT_PATIENCE} steps, spread < 2e-3)")
     # Float32 spectral noise floor is ~5e-5–2e-4; CTM_CONV_THR=3e-7 is below
     # that floor and will never trigger in single precision — CTMRG would
     # always burn all CTM_MAX_STEPS steps and return a non-converged (garbage)
