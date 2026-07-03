@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 """
 Comprehensive 6AD-CTMRG analysis script.
@@ -5,6 +6,7 @@ Comprehensive 6AD-CTMRG analysis script.
 Generates:
   - Energy vs 1/D  (per ansatz, with 3 extrapolation lines)
   - E_0 vs J2      (asymmetric error bars: E_horiz above, E_lin2 below)
+  - Energy per site vs J2  (raw data, per D, like order-parameter style)  ← NEW
   - NN bond corr   vs 1/D  (6 figures: 3 ranks × 2 ansätze ... combined by rank)
   - NN bond corr   vs J2   (6 figures: 3 ranks × 2 ansätze ... combined by rank)
   - NNN bond corr  vs 1/D  (6 figures: 3 ranks × 2 ansätze)
@@ -197,7 +199,7 @@ def _zoom_order(ax_zoom, data_by_D, all_Ds, xlim, ansatz):
 # ──────────────────────────────────────────────────────────────────────────────
 # PATHS
 # ──────────────────────────────────────────────────────────────────────────────
-DATA_DIR   = '/home/chye/6ADctmrg/data/0414core'
+DATA_DIR   = r'D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\0414core'
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR    = os.path.join(SCRIPT_DIR, 'analysis_plots_0414')
 os.makedirs(OUT_DIR, exist_ok=True)
@@ -253,7 +255,7 @@ def build_complete_D_map(data_dir):
     """
     d_map = {}
     for jf in sorted(glob.glob(os.path.join(data_dir, 'job-*.out'))):
-        txt = open(jf).read()
+        txt = open(jf, encoding='utf-8').read()
         m_dir = RE_OUT_DIR.search(txt)
         if not m_dir:
             continue
@@ -279,7 +281,7 @@ def parse_plain_file(fpath):
         corr : { (env_int, pair_str) : float }
         mag  : { (env_int, site_str) : np.ndarray([Sx, Sy, Sz]) }
     """
-    txt = open(fpath).read()
+    txt = open(fpath, encoding='utf-8').read()
     energy = float(RE_ENERGY.search(txt).group(1))
     corr   = {}
     for m in RE_CORR.finditer(txt):
@@ -1055,6 +1057,128 @@ def plot_order_param_vs_J2(all_results, out_dir):
     _save(fig, os.path.join(out_dir, 'order_param_vs_J2.pdf'))
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# 15. Plot: Energy per site vs J2  (raw data, per D, like order‑parameter style)
+# ══════════════════════════════════════════════════════════════════════════════
+def plot_energy_per_site_vs_J2(all_results, out_dir):
+    """
+    Raw energy_per_site vs J2, for each D.
+    Layout, colour, transparency follow the order‑parameter plot.
+    """
+    ZOOM = (0.26, 0.28)
+
+    fig = plt.figure(figsize=(13, 11))
+    gs  = gridspec.GridSpec(3, 2, figure=fig,
+                            height_ratios=[3, 3, 0.6], hspace=0.5, wspace=0.25)
+    ax_6t   = fig.add_subplot(gs[0, 0])
+    ax_neel = fig.add_subplot(gs[0, 1])
+    ax_zoom = fig.add_subplot(gs[1, 0])
+    ax_neel.sharey(ax_6t)
+    ax_dummy = fig.add_subplot(gs[1, 1])
+    ax_dummy.set_visible(False)
+    ax_legend = fig.add_subplot(gs[2, :])
+    ax_legend.axis('off')
+
+    ax_map = {'6tensors': ax_6t, 'neel_sym': ax_neel}
+    data_by_D_6t = None
+    all_Ds_6t    = []
+
+    for ansatz in ['6tensors', 'neel_sym']:
+        ax = ax_map[ansatz]
+        sub = {k: v for k, v in all_results.items() if v['ansatz'] == ansatz}
+        if not sub:
+            ax.set_visible(False)
+            continue
+
+        # Collect D → list of (j2, energy)
+        data_by_D = {}
+        for v in sub.values():
+            j2 = v['j2']
+            Ds  = v['Ds']
+            eps = v['energy_per_site']
+            for D, val in zip(Ds, eps):
+                data_by_D.setdefault(D, []).append((j2, val))
+
+        all_Ds = sorted(data_by_D.keys())
+        D_col  = _D_colormap_ansatz(all_Ds, ansatz)
+
+        if ansatz == '6tensors':
+            data_by_D_6t = data_by_D
+            all_Ds_6t    = all_Ds
+
+        for D in all_Ds:
+            pts  = sorted(data_by_D[D])
+            j2s  = [p[0] for p in pts]
+            vals = [p[1] for p in pts]
+            alpha = min(1.0, max(0.2, D / 10.0))
+            ax.plot(j2s, vals, 'o', color=D_col[D], ms=6,
+                    alpha=alpha, label=f'D={D}')
+
+        ax.set_xlabel('J2', fontsize=11)
+        ax.set_ylabel('Energy per site', fontsize=11)
+        ax.set_title(
+            f'{ANSATZ_STYLE[ansatz]["label"]}  (bigger D = more opaque & darker)',
+            fontsize=10
+        )
+        ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
+        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
+
+    # Zoom panel (6tensors only)
+    if data_by_D_6t is not None:
+        zoom_Ds = _zoom_D_selection(all_Ds_6t)
+        if zoom_Ds:
+            hi_D      = zoom_Ds[-1]
+            fixed_Ds  = zoom_Ds[:-1]
+            D_col_z   = _D_colormap_ansatz(zoom_Ds, '6tensors')
+            alpha_hi  = min(1.0, max(0.2, hi_D / 10.0))
+
+            for D in fixed_Ds:
+                if D not in data_by_D_6t:
+                    continue
+                pts  = sorted(data_by_D_6t[D])
+                j2s  = np.array([p[0] for p in pts])
+                vals = np.array([p[1] for p in pts])
+                mask = (j2s >= ZOOM[0]) & (j2s <= ZOOM[1])
+                if mask.sum() == 0:
+                    continue
+                alpha = min(1.0, max(0.2, D / 10.0))
+                ax_zoom.plot(j2s[mask], vals[mask], 'o-', color=D_col_z[D],
+                             ms=6, lw=1.1, alpha=alpha, label=f'D={D}')
+
+            # Build triples with err=0 to reuse _merge_D8or9
+            triples_9 = [(j2, val, 0.0) for j2, val in data_by_D_6t.get(9, [])]
+            triples_8 = [(j2, val, 0.0) for j2, val in data_by_D_6t.get(8, [])]
+            merged = _merge_D8or9(triples_9, triples_8)
+            in_range = [(j2, v, e) for j2, v, e in merged if ZOOM[0] <= j2 <= ZOOM[1]]
+            if in_range:
+                j2s  = np.array([p[0] for p in in_range])
+                vals = np.array([p[1] for p in in_range])
+                ax_zoom.plot(j2s, vals, 'o-', color=D_col_z[hi_D], ms=6,
+                             lw=1.1, alpha=alpha_hi, label='D=8or9')
+
+            ax_zoom.set_xlim(ZOOM)
+            ax_zoom.set_xlabel('J2', fontsize=9)
+            ax_zoom.set_ylabel('Energy per site', fontsize=9)
+            ax_zoom.set_title(f'Zoom  J2 ∈ [{ZOOM[0]}, {ZOOM[1]}]  (D=5, D=7, D=8or9)',
+                              fontsize=8)
+            ax_zoom.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
+            ax_zoom.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
+            ax_zoom.tick_params(labelsize=8)
+            h, l = ax_zoom.get_legend_handles_labels()
+            if h:
+                ax_zoom.legend(h, l, fontsize=7, loc='best', frameon=True)
+
+    # Bottom legend row (from the main 6tensors axis)
+    handles, labels = ax_6t.get_legend_handles_labels()
+    if handles:
+        ax_legend.legend(handles, labels, loc='center', ncol=4, fontsize=7,
+                        frameon=True, fancybox=True, shadow=False)
+
+    fig.suptitle('Energy per site  vs  J2  (raw data)', fontsize=12)
+    plt.tight_layout(rect=[0, 0, 1, 0.97])
+    _save(fig, os.path.join(out_dir, 'energyy_per_site_vs_J2.pdf'))
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # MAIN
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1076,6 +1200,9 @@ def main():
 
     print('\n--- Energy E₀ vs J2 ---')
     plot_energy_vs_J2(all_results, OUT_DIR)
+
+    print('\n--- Energy per site vs J2 (raw) ---')          # ← NEW
+    plot_energy_per_site_vs_J2(all_results, OUT_DIR)        # ← NEW
 
     print('\n--- NN bond correlations vs 1/D  (3 ranks) ---')
     plot_bonds_vs_invD(all_results, OUT_DIR, 'nn_groups',  'NN bond ⟨Sᵢ·Sⱼ⟩')
