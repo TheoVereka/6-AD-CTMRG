@@ -1,0 +1,30 @@
+#!/bin/bash
+#SBATCH --job-name=twoC3D9
+#SBATCH --qos=long
+#SBATCH --partition=h100
+#SBATCH --gres=gpu:1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=90G
+#SBATCH --time=167:59:50
+#SBATCH --output=output_%x_%j.log
+
+set -euo pipefail
+: "${J2:?J2 must be exported by submit_all_15.sh}"
+
+module load nvhpc/24.7-mpi
+module load cuda/12.5.1
+source /home/pghosh/venvs/6adctmrg_Kuma/bin/activate
+
+D=9
+OUTDIR="./Results_J2_twoc3_${J2}/D_${D}"
+mkdir -p "${OUTDIR}"
+
+python /home/pghosh/0717Kuma/main_C3.py \
+    --J2 "${J2}" \
+    --ansatz twoc3 \
+    --Ds "${D}" \
+    --output-dir "${OUTDIR}"
+
+echo "END OF JOB"
+cp -r /scratch/pghosh/Working_AD_Honeycomb_July17 /home/pghosh/Data_Backup/
