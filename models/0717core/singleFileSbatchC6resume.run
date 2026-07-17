@@ -18,7 +18,7 @@ source /home/pghosh/venvs/6adctmrg_Kuma/bin/activate
 
 D=9
 J2_TAG="${J2/./p}"
-CHECKPOINT="/home/pghosh/0717Kuma/c6ypi_J2_${J2_TAG}_D8_chi104_best.pt"
+CHECKPOINT="/home/pghosh/0717Kuma/c6ypi_J2_${J2_TAG}_D9_chi108_best.pt"
 OUTDIR="./Results_J2_c6ypi_${J2}/D_${D}"
 
 if [[ ! -f "${CHECKPOINT}" ]]; then
