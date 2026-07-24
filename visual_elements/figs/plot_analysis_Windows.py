@@ -26,6 +26,7 @@ from scipy.optimize import curve_fit
 # PATHS
 # ──────────────────────────────────────────────────────────────────────────────
 DATA_DIR   = r'D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\0713summary'
+EXTERNAL_D10_DATA_DIR = r'D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\D345678910'
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR    = os.path.join(SCRIPT_DIR, 'analysis_plots_0713summary')
 os.makedirs(OUT_DIR, exist_ok=True)
@@ -73,14 +74,6 @@ def is_banned(j2, ansatz=None, D=None):
         if (j2_key, ansatz, int(D)) in exact_bans:
             return True
     return False
-
-# Special-case override: these (j2, ansatz) pairs use 2‑point / 3‑point fits
-# instead of the global 3‑point / 4‑point fits for magnetization.
-SPECIAL_MAG_N = {
-    #(0.21, 'neel_symmetrized'),
-    #(0.22, 'neel_symmetrized'),
-    # add more exceptions as needed
-}
 
 # Preferred column order for ansatze
 ANSATZ_ORDER = ['neel_symmetrized', '1tensor_C6Ypi', '1tensor_C3Vypi', '2tensor_twoC3', '6tensors']
@@ -318,23 +311,14 @@ def compute_energy_extrap(Ds, eps):
         'poly_lin3': c3,
     }
 
-def compute_mag_extrap(Ds, mneel_list, use_2_3=False):
-    """
-    Magnetization linear extrapolation.
-    If use_2_3 is True  → fit last 2 points (m_lin2) and last 3 points (m_lin3).
-    If use_2_3 is False → fit last 3 points (m_lin2) and last 4 points (m_lin3).
-    Returns m_lin2, m_lin3, poly1d for the first fit, poly1d for the second fit.
-    """
+def compute_mag_extrap(Ds, mneel_list):
+    """Fit magnetization linearly using the last 2 and last 3 D points."""
     Ds_f = np.array(Ds,        dtype=float)
     m_f  = np.array(mneel_list, dtype=float)
     inv  = 1.0 / Ds_f
 
-    if use_2_3:
-        n2 = min(2, len(Ds_f))
-        n3 = min(3, len(Ds_f))
-    else:
-        n2 = min(3, len(Ds_f))
-        n3 = min(4, len(Ds_f))
+    n2 = min(2, len(Ds_f))
+    n3 = min(3, len(Ds_f))
 
     c2 = np.polyfit(inv[-n2:], m_f[-n2:], 1)
     c3 = np.polyfit(inv[-n3:], m_f[-n3:], 1)
@@ -397,7 +381,7 @@ def load_folder_data(folder_path, j2, ansatz):
     return result
 
 
-def load_ansatz_data(folder_path, j2, ansatz, use_2_3_mag=False):
+def process_D_data(folder_path, j2, ansatz):
     """Return processed data dict for one ansatz folder.
        use_2_3_mag : if True, magnetization fits use 2‑point / 3‑point."""
     D_data = load_folder_data(folder_path, j2, ansatz)
@@ -410,7 +394,7 @@ def load_ansatz_data(folder_path, j2, ansatz, use_2_3_mag=False):
     order     = compute_order_param(D_data)
     mlist     = [order[D]['m_neel'] for D in Ds]
 
-    m_lin2, m_lin3, c2, c3 = compute_mag_extrap(Ds, mlist, use_2_3=use_2_3_mag)
+    m_lin2, m_lin3, c2, c3 = compute_mag_extrap(Ds, mlist)
 
     return {
         'Ds':              Ds,
@@ -422,9 +406,40 @@ def load_ansatz_data(folder_path, j2, ansatz, use_2_3_mag=False):
         'm_lin3':          m_lin3,
         'm_c2':            c2,
         'm_c3':            c3,
-        'use_2_3':         use_2_3_mag,
-        'm_n_extrap':      3 if use_2_3_mag else 4,   # for summary error bars
+        'use_2_3':         True,
+        'm_n_extrap':      3,
     }
+
+def load_ansatz_data(folder_path, j2, ansatz):
+    """Return processed data for one summarized ansatz folder."""
+    return process_D_data(folder_path, j2, ansatz)
+
+
+def process_parsed_D_data(D_data):
+    """Process an already assembled D -> observables mapping."""
+    if not D_data:
+        return None
+    Ds = sorted(D_data)
+    eps = [D_data[D]['energy_per_site'] for D in Ds]
+    extrap = compute_energy_extrap(Ds, eps)
+    nn_groups = compute_bond_groups(D_data, NN_GROUPS_RAW)
+    order = compute_order_param(D_data)
+    mlist = [order[D]['m_neel'] for D in Ds]
+    m_lin2, m_lin3, c2, c3 = compute_mag_extrap(Ds, mlist)
+    return {
+        'Ds': Ds,
+        'energy_per_site': eps,
+        'extrap': extrap,
+        'nn_groups': nn_groups,
+        'mneel_list': mlist,
+        'm_lin2': m_lin2,
+        'm_lin3': m_lin3,
+        'm_c2': c2,
+        'm_c3': c3,
+        'use_2_3': True,
+        'm_n_extrap': 3,
+    }
+
 
 def load_all():
     """Returns dict:  j2 → { ansatz_key → processed_data }"""
@@ -434,9 +449,7 @@ def load_all():
         ansatz_data = {}
         for ansatz, path in folder_map[j2].items():
             print(f"  Loading J2={j2:.4g}  {ansatz} ...")
-            # Determine if this combination is an exception for magnetization fits
-            is_exception = (round(j2, 6), ansatz) in SPECIAL_MAG_N
-            d = load_ansatz_data(path, j2, ansatz, use_2_3_mag=is_exception)
+            d = load_ansatz_data(path, j2, ansatz)
             if d:
                 ansatz_data[ansatz] = d
             else:
@@ -444,6 +457,69 @@ def load_all():
         if ansatz_data:
             all_data[j2] = ansatz_data
     return all_data
+
+
+RE_EXTERNAL_FOLDER = re.compile(r'^(.+?)__J2_([0-9p]+)_')
+
+
+def discover_external_d10_files(data_dir, j2=0.30):
+    """Find the highest-chi legacy D=10 file for each ansatz at one J2."""
+    selected = {}
+    if not os.path.isdir(data_dir):
+        return selected
+    for folder_name in sorted(os.listdir(data_dir)):
+        folder_path = os.path.join(data_dir, folder_name)
+        match = RE_EXTERNAL_FOLDER.match(folder_name)
+        if not match or not os.path.isdir(folder_path):
+            continue
+        ansatz = match.group(1)
+        try:
+            folder_j2 = round(_parse_j2_from_str(match.group(2)), 6)
+        except ValueError:
+            continue
+        if folder_j2 != round(j2, 6) or is_banned(j2, ansatz, 10):
+            continue
+        for name in os.listdir(folder_path):
+            plain_match = RE_PLAIN_CHI.match(name)
+            if not plain_match or int(plain_match.group(1)) != 10:
+                continue
+            chi = int(plain_match.group(2))
+            path = os.path.join(folder_path, name)
+            try:
+                energy = parse_plain_file(path)['energy_per_site']
+            except Exception as exc:
+                print(f"  Warning: failed to parse external D=10 file {path}: {exc}")
+                continue
+            incumbent = selected.get(ansatz)
+            if incumbent is None or chi > incumbent[0] or (chi == incumbent[0] and energy < incumbent[1]):
+                selected[ansatz] = (chi, energy, path)
+    return {ansatz: item[2] for ansatz, item in selected.items()}
+
+
+def load_external_d10_j2_data(j2=0.30):
+    """Build a special J2 dataset with legacy D=10 injected, without mutating summaries."""
+    if is_banned(j2) or is_banned(j2, D=10):
+        return {}
+    if D_ALLOWED is not None and 10 not in D_ALLOWED:
+        return {}
+    summary_folders = discover_folders(DATA_DIR).get(round(j2, 6), {})
+    external_files = discover_external_d10_files(EXTERNAL_D10_DATA_DIR, j2)
+    result = {}
+    for ansatz, external_path in sorted(external_files.items()):
+        summary_folder = summary_folders.get(ansatz)
+        if summary_folder is None:
+            continue
+        D_data = load_folder_data(summary_folder, j2, ansatz)
+        try:
+            D_data[10] = parse_plain_file(external_path)
+        except Exception as exc:
+            print(f"  Warning: failed to inject {external_path}: {exc}")
+            continue
+        processed = process_parsed_D_data(D_data)
+        if processed:
+            result[ansatz] = processed
+            print(f"  External D=10: J2={j2:.2f} {ansatz} <- {external_path}")
+    return result
 
 # ──────────────────────────────────────────────────────────────────────────────
 # PER-J2 FIGURE
@@ -534,13 +610,8 @@ def plot_col_mag(ax, v, show_xlabel):
     valid = ~np.isnan(ms)
     inv_v, m_v = inv[valid], ms[valid]
 
-    use_2_3 = v.get('use_2_3', False)
-    if use_2_3:
-        n1_pts, n2_pts = 2, 3
-        lab1, lab2 = f'lin(2): {v["m_lin2"]:.4f}', f'lin(3): {v["m_lin3"]:.4f}'
-    else:
-        n1_pts, n2_pts = 3, 4
-        lab1, lab2 = f'lin(3): {v["m_lin2"]:.4f}', f'lin(4): {v["m_lin3"]:.4f}'
+    n1_pts, n2_pts = 2, 3
+    lab1, lab2 = f'lin(2): {v["m_lin2"]:.4f}', f'lin(3): {v["m_lin3"]:.4f}'
 
     if len(m_v) >= n1_pts:
         ax.plot(inv_line, np.polyval(v['m_c2'], inv_line),
@@ -599,7 +670,7 @@ def _set_xticks(ax, x_max, show_xlabel, force_label=False):
     if not (show_xlabel or force_label):
         ax.set_xticklabels([])
 
-def plot_j2_figure(j2, ansatz_map, out_dir):
+def plot_j2_figure(j2, ansatz_map, out_dir, filename=None):
     cols = ([a for a in ANSATZ_ORDER if a in ansatz_map] +
             sorted(a for a in ansatz_map if a not in ANSATZ_ORDER))
 
@@ -642,14 +713,14 @@ def plot_j2_figure(j2, ansatz_map, out_dir):
     fig.suptitle(f'J₂ = {j2:.4g}', fontsize=14, y=1.005)
 
     jstr  = _j2_fname(j2)
-    fpath = os.path.join(out_dir, f'J2_{jstr}.pdf')
+    fpath = os.path.join(out_dir, filename or f'J2_{jstr}.pdf')
     _save(fig, fpath)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # PART 2 & 3: Summary vs J2
 # ──────────────────────────────────────────────────────────────────────────────
 
-def compute_m_lin3_extrap_with_error(Ds, mlist, n_extrap=4):
+def compute_m_lin3_extrap_with_error(Ds, mlist, n_extrap=3):
     """
     Fit m = k*(1/D) + b using last min(n_extrap, n) valid Ds via polyfit with cov.
     Returns (b, b_lo_clipped, b_hi) with b_lo >= 0.
@@ -771,14 +842,14 @@ def _draw_m_raw(ax, all_data, ansatz_key):
 def _draw_m_extrap(ax, all_data, ansatz_key):
     """
     Asymmetric errorbars from linear extrapolation intercept ± σ, clipped to >=0.
-    Uses the number of points stored in v['m_n_extrap'] (3 for exceptions, 4 otherwise).
+    Uses the last three D points for the central linear extrapolation.
     """
     j2s, centers, lowers, uppers = [], [], [], []
     for j2 in sorted(all_data.keys()):
         if ansatz_key not in all_data[j2]:
             continue
         v = all_data[j2][ansatz_key]
-        n_extrap = v.get('m_n_extrap', 4)
+        n_extrap = v.get('m_n_extrap', 3)
         b, b_lo, b_hi = compute_m_lin3_extrap_with_error(
             v['Ds'], v['mneel_list'], n_extrap=n_extrap)
         if np.isnan(b):
@@ -792,7 +863,7 @@ def _draw_m_extrap(ax, all_data, ansatz_key):
         return
 
     # Use n_extrap of the last v to label the line (all v for the same ansatz should be consistent)
-    n_lab = v.get('m_n_extrap', 4) if 'v' in locals() else 4
+    n_lab = v.get('m_n_extrap', 3) if 'v' in locals() else 3
     ax.errorbar(j2s, centers, yerr=[lowers, uppers],
                 fmt='*-', color='#9467bd', ms=10, lw=1.4,
                 capsize=4, elinewidth=1.1,
@@ -992,7 +1063,7 @@ def plot_m_extrap_and_delta_combined(all_data, out_dir):
     j2_m, m_c, m_lo, m_hi = [], [], [], []
     for j2 in j2s_subset:
         v = all_data[j2][ansatz_neel]
-        n_extrap = v.get('m_n_extrap', 4)
+        n_extrap = v.get('m_n_extrap', 3)
         b, b_lo, b_hi = compute_m_lin3_extrap_with_error(
             v['Ds'], v['mneel_list'], n_extrap=n_extrap)
         if np.isnan(b):
@@ -1294,6 +1365,18 @@ def main():
         ansatze = sorted(ansatz_map.keys())
         print(f"  J2={j2:.4g}  ansatze: {ansatze}")
         plot_j2_figure(j2, ansatz_map, OUT_DIR)
+
+    print("\nGenerating J2=0.30 figure with legacy external D=10 data ...")
+    external_d10_data = load_external_d10_j2_data(0.30)
+    if external_d10_data:
+        plot_j2_figure(
+            0.30,
+            external_d10_data,
+            OUT_DIR,
+            filename='J2_0p30_externalD10.pdf',
+        )
+    else:
+        print("  No usable external D=10 data found (or it is banned).")
 
     print("\nGenerating E vs J2 summary figures ...")
     plot_e_vs_j2_figures(all_data, OUT_DIR)
