@@ -143,6 +143,31 @@ def save_scaling_plot(
     return center, error
 
 
+def load_0713_two_c3_mag_j2_030():
+    """Load only D=4..8 magnetization data for 0713 2C3 at J2=0.30."""
+    ansatz_dir = os.path.join(
+        base.TWO_C3_DATA_DIR,
+        'J2_0p3',
+        base.ANSATZ_2C3,
+    )
+    D_data = {}
+    for D in range(4, 9):
+        observable = os.path.join(
+            ansatz_dir,
+            f'D_{D}',
+            'energy_magnetization_correlation.txt',
+        )
+        if not os.path.isfile(observable):
+            raise FileNotFoundError(observable)
+        D_data[D] = base.analysis.parse_plain_file(observable)
+    order = base.analysis.compute_order_param(D_data)
+    Ds = sorted(D_data)
+    return {
+        'Ds': Ds,
+        'mneel_list': [order[D]['m_neel'] for D in Ds],
+    }
+
+
 def plot_requested_scalings():
     neel_data = base.load_legacy_neel()
     neel_values = neel_data.get(0.20)
@@ -165,15 +190,24 @@ def plot_requested_scalings():
         4,
         d_min=5,
     )
+    two_c3_030_result = save_scaling_plot(
+        load_0713_two_c3_mag_j2_030(),
+        'scaling_0713_2C3_J2_030_D4_D8_last3_last4.pdf',
+        r'0713 2C3, $J_2=0.30$',
+        3,
+        4,
+    )
     print(
         '  Scaling extrapolations: '
         f'Néel J2=0.20 {neel_result[0]:.10f} ± {neel_result[1]:.10f}; '
         f'Néel J2=0.265 '
-        f'{neel_0265_result[0]:.10f} ± {neel_0265_result[1]:.10f}'
+        f'{neel_0265_result[0]:.10f} ± {neel_0265_result[1]:.10f}; '
+        f'0713 2C3 J2=0.30 '
+        f'{two_c3_030_result[0]:.10f} ± {two_c3_030_result[1]:.10f}'
     )
 
 
 if __name__ == '__main__':
     base.main()
     plot_requested_scalings()
-    print(f'Done. Two main and two scaling figures are in: {base.OUT_DIR}')
+    print(f'Done. Two main and three scaling figures are in: {base.OUT_DIR}')
