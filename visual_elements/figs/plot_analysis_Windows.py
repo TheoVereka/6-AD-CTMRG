@@ -658,7 +658,7 @@ def plot_col_nn(ax, v, show_xlabel):
     ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.4g'))
     _set_xticks(ax, x_max, show_xlabel, force_label=True)
     if show_xlabel:
-        ax.set_xlabel('1/D', fontsize=10)
+        ax.set_xlabel(r'$1/D$', fontsize=10)
 
 def _set_xticks(ax, x_max, show_xlabel, force_label=False):
     step = 0.05
@@ -967,8 +967,8 @@ def _draw_delta_nn(ax, all_data, ansatz_key):
         ax.plot(j2s, deltas, 'o-', color=D_CORR_COLORS.get(D, 'tab:orange'),
                 ms=6, lw=1.4, label=f'D={D}')
 
-    ax.set_xlabel('J₂', fontsize=10)
-    ax.set_ylabel(r'$\Delta_\mathrm{NN}$ = rank3 $-$ rank1', fontsize=10)
+    ax.set_xlabel(r'$J_2$', fontsize=10)
+    ax.set_ylabel(r'$\Delta_{\mathrm{NN}}$', fontsize=10)
     ax.set_ylim(bottom=0.0)
     ax.set_title(ANSATZ_LABEL.get(ansatz_key, ansatz_key), fontsize=11)
     ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
@@ -984,7 +984,11 @@ def plot_delta_nn_vs_j2(all_data, out_dir):
     fig, axes = plt.subplots(1, n, figsize=(5 * n, 4.5), squeeze=False)
     for i, a in enumerate(ansatze):
         _draw_delta_nn(axes[0, i], all_data, a)
-    fig.suptitle(r'NN bond splitting $\Delta_\mathrm{NN}$ vs J₂  (D=8,9,10)', fontsize=13)
+    fig.suptitle(
+        r'NN bond splitting $\Delta_{\mathrm{NN}}$ vs $J_2$'
+        r'  (D=8,9,10)',
+        fontsize=13,
+    )
     fig.tight_layout()
     _save(fig, os.path.join(out_dir, 'summary_deltaNNN_vs_J2.pdf'))
 
@@ -1038,8 +1042,8 @@ def plot_delta_2C3_D8_vs_C6Ypi_D9(all_data, out_dir):
         print("  No data for the requested 2C3/D=8 or C6Yπ/D=9 ΔNN plot.")
         plt.close(fig)
         return
-    ax.set_xlabel('J₂', fontsize=12)
-    ax.set_ylabel(r'$\Delta_\mathrm{NN}$ = rank3 $-$ rank1', fontsize=12)
+    ax.set_xlabel(r'$J_2$', fontsize=12)
+    ax.set_ylabel(r'$\Delta_{\mathrm{NN}}$', fontsize=12)
     ax.set_title(r'NN bond splitting: 2C3 (D=8) vs C6Y$\pi$ (D=9)', fontsize=12)
     ax.set_ylim(bottom=0.0)
     ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))

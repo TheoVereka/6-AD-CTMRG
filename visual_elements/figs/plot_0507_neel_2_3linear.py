@@ -43,7 +43,8 @@ NEEL_LINEAR_POINTS_BY_J2 = {
 }
 
 # J2 points omitted from both figures.
-NEEL_EXCLUDED_J2 = {0.255}
+NEEL_EXCLUDED_J2 = {0.21,0.255}
+NEEL_INCLUDE_J2_ZERO = True
 
 # Medium purple: darker than the previous pale version.
 NEEL_COLOR = '#9b72b0'
@@ -302,12 +303,12 @@ def plot_neel_extrap(neel_data):
         neel_data,
         0.28,
         'Néel linear extrapolation',
-        include_j2_zero=True,
+        include_j2_zero=NEEL_INCLUDE_J2_ZERO,
     )
     ax.set_xlabel(r'$J_2$')
     ax.set_ylabel(r'extrapolated $m_\mathrm{N\acute{e}el}$')
     ax.set_ylim(bottom=0.0)
-    style_j2_axis(ax, -0.01, 0.285)
+    style_j2_axis(ax, -0.01 if NEEL_INCLUDE_J2_ZERO else 0.195, 0.285)
     ax.legend(fontsize=8)
     fig.tight_layout()
     save(fig, 'm_neel_extrap_J2_020_028.pdf')
@@ -341,10 +342,10 @@ def plot_combined(neel_data, two_c3_data):
             color=color,
             ms=5.5,
             lw=1.5,
-            label=f'0713 2C3 splitting, D={D}',
+            label=f'NN correlation splitting D={D}',
         )
     ax_delta.set_ylabel(
-        r'2C3 $\Delta_\mathrm{NN}$ (rank 3 $-$ rank 1)', color='#7f2704'
+        r'$\Delta_{\mathrm{NN}}$', color='#7f2704'
     )
     ax_delta.tick_params(axis='y', labelcolor='#7f2704')
     ax_delta.set_ylim(bottom=0.0)
@@ -380,7 +381,7 @@ def main():
     two_c3_data = load_0713_two_c3()
     plot_neel_extrap(neel_data)
     plot_combined(neel_data, two_c3_data)
-    print(f'Done. Only two figures were generated in: {OUT_DIR}')
+    print(f'Done. Two main figures were generated in: {OUT_DIR}')
 
 
 if __name__ == '__main__':
