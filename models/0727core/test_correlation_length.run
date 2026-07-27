@@ -25,8 +25,9 @@ cd "${RUN_DIR}" || exit 2
 python -u "${RUN_DIR}/test_correlation_length.py" \
     --device cuda \
     --D 2 \
-    --chi 5 \
-    --ctm-steps 10
+    --chi 8 \
+    --ctm-steps 20 \
+    --ctm-tol 1e-10
 STATUS=$?
 
 echo "FINISHED AT $(date) WITH STATUS ${STATUS}"

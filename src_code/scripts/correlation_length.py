@@ -220,6 +220,9 @@ def obtain_transfer_components(
     ctm_max_steps: int = DEFAULT_CTM_MAX_STEPS,
     ctm_conv_tol: float = DEFAULT_CTM_CONV_TOL,
     identity_init: bool = DEFAULT_IDENTITY_INIT,
+    rsvd_mode: str = DEFAULT_RSVD_MODE,
+    rsvd_neumann_terms: int = DEFAULT_RSVD_NEUMANN_TERMS,
+    rsvd_power_iters: int | None = DEFAULT_RSVD_POWER_ITERS,
     dtype: torch.dtype | None = None,
     device: torch.device | str | None = None,
 ) -> TransferComponents:
@@ -260,14 +263,22 @@ def obtain_transfer_components(
         torch.backends.cuda.matmul.allow_tf32 = False
     _core._SVD_CPU_OFFLOAD_THRESHOLD = 0
     _core.set_rsvd_mode(
-        DEFAULT_RSVD_MODE,
-        neumann_terms=DEFAULT_RSVD_NEUMANN_TERMS,
-        power_iters=DEFAULT_RSVD_POWER_ITERS,
+        rsvd_mode,
+        neumann_terms=rsvd_neumann_terms,
+        power_iters=rsvd_power_iters,
     )
 
     if target_dtype == torch.float32:
         ctm_conv_tol = max(ctm_conv_tol, 1.0e-5)
 
+    # In update_environmentCTs_1to2_C3, output 1 is T1D and is built from
+    # double-layer site D, while output 2 is T2C and is built from site C.
+    # For two-C3(a,b), D belongs to the b orbit and C belongs to the a orbit.
+    # Therefore the returned pair is exactly (upper_b, upper_a).
+    #
+    # The T1D einsum spells its output as YMa in the old frame.  This is a C3
+    # frame relabel, not a pending transpose: update_environmentCTs_2to3_C3
+    # consumes that returned tensor unchanged as its canonical MYa edge.
     upper_b, upper_a, double_a, double_b, steps_ab = (
         _run_ctm_and_extract_edges(
             raw_a,
@@ -279,6 +290,11 @@ def obtain_transfer_components(
             keep_ab=True,
         )
     )
+    # For two-C3(b,a), D belongs to the original a orbit and C belongs to the
+    # original b orbit.  The same T1D,T2C output positions therefore become
+    # (lower_a, lower_b).  Following the same canonical-frame convention, no
+    # transpose is applied; the transfer contraction labels their stored axes
+    # as (m,y,a) and (m,v,g), respectively.
     lower_a, lower_b, _, _, steps_ba = _run_ctm_and_extract_edges(
         raw_b,
         raw_a,
@@ -314,6 +330,9 @@ def obtain_4Ts(
     ctm_max_steps: int = DEFAULT_CTM_MAX_STEPS,
     ctm_conv_tol: float = DEFAULT_CTM_CONV_TOL,
     identity_init: bool = DEFAULT_IDENTITY_INIT,
+    rsvd_mode: str = DEFAULT_RSVD_MODE,
+    rsvd_neumann_terms: int = DEFAULT_RSVD_NEUMANN_TERMS,
+    rsvd_power_iters: int | None = DEFAULT_RSVD_POWER_ITERS,
     dtype: torch.dtype | None = None,
     device: torch.device | str | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -326,6 +345,9 @@ def obtain_4Ts(
         ctm_max_steps=ctm_max_steps,
         ctm_conv_tol=ctm_conv_tol,
         identity_init=identity_init,
+        rsvd_mode=rsvd_mode,
+        rsvd_neumann_terms=rsvd_neumann_terms,
+        rsvd_power_iters=rsvd_power_iters,
         dtype=dtype,
         device=device,
     )
@@ -1025,6 +1047,9 @@ def obtain_per_D_correlation_length(
     ctm_max_steps: int = DEFAULT_CTM_MAX_STEPS,
     ctm_conv_tol: float = DEFAULT_CTM_CONV_TOL,
     identity_init: bool = DEFAULT_IDENTITY_INIT,
+    rsvd_mode: str = DEFAULT_RSVD_MODE,
+    rsvd_neumann_terms: int = DEFAULT_RSVD_NEUMANN_TERMS,
+    rsvd_power_iters: int | None = DEFAULT_RSVD_POWER_ITERS,
     dtype: torch.dtype | None = None,
     device: torch.device | str | None = None,
     max_intermediate_bytes: int = int(
@@ -1048,6 +1073,9 @@ def obtain_per_D_correlation_length(
         ctm_max_steps=ctm_max_steps,
         ctm_conv_tol=ctm_conv_tol,
         identity_init=identity_init,
+        rsvd_mode=rsvd_mode,
+        rsvd_neumann_terms=rsvd_neumann_terms,
+        rsvd_power_iters=rsvd_power_iters,
         dtype=dtype,
         device=device,
     )
@@ -1241,6 +1269,21 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Use the non-identity CTMRG initialization.",
     )
     parser.add_argument(
+        "--rsvd-mode",
+        choices=("full_svd", "neumann", "augmented", "none"),
+        default=DEFAULT_RSVD_MODE,
+    )
+    parser.add_argument(
+        "--rsvd-neumann-terms",
+        type=int,
+        default=DEFAULT_RSVD_NEUMANN_TERMS,
+    )
+    parser.add_argument(
+        "--rsvd-power-iters",
+        type=int,
+        default=DEFAULT_RSVD_POWER_ITERS,
+    )
+    parser.add_argument(
         "--max-intermediate-mib",
         type=float,
         default=DEFAULT_MAX_INTERMEDIATE_MIB,
@@ -1340,9 +1383,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             else args.ctm_conv_tol
         ),
         "ctm_identity_init": not args.random_init,
-        "rsvd_mode": DEFAULT_RSVD_MODE,
-        "rsvd_neumann_terms": DEFAULT_RSVD_NEUMANN_TERMS,
-        "rsvd_power_iters": DEFAULT_RSVD_POWER_ITERS,
+        "rsvd_mode": args.rsvd_mode,
+        "rsvd_neumann_terms": args.rsvd_neumann_terms,
+        "rsvd_power_iters": args.rsvd_power_iters,
         "max_intermediate_mib": args.max_intermediate_mib,
         "transfer_mode": "matrix_free" if args.matrix_free else "dense_gpu",
         "expected_dense_transfer_gib": expected_transfer_gib,
@@ -1378,6 +1421,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         ctm_max_steps=args.ctm_max_steps,
         ctm_conv_tol=args.ctm_conv_tol,
         identity_init=not args.random_init,
+        rsvd_mode=args.rsvd_mode,
+        rsvd_neumann_terms=args.rsvd_neumann_terms,
+        rsvd_power_iters=args.rsvd_power_iters,
         dtype=dtype,
         device=device,
         max_intermediate_bytes=int(args.max_intermediate_mib * _MIB),
