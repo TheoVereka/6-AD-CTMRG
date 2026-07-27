@@ -1,9 +1,9 @@
 #!/bin/bash
 ##SBATCH --qos long
-#SBATCH --job-name=0727-neumann-regression
+#SBATCH --job-name=0727-accuracy-D3
 #SBATCH --partition gpu
-#SBATCH -e ./job-%N-%j.error
-#SBATCH -o ./job-%N-%j.out
+#SBATCH -e ./accuracy-D3-%N-%j.error
+#SBATCH -o ./accuracy-D3-%N-%j.out
 #SBATCH --gres=gpu:1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
@@ -11,22 +11,20 @@
 #SBATCH --time=11:59:50
 #SBATCH --exclude=i39
 
-echo "***** START OF JOB *****"
+echo "***** START D=3 ACCURACY JOB *****"
 module load gcc/11.3.0
 module load cuda/11.8.0
 echo "STARTING AT $(date)"
 
 source /home/chye/venvs/6adctmrg_Izar/bin/activate
+export PYTHONUNBUFFERED=1
 
-# Override these two variables at submission time if the directories differ:
-#   sbatch --export=ALL,OLD_DIR=/path/0717core,NEW_DIR=/path/0727core \
-#          test_neumann_0717_vs_0727.run
 OLD_DIR="${OLD_DIR:-/home/chye/0717core}"
 NEW_DIR="${NEW_DIR:-/home/chye/0727core}"
 
 cd "${NEW_DIR}" || exit 2
 
-python "${NEW_DIR}/test_neumann_0717_vs_0727.py" \
+python -u "${NEW_DIR}/test_accuracy_D3.py" \
     --old-core "${OLD_DIR}/core_C3.py" \
     --new-core "${NEW_DIR}/core_C3.py" \
     --new-main "${NEW_DIR}/main_C3.py" \
@@ -35,10 +33,10 @@ python "${NEW_DIR}/test_neumann_0717_vs_0727.py" \
     --chi 12 \
     --ctm-steps 3 \
     --power-iters 4 \
-    --json "${NEW_DIR}/neumann_0717_vs_0727_results.json"
-TEST_STATUS=$?
+    --json "${NEW_DIR}/accuracy_D3_results.json"
+STATUS=$?
 
-echo "FINISHED AT $(date) WITH STATUS ${TEST_STATUS}"
-echo "JSON: ${NEW_DIR}/neumann_0717_vs_0727_results.json"
-echo "***** END OF JOB *****"
-exit "${TEST_STATUS}"
+echo "FINISHED AT $(date) WITH STATUS ${STATUS}"
+echo "JSON: ${NEW_DIR}/accuracy_D3_results.json"
+echo "***** END D=3 ACCURACY JOB *****"
+exit "${STATUS}"

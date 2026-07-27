@@ -1,0 +1,47 @@
+#!/bin/bash
+##SBATCH --qos long
+#SBATCH --job-name=0727-prod-bench
+#SBATCH --partition gpu
+#SBATCH --array=0-2
+#SBATCH -e ./prod-bench-%A_%a-%N.error
+#SBATCH -o ./prod-bench-%A_%a-%N.out
+#SBATCH --gres=gpu:1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=40G
+#SBATCH --time=71:59:50
+#SBATCH --exclude=i39
+
+echo "***** START PRODUCTION BENCHMARK JOB ${SLURM_ARRAY_TASK_ID} *****"
+module load gcc/11.3.0
+module load cuda/11.8.0
+echo "STARTING AT $(date)"
+
+source /home/chye/venvs/6adctmrg_Izar/bin/activate
+export PYTHONUNBUFFERED=1
+
+OLD_DIR="${OLD_DIR:-/home/chye/0717core}"
+NEW_DIR="${NEW_DIR:-/home/chye/0727core}"
+
+DS=(8 9 10)
+CHIS=(100 108 140)
+INDEX="${SLURM_ARRAY_TASK_ID}"
+D="${DS[$INDEX]}"
+CHI="${CHIS[$INDEX]}"
+
+echo "CASE: D=${D}, chi=${CHI}"
+cd "${NEW_DIR}" || exit 2
+
+python -u "${NEW_DIR}/benchmark_production_scale.py" \
+    --old-core "${OLD_DIR}/core_C3.py" \
+    --new-core "${NEW_DIR}/core_C3.py" \
+    --D "${D}" \
+    --chi "${CHI}" \
+    --power-iters 1 \
+    --json "${NEW_DIR}/production_D${D}_chi${CHI}_results.json"
+STATUS=$?
+
+echo "FINISHED D=${D}, chi=${CHI} AT $(date) WITH STATUS ${STATUS}"
+echo "JSON: ${NEW_DIR}/production_D${D}_chi${CHI}_results.json"
+echo "***** END PRODUCTION BENCHMARK JOB ${SLURM_ARRAY_TASK_ID} *****"
+exit "${STATUS}"

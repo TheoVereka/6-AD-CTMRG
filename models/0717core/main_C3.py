@@ -533,7 +533,7 @@ ENV_IDENTITY_INIT = True
 
 
 
-CTM_MAX_STEPS = 130
+CTM_MAX_STEPS = 100
 #   Hard cap on CTMRG iterations per environment convergence call.
 #   With the singular-value convergence criterion and CTM_CONV_THR=1e-7,
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor

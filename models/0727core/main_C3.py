@@ -324,7 +324,7 @@ USE_REAL_TENSORS = True
 # SVD_CPU_OFFLOAD_THRESHOLD is always 0 (GPU always handles SVD; never
 # offload to CPU for cluster GPUs).  Hard-coded in core.py; not a tunable.
 
-RSVD_MODE = 'neumann'
+RSVD_MODE = 'augmented'
 #   rSVD backward mode.  Controls how the truncated-SVD 5th-term correction
 #   (arXiv:2311.11894v3) is computed in the backward pass.
 #
@@ -332,17 +332,14 @@ RSVD_MODE = 'neumann'
 #   'neumann'   — Neumann series for 5th term: O(2·L·mnk) per call, avoids
 #                 the O(N³) eigh.  Exact when discarded SVs ≈ 0.
 #   'augmented' — save k+k_extra rSVD triples; zero-padding captures 5th term
-#                 implicitly via F,G cross-coupling.  NOT recommended:
-#                 benchmarks show ~85-90% gradient error even with k_aug=2k
-#                 because only 2k of N modes are captured.  Neumann L=2 is
-#                 orders of magnitude more precise at the same cost.
+#                 implicitly via F,G cross-coupling.
 #   'none'      — skip 5th term entirely (wrong for projector-type losses).
 #
-#   Recommendation for CTMRG:
-#     RSVD_MODE = 'neumann', RSVD_NEUMANN_TERMS = 2
-#   L=2 costs <1ms extra vs L=1 but gives 15× better gradient at ρ=0.30
-#   (i.e. when chi is small and discarded weight is non-negligible).
-#   L=1 suffices only when discarded SVs are truly ≈ 0 (large chi).
+#   D=3, chi=12, three-step differentiable CTMRG regression (2026-07-27):
+#     augmented gradient error vs full SVD = 4.56e-4
+#     Neumann L=2 gradient error vs full SVD = 6.995e-2
+#   Therefore augmented is the validated production mode for this code path.
+#   Neumann remains available for diagnostics but is not the default.
 
 RSVD_NEUMANN_TERMS = 2
 #   Number of Neumann series iterations in 'neumann' mode.
@@ -533,7 +530,7 @@ ENV_IDENTITY_INIT = True
 
 
 
-CTM_MAX_STEPS = 130
+CTM_MAX_STEPS = 100
 #   Hard cap on CTMRG iterations per environment convergence call.
 #   With the singular-value convergence criterion and CTM_CONV_THR=1e-7,
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
@@ -1610,6 +1607,9 @@ def optimize_at_chi(
         if elapsed >= budget_seconds:
             break
 
+        _step_started = time.perf_counter()
+        if params[0].device.type == 'cuda':
+            torch.cuda.reset_peak_memory_stats(params[0].device)
 
         # CTMRG is evaluated inside the optimizer objective.
         # (LBFGS calls the closure multiple times; reusing env tensors would
@@ -1767,15 +1767,35 @@ def optimize_at_chi(
             if params[0].device.type == 'cuda':
                 gc.collect()
                 torch.cuda.empty_cache()
+        _step_seconds = time.perf_counter() - _step_started
+        if params[0].device.type == 'cuda':
+            _peak_alloc_gib = (
+                torch.cuda.max_memory_allocated(params[0].device) / 1024**3)
+            _peak_reserved_gib = (
+                torch.cuda.max_memory_reserved(params[0].device) / 1024**3)
+        else:
+            _peak_alloc_gib = None
+            _peak_reserved_gib = None
         delta     = (loss_item - prev_loss) if prev_loss is not None else float('inf')
         elapsed   = time.perf_counter() - t_start
 
         print(f"    step {step:5d}  ctm={ctm_steps:3d}  loss={loss_item:+.10f}"
-              f"  Δ={delta:+.3e}  {elapsed:.0f}/{budget_seconds:.0f}s")
+              f"  Δ={delta:+.3e}  step_time={_step_seconds:.1f}s"
+              + (f"  peak_alloc={_peak_alloc_gib:.3f}GiB"
+                 f"  peak_reserved={_peak_reserved_gib:.3f}GiB"
+                 if _peak_alloc_gib is not None else "")
+              + f"  {elapsed:.0f}/{budget_seconds:.0f}s")
         sys.stdout.flush()
         loss_log.append({'step': step, 'ctm_steps': ctm_steps, 'loss': loss_item,
                          'D_bond': D_bond, 'chi': chi,
-                         'elapsed': round(elapsed, 1)})
+                         'elapsed': round(elapsed, 1),
+                         'step_seconds': round(_step_seconds, 3),
+                         'peak_allocated_gib': (
+                             None if _peak_alloc_gib is None
+                             else round(_peak_alloc_gib, 6)),
+                         'peak_reserved_gib': (
+                             None if _peak_reserved_gib is None
+                             else round(_peak_reserved_gib, 6))})
 
         # ── Last-resort collapsed-loss guard ──────────────────────────────
         # If CTMRG env collapses to near-zero AND FloatingPointError was not

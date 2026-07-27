@@ -1879,43 +1879,33 @@ def trunc_rhoC3(matC: torch.Tensor, chi: int, D_squared: int):
     if chi > n:
         raise ValueError(f"chi={chi} exceeds enlarged corner dimension n={n}")
 
-    # The production configuration uses augmented rSVD.  Its range finder can
-    # act on (C.T)^3 as a linear operator, eliminating both resident N×N
-    # temporaries (C² and C³).  Exact/full and Neumann modes retain the dense
-    # compatibility path because their backward definitions need the full M.
-    # SVD_PROPACK's established mode dispatch is controlled by
-    # _RSVD_BACKWARD_MODE (the historical use_full_svd argument is not part of
-    # that dispatch).  Preserve that behaviour so the driver's transient
-    # _USE_FULL_SVD flag cannot accidentally reintroduce two huge dense cubes.
-    use_matrix_free = _RSVD_BACKWARD_MODE in ('augmented', 'none')
-    if use_matrix_free:
-        U, S, V = _matrix_free_cubic_rsvd(matC, chi)
-        if _RECORD_TRUNC_ERROR:
-            frob_sq = _cubic_frobenius_sq(matC.detach(), max(1, chi))
-            _record_trunc_err_from_kept(frob_sq, S)
-    else:
-        ct = matC.T
-        # Keep the square temporary local to this expression; it is released
-        # before SVD/projector construction rather than spanning both phases.
-        M = ct @ (ct @ ct)
-        U, S, V = truncated_svd_propack(
-            M, chi,
-            chi_extra=round(2*np.sqrt(D_squared)),
-            rel_cutoff=1e-12,
-            v0=None,
-            keep_multiplets=False,
-            abs_tol=1e-14,
-            eps_multiplet=1e-12,
-        )
-        if _RECORD_TRUNC_ERROR:
-            _record_trunc_err_from_kept(M.detach().abs().square().sum(), S)
-        del M
+    # Accuracy baseline: preserve the exact 0717 arithmetic and autograd graph.
+    # Algebraic reassociation and the matrix-free projected SVD passed an
+    # isolated truncation test but changed (and for augmented destabilised)
+    # gradients after repeated differentiable CTMRG steps.  The matrix-free
+    # helpers therefore remain experimental until their custom backward passes
+    # the full-pipeline regression.
+    R1 = matC.T
+    R2 = torch.mm(matC, matC)
+    M = torch.mm(R1, R2.T)
+
+    U, S, V = truncated_svd_propack(
+        M, chi,
+        chi_extra=round(2*np.sqrt(D_squared)),
+        rel_cutoff=1e-12,
+        v0=None,
+        keep_multiplets=False,
+        abs_tol=1e-14,
+        eps_multiplet=1e-12,
+    )
+    if _RECORD_TRUNC_ERROR:
+        # Recording remains diagnostic-only and does not switch the requested
+        # production mode to full SVD as the 0717 implementation did.
+        _record_trunc_err_from_kept(M.detach().abs().square().sum(), S)
 
     sqrtInvTruncS = _safe_sqrt_inv_diag(S[:chi])
-    v_scaled = V @ sqrtInvTruncS
-    ct = matC.T
-    P_out = ct @ (ct @ v_scaled)
-    P_in = (sqrtInvTruncS @ U.conj().T) @ ct
+    P_out = torch.mm(R2.T, torch.mm(V, sqrtInvTruncS))
+    P_in = torch.mm(torch.mm(sqrtInvTruncS, U.conj().T), R1)
 
     C = torch.mm(P_out.T, torch.mm(matC, P_in.T))
     C = normalize_tensor(C)
