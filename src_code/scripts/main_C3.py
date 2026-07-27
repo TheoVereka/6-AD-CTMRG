@@ -27,10 +27,10 @@ N_GPUS = 1
 
 # ── Sweep control ─────────────────────────────────────────────────────────────
 
-D_BOND_LIST   = [  2,  3,  4,  5,  6,  7,  8,  9, 10]
-CHI_MIN_LIST  = [ 16, 24, 36, 50, 72, 91,104, 108,140]
-CHI_MAX_LIST  = [ 20, 30, 44, 60, 84, 105,112,108,160]
-CHI_STEP_LIST = [  4,  6,  8, 10, 12, 14, 16, 18, 20]
+D_BOND_LIST   = [  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12]
+CHI_MIN_LIST  = [ 16, 24, 36, 50, 72, 91,104, 126,140,165,180]
+CHI_MAX_LIST  = [ 20, 30, 44, 60, 84, 105,112,135,150,176,192]
+CHI_STEP_LIST = [  4,  6,  8, 10, 12, 14, 8, 9, 10, 11, 12]
 #   Default chi schedule parameters (one per D in D_BOND_LIST).
 #   For each D_bond, the chi schedule is generated as:
 #     range(chi_min, chi_max+1, chi_step)  (Python range semantics)
@@ -530,7 +530,7 @@ ENV_IDENTITY_INIT = True
 
 
 
-CTM_MAX_STEPS = 50
+CTM_MAX_STEPS = 70
 #   Hard cap on CTMRG iterations per environment convergence call.
 #   With the singular-value convergence criterion and CTM_CONV_THR=1e-7,
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
