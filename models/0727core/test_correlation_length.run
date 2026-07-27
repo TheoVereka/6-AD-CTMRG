@@ -1,0 +1,34 @@
+#!/bin/bash
+#SBATCH --qos debug
+#SBATCH --job-name=0727-corr-length-test
+#SBATCH --partition gpu
+#SBATCH -e ./corr-length-test-%N-%j.error
+#SBATCH -o ./corr-length-test-%N-%j.out
+#SBATCH --gres=gpu:1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=40G
+#SBATCH --time=00:59:50
+#SBATCH --exclude=i39
+
+echo "***** START CORRELATION-LENGTH VALIDATION *****"
+module load gcc/11.3.0
+module load cuda/11.8.0
+echo "STARTING AT $(date)"
+
+source /home/chye/venvs/6adctmrg_Izar/bin/activate
+export PYTHONUNBUFFERED=1
+
+RUN_DIR="${RUN_DIR:-/home/chye/0727core}"
+cd "${RUN_DIR}" || exit 2
+
+python -u "${RUN_DIR}/test_correlation_length.py" \
+    --device cuda \
+    --D 2 \
+    --chi 5 \
+    --ctm-steps 10
+STATUS=$?
+
+echo "FINISHED AT $(date) WITH STATUS ${STATUS}"
+echo "***** END CORRELATION-LENGTH VALIDATION *****"
+exit "${STATUS}"
