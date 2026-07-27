@@ -28,8 +28,8 @@ N_GPUS = 1
 # ── Sweep control ─────────────────────────────────────────────────────────────
 
 D_BOND_LIST   = [  2,  3,  4,  5,  6,  7,  8,  9, 10]
-CHI_MIN_LIST  = [ 16, 24, 36, 50, 72, 91,104, 108,140]
-CHI_MAX_LIST  = [ 20, 30, 44, 60, 84, 105,112,108,160]
+CHI_MIN_LIST  = [ 16, 24, 36, 50, 72, 91,104, 126,140]
+CHI_MAX_LIST  = [ 20, 30, 44, 60, 84, 105,112,135,150]
 CHI_STEP_LIST = [  4,  6,  8, 10, 12, 14, 16, 18, 20]
 #   Default chi schedule parameters (one per D in D_BOND_LIST).
 #   For each D_bond, the chi schedule is generated as:
