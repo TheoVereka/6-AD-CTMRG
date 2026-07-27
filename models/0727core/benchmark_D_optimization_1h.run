@@ -1,0 +1,54 @@
+#!/bin/bash
+#SBATCH --qos debug
+#SBATCH --job-name=0727-D-opt
+#SBATCH --partition gpu
+#SBATCH -e ./D-opt-%N-%j.error
+#SBATCH -o ./D-opt-%N-%j.out
+#SBATCH --gres=gpu:1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=40G
+#SBATCH --time=00:59:50
+#SBATCH --exclude=i39
+
+BENCH_D="${BENCH_D:?Submit with --export=ALL,BENCH_D=8 (or 9/10)}"
+case "${BENCH_D}" in
+    8|9|10) ;;
+    *)
+        echo "BENCH_D must be 8, 9, or 10; got '${BENCH_D}'" >&2
+        exit 2
+        ;;
+esac
+BENCH_CHI="${BENCH_CHI:-108}"
+
+echo "***** START D=${BENCH_D}, chi=${BENCH_CHI} PRODUCTION-CLOSURE BENCHMARK *****"
+module load gcc/11.3.0
+module load cuda/11.8.0
+echo "STARTING AT $(date)"
+
+source /home/chye/venvs/6adctmrg_Izar/bin/activate
+export PYTHONUNBUFFERED=1
+
+NEW_DIR="${NEW_DIR:-/home/chye/0727core}"
+OUT_DIR="${OUT_DIR:-${NEW_DIR}/D${BENCH_D}_chi${BENCH_CHI}_debug}"
+
+cd "${NEW_DIR}" || exit 2
+
+python -u "${NEW_DIR}/main_C3.py" \
+    --hours 0.95 \
+    --ansatz twoc3 \
+    --J2 0.265 \
+    --Ds "${BENCH_D}" \
+    --chi-min "${BENCH_CHI}" \
+    --chi-max "${BENCH_CHI}" \
+    --chi-step 1 \
+    --double \
+    --gpu \
+    --ngpu 1 \
+    --output-dir "${OUT_DIR}"
+STATUS=$?
+
+echo "FINISHED D=${BENCH_D}, chi=${BENCH_CHI} AT $(date) WITH STATUS ${STATUS}"
+echo "OUTPUT DIRECTORY: ${OUT_DIR}"
+echo "***** END D=${BENCH_D}, chi=${BENCH_CHI} PRODUCTION-CLOSURE BENCHMARK *****"
+exit "${STATUS}"

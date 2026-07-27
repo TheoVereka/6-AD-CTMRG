@@ -5,7 +5,7 @@
 
 
 
-MY_OUTPUT_OUTERDIR = '/scratch/izar/chye/0713core'
+MY_OUTPUT_OUTERDIR = '/scratch/izar/chye/0727core'
 USE_GPU = True
 _N_PHYSICAL_CORES = 25
 
@@ -332,17 +332,14 @@ RSVD_MODE = 'augmented'
 #   'neumann'   — Neumann series for 5th term: O(2·L·mnk) per call, avoids
 #                 the O(N³) eigh.  Exact when discarded SVs ≈ 0.
 #   'augmented' — save k+k_extra rSVD triples; zero-padding captures 5th term
-#                 implicitly via F,G cross-coupling.  NOT recommended:
-#                 benchmarks show ~85-90% gradient error even with k_aug=2k
-#                 because only 2k of N modes are captured.  Neumann L=2 is
-#                 orders of magnitude more precise at the same cost.
+#                 implicitly via F,G cross-coupling.
 #   'none'      — skip 5th term entirely (wrong for projector-type losses).
 #
-#   Recommendation for CTMRG:
-#     RSVD_MODE = 'neumann', RSVD_NEUMANN_TERMS = 2
-#   L=2 costs <1ms extra vs L=1 but gives 15× better gradient at ρ=0.30
-#   (i.e. when chi is small and discarded weight is non-negligible).
-#   L=1 suffices only when discarded SVs are truly ≈ 0 (large chi).
+#   D=3, chi=12, three-step differentiable CTMRG regression (2026-07-27):
+#     augmented gradient error vs full SVD = 4.56e-4
+#     Neumann L=2 gradient error vs full SVD = 6.995e-2
+#   Therefore augmented is the validated production mode for this code path.
+#   Neumann remains available for diagnostics but is not the default.
 
 RSVD_NEUMANN_TERMS = 2
 #   Number of Neumann series iterations in 'neumann' mode.
@@ -533,7 +530,7 @@ ENV_IDENTITY_INIT = True
 
 
 
-CTM_MAX_STEPS = 130
+CTM_MAX_STEPS = 50
 #   Hard cap on CTMRG iterations per environment convergence call.
 #   With the singular-value convergence criterion and CTM_CONV_THR=1e-7,
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
@@ -1610,7 +1607,6 @@ def optimize_at_chi(
         if elapsed >= budget_seconds:
             break
 
-
         # CTMRG is evaluated inside the optimizer objective.
         # (LBFGS calls the closure multiple times; reusing env tensors would
         #  both crash autograd and give incorrect gradients.)
@@ -2353,7 +2349,7 @@ def main():
     print("=" * 76)
     print("  iPEPS sweep  —  AD-CTMRG  —  J1-J2 Heisenberg on 6-site honeycomb")
     print(f"  Ansatz       : {args.ansatz} — {ansatz_cfg['description']}")
-    print(f"  J1={args.J1}  J2={args.J2}  d_phys={d_PHYS}  Total budget: {args.hours:.1f} h")
+    print(f"  J1={args.J1}  J2={args.J2}  d_phys={d_PHYS}  Total budget: {args.hours:.2f} h")
     print(f"  Device       : {_core.DEVICE}")
     print(f"  D_bond sweep : {D_bond_list}")
     for D in D_bond_list:
@@ -2896,4 +2892,3 @@ def main():
 if __name__ == '__main__':
 
     main()
-

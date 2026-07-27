@@ -2545,32 +2545,8 @@ def main():
                 loss_log: list = []
                 all_loss_logs[(D_bond, chi)] = loss_log
                 
-                # ── Chi init: mean-field / random / warm-start ─────────────────
-                #print(cur_params)
-                if chi_idx==0 and args.mean_field_init and not args.resume_folder and not resumeEqulCurrent:
-                    _init_params = _make_mean_field_params(
-                        ansatz_cfg, D_bond, d_PHYS, INIT_NOISE)
-                    if chi_idx == 0:
-                        print(f"  │  [mean-field] Néel product-state init for chi={chi}")
-                    else:
-                        print(f"  │  [mean-field] Néel product-state init for chi={chi} "
-                              f"(overrides warm-start)")
-                elif args.rand_init_new_chi and chi_idx > 0:
-                    print(f"  │  [rand-chi] random init for chi={chi} (ignoring previous result)")
-                    _init_params = None
-                else:
-                    _init_params = cur_params
-    
-                # Warm-started from the previous chi of the same D: the
-                # tensors are already near a local minimum, so skip Adam
-                # exploration and go straight to L-BFGS.
-                _skip_adam = (
-                    chi_idx > 0
-                    and _init_params is not None
-                    and _init_params is cur_params
-                )
-
-                _skip_adam = False
+                _init_params = cur_params
+                _skip_adam = True
                 
                 if _skip_adam:
                     print(f"  │  [warm-start] chi_idx={chi_idx}>0: "

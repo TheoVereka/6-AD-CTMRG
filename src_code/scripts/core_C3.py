@@ -126,6 +126,17 @@ def _record_trunc_err(S_all: torch.Tensor, chi: int) -> None:
         err = (norm_disc / norm_all).item()
     _TRUNC_ERRORS_ACC.append(err)
 
+
+def _record_trunc_err_from_kept(
+        frobenius_sq: torch.Tensor, S_kept: torch.Tensor) -> None:
+    """Record discarded weight without computing a full singular spectrum."""
+    with torch.no_grad():
+        total_sq = frobenius_sq.real.clamp(min=1e-30)
+        kept_sq = S_kept.real.square().sum()
+        discarded_sq = (total_sq - kept_sq).clamp(min=0.0)
+        _TRUNC_ERRORS_ACC.append(
+            (torch.sqrt(discarded_sq) / torch.sqrt(total_sq)).item())
+
 # ── rSVD backward strategy ────────────────────────────────────────────────────
 #
 # Controls how SVD_PROPACK computes gradients when using the randomised SVD
@@ -221,11 +232,10 @@ _CTM_E_CONV_THRESHOLD: float = 1e-8
 #   Only used when _CTM_CONV_MODE is 'Edifference' or 'both'.
 
 # ── Rho side-channel cache ────────────────────────────────────────────────────
-# When _CACHE_RHOS is True, each energy function's pre-build path writes all
-# 12 density matrices (6 NN + 6 NNN) for its environment into _RHO_CACHE.
-# This reuses the open/closed tensors already alive for energy computation —
-# zero extra tensor builds compared to the normal optimization step.
-# The lazy path (very large D where 6 opens > 35% GPU RAM) skips caching.
+# When _CACHE_RHOS is True, each energy function writes the public 12-rho
+# layout (6 NN + 6 NNN) for its environment into _RHO_CACHE.  C3-equivalent
+# entries alias one of four representative small density matrices, so caching
+# does not trigger any extra large open-tensor construction.
 # Usage: set _CACHE_RHOS=True before the optimizer loop; read _RHO_CACHE after.
 _CACHE_RHOS: bool = False
 _RHO_CACHE: dict = {}   # 'env1'/'env2'/'env3' → (rho_list_12, mag_dict_6sites)
@@ -1784,6 +1794,64 @@ def abcdef_to_ABCDEF(a,b,c,d,e,f, D_squared:int):
 
 
 
+def _cubic_apply(c_transpose: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
+    """Apply ``(C.T)^3`` to a thin matrix without materialising either cube."""
+    return c_transpose @ (c_transpose @ (c_transpose @ x))
+
+
+def _cubic_adjoint_apply(
+        c_transpose: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
+    """Apply the Hermitian adjoint of ``(C.T)^3`` to a thin matrix."""
+    ch = c_transpose.mH
+    return ch @ (ch @ (ch @ x))
+
+
+def _matrix_free_cubic_rsvd(
+        matC: torch.Tensor, chi: int) -> tuple:
+    """Leading cubic-corner singular triples with O(N*chi) workspace.
+
+    This is algebraically the same range finder used by ``SVD_PROPACK`` in
+    augmented mode, but all products with ``M=(C.T)^3`` are applied as three
+    skinny GEMMs.  ``Q`` remains detached, matching the existing augmented
+    backward convention; autograd follows the projected matrix back through
+    all three factors of C.
+    """
+    n = matC.shape[0]
+    q = min(2 * chi, n) if _RSVD_BACKWARD_MODE == 'augmented' else chi
+    niter = (_adaptive_power_iters(chi, n)
+             if _RSVD_POWER_ITERS is None else _RSVD_POWER_ITERS)
+    ct = matC.T
+
+    with torch.no_grad():
+        random = torch.randn(n, q, dtype=matC.dtype, device=matC.device)
+        Q, _ = torch.linalg.qr(_cubic_apply(ct, random))
+        for _ in range(niter):
+            Q, _ = torch.linalg.qr(_cubic_adjoint_apply(ct, Q))
+            Q, _ = torch.linalg.qr(_cubic_apply(ct, Q))
+
+    # B = Q.mH @ M = (M.mH @ Q).mH.  The latter form is matrix-free and
+    # differentiable with respect to matC while Q is intentionally constant.
+    B = _cubic_adjoint_apply(ct, Q).mH
+    U_b, S_all, Vh_all = torch.linalg.svd(B, full_matrices=False)
+    U = Q @ U_b[:, :chi]
+    V = Vh_all[:chi].mH
+    return U, S_all[:chi], V
+
+
+def _cubic_frobenius_sq(
+        matC: torch.Tensor, block_cols: int) -> torch.Tensor:
+    """Exact ``||(C.T)^3||_F^2`` using only O(N*block_cols) workspace."""
+    ct = matC.T
+    n = matC.shape[0]
+    total = matC.real.new_zeros(())
+    # The first multiplication by an identity block is just a column slice.
+    for start in range(0, n, block_cols):
+        stop = min(start + block_cols, n)
+        block = ct @ (ct @ ct[:, start:stop])
+        total = total + block.abs().square().sum()
+    return total
+
+
 def trunc_rhoC3(matC: torch.Tensor, chi: int, D_squared: int):
     """C3-symmetric corner truncation using one enlarged corner only.
 
@@ -1811,33 +1879,33 @@ def trunc_rhoC3(matC: torch.Tensor, chi: int, D_squared: int):
     if chi > n:
         raise ValueError(f"chi={chi} exceeds enlarged corner dimension n={n}")
 
-    # This is exactly the first cyclic sector of trunc_rhoCCC with
-    # matC21=matC32=matC13=matC, but evaluated once.
+    # Accuracy baseline: preserve the exact 0717 arithmetic and autograd graph.
+    # Algebraic reassociation and the matrix-free projected SVD passed an
+    # isolated truncation test but changed (and for augmented destabilised)
+    # gradients after repeated differentiable CTMRG steps.  The matrix-free
+    # helpers therefore remain experimental until their custom backward passes
+    # the full-pipeline regression.
     R1 = matC.T
     R2 = torch.mm(matC, matC)
     M = torch.mm(R1, R2.T)
 
+    U, S, V = truncated_svd_propack(
+        M, chi,
+        chi_extra=round(2*np.sqrt(D_squared)),
+        rel_cutoff=1e-12,
+        v0=None,
+        keep_multiplets=False,
+        abs_tol=1e-14,
+        eps_multiplet=1e-12,
+    )
     if _RECORD_TRUNC_ERROR:
-        _U, _S_all, _Vh = torch.linalg.svd(M, full_matrices=False)
-        _record_trunc_err(_S_all, chi)
-        U = _U[:, :chi]
-        S = _S_all[:chi]
-        V = _Vh[:chi, :].conj().T
-        del _U, _S_all, _Vh
-    else:
-        U, S, V = truncated_svd_propack(
-            M, chi,
-            chi_extra=round(2*np.sqrt(D_squared)),
-            rel_cutoff=1e-12,
-            v0=None,
-            keep_multiplets=False,
-            abs_tol=1e-14,
-            eps_multiplet=1e-12,
-        )
+        # Recording remains diagnostic-only and does not switch the requested
+        # production mode to full SVD as the 0717 implementation did.
+        _record_trunc_err_from_kept(M.detach().abs().square().sum(), S)
 
     sqrtInvTruncS = _safe_sqrt_inv_diag(S[:chi])
     P_out = torch.mm(R2.T, torch.mm(V, sqrtInvTruncS))
-    P_in  = torch.mm(torch.mm(sqrtInvTruncS, U.conj().T), R1)
+    P_in = torch.mm(torch.mm(sqrtInvTruncS, U.conj().T), R1)
 
     C = torch.mm(P_out.T, torch.mm(matC, P_in.T))
     C = normalize_tensor(C)
@@ -1867,47 +1935,41 @@ def initialize_envCTs_C3(A, B, C, D, E, F, chi, D_squared, identity_init=False):
         T2A   = normalize_tensor(T2A   + noise * torch.randn_like(T2A))
         return C21CD, T1F, T2A
 
-    # Direct contraction-based C3 initialization.  Only the C21CD sector and
-    # the two edge-orbit representatives are built.
-    BC2323 = oe.contract("iBG,ibg->BGbg", B, C, optimize=[(0,1)], backend='torch')
-    DE3131 = oe.contract("AiG,aig->GAga", D, E, optimize=[(0,1)], backend='torch')
-    FA1212 = oe.contract("ABi,abi->ABab", F, A, optimize=[(0,1)], backend='torch')
-
+    # Direct contraction-based C3 initialization.  The old implementation
+    # first materialised three D^8 pair tensors and two D^10 raw edges.  Fuse
+    # the original double-layer tensors and projectors into the networks
+    # instead; the largest unavoidable outputs are now D^8 (corner) and
+    # chi*D^6 (projected edge).
     A23 = A.reshape(D_bond,D_bond,D_squared,D_squared).diagonal(dim1=0, dim2=1).sum(-1)
     F31 = F.permute(1,2,0).reshape(D_bond,D_bond,D_squared,D_squared).diagonal(dim1=0, dim2=1).sum(-1)
     E23 = E.reshape(D_bond,D_bond,D_squared,D_squared).diagonal(dim1=0, dim2=1).sum(-1)
     B31 = B.permute(1,2,0).reshape(D_bond,D_bond,D_squared,D_squared).diagonal(dim1=0, dim2=1).sum(-1)
 
     C_raw = oe.contract(
-        "yj,ijYk,in,nm,kXlm,lx->YyXx",
-        E23, BC2323, A23, F31, DE3131, B31,
-        optimize=[(0,1),(0,1),(0,1),(0,1),(0,1)], backend='torch'
+        "yj,pij,pYk,in,nm,Xqk,mql,lx->YyXx",
+        E23, B, C, A23, F31, D, E, B31,
+        optimize=[(2,5),(0,1),(0,1),(0,4),(0,3),(1,2),(0,1)],
+        backend='torch'
     ).reshape(D_squared*D_squared, D_squared*D_squared)
 
     C23 = C.reshape(D_bond,D_bond,D_squared,D_squared).diagonal(dim1=0, dim2=1).sum(-1)
     F12 = F.permute(2,0,1).reshape(D_bond,D_bond,D_squared,D_squared).diagonal(dim1=0, dim2=1).sum(-1)
 
-    TB_raw = oe.contract(
-        "mi,jyi,aYjM->MmYya", C23, D, FA1212,
-        optimize=[(0,1),(0,1)], backend='torch'
-    ).reshape(D_squared*D_squared, D_squared*D_squared, D_squared)
-    # C3-rotated representative of the T2A orbit, written directly in the
-    # orientation paired with T1F by the boundary SVD.
-    TA_raw = oe.contract(
-        "im,iyj,MjYg->MmYyg", F12, E, BC2323,
-        optimize=[(0,1),(0,1)], backend='torch'
-    ).reshape(D_squared*D_squared, D_squared*D_squared, D_squared)
-
     P_in, C21CD, P_out = trunc_rhoC3(C_raw, chi, D_squared)
     n0 = D_squared * D_squared
 
-    # Project the two edge orbits on the corner-adjacent side.  The second
-    # representative is used in the rotated role of T3C, which is identical to
-    # T2A under C3.
-    TB = oe.contract("MYa,yY->Mya", TB_raw, P_in,
-                     optimize=[(0,1)], backend='torch').reshape(n0, chi*D_squared)
-    TA = oe.contract("MYg,Yy->Myg", TA_raw, P_out,
-                     optimize=[(0,1)], backend='torch').reshape(n0, chi*D_squared)
+    TB = oe.contract(
+        "mi,jyi,aYq,jMq,pYy->Mmpa",
+        C23, D, F, A, P_in.reshape(chi, D_squared, D_squared),
+        optimize=[(0,1),(0,1),(0,1),(0,1)], backend='torch'
+    ).reshape(n0, chi*D_squared)
+    # C3-rotated representative of the T2A orbit, directly in the orientation
+    # paired with T1F by the boundary SVD.
+    TA = oe.contract(
+        "im,iyj,qMj,qYg,Yyp->Mmpg",
+        F12, E, B, C, P_out.reshape(D_squared, D_squared, chi),
+        optimize=[(0,1),(0,1),(0,1),(0,1)], backend='torch'
+    ).reshape(n0, chi*D_squared)
 
     U, S, V = truncated_svd_propack(
         torch.mm(TB.T, TA), chi,
@@ -1942,15 +2004,15 @@ def check_env_CV_C3(lastC21CD, nowC21CD,
     reduce to ``C @ C @ C``.  We therefore evaluate one per environment.
     """
     max_delta = lastC21CD.new_tensor(0.0).real
-    now_rhos = []
+    now_spectra = []
     for lastC, nowC in ((lastC21CD, nowC21CD),
                         (lastC21EB, nowC21EB),
                         (lastC21AF, nowC21AF)):
         last_rho = torch.mm(torch.mm(lastC, lastC), lastC)
         now_rho  = torch.mm(torch.mm(nowC,  nowC),  nowC)
-        now_rhos.append(now_rho)
         sv_last = torch.linalg.svdvals(last_rho).real
         sv_now  = torch.linalg.svdvals(now_rho).real
+        now_spectra.append(sv_now)
         sv_last = sv_last / (sv_last[0] + 1e-30)
         sv_now  = sv_now  / (sv_now[0] + 1e-30)
         sv_weight = (sv_now + sv_last) * 0.5
@@ -1960,8 +2022,7 @@ def check_env_CV_C3(lastC21CD, nowC21CD,
     _ZERO_NORM_THR = 1e-15
     _FLAT_SPEC_THR = 0.85
     all_bad = True
-    for rho in now_rhos:
-        sv = torch.linalg.svdvals(rho).real
+    for sv in now_spectra:
         s0 = sv[0].item()
         if s0 < _ZERO_NORM_THR:
             continue
@@ -2131,7 +2192,12 @@ def CTMRG_from_init_to_stop(A, B, C, D, E, F,
                     break
                 if effective_mode == 'both':
                     sv_met = sv_met or bool(cv)
-                if energy_proxy_fn is not None and effective_mode != 'SVdifference':
+                should_check_energy = (
+                    energy_proxy_fn is not None
+                    and effective_mode != 'SVdifference'
+                    and (effective_mode != 'both' or sv_met)
+                )
+                if should_check_energy:
                     curr_e = energy_proxy_fn(
                         nowC21CD, nowT1F, nowT2A,
                         nowC21EB, nowT1D, nowT2C,
@@ -2192,7 +2258,7 @@ def CTMRG_from_init_to_stop(A, B, C, D, E, F,
 
 
 
-def energy_expectation_nearest_neighbor_3ebadcf_bonds(
+def _legacy_energy_expectation_nearest_neighbor_3ebadcf_bonds(
                 a,b,c,d,e,f, 
                 Jeb,Jad,Jcf,
                 Jfa,Jde,Jbc,
@@ -2386,7 +2452,7 @@ def energy_expectation_nearest_neighbor_3ebadcf_bonds(
 
 
 
-def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
+def _legacy_energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
                 Jaf,Jcb,Jed, 
                 Jdc,Jba,Jfe,
                 Jca,Jae,Jec,Jbf,Jfd,Jdb,
@@ -2560,7 +2626,7 @@ def energy_expectation_nearest_neighbor_3afcbed_bonds(a,b,c,d,e,f,
 
 
 
-def energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f, 
+def _legacy_energy_expectation_nearest_neighbor_other_3_bonds(a,b,c,d,e,f, 
                     Jcd,Jef,Jab,
                     Jbe,Jfc,Jda,
                     Jec,Jca,Jae,Jfd,Jdb,Jbf,
@@ -3055,6 +3121,239 @@ def build_single_open_env3(site: str, a, b, c, d, e, f, chi, D_bond, d_PHYS,
 
 
 
+def _c3_representative_energy(
+        build_even, build_odd,
+        closed_even: torch.Tensor, closed_odd: torch.Tensor,
+        nn_even_odd_couplings, nn_odd_even_couplings,
+        nnn_even_couplings, nnn_odd_couplings,
+        SdotS: torch.Tensor, cache_key: str) -> torch.Tensor:
+    """Evaluate four C3 bond-orbit representatives with streamed opens.
+
+    The public cache still contains 12 entries per environment.  Three entries
+    in each C3 orbit alias the same tiny detached rho; no large tensor is copied.
+    Closed representatives are built directly by the caller, so the peak here
+    is the sequential rho contraction rather than six resident open tensors.
+    """
+    def _nn_eo(c_even, c_odd, spin_op):
+        pair = c_even @ c_odd
+        rho = _build_nn_rho_seq(
+            build_even, build_odd, pair, pair, spin_op.shape[0])
+        energy = oe.contract("ikjl,ijkl->", rho, spin_op, backend="torch")
+        return energy, rho.detach()
+
+    def _nn_oe(c_even, c_odd, spin_op):
+        pair = c_odd @ c_even
+        rho = _build_nn_rho_seq(
+            build_odd, build_even, pair, pair, spin_op.shape[0])
+        energy = oe.contract("ikjl,ijkl->", rho, spin_op, backend="torch")
+        return energy, rho.detach()
+
+    def _nnn_even(c_even, c_odd, spin_op):
+        rho = _build_nnn_rho_seq(
+            build_even, c_odd, build_even, c_odd,
+            c_even @ c_odd, spin_op.shape[0])
+        energy = oe.contract("ikjl,ijkl->", rho, spin_op, backend="torch")
+        return energy, rho.detach()
+
+    def _nnn_odd(c_even, c_odd, spin_op):
+        rho = _build_nnn_rho_seq(
+            build_odd, c_even, build_odd, c_even,
+            c_odd @ c_even, spin_op.shape[0])
+        energy = oe.contract("ikjl,ijkl->", rho, spin_op, backend="torch")
+        return energy, rho.detach()
+
+    def _run(fn):
+        if DEVICE.type == 'cuda' and torch.is_grad_enabled():
+            return _ckpt(
+                fn, closed_even, closed_odd, SdotS,
+                use_reentrant=False)
+        return fn(closed_even, closed_odd, SdotS)
+
+    e_eo, rho_eo = _run(_nn_eo)
+    e_oe, rho_oe = _run(_nn_oe)
+    e_even, rho_even = _run(_nnn_even)
+    e_odd, rho_odd = _run(_nnn_odd)
+
+    if _CACHE_RHOS:
+        # Only 4*d^4 scalars cross devices when an environment was evaluated
+        # on a secondary GPU.
+        r_eo = rho_eo.to(DEVICE)
+        r_oe = rho_oe.to(DEVICE)
+        r_even = rho_even.to(DEVICE)
+        r_odd = rho_odd.to(DEVICE)
+        rhos = ([r_eo] * 3 + [r_oe] * 3
+                + [r_even] * 3 + [r_odd] * 3)
+        mag = {
+            'A': (r_eo, 0), 'C': (r_eo, 0), 'E': (r_eo, 0),
+            'B': (r_eo, 1), 'D': (r_eo, 1), 'F': (r_eo, 1),
+        }
+        _RHO_CACHE[cache_key] = (rhos, mag)
+
+    energy = (
+        0.5 * (sum(nn_even_odd_couplings) * e_eo
+               + sum(nn_odd_even_couplings) * e_oe)
+        + sum(nnn_even_couplings) * e_even
+        + sum(nnn_odd_couplings) * e_odd
+    )
+    return torch.real(energy)
+
+
+def energy_expectation_nearest_neighbor_3ebadcf_bonds(
+        a, b, c, d, e, f,
+        Jeb, Jad, Jcf, Jfa, Jde, Jbc,
+        Jae, Jec, Jca, Jdb, Jbf, Jfd,
+        SdotS, chi, D_bond, d_PHYS, C21CD, T1F, T2A):
+    """C3-reduced env1 energy: 12 bond contractions become 4."""
+    t1 = T1F.reshape(chi, chi, D_bond, D_bond)
+    t2 = T2A.reshape(chi, chi, D_bond, D_bond)
+    d2 = chi * D_bond * D_bond
+
+    def build_even():
+        return oe.contract(
+            "ZY,NZbs,abci,rstj->NctYarij", C21CD, t1, a, a.conj(),
+            optimize=[(0,1),(0,1),(0,1)], backend="torch"
+        ).reshape(d2, d2, d_PHYS, d_PHYS)
+
+    def build_odd():
+        return oe.contract(
+            "MYct,abci,rstj->YarMbsij", t2, d, d.conj(),
+            optimize=[(0,1),(0,1)], backend="torch"
+        ).reshape(d2, d2, d_PHYS, d_PHYS)
+
+    closed_even = oe.contract(
+        "ZY,NZbs,abci,rsti->NctYar", C21CD, t1, a, a.conj(),
+        optimize=[(0,1),(0,1),(0,1)], backend="torch"
+    ).reshape(d2, d2)
+    closed_odd = oe.contract(
+        "MYct,abci,rsti->YarMbs", t2, d, d.conj(),
+        optimize=[(0,1),(0,1)], backend="torch"
+    ).reshape(d2, d2)
+    return _c3_representative_energy(
+        build_even, build_odd, closed_even, closed_odd,
+        (Jeb, Jad, Jcf), (Jfa, Jde, Jbc),
+        (Jae, Jec, Jca), (Jdb, Jbf, Jfd),
+        SdotS, 'env1')
+
+
+def energy_expectation_nearest_neighbor_3afcbed_bonds(
+        a, b, c, d, e, f,
+        Jaf, Jcb, Jed, Jdc, Jba, Jfe,
+        Jca, Jae, Jec, Jbf, Jfd, Jdb,
+        SdotS, chi, D_bond, d_PHYS, C21EB, T1D, T2C):
+    """C3-reduced env2 energy: 12 bond contractions become 4."""
+    t1 = T1D.reshape(chi, chi, D_bond, D_bond)
+    t2 = T2C.reshape(chi, chi, D_bond, D_bond)
+    d2 = chi * D_bond * D_bond
+
+    def build_even():
+        return oe.contract(
+            "YX,MYar,abci,rstj->MbsXctij", C21EB, t1, a, a.conj(),
+            optimize=[(0,1),(0,1),(0,1)], backend="torch"
+        ).reshape(d2, d2, d_PHYS, d_PHYS)
+
+    def build_odd():
+        return oe.contract(
+            "LXbs,abci,rstj->XctLarij", t2, f, f.conj(),
+            optimize=[(0,1),(0,1)], backend="torch"
+        ).reshape(d2, d2, d_PHYS, d_PHYS)
+
+    closed_even = oe.contract(
+        "YX,MYar,abci,rsti->MbsXct", C21EB, t1, a, a.conj(),
+        optimize=[(0,1),(0,1),(0,1)], backend="torch"
+    ).reshape(d2, d2)
+    closed_odd = oe.contract(
+        "LXbs,abci,rsti->XctLar", t2, f, f.conj(),
+        optimize=[(0,1),(0,1)], backend="torch"
+    ).reshape(d2, d2)
+    return _c3_representative_energy(
+        build_even, build_odd, closed_even, closed_odd,
+        (Jaf, Jcb, Jed), (Jdc, Jba, Jfe),
+        (Jca, Jae, Jec), (Jbf, Jfd, Jdb),
+        SdotS, 'env2')
+
+
+def energy_expectation_nearest_neighbor_other_3_bonds(
+        a, b, c, d, e, f,
+        Jcd, Jef, Jab, Jbe, Jfc, Jda,
+        Jec, Jca, Jae, Jfd, Jdb, Jbf,
+        SdotS, chi, D_bond, d_PHYS, C21AF, T1B, T2E):
+    """C3-reduced env3 energy: 12 bond contractions become 4."""
+    t1 = T1B.reshape(chi, chi, D_bond, D_bond)
+    t2 = T2E.reshape(chi, chi, D_bond, D_bond)
+    d2 = chi * D_bond * D_bond
+
+    def build_even():
+        return oe.contract(
+            "YX,MYar,abci,rstj->MbsXctij", C21AF, t1, c, c.conj(),
+            optimize=[(0,1),(0,1),(0,1)], backend="torch"
+        ).reshape(d2, d2, d_PHYS, d_PHYS)
+
+    def build_odd():
+        return oe.contract(
+            "LXbs,abci,rstj->XctLarij", t2, d, d.conj(),
+            optimize=[(0,1),(0,1)], backend="torch"
+        ).reshape(d2, d2, d_PHYS, d_PHYS)
+
+    closed_even = oe.contract(
+        "YX,MYar,abci,rsti->MbsXct", C21AF, t1, c, c.conj(),
+        optimize=[(0,1),(0,1),(0,1)], backend="torch"
+    ).reshape(d2, d2)
+    closed_odd = oe.contract(
+        "LXbs,abci,rsti->XctLar", t2, d, d.conj(),
+        optimize=[(0,1),(0,1)], backend="torch"
+    ).reshape(d2, d2)
+    return _c3_representative_energy(
+        build_even, build_odd, closed_even, closed_odd,
+        (Jcd, Jef, Jab), (Jbe, Jfc, Jda),
+        (Jec, Jca, Jae), (Jfd, Jdb, Jbf),
+        SdotS, 'env3')
+
+
+def _alias_c3_open_closed(open_even, open_odd):
+    """Expose legacy A..F keys while storing only two representatives."""
+    opens = {
+        'A': open_even, 'C': open_even, 'E': open_even,
+        'B': open_odd, 'D': open_odd, 'F': open_odd,
+    }
+    closed_even = oe.contract("ABii->AB", open_even, backend="torch")
+    closed_odd = oe.contract("ABii->AB", open_odd, backend="torch")
+    closeds = {
+        'A': closed_even, 'C': closed_even, 'E': closed_even,
+        'B': closed_odd, 'D': closed_odd, 'F': closed_odd,
+    }
+    return opens, closeds
+
+
+def build_open_closed_env1(a, b, c, d, e, f, chi, D_bond, d_PHYS,
+                           C21CD, T1F, T2A):
+    """Build only the A/C/E and B/D/F representatives for environment 1."""
+    open_even = build_single_open_env1(
+        'A', a, b, c, d, e, f, chi, D_bond, d_PHYS, C21CD, T1F, T2A)
+    open_odd = build_single_open_env1(
+        'D', a, b, c, d, e, f, chi, D_bond, d_PHYS, C21CD, T1F, T2A)
+    return _alias_c3_open_closed(open_even, open_odd)
+
+
+def build_open_closed_env2(a, b, c, d, e, f, chi, D_bond, d_PHYS,
+                           C21EB, T1D, T2C):
+    """Build only the A/C/E and B/D/F representatives for environment 2."""
+    open_even = build_single_open_env2(
+        'A', a, b, c, d, e, f, chi, D_bond, d_PHYS, C21EB, T1D, T2C)
+    open_odd = build_single_open_env2(
+        'F', a, b, c, d, e, f, chi, D_bond, d_PHYS, C21EB, T1D, T2C)
+    return _alias_c3_open_closed(open_even, open_odd)
+
+
+def build_open_closed_env3(a, b, c, d, e, f, chi, D_bond, d_PHYS,
+                           C21AF, T1B, T2E):
+    """Build only the A/C/E and B/D/F representatives for environment 3."""
+    open_even = build_single_open_env3(
+        'C', a, b, c, d, e, f, chi, D_bond, d_PHYS, C21AF, T1B, T2E)
+    open_odd = build_single_open_env3(
+        'D', a, b, c, d, e, f, chi, D_bond, d_PHYS, C21AF, T1B, T2E)
+    return _alias_c3_open_closed(open_even, open_odd)
+
+
 def build_heisenberg_H(J: float = 1.0, d: int = 2) -> torch.Tensor:
     # use spin s=(d-1)/2 to build spin-s operators sx, sy, sz:
     spin = (d - 1) / 2
@@ -3080,6 +3379,3 @@ def build_heisenberg_H(J: float = 1.0, d: int = 2) -> torch.Tensor:
             +oe.contract("ij,kl->ijkl", Sz, Sz, backend="torch")
             ).to(dtype=TENSORDTYPE, device=DEVICE)
     return SdotS
-
-
-
