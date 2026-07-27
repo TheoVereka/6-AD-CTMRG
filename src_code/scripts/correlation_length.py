@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Correlation length of a two-C3 iPEPS from a double-layer CTMRG boundary.
 
-The row-to-row transfer matrix has shape ``(chi**2, chi**2)``.  The default
-production path constructs this real matrix in bounded-memory blocks, retains
-it on the tensor device, and lets CPU ARPACK use fast device GEMV callbacks.
-The matrix-free path remains available when device memory is limited.
+The row-to-row transfer pencil has shape ``(chi**2, chi**2)``.  The default
+production path constructs its real six-tensor matrix in bounded-memory
+blocks, retains it on the tensor device, and uses the two CTMRG corners to
+whiten the empty-row metric without constructing a second large matrix.  CPU
+ARPACK then uses fast device callbacks for the resulting gauge-invariant
+standard eigenproblem.  The matrix-free path remains available when device
+memory is limited.
 
 The four edge tensors are obtained from two independent CTMRG runs:
 
@@ -62,6 +65,7 @@ DEFAULT_J2 = 0.26
 DEFAULT_MAX_INTERMEDIATE_MIB = 256.0
 DEFAULT_ARPACK_NCV = 64
 DEFAULT_ARPACK_MAXITER = 4000
+DEFAULT_CORNER_RELATIVE_CUTOFF = 1.0e-14
 
 _MIB = 1024**2
 
@@ -83,6 +87,12 @@ class TransferComponents:
     double_layer_b: torch.Tensor
     ctm_steps_ab: int
     ctm_steps_ba: int
+    ctm_energy_proxy_ab: float
+    ctm_energy_proxy_ba: float
+    ctm_corner_ab: torch.Tensor
+    ctm_corner_ba: torch.Tensor
+    ctm_corner_spectra_ab: tuple[tuple[float, ...], ...]
+    ctm_corner_spectra_ba: tuple[tuple[float, ...], ...]
 
     @property
     def edges(self) -> tuple[torch.Tensor, ...]:
@@ -110,10 +120,16 @@ class CorrelationLengthResult:
     eigensolver: EigensolverResult
     ctm_steps_ab: int
     ctm_steps_ba: int
+    ctm_energy_proxy_ab: float
+    ctm_energy_proxy_ba: float
+    ctm_corner_spectra_ab: tuple[tuple[float, ...], ...]
+    ctm_corner_spectra_ba: tuple[tuple[float, ...], ...]
     D_bond: int
     chi: int
     transfer_mode: str
     transfer_matrix_gib: float
+    corner_effective_ranks: tuple[int, int]
+    overlap_condition_number: float
 
 
 def _release_unused_memory(device: torch.device) -> None:
@@ -186,7 +202,7 @@ def _build_lbfgs_energy_proxy(
     D_bond: int,
     j1: float,
     j2: float,
-) -> Callable[..., float]:
+) -> tuple[Callable[..., float], list[float | None]]:
     """Build the exact three-environment energy proxy used by main_C3 LBFGS."""
 
     if len(sites) != 6:
@@ -195,6 +211,7 @@ def _build_lbfgs_energy_proxy(
     d_phys = int(a.shape[-1])
     spin_dot_spin = _core.build_heisenberg_H(1.0, d_phys)
     couplings = ([float(j1)] * 6 + [float(j2)] * 6) * 3
+    last_value: list[float | None] = [None]
 
     @torch.no_grad()
     def energy_proxy(
@@ -256,9 +273,11 @@ def _build_lbfgs_energy_proxy(
             T1B,
             T2E,
         )
-        return float((energy_1 + energy_2 + energy_3).item())
+        value = float((energy_1 + energy_2 + energy_3).item())
+        last_value[0] = value
+        return value
 
-    return energy_proxy
+    return energy_proxy, last_value
 
 
 @torch.no_grad()
@@ -273,13 +292,22 @@ def _run_ctm_and_extract_edges(
     j1: float,
     j2: float,
     keep_ab: bool,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None, torch.Tensor | None, int]:
+) -> tuple[
+    torch.Tensor,
+    torch.Tensor,
+    torch.Tensor | None,
+    torch.Tensor | None,
+    int,
+    float,
+    torch.Tensor,
+    tuple[tuple[float, ...], ...],
+]:
     """Run one CTMRG ordering and extract the post-update edge pair."""
 
     D_bond = int(raw_a.shape[0])
     D_squared = raw_a.shape[0] ** 2
     sites, double_layers = _build_ctm_layers(raw_a, raw_b)
-    energy_proxy = _build_lbfgs_energy_proxy(
+    energy_proxy, last_energy_proxy = _build_lbfgs_energy_proxy(
         sites,
         chi=chi,
         D_bond=D_bond,
@@ -296,6 +324,18 @@ def _run_ctm_and_extract_edges(
         identity_init,
         energy_proxy_fn=energy_proxy,
     )
+    final_energy_proxy = float(energy_proxy(*result[:9]))
+    corner_spectra: list[tuple[float, ...]] = []
+    for corner_index in (0, 3, 6):
+        corner_tensor = result[corner_index]
+        corner_rho = corner_tensor @ corner_tensor @ corner_tensor
+        singular_values = torch.linalg.svdvals(corner_rho).real
+        singular_values = singular_values / (singular_values[0] + 1.0e-30)
+        corner_spectra.append(
+            tuple(float(value) for value in singular_values.detach().cpu())
+        )
+    frozen_corner_spectra = tuple(corner_spectra)
+
     corner, edge_1, edge_2 = result[:3]
     ctm_steps = int(result[-1])
     del result
@@ -311,12 +351,31 @@ def _run_ctm_and_extract_edges(
 
     first = updated[1].detach().contiguous()
     second = updated[2].detach().contiguous()
+    updated_corner = updated[0].detach().contiguous()
     kept_a = double_layers[0].detach().contiguous() if keep_ab else None
     kept_b = double_layers[1].detach().contiguous() if keep_ab else None
 
-    del corner, edge_1, edge_2, updated, double_layers, energy_proxy, sites
+    del (
+        corner,
+        edge_1,
+        edge_2,
+        updated,
+        double_layers,
+        energy_proxy,
+        last_energy_proxy,
+        sites,
+    )
     _release_unused_memory(raw_a.device)
-    return first, second, kept_a, kept_b, ctm_steps
+    return (
+        first,
+        second,
+        kept_a,
+        kept_b,
+        ctm_steps,
+        final_energy_proxy,
+        updated_corner,
+        frozen_corner_spectra,
+    )
 
 
 def obtain_transfer_components(
@@ -400,7 +459,16 @@ def obtain_transfer_components(
     # The T1D einsum spells its output as YMa in the old frame.  This is a C3
     # frame relabel, not a pending transpose: update_environmentCTs_2to3_C3
     # consumes that returned tensor unchanged as its canonical MYa edge.
-    upper_b, upper_a, double_a, double_b, steps_ab = (
+    (
+        upper_b,
+        upper_a,
+        double_a,
+        double_b,
+        steps_ab,
+        energy_proxy_ab,
+        corner_ab,
+        corner_spectra_ab,
+    ) = (
         _run_ctm_and_extract_edges(
             raw_a,
             raw_b,
@@ -414,21 +482,35 @@ def obtain_transfer_components(
         )
     )
     # For two-C3(b,a), D belongs to the original a orbit and C belongs to the
-    # original b orbit.  The same T1D,T2C output positions therefore become
-    # (lower_a, lower_b).  Following the same canonical-frame convention, no
-    # transpose is applied; the transfer contraction labels their stored axes
-    # as (m,y,a) and (m,v,g), respectively.
-    lower_a, lower_b, _, _, steps_ba = _run_ctm_and_extract_edges(
-        raw_b,
-        raw_a,
-        chi=chi,
-        ctm_max_steps=ctm_max_steps,
-        ctm_conv_tol=ctm_conv_tol,
-        identity_init=identity_init,
-        j1=j1,
-        j2=j2,
-        keep_ab=False,
+    # original b orbit.  The same T1D,T2C output positions therefore supply
+    # the A,B edges needed below the row.  Their first axes are the shared
+    # boundary index and their second axes are the two open corner indices,
+    # exactly as required by T_A[m,y,a] and T_B[m,v,g].  Transposing these
+    # tensors would instead contract the two inequivalent corner axes.
+    (
+        raw_lower_a,
+        raw_lower_b,
+        _,
+        _,
+        steps_ba,
+        energy_proxy_ba,
+        corner_ba,
+        corner_spectra_ba,
+    ) = (
+        _run_ctm_and_extract_edges(
+            raw_b,
+            raw_a,
+            chi=chi,
+            ctm_max_steps=ctm_max_steps,
+            ctm_conv_tol=ctm_conv_tol,
+            identity_init=identity_init,
+            j1=j1,
+            j2=j2,
+            keep_ab=False,
+        )
     )
+    lower_a = raw_lower_a
+    lower_b = raw_lower_b
 
     if double_a is None or double_b is None:
         raise RuntimeError("Internal error while retaining the A and B double layers.")
@@ -444,6 +526,12 @@ def obtain_transfer_components(
         double_layer_b=double_b,
         ctm_steps_ab=steps_ab,
         ctm_steps_ba=steps_ba,
+        ctm_energy_proxy_ab=energy_proxy_ab,
+        ctm_energy_proxy_ba=energy_proxy_ba,
+        ctm_corner_ab=corner_ab,
+        ctm_corner_ba=corner_ba,
+        ctm_corner_spectra_ab=corner_spectra_ab,
+        ctm_corner_spectra_ba=corner_spectra_ba,
     )
 
 
@@ -758,6 +846,185 @@ class DenseRowToRowTransferOperator(RowToRowTransferOperator):
         return self.matrix
 
 
+class CornerWhitenedTransferOperator(RowToRowTransferOperator):
+    """Gauge-invariant standard form of the generalized transfer pencil.
+
+    The raw six-tensor network maps the numerical basis ``(y,V)`` to
+    ``(Y,v)``.  These bases belong to two independent CTMRG runs and must not
+    be identified by a Kronecker delta.  Their empty-row map is
+
+    ``N[Y,v,y,V] = C_ab[Y,V] C_ba[y,v]``.
+
+    SVD whitening on both sides converts ``T x = lambda N x`` to an ordinary
+    eigenproblem without constructing or inverting the ``chi**2`` matrix N.
+    Numerically null corner modes are mapped to zero with a Moore-Penrose
+    cutoff.
+    """
+
+    def __init__(
+        self,
+        raw_transfer: RowToRowTransferOperator,
+        corner_ab: torch.Tensor,
+        corner_ba: torch.Tensor,
+        *,
+        relative_cutoff: float = DEFAULT_CORNER_RELATIVE_CUTOFF,
+    ) -> None:
+        if relative_cutoff < 0.0:
+            raise ValueError("relative_cutoff cannot be negative.")
+        chi = int(raw_transfer.chi)
+        expected = (chi, chi)
+        if tuple(corner_ab.shape) != expected or tuple(corner_ba.shape) != expected:
+            raise ValueError(f"Both corners must have shape {expected}.")
+        if corner_ab.dtype != raw_transfer.dtype or corner_ba.dtype != raw_transfer.dtype:
+            raise TypeError("Corners and transfer operator must share one dtype.")
+        if (
+            corner_ab.device != raw_transfer.device
+            or corner_ba.device != raw_transfer.device
+        ):
+            raise ValueError("Corners and transfer operator must share one device.")
+
+        upper_left, upper_s, upper_vh = torch.linalg.svd(
+            corner_ab.detach(), full_matrices=False
+        )
+        lower_left, lower_s, lower_vh = torch.linalg.svd(
+            corner_ba.detach(), full_matrices=False
+        )
+        upper_threshold = relative_cutoff * float(upper_s[0])
+        lower_threshold = relative_cutoff * float(lower_s[0])
+        upper_kept = upper_s > upper_threshold
+        lower_kept = lower_s > lower_threshold
+        upper_inverse_sqrt = torch.zeros_like(upper_s)
+        lower_inverse_sqrt = torch.zeros_like(lower_s)
+        upper_inverse_sqrt[upper_kept] = torch.rsqrt(upper_s[upper_kept])
+        lower_inverse_sqrt[lower_kept] = torch.rsqrt(lower_s[lower_kept])
+
+        self.raw_transfer = raw_transfer
+        self.upper_left = upper_left
+        self.upper_right = upper_vh.transpose(0, 1).contiguous()
+        self.lower_left = lower_left
+        self.lower_right = lower_vh.transpose(0, 1).contiguous()
+        self.inverse_sqrt_weights = (
+            upper_inverse_sqrt[:, None] * lower_inverse_sqrt[None, :]
+        )
+        self.corner_ab_numpy = corner_ab.detach().cpu().numpy()
+        self.corner_ba_numpy = corner_ba.detach().cpu().numpy()
+        self.corner_effective_ranks = (
+            int(upper_kept.sum().item()),
+            int(lower_kept.sum().item()),
+        )
+        retained_upper = upper_s[upper_kept]
+        retained_lower = lower_s[lower_kept]
+        if retained_upper.numel() == 0 or retained_lower.numel() == 0:
+            raise RuntimeError("The CTMRG empty-row map has zero numerical rank.")
+        self.overlap_condition_number = float(
+            (retained_upper[0] / retained_upper[-1])
+            * (retained_lower[0] / retained_lower[-1])
+        )
+
+        self.chi = chi
+        self.q = raw_transfer.q
+        self.shape = raw_transfer.shape
+        self.dtype = raw_transfer.dtype
+        self.device = raw_transfer.device
+        self.numpy_dtype = raw_transfer.numpy_dtype
+        self.progress_every = raw_transfer.progress_every
+        self.matvec_count = 0
+        self._first_matvec_time = time.perf_counter()
+        self.chunk_size = raw_transfer.chunk_size
+        self.max_intermediate_bytes = raw_transfer.max_intermediate_bytes
+
+    @torch.no_grad()
+    def _right_whiten_real_tensor(self, vector: torch.Tensor) -> torch.Tensor:
+        canonical = vector.reshape(self.chi, self.chi)
+        weighted = self.inverse_sqrt_weights * canonical
+        return (
+            self.lower_left @ weighted.transpose(0, 1) @ self.upper_right.T
+        )
+
+    @torch.no_grad()
+    def _matvec_real_tensor(self, vector: torch.Tensor) -> torch.Tensor:
+        # Right whitening: canonical (a,b) -> raw input (y,V).
+        raw_input = self._right_whiten_real_tensor(vector)
+        raw_output = self.raw_transfer._matvec_real_tensor(
+            raw_input.reshape(-1)
+        ).reshape(self.chi, self.chi)
+
+        # Left whitening: raw output (Y,v) -> canonical (a,b).
+        output = (
+            self.upper_left.T @ raw_output @ self.lower_right
+        ) * self.inverse_sqrt_weights
+        self.matvec_count += 1
+        return output.reshape(-1)
+
+    def generalized_refine_numpy(
+        self,
+        eigenvalue: complex,
+        eigenvector: np.ndarray,
+    ) -> tuple[complex, float]:
+        """Refine an eigenvalue and evaluate the original pencil residual."""
+
+        vector = np.asarray(eigenvector)
+        real_vector = torch.as_tensor(
+            np.ascontiguousarray(vector.real),
+            dtype=self.dtype,
+            device=self.device,
+        )
+        raw_real = self._right_whiten_real_tensor(real_vector)
+        raw_input = raw_real.detach().cpu().numpy().astype(
+            self.numpy_dtype, copy=False
+        )
+        if np.iscomplexobj(vector):
+            imag_vector = torch.as_tensor(
+                np.ascontiguousarray(vector.imag),
+                dtype=self.dtype,
+                device=self.device,
+            )
+            raw_imag = self._right_whiten_real_tensor(imag_vector)
+            raw_input = raw_input + 1j * raw_imag.detach().cpu().numpy().astype(
+                self.numpy_dtype, copy=False
+            )
+
+        raw_flat = np.ascontiguousarray(raw_input.reshape(-1))
+        applied = self.raw_transfer.matvec_numpy(raw_flat).reshape(
+            self.chi, self.chi
+        )
+        empty_row = (
+            self.corner_ab_numpy
+            @ raw_input.T
+            @ self.corner_ba_numpy
+        )
+        denominator = np.vdot(empty_row, empty_row)
+        if abs(denominator) == 0.0:
+            if abs(eigenvalue) <= 100.0 * np.finfo(self.numpy_dtype).eps:
+                return 0.0j, 0.0
+            return complex(eigenvalue), math.inf
+        refined = complex(np.vdot(empty_row, applied) / denominator)
+        scale = float(np.linalg.norm(applied)) + abs(refined) * float(
+            np.linalg.norm(empty_row)
+        )
+        residual = float(np.linalg.norm(applied - refined * empty_row))
+        relative = residual / max(scale, np.finfo(self.numpy_dtype).tiny)
+        return refined, relative
+
+    @torch.no_grad()
+    def to_dense(self, *, max_dense_bytes: int = 512 * _MIB) -> torch.Tensor:
+        required = self.shape[0] * self.shape[1] * torch.empty(
+            (), dtype=self.dtype
+        ).element_size()
+        if required > max_dense_bytes:
+            raise MemoryError(
+                f"The whitened dense matrix requires {required / _MIB:.1f} MiB."
+            )
+        identity = torch.eye(
+            self.shape[1], dtype=self.dtype, device=self.device
+        )
+        columns = [
+            self._matvec_real_tensor(identity[:, index])
+            for index in range(self.shape[1])
+        ]
+        return torch.stack(columns, dim=1)
+
+
 @torch.no_grad()
 def _build_boundary_halves(
     upper_b: torch.Tensor,
@@ -950,6 +1217,9 @@ def _relative_eigen_residual(
     eigenvector: np.ndarray,
 ) -> tuple[complex, float]:
     """Refine one Ritz value and evaluate its scale-independent residual."""
+
+    if isinstance(operator, CornerWhitenedTransferOperator):
+        return operator.generalized_refine_numpy(eigenvalue, eigenvector)
 
     applied = operator.matvec_numpy(eigenvector)
     denominator = np.vdot(eigenvector, eigenvector)
@@ -1202,6 +1472,7 @@ def obtain_per_D_correlation_length(
     seed: int = 0,
     progress_every: int = 0,
     matrix_free: bool = False,
+    corner_relative_cutoff: float = DEFAULT_CORNER_RELATIVE_CUTOFF,
     return_result: bool = False,
 ) -> float | CorrelationLengthResult:
     """Run both CTMRG boundaries and compute one correlation length."""
@@ -1224,7 +1495,7 @@ def obtain_per_D_correlation_length(
         dtype=dtype,
         device=device,
     )
-    transfer = compute_r2rTransferMatrix(
+    raw_transfer = compute_r2rTransferMatrix(
         components.upper_b,
         components.upper_a,
         components.double_layer_a,
@@ -1235,11 +1506,24 @@ def obtain_per_D_correlation_length(
         progress_every=progress_every,
         matrix_free=matrix_free,
     )
-    if not isinstance(transfer, RowToRowTransferOperator):
+    if not isinstance(raw_transfer, RowToRowTransferOperator):
         raise RuntimeError("Expected a transfer operator.")
+    transfer = CornerWhitenedTransferOperator(
+        raw_transfer,
+        components.ctm_corner_ab,
+        components.ctm_corner_ba,
+        relative_cutoff=corner_relative_cutoff,
+    )
+    del raw_transfer
 
     steps_ab = components.ctm_steps_ab
     steps_ba = components.ctm_steps_ba
+    energy_proxy_ab = components.ctm_energy_proxy_ab
+    energy_proxy_ba = components.ctm_energy_proxy_ba
+    corner_spectra_ab = components.ctm_corner_spectra_ab
+    corner_spectra_ba = components.ctm_corner_spectra_ba
+    corner_effective_ranks = transfer.corner_effective_ranks
+    overlap_condition_number = transfer.overlap_condition_number
     del components
     _release_unused_memory(transfer.device)
 
@@ -1263,9 +1547,17 @@ def obtain_per_D_correlation_length(
         eigensolver=eigensolver,
         ctm_steps_ab=steps_ab,
         ctm_steps_ba=steps_ba,
+        ctm_energy_proxy_ab=energy_proxy_ab,
+        ctm_energy_proxy_ba=energy_proxy_ba,
+        ctm_corner_spectra_ab=corner_spectra_ab,
+        ctm_corner_spectra_ba=corner_spectra_ba,
         D_bond=int(a.shape[0]),
         chi=int(chi),
-        transfer_mode="matrix_free" if matrix_free else "dense_gpu",
+        transfer_mode=(
+            "matrix_free_corner_whitened"
+            if matrix_free
+            else "dense_gpu_corner_whitened"
+        ),
         transfer_matrix_gib=(
             0.0
             if matrix_free
@@ -1274,6 +1566,8 @@ def obtain_per_D_correlation_length(
             * torch.empty((), dtype=transfer.dtype).element_size()
             / 1024**3
         ),
+        corner_effective_ranks=corner_effective_ranks,
+        overlap_condition_number=overlap_condition_number,
     )
     del transfer
     _release_unused_memory(
@@ -1343,8 +1637,12 @@ def _result_to_dict(
         "dtype": str(dtype),
         "transfer_mode": result.transfer_mode,
         "transfer_matrix_gib": result.transfer_matrix_gib,
+        "corner_effective_ranks": list(result.corner_effective_ranks),
+        "overlap_condition_number": result.overlap_condition_number,
         "ctm_steps_ab": result.ctm_steps_ab,
         "ctm_steps_ba": result.ctm_steps_ba,
+        "ctm_energy_proxy_ab": result.ctm_energy_proxy_ab,
+        "ctm_energy_proxy_ba": result.ctm_energy_proxy_ba,
         "eigenvalues": [
             _complex_to_dict(value, residual)
             for value, residual in zip(
@@ -1462,6 +1760,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="ARPACK tolerance. Zero requests machine precision.",
     )
     parser.add_argument(
+        "--corner-relative-cutoff",
+        type=float,
+        default=DEFAULT_CORNER_RELATIVE_CUTOFF,
+        help="Relative SVD cutoff for numerically null empty-row corner modes.",
+    )
+    parser.add_argument(
         "--arpack-ncv",
         type=int,
         default=DEFAULT_ARPACK_NCV,
@@ -1531,6 +1835,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     if args.max_intermediate_mib <= 0.0:
         raise ValueError("--max-intermediate-mib must be positive.")
+    if args.corner_relative_cutoff < 0.0:
+        raise ValueError("--corner-relative-cutoff cannot be negative.")
 
     tensor_metadata = {
         "a_shape": list(a.shape),
@@ -1561,7 +1867,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         "rsvd_power_iters": args.rsvd_power_iters,
         "force_full_svd_forward": False,
         "max_intermediate_mib": args.max_intermediate_mib,
-        "transfer_mode": "matrix_free" if args.matrix_free else "dense_gpu",
+        "transfer_mode": (
+            "matrix_free_corner_whitened"
+            if args.matrix_free
+            else "dense_gpu_corner_whitened"
+        ),
+        "corner_relative_cutoff": args.corner_relative_cutoff,
         "expected_dense_transfer_gib": expected_transfer_gib,
         "eig_tol": args.eig_tol,
         "arpack_ncv": args.arpack_ncv,
@@ -1613,6 +1924,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         seed=eigensolver_seed,
         progress_every=args.progress_every,
         matrix_free=args.matrix_free,
+        corner_relative_cutoff=args.corner_relative_cutoff,
         return_result=True,
     )
     if not isinstance(result, CorrelationLengthResult):

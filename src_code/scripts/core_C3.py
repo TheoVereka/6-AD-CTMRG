@@ -3371,7 +3371,7 @@ def build_heisenberg_H(J: float = 1.0, d: int = 2) -> torch.Tensor:
             Splus[i, i + 1] = CScoeff   # S+ raises m by 1
             Sminus[i + 1, i] = CScoeff  # S- lowers m by 1
 
-    print(Splus,Sminus,Sz)
+    #print(Splus,Sminus,Sz)
 
     # Perform contractions on CPU with explicit backend, then move to device
     SdotS = (oe.contract("ij,kl->ijkl", Splus, Sminus, backend="torch") * 0.5
