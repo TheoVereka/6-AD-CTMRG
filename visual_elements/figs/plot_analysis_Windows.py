@@ -288,10 +288,15 @@ def compute_energy_extrap(Ds, eps):
 
     E_exp    = None
     exp_popt = None
-    if n >= 3:
+    exp_mask = Ds_f >= 5
+    Ds_exp = Ds_f[exp_mask]
+    eps_exp = eps_f[exp_mask]
+    if len(Ds_exp) >= 3:
         try:
-            p0 = [eps_f[-1] - 0.1, 0.1, float(Ds_f.mean())]
-            popt, _ = curve_fit(_exp_model, Ds_f, eps_f, p0=p0, maxfev=5000)
+            p0 = [eps_exp[-1] - 0.1, 0.1, float(Ds_exp.mean())]
+            popt, _ = curve_fit(
+                _exp_model, Ds_exp, eps_exp, p0=p0, maxfev=5000
+            )
             lo = min(E_horiz, E_lin3) - 2 * abs(E_horiz - E_lin3) - 0.3
             hi = max(E_horiz, E_lin3) + 2 * abs(E_horiz - E_lin3) + 0.3
             if lo <= popt[0] <= hi:
@@ -584,7 +589,8 @@ def plot_col_energy(ax, v, show_xlabel):
     if ex['exp_popt'] is not None:
         D_line = np.where(inv_line > 1e-12, 1.0 / np.maximum(inv_line, 1e-12), 1e12)
         ax.plot(inv_line, _exp_model(D_line, *ex['exp_popt']),
-                color='tab:green', ls='-.', lw=1.0, alpha=0.85, label='exp fit')
+                color='tab:green', ls='-.', lw=1.0, alpha=0.85,
+                label=r'exp fit $D\geq5$')
 
     ax.plot(0, ex['E_best'], '*', color=col, ms=13, zorder=7,
             markeredgewidth=0.5, markeredgecolor='k',
