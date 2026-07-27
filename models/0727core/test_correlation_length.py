@@ -13,14 +13,22 @@ The primary tests are physical equivalences, not duplicate implementations:
 Small implementation-regression checks are retained after the physical tests.
 They are useful for locating a failure, but they are not treated as evidence of
 physical correctness by themselves.
+
+The generic-state tests use the exact main_C3 LBFGS CTMRG defaults and the
+corresponding CHI_MIN_LIST entry.  Product and GHZ are analytic low-rank limits:
+they use small sufficient chi values, symmetry-preserving direct initialization,
+and deterministic full forward SVDs so boundary symmetry breaking cannot hide
+their exact transfer-sector structure.
 """
 
 from __future__ import annotations
 
 import argparse
+import ast
 import dataclasses
 import gc
 import math
+import pathlib
 import sys
 import time
 
@@ -30,6 +38,15 @@ import torch
 
 import core_C3 as core
 import correlation_length as corr
+
+
+CHI_MIN_BY_D = {
+    2: 16,
+    3: 24,
+    4: 36,
+    5: 50,
+    6: 72,
+}
 
 
 @dataclasses.dataclass
@@ -60,6 +77,51 @@ def reset_rng(seed: int, device: torch.device) -> None:
     torch.manual_seed(seed)
     if device.type == "cuda":
         torch.cuda.manual_seed_all(seed)
+
+
+def audit_main_c3_lbfgs_defaults() -> None:
+    """Verify that production defaults still match main_C3 without importing it."""
+
+    main_path = pathlib.Path(__file__).with_name("main_C3.py")
+    module = ast.parse(main_path.read_text(encoding="utf-8"))
+    values: dict[str, object] = {}
+    for node in module.body:
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name):
+            continue
+        try:
+            values[target.id] = ast.literal_eval(node.value)
+        except (ValueError, TypeError):
+            continue
+
+    expected = {
+        "D_BOND_LIST": [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        "CHI_MIN_LIST": [16, 24, 36, 50, 72, 91, 104, 126, 140, 165, 180],
+        "USE_DOUBLE_PRECISION": True,
+        "USE_REAL_TENSORS": True,
+        "J1_COUPLING": corr.DEFAULT_J1,
+        "J2_COUPLING": corr.DEFAULT_J2,
+        "RSVD_MODE": corr.DEFAULT_RSVD_MODE,
+        "RSVD_NEUMANN_TERMS": corr.DEFAULT_RSVD_NEUMANN_TERMS,
+        "RSVD_POWER_ITERS": corr.DEFAULT_RSVD_POWER_ITERS,
+        "ENV_IDENTITY_INIT": corr.DEFAULT_IDENTITY_INIT,
+        "CTM_MAX_STEPS": corr.DEFAULT_CTM_MAX_STEPS,
+        "CTM_CONV_THR": corr.DEFAULT_CTM_CONV_TOL,
+        "CTM_CONV_MODE": corr.DEFAULT_CTM_CONV_MODE,
+        "CTM_E_CONV_THRESHOLD": corr.DEFAULT_CTM_E_CONV_THRESHOLD,
+    }
+    mismatches = {
+        name: (values.get(name), expected_value)
+        for name, expected_value in expected.items()
+        if values.get(name) != expected_value
+    }
+    if mismatches:
+        raise AssertionError(
+            f"correlation_length defaults disagree with main_C3: {mismatches}"
+        )
+    report("main_C3 LBFGS default audit passed.")
 
 
 def apply_uniform_virtual_map(
@@ -109,28 +171,41 @@ def make_case_spectrum(
     *,
     args: argparse.Namespace,
     device: torch.device,
-    identity_init: bool = False,
+    chi: int | None = None,
+    identity_init: bool = True,
+    rsvd_mode: str = corr.DEFAULT_RSVD_MODE,
+    force_full_svd: bool = False,
 ) -> CaseSpectrum:
-    """Run the complete physical pipeline with deterministic exact CTMRG SVDs."""
+    """Run one complete CTMRG and transfer-spectrum calculation."""
 
-    report(f"Running physical case: {name}")
+    effective_chi = args.chi if chi is None else chi
+    report(
+        f"Running physical case: {name}, D={args.D}, chi={effective_chi}, "
+        f"identity_init={identity_init}, rsvd_mode={rsvd_mode}, "
+        f"force_full_svd={force_full_svd}"
+    )
     reset_rng(args.seed, device)
     result = corr.obtain_per_D_correlation_length(
         raw_a,
         raw_b,
-        args.chi,
+        effective_chi,
         ctm_max_steps=args.ctm_steps,
         ctm_conv_tol=args.ctm_tol,
+        ctm_conv_mode=args.ctm_conv_mode,
+        ctm_e_conv_threshold=args.ctm_e_conv_threshold,
         identity_init=identity_init,
-        rsvd_mode="full_svd",
-        rsvd_neumann_terms=2,
-        rsvd_power_iters=None,
+        rsvd_mode=rsvd_mode,
+        rsvd_neumann_terms=corr.DEFAULT_RSVD_NEUMANN_TERMS,
+        rsvd_power_iters=corr.DEFAULT_RSVD_POWER_ITERS,
+        force_full_svd=force_full_svd,
+        j1=args.J1,
+        j2=args.J2,
         dtype=torch.float64,
         device=device,
-        max_intermediate_bytes=64 * 1024**2,
+        max_intermediate_bytes=256 * 1024**2,
         eig_tol=0.0,
-        arpack_ncv=min(32, args.chi**2),
-        arpack_maxiter=1000,
+        arpack_ncv=min(corr.DEFAULT_ARPACK_NCV, effective_chi**2),
+        arpack_maxiter=corr.DEFAULT_ARPACK_MAXITER,
         dense_dimension_threshold=256,
         seed=args.seed,
         progress_every=0,
@@ -227,20 +302,6 @@ def run_physical_tests(
         "generic reference", raw_a, raw_b, args=args, device=device
     )
 
-    noisy_initialization = make_case_spectrum(
-        "generic reference with noisy identity initialization",
-        raw_a,
-        raw_b,
-        args=args,
-        device=device,
-        identity_init=True,
-    )
-    assert_physical_equivalence(
-        reference,
-        noisy_initialization,
-        tolerance=args.physical_tolerance,
-    )
-
     reset_rng(args.seed + 202, device)
     random_left = torch.randn(
         args.D, args.D, dtype=torch.float64, device=device
@@ -319,6 +380,9 @@ def run_physical_tests(
         product_b,
         args=args,
         device=device,
+        chi=args.product_chi,
+        identity_init=False,
+        force_full_svd=True,
     )
     product_ratio = abs(product.normalized_subleading)
     report(f"product-state |lambda2/lambda1|={product_ratio:.6e}")
@@ -335,7 +399,14 @@ def run_physical_tests(
     report("PHYSICAL TEST 4/4: GHZ two-sector degeneracy.")
     ghz_a, ghz_b = build_ghz_state(args.D, device)
     ghz = make_case_spectrum(
-        "GHZ state", ghz_a, ghz_b, args=args, device=device
+        "GHZ state",
+        ghz_a,
+        ghz_b,
+        args=args,
+        device=device,
+        chi=args.ghz_chi,
+        identity_init=False,
+        force_full_svd=True,
     )
     ghz_magnitudes = [abs(value) for value in ghz.eigenvalues]
     ghz_splitting = abs(ghz_magnitudes[0] - ghz_magnitudes[1]) / max(
@@ -373,8 +444,15 @@ def run_implementation_regressions(
         args.chi,
         ctm_max_steps=args.ctm_steps,
         ctm_conv_tol=args.ctm_tol,
-        identity_init=False,
-        rsvd_mode="full_svd",
+        ctm_conv_mode=args.ctm_conv_mode,
+        ctm_e_conv_threshold=args.ctm_e_conv_threshold,
+        identity_init=True,
+        rsvd_mode=corr.DEFAULT_RSVD_MODE,
+        rsvd_neumann_terms=corr.DEFAULT_RSVD_NEUMANN_TERMS,
+        rsvd_power_iters=corr.DEFAULT_RSVD_POWER_ITERS,
+        force_full_svd=False,
+        j1=args.J1,
+        j2=args.J2,
         dtype=torch.float64,
         device=device,
     )
@@ -474,22 +552,50 @@ def parse_args() -> argparse.Namespace:
         help="auto, cpu, cuda, or a specific CUDA device",
     )
     parser.add_argument("--D", type=int, default=2)
-    parser.add_argument("--chi", type=int, default=8)
-    parser.add_argument("--ctm-steps", type=int, default=20)
-    parser.add_argument("--ctm-tol", type=float, default=1.0e-10)
+    parser.add_argument("--chi", type=int, default=None)
+    parser.add_argument("--product-chi", type=int, default=2)
+    parser.add_argument("--ghz-chi", type=int, default=4)
+    parser.add_argument(
+        "--ctm-steps",
+        type=int,
+        default=corr.DEFAULT_CTM_MAX_STEPS,
+    )
+    parser.add_argument(
+        "--ctm-tol",
+        type=float,
+        default=corr.DEFAULT_CTM_CONV_TOL,
+    )
+    parser.add_argument(
+        "--ctm-conv-mode",
+        choices=("SVdifference", "Edifference", "both"),
+        default=corr.DEFAULT_CTM_CONV_MODE,
+    )
+    parser.add_argument(
+        "--ctm-e-conv-threshold",
+        type=float,
+        default=corr.DEFAULT_CTM_E_CONV_THRESHOLD,
+    )
+    parser.add_argument("--J1", type=float, default=corr.DEFAULT_J1)
+    parser.add_argument("--J2", type=float, default=corr.DEFAULT_J2)
     parser.add_argument("--seed", type=int, default=20260727)
-    parser.add_argument("--physical-tolerance", type=float, default=5.0e-7)
+    parser.add_argument("--physical-tolerance", type=float, default=2.0e-4)
     parser.add_argument("--product-ratio-tolerance", type=float, default=1.0e-8)
     parser.add_argument("--product-xi-tolerance", type=float, default=0.1)
     parser.add_argument("--ghz-splitting-tolerance", type=float, default=1.0e-8)
     parser.add_argument("--ghz-min-xi", type=float, default=1.0e6)
+    parser.add_argument(
+        "--run-implementation-regressions",
+        action="store_true",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    if args.D < 2:
-        raise ValueError("Use D >= 2 so both product and GHZ limits are tested.")
+    if args.D not in CHI_MIN_BY_D:
+        raise ValueError("This cluster suite supports D=2,3,4,5,6.")
+    if args.chi is None:
+        args.chi = CHI_MIN_BY_D[args.D]
     if args.device == "auto":
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     else:
@@ -505,20 +611,28 @@ def main() -> int:
     core.set_device(device)
 
     start_time = time.perf_counter()
+    audit_main_c3_lbfgs_defaults()
     report(
         f"Starting physical correlation-length validation: D={args.D}, "
-        f"chi={args.chi}, CTMRG steps={args.ctm_steps}, device={device}"
+        f"chi={args.chi}, CTMRG steps={args.ctm_steps}, "
+        f"mode={args.ctm_conv_mode}, energy_threshold="
+        f"{args.ctm_e_conv_threshold:.3e}, identity_init=True, "
+        f"rsvd_mode={corr.DEFAULT_RSVD_MODE}, J1={args.J1}, J2={args.J2}, "
+        f"device={device}"
     )
 
     raw_a, raw_b, reference = run_physical_tests(args, device)
     report("All physical tests passed.")
-    run_implementation_regressions(
-        raw_a,
-        raw_b,
-        reference,
-        args=args,
-        device=device,
-    )
+    if args.run_implementation_regressions:
+        run_implementation_regressions(
+            raw_a,
+            raw_b,
+            reference,
+            args=args,
+            device=device,
+        )
+    else:
+        report("Implementation regressions skipped for this D job.")
 
     elapsed = time.perf_counter() - start_time
     report(

@@ -14,6 +14,11 @@ The four edge tensors are obtained from two independent CTMRG runs:
 Each run is followed by one explicit ``env1 -> env2`` update, as required to
 put the two edge representatives in the orientation used by the transfer
 operator.
+
+By default each CTMRG run uses the same convergence path as the main_C3 LBFGS
+phase: ``both`` corner-spectrum and full three-environment energy convergence,
+with the same thresholds, identity initialization, couplings, and partial-SVD
+configuration.
 """
 
 from __future__ import annotations
@@ -26,7 +31,7 @@ import math
 import os
 import sys
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 import numpy as np
@@ -46,10 +51,14 @@ except ImportError:
 
 DEFAULT_CTM_MAX_STEPS = 70
 DEFAULT_CTM_CONV_TOL = 1.0e-7
+DEFAULT_CTM_CONV_MODE = "both"
+DEFAULT_CTM_E_CONV_THRESHOLD = 2.0e-8
 DEFAULT_IDENTITY_INIT = True
 DEFAULT_RSVD_MODE = "augmented"
 DEFAULT_RSVD_NEUMANN_TERMS = 2
 DEFAULT_RSVD_POWER_ITERS: int | None = None
+DEFAULT_J1 = 1.0
+DEFAULT_J2 = 0.26
 DEFAULT_MAX_INTERMEDIATE_MIB = 256.0
 DEFAULT_ARPACK_NCV = 64
 DEFAULT_ARPACK_MAXITER = 4000
@@ -149,19 +158,107 @@ def _prepare_raw_tensor(
     return tensor.detach().to(device=device, dtype=dtype).contiguous()
 
 
-def _build_double_layers(
+def _build_ctm_layers(
     raw_a: torch.Tensor,
     raw_b: torch.Tensor,
-) -> tuple[torch.Tensor, ...]:
-    """Build normalized double layers for one ordering of the two-C3 ansatz."""
+) -> tuple[tuple[torch.Tensor, ...], tuple[torch.Tensor, ...]]:
+    """Build normalized single and double layers for one two-C3 ordering."""
 
     a = _core.normalize_single_layer_tensor_for_double_layer(raw_a)
     b = _core.normalize_single_layer_tensor_for_double_layer(raw_b)
-    sites = _core.twoc3_abcdef_from_ab(a, b)
+    sites = tuple(
+        tensor.detach().contiguous()
+        for tensor in _core.twoc3_abcdef_from_ab(a, b)
+    )
     D_squared = raw_a.shape[0] ** 2
-    double_layers = _core.abcdef_to_ABCDEF(*sites, D_squared)
-    del sites, a, b
-    return tuple(tensor.detach().contiguous() for tensor in double_layers)
+    double_layers = tuple(
+        tensor.detach().contiguous()
+        for tensor in _core.abcdef_to_ABCDEF(*sites, D_squared)
+    )
+    del a, b
+    return sites, double_layers
+
+
+def _build_lbfgs_energy_proxy(
+    sites: tuple[torch.Tensor, ...],
+    *,
+    chi: int,
+    D_bond: int,
+    j1: float,
+    j2: float,
+) -> Callable[..., float]:
+    """Build the exact three-environment energy proxy used by main_C3 LBFGS."""
+
+    if len(sites) != 6:
+        raise ValueError("The energy proxy requires six normalized site tensors.")
+    a, b, c, d, e, f = sites
+    d_phys = int(a.shape[-1])
+    spin_dot_spin = _core.build_heisenberg_H(1.0, d_phys)
+    couplings = ([float(j1)] * 6 + [float(j2)] * 6) * 3
+
+    @torch.no_grad()
+    def energy_proxy(
+        C21CD: torch.Tensor,
+        T1F: torch.Tensor,
+        T2A: torch.Tensor,
+        C21EB: torch.Tensor,
+        T1D: torch.Tensor,
+        T2C: torch.Tensor,
+        C21AF: torch.Tensor,
+        T1B: torch.Tensor,
+        T2E: torch.Tensor,
+    ) -> float:
+        energy_1 = _core.energy_expectation_nearest_neighbor_3ebadcf_bonds(
+            a,
+            b,
+            c,
+            d,
+            e,
+            f,
+            *couplings[0:12],
+            spin_dot_spin,
+            chi,
+            D_bond,
+            d_phys,
+            C21CD,
+            T1F,
+            T2A,
+        )
+        energy_2 = _core.energy_expectation_nearest_neighbor_3afcbed_bonds(
+            a,
+            b,
+            c,
+            d,
+            e,
+            f,
+            *couplings[12:24],
+            spin_dot_spin,
+            chi,
+            D_bond,
+            d_phys,
+            C21EB,
+            T1D,
+            T2C,
+        )
+        energy_3 = _core.energy_expectation_nearest_neighbor_other_3_bonds(
+            a,
+            b,
+            c,
+            d,
+            e,
+            f,
+            *couplings[24:36],
+            spin_dot_spin,
+            chi,
+            D_bond,
+            d_phys,
+            C21AF,
+            T1B,
+            T2E,
+        )
+        return float((energy_1 + energy_2 + energy_3).item())
+
+    return energy_proxy
 
 
 @torch.no_grad()
@@ -173,12 +270,22 @@ def _run_ctm_and_extract_edges(
     ctm_max_steps: int,
     ctm_conv_tol: float,
     identity_init: bool,
+    j1: float,
+    j2: float,
     keep_ab: bool,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None, torch.Tensor | None, int]:
     """Run one CTMRG ordering and extract the post-update edge pair."""
 
+    D_bond = int(raw_a.shape[0])
     D_squared = raw_a.shape[0] ** 2
-    double_layers = _build_double_layers(raw_a, raw_b)
+    sites, double_layers = _build_ctm_layers(raw_a, raw_b)
+    energy_proxy = _build_lbfgs_energy_proxy(
+        sites,
+        chi=chi,
+        D_bond=D_bond,
+        j1=j1,
+        j2=j2,
+    )
 
     result = _core.CTMRG_from_init_to_stop(
         *double_layers,
@@ -187,7 +294,7 @@ def _run_ctm_and_extract_edges(
         ctm_max_steps,
         ctm_conv_tol,
         identity_init,
-        energy_proxy_fn=None,
+        energy_proxy_fn=energy_proxy,
     )
     corner, edge_1, edge_2 = result[:3]
     ctm_steps = int(result[-1])
@@ -207,7 +314,7 @@ def _run_ctm_and_extract_edges(
     kept_a = double_layers[0].detach().contiguous() if keep_ab else None
     kept_b = double_layers[1].detach().contiguous() if keep_ab else None
 
-    del corner, edge_1, edge_2, updated, double_layers
+    del corner, edge_1, edge_2, updated, double_layers, energy_proxy, sites
     _release_unused_memory(raw_a.device)
     return first, second, kept_a, kept_b, ctm_steps
 
@@ -219,10 +326,15 @@ def obtain_transfer_components(
     *,
     ctm_max_steps: int = DEFAULT_CTM_MAX_STEPS,
     ctm_conv_tol: float = DEFAULT_CTM_CONV_TOL,
+    ctm_conv_mode: str = DEFAULT_CTM_CONV_MODE,
+    ctm_e_conv_threshold: float = DEFAULT_CTM_E_CONV_THRESHOLD,
     identity_init: bool = DEFAULT_IDENTITY_INIT,
     rsvd_mode: str = DEFAULT_RSVD_MODE,
     rsvd_neumann_terms: int = DEFAULT_RSVD_NEUMANN_TERMS,
     rsvd_power_iters: int | None = DEFAULT_RSVD_POWER_ITERS,
+    force_full_svd: bool = False,
+    j1: float = DEFAULT_J1,
+    j2: float = DEFAULT_J2,
     dtype: torch.dtype | None = None,
     device: torch.device | str | None = None,
 ) -> TransferComponents:
@@ -239,6 +351,10 @@ def obtain_transfer_components(
         raise ValueError("ctm_max_steps must be positive.")
     if ctm_conv_tol <= 0.0:
         raise ValueError("ctm_conv_tol must be positive.")
+    if ctm_conv_mode not in ("SVdifference", "Edifference", "both"):
+        raise ValueError(f"Unsupported CTMRG convergence mode: {ctm_conv_mode}.")
+    if ctm_e_conv_threshold <= 0.0:
+        raise ValueError("ctm_e_conv_threshold must be positive.")
 
     target_device = torch.device(device) if device is not None else a.device
     target_dtype = dtype if dtype is not None else _real_dtype_from_tensor(a)
@@ -262,10 +378,15 @@ def obtain_transfer_components(
     if target_device.type == "cuda":
         torch.backends.cuda.matmul.allow_tf32 = False
     _core._SVD_CPU_OFFLOAD_THRESHOLD = 0
+    _core._USE_FULL_SVD = bool(force_full_svd)
     _core.set_rsvd_mode(
         rsvd_mode,
         neumann_terms=rsvd_neumann_terms,
         power_iters=rsvd_power_iters,
+    )
+    _core.set_ctm_conv_mode(
+        ctm_conv_mode,
+        e_threshold=ctm_e_conv_threshold,
     )
 
     if target_dtype == torch.float32:
@@ -287,6 +408,8 @@ def obtain_transfer_components(
             ctm_max_steps=ctm_max_steps,
             ctm_conv_tol=ctm_conv_tol,
             identity_init=identity_init,
+            j1=j1,
+            j2=j2,
             keep_ab=True,
         )
     )
@@ -302,6 +425,8 @@ def obtain_transfer_components(
         ctm_max_steps=ctm_max_steps,
         ctm_conv_tol=ctm_conv_tol,
         identity_init=identity_init,
+        j1=j1,
+        j2=j2,
         keep_ab=False,
     )
 
@@ -329,10 +454,15 @@ def obtain_4Ts(
     *,
     ctm_max_steps: int = DEFAULT_CTM_MAX_STEPS,
     ctm_conv_tol: float = DEFAULT_CTM_CONV_TOL,
+    ctm_conv_mode: str = DEFAULT_CTM_CONV_MODE,
+    ctm_e_conv_threshold: float = DEFAULT_CTM_E_CONV_THRESHOLD,
     identity_init: bool = DEFAULT_IDENTITY_INIT,
     rsvd_mode: str = DEFAULT_RSVD_MODE,
     rsvd_neumann_terms: int = DEFAULT_RSVD_NEUMANN_TERMS,
     rsvd_power_iters: int | None = DEFAULT_RSVD_POWER_ITERS,
+    force_full_svd: bool = False,
+    j1: float = DEFAULT_J1,
+    j2: float = DEFAULT_J2,
     dtype: torch.dtype | None = None,
     device: torch.device | str | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -344,10 +474,15 @@ def obtain_4Ts(
         chi,
         ctm_max_steps=ctm_max_steps,
         ctm_conv_tol=ctm_conv_tol,
+        ctm_conv_mode=ctm_conv_mode,
+        ctm_e_conv_threshold=ctm_e_conv_threshold,
         identity_init=identity_init,
         rsvd_mode=rsvd_mode,
         rsvd_neumann_terms=rsvd_neumann_terms,
         rsvd_power_iters=rsvd_power_iters,
+        force_full_svd=force_full_svd,
+        j1=j1,
+        j2=j2,
         dtype=dtype,
         device=device,
     )
@@ -1046,10 +1181,15 @@ def obtain_per_D_correlation_length(
     *,
     ctm_max_steps: int = DEFAULT_CTM_MAX_STEPS,
     ctm_conv_tol: float = DEFAULT_CTM_CONV_TOL,
+    ctm_conv_mode: str = DEFAULT_CTM_CONV_MODE,
+    ctm_e_conv_threshold: float = DEFAULT_CTM_E_CONV_THRESHOLD,
     identity_init: bool = DEFAULT_IDENTITY_INIT,
     rsvd_mode: str = DEFAULT_RSVD_MODE,
     rsvd_neumann_terms: int = DEFAULT_RSVD_NEUMANN_TERMS,
     rsvd_power_iters: int | None = DEFAULT_RSVD_POWER_ITERS,
+    force_full_svd: bool = False,
+    j1: float = DEFAULT_J1,
+    j2: float = DEFAULT_J2,
     dtype: torch.dtype | None = None,
     device: torch.device | str | None = None,
     max_intermediate_bytes: int = int(
@@ -1072,10 +1212,15 @@ def obtain_per_D_correlation_length(
         chi,
         ctm_max_steps=ctm_max_steps,
         ctm_conv_tol=ctm_conv_tol,
+        ctm_conv_mode=ctm_conv_mode,
+        ctm_e_conv_threshold=ctm_e_conv_threshold,
         identity_init=identity_init,
         rsvd_mode=rsvd_mode,
         rsvd_neumann_terms=rsvd_neumann_terms,
         rsvd_power_iters=rsvd_power_iters,
+        force_full_svd=force_full_svd,
+        j1=j1,
+        j2=j2,
         dtype=dtype,
         device=device,
     )
@@ -1264,6 +1409,16 @@ def _build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_CTM_CONV_TOL,
     )
     parser.add_argument(
+        "--ctm-conv-mode",
+        choices=("SVdifference", "Edifference", "both"),
+        default=DEFAULT_CTM_CONV_MODE,
+    )
+    parser.add_argument(
+        "--ctm-e-conv-threshold",
+        type=float,
+        default=DEFAULT_CTM_E_CONV_THRESHOLD,
+    )
+    parser.add_argument(
         "--random-init",
         action="store_true",
         help="Use the non-identity CTMRG initialization.",
@@ -1283,6 +1438,8 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=DEFAULT_RSVD_POWER_ITERS,
     )
+    parser.add_argument("--J1", type=float, default=DEFAULT_J1)
+    parser.add_argument("--J2", type=float, default=DEFAULT_J2)
     parser.add_argument(
         "--max-intermediate-mib",
         type=float,
@@ -1320,7 +1477,15 @@ def _build_parser() -> argparse.ArgumentParser:
         default=256,
         help="Use dense diagonalization only at or below this matrix dimension.",
     )
-    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help=(
+            "Optional CTMRG random seed. The LBFGS default leaves it unset. "
+            "The ARPACK start vector remains deterministic when omitted."
+        ),
+    )
     parser.add_argument(
         "--progress-every",
         type=int,
@@ -1339,10 +1504,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     device = _parse_device(args.device)
     dtype = torch.float32 if args.single else torch.float64
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
+    if args.seed is not None:
+        np.random.seed(args.seed)
+        torch.manual_seed(args.seed)
+        if device.type == "cuda":
+            torch.cuda.manual_seed_all(args.seed)
+    eigensolver_seed = 0 if args.seed is None else args.seed
     if device.type == "cuda":
-        torch.cuda.manual_seed_all(args.seed)
         torch.set_num_threads(1)
 
     a, b, metadata = _load_twoc3_checkpoint(
@@ -1382,10 +1550,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             if dtype == torch.float32
             else args.ctm_conv_tol
         ),
+        "ctm_conv_mode": args.ctm_conv_mode,
+        "ctm_e_conv_threshold": args.ctm_e_conv_threshold,
         "ctm_identity_init": not args.random_init,
+        "energy_proxy": "main_C3_LBFGS_three_environment_energy",
+        "J1": args.J1,
+        "J2": args.J2,
         "rsvd_mode": args.rsvd_mode,
         "rsvd_neumann_terms": args.rsvd_neumann_terms,
         "rsvd_power_iters": args.rsvd_power_iters,
+        "force_full_svd_forward": False,
         "max_intermediate_mib": args.max_intermediate_mib,
         "transfer_mode": "matrix_free" if args.matrix_free else "dense_gpu",
         "expected_dense_transfer_gib": expected_transfer_gib,
@@ -1393,7 +1567,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         "arpack_ncv": args.arpack_ncv,
         "arpack_maxiter": args.arpack_maxiter,
         "dense_diagonalization_dimension_threshold": args.dense_threshold,
-        "random_seed": args.seed,
+        "ctm_random_seed": args.seed,
+        "eigensolver_seed": eigensolver_seed,
     }
 
     print(
@@ -1420,10 +1595,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         chi,
         ctm_max_steps=args.ctm_max_steps,
         ctm_conv_tol=args.ctm_conv_tol,
+        ctm_conv_mode=args.ctm_conv_mode,
+        ctm_e_conv_threshold=args.ctm_e_conv_threshold,
         identity_init=not args.random_init,
         rsvd_mode=args.rsvd_mode,
         rsvd_neumann_terms=args.rsvd_neumann_terms,
         rsvd_power_iters=args.rsvd_power_iters,
+        j1=args.J1,
+        j2=args.J2,
         dtype=dtype,
         device=device,
         max_intermediate_bytes=int(args.max_intermediate_mib * _MIB),
@@ -1431,7 +1610,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         arpack_ncv=args.arpack_ncv,
         arpack_maxiter=args.arpack_maxiter,
         dense_dimension_threshold=args.dense_threshold,
-        seed=args.seed,
+        seed=eigensolver_seed,
         progress_every=args.progress_every,
         matrix_free=args.matrix_free,
         return_result=True,

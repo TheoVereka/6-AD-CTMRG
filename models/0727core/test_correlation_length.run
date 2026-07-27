@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --qos debug
-#SBATCH --job-name=0727-corr-length-test
+#SBATCH --job-name=corr-length-test
 #SBATCH --partition gpu
-#SBATCH -e ./corr-length-test-%N-%j.error
-#SBATCH -o ./corr-length-test-%N-%j.out
+#SBATCH -e ./corr-length-test-%x-%N-%j.error
+#SBATCH -o ./corr-length-test-%x-%N-%j.out
 #SBATCH --gres=gpu:1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
@@ -22,12 +22,29 @@ export PYTHONUNBUFFERED=1
 RUN_DIR="${RUN_DIR:-/home/chye/0727core}"
 cd "${RUN_DIR}" || exit 2
 
+D_BOND="${1:?Pass D as the first job-script argument.}"
+case "${D_BOND}" in
+    2) CHI=16 ;;
+    3) CHI=24 ;;
+    4) CHI=36 ;;
+    5) CHI=50 ;;
+    6) CHI=72 ;;
+    *)
+        echo "Unsupported D=${D_BOND}; expected one of 2,3,4,5,6."
+        exit 2
+        ;;
+esac
+
+EXTRA_ARGS=()
+if [[ "${D_BOND}" == "2" ]]; then
+    EXTRA_ARGS+=(--run-implementation-regressions)
+fi
+
 python -u "${RUN_DIR}/test_correlation_length.py" \
     --device cuda \
-    --D 2 \
-    --chi 8 \
-    --ctm-steps 20 \
-    --ctm-tol 1e-10
+    --D "${D_BOND}" \
+    --chi "${CHI}" \
+    "${EXTRA_ARGS[@]}"
 STATUS=$?
 
 echo "FINISHED AT $(date) WITH STATUS ${STATUS}"
