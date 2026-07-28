@@ -1556,7 +1556,7 @@ def obtain_per_D_correlation_length(
         transfer_mode=(
             "matrix_free_corner_whitened"
             if matrix_free
-            else "dense_gpu_corner_whitened"
+            else f"dense_{transfer.device.type}_corner_whitened"
         ),
         transfer_matrix_gib=(
             0.0
@@ -1870,7 +1870,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "transfer_mode": (
             "matrix_free_corner_whitened"
             if args.matrix_free
-            else "dense_gpu_corner_whitened"
+            else f"dense_{device.type}_corner_whitened"
         ),
         "corner_relative_cutoff": args.corner_relative_cutoff,
         "expected_dense_transfer_gib": expected_transfer_gib,
@@ -1947,9 +1947,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         output_directory = os.path.dirname(output_path)
         if output_directory:
             os.makedirs(output_directory, exist_ok=True)
-        with open(output_path, "w", encoding="utf-8") as handle:
+        temporary_output_path = output_path + ".tmp"
+        with open(temporary_output_path, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=2, allow_nan=True)
             handle.write("\n")
+        os.replace(temporary_output_path, output_path)
         print(f"Saved {output_path}", flush=True)
         sys.stdout.flush()
 
