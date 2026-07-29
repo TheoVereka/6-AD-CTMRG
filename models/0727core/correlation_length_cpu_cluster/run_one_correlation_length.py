@@ -56,7 +56,10 @@ def parse_args() -> argparse.Namespace:
         "--bundle-root",
         type=Path,
         default=Path(__file__).resolve().parent,
-        help="Scratch copy containing checkpoints/, results/, and manifests.",
+        help=(
+            "Self-contained bundle holding checkpoints, the v3 result "
+            "directory, and manifests."
+        ),
     )
     parser.add_argument(
         "--check-only",
@@ -86,7 +89,7 @@ def add_provenance(
         "staged_checkpoint": item["staged_filename"],
         "original_relative_path": item["original_relative_path"],
         "checkpoint_sha256": item["sha256"],
-        "scratch_bundle_root": str(bundle_root),
+        "bundle_root": str(bundle_root),
         "completed_utc": datetime.now(timezone.utc).isoformat(),
         "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
     }
@@ -146,6 +149,10 @@ def main() -> int:
         "cpu",
         "--J2",
         format(j2, ".12g"),
+        "--ctm-max-steps",
+        "300",
+        "--ctm-conv-tol",
+        "1e-11",
         "--progress-every",
         "10",
         "--output",

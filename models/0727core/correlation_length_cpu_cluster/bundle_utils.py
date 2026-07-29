@@ -13,7 +13,7 @@ ANSATZ_DIRECTORY = "2tensor_twoC3"
 MANIFEST_JSON = "checkpoint_manifest.json"
 MANIFEST_TSV = "checkpoint_manifest.tsv"
 CHECKPOINT_DIRECTORY = "checkpoints"
-RESULT_DIRECTORY = "results"
+RESULT_DIRECTORY = "results_straight_rows_v3"
 J2_DIRECTORY_PATTERN = re.compile(r"^J2_(\d+(?:p\d+)?)$")
 CHECKPOINT_NAME_PATTERN = re.compile(
     r"^tensor_best__(J2_\d+(?:p\d+)?)__D_(\d+)\.pt$"
@@ -80,6 +80,13 @@ def validate_result_payload(
     j2: float,
     D_bond: int,
 ) -> None:
+    if (
+        payload.get("transfer_network_schema")
+        != "straight_row_env2_v3"
+    ):
+        raise ValueError(
+            "Result does not use the audited straight-row v3 topology"
+        )
     if int(payload["D_bond"]) != D_bond:
         raise ValueError("D_bond does not match the requested job")
     recorded_j2 = float(payload["calculation_hyperparameters"]["J2"])
@@ -95,6 +102,12 @@ def validate_result_payload(
             raise ValueError("Result contains a non-finite eigenvalue")
     if "correlation_length" not in payload:
         raise ValueError("Result has no correlation_length field")
+    hyperparameters = payload["calculation_hyperparameters"]
+    max_steps = int(hyperparameters["ctm_max_steps"])
+    if int(payload["ctm_steps_ab"]) >= max_steps:
+        raise ValueError("(a,b) CTMRG did not converge before its step limit")
+    if int(payload["ctm_steps_ba"]) >= max_steps:
+        raise ValueError("(b,a) CTMRG did not converge before its step limit")
 
 
 def is_valid_result(path: Path, *, j2: float, D_bond: int) -> bool:

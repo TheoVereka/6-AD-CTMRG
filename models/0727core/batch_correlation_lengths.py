@@ -55,6 +55,9 @@ def _valid_existing_result(
         else:
             seed_matches = recorded_seed == seed
         return (
+            payload.get("transfer_network_schema")
+            == "straight_row_env2_v3"
+            and
             int(payload["D_bond"]) == D_bond
             and "correlation_length" in payload
             and Path(payload["checkpoint"]).resolve() == checkpoint.resolve()

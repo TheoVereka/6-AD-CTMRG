@@ -423,6 +423,13 @@ def load_inverse_correlation_lengths(folder_path, j2, ansatz):
         try:
             with open(fpath, encoding='utf-8') as handle:
                 payload = json.load(handle)
+            if (
+                payload.get('transfer_network_schema')
+                != 'straight_row_env2_v3'
+            ):
+                raise ValueError(
+                    'obsolete pre-v2 correlation-length transfer topology'
+                )
             eigenvalues = payload['eigenvalues']
             if len(eigenvalues) < 2:
                 raise ValueError('fewer than two recorded eigenvalues')

@@ -4,8 +4,9 @@
 With no arguments, this script expects the cluster bundle at
 ``D:/HyraiOn/ENS_Lyon/Internship/2026-EPFL/data/correlation_length_cpu_cluster``.
 
-It reads completed JSON files from that bundle's results/ directory and moves
-them into their directly plottable locations below 0713summary.
+It reads completed JSON files from that bundle's
+results_straight_rows_v3/ directory and moves them into their directly
+plottable locations below 0713summary.
 """
 
 from __future__ import annotations
@@ -32,7 +33,9 @@ DEFAULT_DOWNLOADED_BUNDLE_ROOT = Path(
     r"D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data"
 ) / "correlation_length_cpu_cluster"
 DEFAULT_BUNDLE_ROOT = DEFAULT_DOWNLOADED_BUNDLE_ROOT
-DEFAULT_INCOMING = DEFAULT_DOWNLOADED_BUNDLE_ROOT / "results"
+DEFAULT_INCOMING = (
+    DEFAULT_DOWNLOADED_BUNDLE_ROOT / "results_straight_rows_v3"
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -42,8 +45,9 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_INCOMING,
         help=(
-            "Completed result directory; defaults to results/ inside the "
-            "recursively downloaded cluster bundle."
+            "Completed result directory; defaults to "
+            "results_straight_rows_v3/ inside the recursively downloaded "
+            "cluster bundle."
         ),
     )
     parser.add_argument(
@@ -80,6 +84,24 @@ def within(path: Path, root: Path) -> bool:
     try:
         path.relative_to(root)
     except ValueError:
+        return False
+    return True
+
+
+def is_current_v3_destination(
+    path: Path, *, j2: float, D_bond: int
+) -> bool:
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        validate_result_payload(payload, j2=j2, D_bond=D_bond)
+    except (
+        OSError,
+        ValueError,
+        TypeError,
+        KeyError,
+        json.JSONDecodeError,
+    ):
         return False
     return True
 
@@ -159,11 +181,16 @@ def main() -> int:
             failed += 1
             continue
         if destination.exists() and not args.overwrite:
-            print(
-                f"REJECT destination exists (use --overwrite): {destination}"
-            )
-            failed += 1
-            continue
+            if is_current_v3_destination(
+                destination, j2=float(item["j2"]), D_bond=D_bond
+            ):
+                print(
+                    f"REJECT current v3 destination exists "
+                    f"(use --overwrite): {destination}"
+                )
+                failed += 1
+                continue
+            print(f"REPLACE obsolete pre-v3 destination: {destination}")
 
         print(f"{'WOULD IMPORT' if args.dry_run else 'IMPORT'} {source}")
         print(f"  -> {destination}")

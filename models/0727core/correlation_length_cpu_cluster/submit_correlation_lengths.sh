@@ -4,15 +4,12 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BUNDLE_NAME="${BUNDLE_NAME:-$(basename "${SCRIPT_DIR}")}"
-SCRATCH_BUNDLE_DIR="/scratch/chye/${BUNDLE_NAME}"
-HOME_BUNDLE_DIR="/home/chye/${BUNDLE_NAME}"
-MANIFEST="${SCRATCH_BUNDLE_DIR}/checkpoint_manifest.tsv"
-RUN_FILE="${SCRATCH_BUNDLE_DIR}/correlation_length_job.run"
+MANIFEST="${SCRIPT_DIR}/checkpoint_manifest.tsv"
+RUN_FILE="${SCRIPT_DIR}/correlation_length_job.run"
 
-D_SPEC="7 8 9 10"
+D_SPEC=""
 D_SPEC_SET=0
-MIN_D=""
+MIN_D="3"
 J2_SPEC="all"
 DRY_RUN=0
 RESUBMIT_VALID=0
@@ -20,6 +17,7 @@ RESUBMIT_VALID=0
 usage() {
     echo "Usage: $0 [--J2 all|0.24,0.25|J2_0p24,...] [--D 7,8,9,10]"
     echo "          [--min-D 7] [--dry-run] [--resubmit-valid]"
+    echo "With no arguments, submit every available manifest case with D>=3."
     echo "--min-D discovers every manifest D at or above the threshold."
 }
 
@@ -32,6 +30,7 @@ while [[ $# -gt 0 ]]; do
         --D)
             D_SPEC="${2:?--D requires a comma/space-separated value}"
             D_SPEC_SET=1
+            MIN_D=""
             shift 2
             ;;
         --min-D)
@@ -66,8 +65,8 @@ done
     echo "Missing Slurm run file: ${RUN_FILE}" >&2
     exit 2
 }
-[[ -f "${HOME_BUNDLE_DIR}/run_one_correlation_length.py" ]] || {
-    echo "Missing worker in home copy: ${HOME_BUNDLE_DIR}" >&2
+[[ -f "${SCRIPT_DIR}/run_one_correlation_length.py" ]] || {
+    echo "Missing worker in bundle: ${SCRIPT_DIR}" >&2
     exit 2
 }
 
@@ -146,7 +145,7 @@ for TOKEN in "${SELECTED_TOKENS[@]}"; do
             continue
         fi
 
-        CHECKPOINT="${SCRATCH_BUNDLE_DIR}/checkpoints/${STAGED_BY_KEY[${KEY}]}"
+        CHECKPOINT="${SCRIPT_DIR}/checkpoints/${STAGED_BY_KEY[${KEY}]}"
         if [[ ! -f "${CHECKPOINT}" ]]; then
             echo "MISSING staged file: ${CHECKPOINT}"
             missing=$((missing + 1))
@@ -154,8 +153,8 @@ for TOKEN in "${SELECTED_TOKENS[@]}"; do
         fi
 
         if [[ "${RESUBMIT_VALID}" -eq 0 ]] && \
-           python "${HOME_BUNDLE_DIR}/run_one_correlation_length.py" \
-               --bundle-root "${SCRATCH_BUNDLE_DIR}" \
+           python "${SCRIPT_DIR}/run_one_correlation_length.py" \
+               --bundle-root "${SCRIPT_DIR}" \
                --check-only \
                "${TOKEN}" "${D_BOND}"; then
             echo "SKIP valid existing result for ${TOKEN}, D=${D_BOND}"
@@ -167,10 +166,10 @@ for TOKEN in "${SELECTED_TOKENS[@]}"; do
             echo "WOULD SUBMIT ${TOKEN}, D=${D_BOND}"
         else
             (
-                cd "${SCRATCH_BUNDLE_DIR}"
+                cd "${SCRIPT_DIR}"
                 sbatch \
                     --job-name="cl-${TOKEN#J2_}-D${D_BOND}" \
-                    "${RUN_FILE}" "${TOKEN}" "${D_BOND}" "${BUNDLE_NAME}"
+                    "${RUN_FILE}" "${TOKEN}" "${D_BOND}" "${SCRIPT_DIR}"
             )
         fi
         submitted=$((submitted + 1))

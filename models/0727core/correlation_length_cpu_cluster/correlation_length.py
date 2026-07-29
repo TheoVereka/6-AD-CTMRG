@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """Correlation length of a two-C3 iPEPS from a double-layer CTMRG boundary.
 
-The row-to-row transfer pencil has shape ``(chi**2, chi**2)``.  The default
-production path constructs its real six-tensor matrix in bounded-memory
-blocks, retains it on the tensor device, and uses the two CTMRG corners to
-whiten the empty-row metric without constructing a second large matrix.  CPU
-ARPACK then uses fast device callbacks for the resulting gauge-invariant
-standard eigenproblem.  The matrix-free path remains available when device
-memory is limited.
+The row-to-row transfer pencil has shape ``(chi**2, chi**2)``.  Its two
+central double-layer sites lie side-by-side, so the matrix maps the right
+boundary pair ``(V,v)`` to the left boundary pair ``(Y,y)``.  The two CTMRG
+corners form the empty-row metric ``C_upper kron C_lower``.  Two-sided SVD
+whitening applies the generalized pencil without explicitly forming or
+inverting that Kronecker matrix.
 
 The four edge tensors are obtained from two independent CTMRG runs:
 
@@ -849,6 +848,387 @@ class DenseRowToRowTransferOperator(RowToRowTransferOperator):
         return self.matrix
 
 
+class SideBySideRowToRowTransferOperator(RowToRowTransferOperator):
+    """Correct six-tensor row transfer with horizontal central-site bond.
+
+    In canonical local coordinates the central sites are
+    ``left[top, bond, bottom]`` and ``right[top, bond, bottom]``.  This
+    operator represents
+
+    ``V[Y,y,V,v] = sum``
+    ``upper_left[M,Y,i] upper_right[M,V,j]``
+    ``left[i,h,k] right[j,h,l]``
+    ``lower_left[m,y,k] lower_right[m,v,l]``.
+
+    Thus rows are the left boundary ``(Y,y)`` and columns are the right
+    boundary ``(V,v)``.  The former production contraction joined the two
+    central sites vertically and matricized opposite diagonals of the four
+    open boundary legs; that is a different tensor network, not a gauge or
+    local-leg convention for this row transfer.
+    """
+
+    def __init__(
+        self,
+        upper_left: torch.Tensor,
+        upper_right: torch.Tensor,
+        left_site: torch.Tensor,
+        right_site: torch.Tensor,
+        lower_left: torch.Tensor,
+        lower_right: torch.Tensor,
+        *,
+        max_intermediate_bytes: int = int(
+            DEFAULT_MAX_INTERMEDIATE_MIB * _MIB
+        ),
+        progress_every: int = 0,
+    ) -> None:
+        tensors = (
+            upper_left,
+            upper_right,
+            left_site,
+            right_site,
+            lower_left,
+            lower_right,
+        )
+        names = (
+            "upper_left",
+            "upper_right",
+            "left_site",
+            "right_site",
+            "lower_left",
+            "lower_right",
+        )
+        for name, tensor in zip(names, tensors, strict=True):
+            if not isinstance(tensor, torch.Tensor):
+                raise TypeError(f"{name} must be a torch.Tensor.")
+            if tensor.is_complex():
+                raise TypeError(f"{name} must be real.")
+
+        dtype = _real_dtype_from_tensor(upper_left)
+        device = upper_left.device
+        if any(tensor.dtype != dtype for tensor in tensors):
+            raise TypeError("All transfer tensors must have the same dtype.")
+        if any(tensor.device != device for tensor in tensors):
+            raise ValueError("All transfer tensors must be on the same device.")
+        if upper_left.ndim != 3:
+            raise ValueError("Each edge tensor must have rank 3.")
+
+        chi = int(upper_left.shape[0])
+        q = int(upper_left.shape[2])
+        edge_shape = (chi, chi, q)
+        for name, tensor in (
+            ("upper_left", upper_left),
+            ("upper_right", upper_right),
+            ("lower_left", lower_left),
+            ("lower_right", lower_right),
+        ):
+            if tuple(tensor.shape) != edge_shape:
+                raise ValueError(
+                    f"{name} must have shape {edge_shape}; "
+                    f"got {tuple(tensor.shape)}."
+                )
+        site_shape = (q, q, q)
+        for name, tensor in (
+            ("left_site", left_site),
+            ("right_site", right_site),
+        ):
+            if tuple(tensor.shape) != site_shape:
+                raise ValueError(
+                    f"{name} must have shape {site_shape}; "
+                    f"got {tuple(tensor.shape)}."
+                )
+        if max_intermediate_bytes <= 0:
+            raise ValueError("max_intermediate_bytes must be positive.")
+        if progress_every < 0:
+            raise ValueError("progress_every cannot be negative.")
+
+        self.upper_left = upper_left.detach().contiguous()
+        self.upper_right = upper_right.detach().contiguous()
+        self.lower_left = lower_left.detach().contiguous()
+        self.lower_right = lower_right.detach().contiguous()
+        # left[i,h,k] right[j,h,l] -> central_pair[i,k,j,l]
+        self.central_pair = torch.tensordot(
+            left_site.detach(),
+            right_site.detach(),
+            dims=([1], [1]),
+        ).contiguous()
+
+        self.chi = chi
+        self.q = q
+        self.shape = (chi**2, chi**2)
+        self.dtype = dtype
+        self.device = device
+        self.numpy_dtype = np.float64 if dtype == torch.float64 else np.float32
+        self.progress_every = int(progress_every)
+        self.matvec_count = 0
+        self._first_matvec_time = time.perf_counter()
+        self.max_intermediate_bytes = int(max_intermediate_bytes)
+        self.chunk_size = q
+
+    @torch.no_grad()
+    def _matvec_real_tensor(self, vector: torch.Tensor) -> torch.Tensor:
+        x = vector.reshape(self.chi, self.chi)
+        # upper_right[M,V,j] x[V,v] -> a[M,j,v]
+        a = torch.tensordot(self.upper_right, x, dims=([1], [0]))
+        # a[M,j,v] lower_right[m,v,l] -> b[M,j,m,l]
+        b = torch.tensordot(a, self.lower_right, dims=([2], [1]))
+        del a
+        # b[M,j,m,l] central_pair[i,k,j,l] -> c[M,m,i,k]
+        c = torch.tensordot(
+            b,
+            self.central_pair,
+            dims=([1, 3], [2, 3]),
+        )
+        del b
+        # c[M,m,i,k] lower_left[m,y,k] -> d[M,i,y]
+        d = torch.tensordot(
+            c,
+            self.lower_left,
+            dims=([1, 3], [0, 2]),
+        )
+        del c
+        # d[M,i,y] upper_left[M,Y,i] -> output[Y,y]
+        output = torch.tensordot(
+            d,
+            self.upper_left,
+            dims=([0, 1], [0, 2]),
+        ).transpose(0, 1)
+        del d, x
+        self.matvec_count += 1
+        self._report_progress()
+        return output.reshape(-1)
+
+    @torch.no_grad()
+    def to_dense(self, *, max_dense_bytes: int = 512 * _MIB) -> torch.Tensor:
+        """Materialize the side-by-side transfer in bounded column batches."""
+
+        required = (
+            self.shape[0]
+            * self.shape[1]
+            * torch.empty((), dtype=self.dtype).element_size()
+        )
+        if required > max_dense_bytes:
+            raise MemoryError(
+                f"Dense transfer would require {required / _MIB:.1f} MiB."
+            )
+
+        dense = torch.empty(
+            self.shape, dtype=self.dtype, device=self.device
+        )
+        # The two largest batched intermediates have approximately
+        # chi**2 * q**2 * batch elements.  Keep both within the requested
+        # intermediate-memory budget.
+        bytes_per_column = max(
+            1,
+            2
+            * self.chi**2
+            * self.q**2
+            * torch.empty((), dtype=self.dtype).element_size(),
+        )
+        batch_size = max(
+            1,
+            min(self.shape[1], self.max_intermediate_bytes // bytes_per_column),
+        )
+        for start in range(0, self.shape[1], batch_size):
+            stop = min(start + batch_size, self.shape[1])
+            basis = torch.zeros(
+                self.shape[1],
+                stop - start,
+                dtype=self.dtype,
+                device=self.device,
+            )
+            indices = torch.arange(
+                start, stop, dtype=torch.long, device=self.device
+            )
+            basis[indices, torch.arange(stop - start, device=self.device)] = 1
+            x = basis.reshape(self.chi, self.chi, stop - start)
+            # The following is the matvec contraction with an extra batch
+            # index K carried through every intermediate.
+            a = torch.einsum("MVj,VvK->MjvK", self.upper_right, x)
+            b = torch.einsum("MjvK,mvl->MjmlK", a, self.lower_right)
+            del a
+            c = torch.einsum("MjmlK,ikjl->MmikK", b, self.central_pair)
+            del b
+            d = torch.einsum("MmikK,myk->MiyK", c, self.lower_left)
+            del c
+            output = torch.einsum("MiyK,MYi->YyK", d, self.upper_left)
+            del d
+            dense[:, start:stop] = output.reshape(
+                self.shape[0], stop - start
+            )
+            del basis, indices, x, output
+        return dense
+
+
+class KroneckerCornerWhitenedTransferOperator(RowToRowTransferOperator):
+    """Standard form of ``T x = lambda (C_upper kron C_lower) x``.
+
+    Raw row and column indices are respectively ``(Y,y)`` and ``(V,v)``:
+
+    ``N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v]``.
+    """
+
+    def __init__(
+        self,
+        raw_transfer: RowToRowTransferOperator,
+        upper_corner: torch.Tensor,
+        lower_corner: torch.Tensor,
+        *,
+        relative_cutoff: float = DEFAULT_CORNER_RELATIVE_CUTOFF,
+    ) -> None:
+        if relative_cutoff < 0.0:
+            raise ValueError("relative_cutoff cannot be negative.")
+        chi = int(raw_transfer.chi)
+        expected = (chi, chi)
+        if (
+            tuple(upper_corner.shape) != expected
+            or tuple(lower_corner.shape) != expected
+        ):
+            raise ValueError(f"Both corners must have shape {expected}.")
+        if (
+            upper_corner.dtype != raw_transfer.dtype
+            or lower_corner.dtype != raw_transfer.dtype
+        ):
+            raise TypeError("Corners and transfer must share one dtype.")
+        if (
+            upper_corner.device != raw_transfer.device
+            or lower_corner.device != raw_transfer.device
+        ):
+            raise ValueError("Corners and transfer must share one device.")
+
+        upper_u, upper_s, upper_vh = torch.linalg.svd(
+            upper_corner.detach(), full_matrices=False
+        )
+        lower_u, lower_s, lower_vh = torch.linalg.svd(
+            lower_corner.detach(), full_matrices=False
+        )
+        upper_kept = upper_s > relative_cutoff * float(upper_s[0])
+        lower_kept = lower_s > relative_cutoff * float(lower_s[0])
+        upper_inverse_sqrt = torch.zeros_like(upper_s)
+        lower_inverse_sqrt = torch.zeros_like(lower_s)
+        upper_inverse_sqrt[upper_kept] = torch.rsqrt(upper_s[upper_kept])
+        lower_inverse_sqrt[lower_kept] = torch.rsqrt(lower_s[lower_kept])
+        retained_upper = upper_s[upper_kept]
+        retained_lower = lower_s[lower_kept]
+        if retained_upper.numel() == 0 or retained_lower.numel() == 0:
+            raise RuntimeError("The Kronecker corner map has zero rank.")
+
+        self.raw_transfer = raw_transfer
+        self.upper_u = upper_u
+        self.upper_v = upper_vh.T.contiguous()
+        self.lower_u = lower_u
+        self.lower_v = lower_vh.T.contiguous()
+        self.inverse_sqrt_weights = (
+            upper_inverse_sqrt[:, None] * lower_inverse_sqrt[None, :]
+        )
+        self.upper_corner_numpy = upper_corner.detach().cpu().numpy()
+        self.lower_corner_numpy = lower_corner.detach().cpu().numpy()
+        self.corner_effective_ranks = (
+            int(upper_kept.sum().item()),
+            int(lower_kept.sum().item()),
+        )
+        self.overlap_condition_number = float(
+            (retained_upper[0] / retained_upper[-1])
+            * (retained_lower[0] / retained_lower[-1])
+        )
+
+        self.chi = chi
+        self.q = raw_transfer.q
+        self.shape = raw_transfer.shape
+        self.dtype = raw_transfer.dtype
+        self.device = raw_transfer.device
+        self.numpy_dtype = raw_transfer.numpy_dtype
+        self.progress_every = raw_transfer.progress_every
+        self.matvec_count = 0
+        self._first_matvec_time = time.perf_counter()
+        self.chunk_size = raw_transfer.chunk_size
+        self.max_intermediate_bytes = raw_transfer.max_intermediate_bytes
+
+    @torch.no_grad()
+    def _right_whiten_real_tensor(self, vector: torch.Tensor) -> torch.Tensor:
+        canonical = vector.reshape(self.chi, self.chi)
+        weighted = self.inverse_sqrt_weights * canonical
+        return self.upper_v @ weighted @ self.lower_v.T
+
+    @torch.no_grad()
+    def _matvec_real_tensor(self, vector: torch.Tensor) -> torch.Tensor:
+        raw_input = self._right_whiten_real_tensor(vector)
+        raw_output = self.raw_transfer._matvec_real_tensor(
+            raw_input.reshape(-1)
+        ).reshape(self.chi, self.chi)
+        output = (
+            self.upper_u.T @ raw_output @ self.lower_u
+        ) * self.inverse_sqrt_weights
+        self.matvec_count += 1
+        return output.reshape(-1)
+
+    def generalized_refine_numpy(
+        self,
+        eigenvalue: complex,
+        eigenvector: np.ndarray,
+    ) -> tuple[complex, float]:
+        vector = np.asarray(eigenvector)
+        real_vector = torch.as_tensor(
+            np.ascontiguousarray(vector.real),
+            dtype=self.dtype,
+            device=self.device,
+        )
+        raw_real = self._right_whiten_real_tensor(real_vector)
+        raw_input = raw_real.detach().cpu().numpy().astype(
+            self.numpy_dtype, copy=False
+        )
+        if np.iscomplexobj(vector):
+            imag_vector = torch.as_tensor(
+                np.ascontiguousarray(vector.imag),
+                dtype=self.dtype,
+                device=self.device,
+            )
+            raw_imag = self._right_whiten_real_tensor(imag_vector)
+            raw_input = raw_input + 1j * raw_imag.detach().cpu().numpy().astype(
+                self.numpy_dtype, copy=False
+            )
+
+        applied = self.raw_transfer.matvec_numpy(
+            np.ascontiguousarray(raw_input.reshape(-1))
+        ).reshape(self.chi, self.chi)
+        empty_row = (
+            self.upper_corner_numpy
+            @ raw_input
+            @ self.lower_corner_numpy.T
+        )
+        denominator = np.vdot(empty_row, empty_row)
+        if abs(denominator) == 0.0:
+            if abs(eigenvalue) <= 100.0 * np.finfo(self.numpy_dtype).eps:
+                return 0.0j, 0.0
+            return complex(eigenvalue), math.inf
+        refined = complex(np.vdot(empty_row, applied) / denominator)
+        scale = float(np.linalg.norm(applied)) + abs(refined) * float(
+            np.linalg.norm(empty_row)
+        )
+        residual = float(np.linalg.norm(applied - refined * empty_row))
+        relative = residual / max(scale, np.finfo(self.numpy_dtype).tiny)
+        return refined, relative
+
+    @torch.no_grad()
+    def to_dense(self, *, max_dense_bytes: int = 512 * _MIB) -> torch.Tensor:
+        required = (
+            self.shape[0]
+            * self.shape[1]
+            * torch.empty((), dtype=self.dtype).element_size()
+        )
+        if required > max_dense_bytes:
+            raise MemoryError(
+                f"The whitened dense matrix needs {required / _MIB:.1f} MiB."
+            )
+        identity = torch.eye(
+            self.shape[1], dtype=self.dtype, device=self.device
+        )
+        columns = [
+            self._matvec_real_tensor(identity[:, index])
+            for index in range(self.shape[1])
+        ]
+        return torch.stack(columns, dim=1)
+
+
 class CornerWhitenedTransferOperator(RowToRowTransferOperator):
     """Gauge-invariant standard form of the generalized transfer pencil.
 
@@ -1176,39 +1556,38 @@ def compute_r2rTransferMatrix(
     materialize: bool = False,
     max_dense_bytes: int = 16 * 1024**3,
 ) -> RowToRowTransferOperator | torch.Tensor:
-    """Build the row-to-row transfer operator.
+    """Build the corrected env2 side-by-side row-transfer operator.
 
-    The default builds the real dense matrix in bounded-memory blocks and
-    retains it on the tensor device.  This is the faster production path when
-    the matrix fits in VRAM.  Set ``matrix_free=True`` for a low-memory fallback.
+    The historical argument names are retained for API compatibility.  They
+    denote env2 edges ``upper_b=T1D``, ``upper_a=T2C``,
+    ``lower_a=T1D``, and ``lower_b=T2C``.  The actual row order is therefore
+    top ``(T2C,T1D)``, bottom ``(T1D,T2C)``.  From the retained A/B orbit
+    representatives, the canonical horizontal D--C central pair is
+    ``(B.permute(2,1,0), A)``.
     """
 
+    side_by_side = SideBySideRowToRowTransferOperator(
+        upper_a,
+        upper_b,
+        double_layer_b.permute(2, 1, 0).contiguous(),
+        double_layer_a,
+        lower_a,
+        lower_b,
+        max_intermediate_bytes=max_intermediate_bytes,
+        progress_every=progress_every,
+    )
     if matrix_free:
-        operator: RowToRowTransferOperator = RowToRowTransferOperator(
-            upper_b,
-            upper_a,
-            double_layer_a,
-            double_layer_b,
-            lower_a,
-            lower_b,
-            max_intermediate_bytes=max_intermediate_bytes,
-            progress_every=progress_every,
-        )
+        operator: RowToRowTransferOperator = side_by_side
     else:
-        matrix, _, _ = _build_dense_transfer_matrix(
-            upper_b,
-            upper_a,
-            double_layer_a,
-            double_layer_b,
-            lower_a,
-            lower_b,
-            max_intermediate_bytes=max_intermediate_bytes,
+        matrix = side_by_side.to_dense(
+            max_dense_bytes=max_dense_bytes,
         )
         operator = DenseRowToRowTransferOperator(
             matrix,
             chi=int(upper_b.shape[0]),
             progress_every=progress_every,
         )
+        del matrix, side_by_side
     if materialize:
         return operator.to_dense(max_dense_bytes=max_dense_bytes)
     return operator
@@ -1221,8 +1600,11 @@ def _relative_eigen_residual(
 ) -> tuple[complex, float]:
     """Refine one Ritz value and evaluate its scale-independent residual."""
 
-    if isinstance(operator, CornerWhitenedTransferOperator):
-        return operator.generalized_refine_numpy(eigenvalue, eigenvector)
+    generalized_refiner = getattr(
+        operator, "generalized_refine_numpy", None
+    )
+    if callable(generalized_refiner):
+        return generalized_refiner(eigenvalue, eigenvector)
 
     applied = operator.matvec_numpy(eigenvector)
     denominator = np.vdot(eigenvector, eigenvector)
@@ -1524,22 +1906,45 @@ def obtain_per_D_correlation_length(
         dtype=dtype,
         device=device,
     )
-    raw_transfer = compute_r2rTransferMatrix(
-        components.upper_b,
+    # env2 has top edges (T2C,T1D), bottom edges (T1D,T2C), and the
+    # horizontal D--C central bond.  In canonical [top,bond,bottom]
+    # coordinates D is B.permute(2,1,0), while C is exactly A.  The old
+    # production network instead stacked A and B vertically and contracted
+    # their middle legs; that bow-tie is not this row transfer.
+    side_by_side = SideBySideRowToRowTransferOperator(
         components.upper_a,
+        components.upper_b,
+        components.double_layer_b.permute(2, 1, 0).contiguous(),
         components.double_layer_a,
-        components.double_layer_b,
         components.lower_a,
         components.lower_b,
         max_intermediate_bytes=max_intermediate_bytes,
         progress_every=progress_every,
-        matrix_free=matrix_free,
     )
+    if matrix_free:
+        raw_transfer: RowToRowTransferOperator = side_by_side
+    else:
+        dense_transfer = side_by_side.to_dense(
+            max_dense_bytes=max(
+                512 * _MIB,
+                side_by_side.shape[0]
+                * side_by_side.shape[1]
+                * torch.empty(
+                    (), dtype=side_by_side.dtype
+                ).element_size(),
+            )
+        )
+        raw_transfer = DenseRowToRowTransferOperator(
+            dense_transfer,
+            chi=side_by_side.chi,
+            progress_every=progress_every,
+        )
+        del dense_transfer, side_by_side
     if not isinstance(raw_transfer, RowToRowTransferOperator):
         raise RuntimeError("Expected a transfer operator.")
-    transfer = CornerWhitenedTransferOperator(
+    transfer = KroneckerCornerWhitenedTransferOperator(
         raw_transfer,
-        components.ctm_corner_ab,
+        components.ctm_corner_ab.T.contiguous(),
         components.ctm_corner_ba,
         relative_cutoff=corner_relative_cutoff,
     )
@@ -1583,9 +1988,12 @@ def obtain_per_D_correlation_length(
         D_bond=int(a.shape[0]),
         chi=int(chi),
         transfer_mode=(
-            "matrix_free_corner_whitened"
+            "matrix_free_straight_row_corner_whitened_v3"
             if matrix_free
-            else f"dense_{transfer.device.type}_corner_whitened"
+            else (
+                f"dense_{transfer.device.type}_"
+                "straight_row_corner_whitened_v3"
+            )
         ),
         transfer_matrix_gib=(
             0.0
@@ -1659,6 +2067,7 @@ def _result_to_dict(
     tensor_metadata: dict[str, Any],
 ) -> dict[str, Any]:
     return {
+        "transfer_network_schema": "straight_row_env2_v3",
         "checkpoint": os.path.abspath(checkpoint),
         "D_bond": result.D_bond,
         "chi": result.chi,
@@ -1906,9 +2315,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         "force_full_svd_forward": effective_rsvd_mode == "full_svd",
         "max_intermediate_mib": args.max_intermediate_mib,
         "transfer_mode": (
-            "matrix_free_corner_whitened"
+            "matrix_free_straight_row_corner_whitened_v3"
             if args.matrix_free
-            else f"dense_{device.type}_corner_whitened"
+            else f"dense_{device.type}_straight_row_corner_whitened_v3"
         ),
         "corner_relative_cutoff": args.corner_relative_cutoff,
         "expected_dense_transfer_gib": expected_transfer_gib,

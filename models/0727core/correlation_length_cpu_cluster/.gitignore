@@ -1,6 +1,7 @@
 __pycache__/
 checkpoints/
 results/
+results_straight_rows_v3/
 incoming_results/
 checkpoint_manifest.json
 checkpoint_manifest.tsv

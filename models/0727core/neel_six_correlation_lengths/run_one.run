@@ -1,0 +1,32 @@
+#!/bin/bash
+#SBATCH -q academic
+#SBATCH --partition academic
+#SBATCH -e ./job-%N-%j.error
+#SBATCH -o ./job-%N-%j.out
+#SBATCH --ntasks 1
+#SBATCH --cpus-per-task 16
+#SBATCH --time 6-23:59:50
+#SBATCH --mem 100G
+
+set -euo pipefail
+
+echo "***** START OF JOB *****"
+module purge
+module load gcc
+echo "STARTING AT $(date)"
+
+: "${BUNDLE_DIR:?submit_cluster.sh must export BUNDLE_DIR}"
+: "${CHECKPOINT:?submit_cluster.sh must export CHECKPOINT}"
+: "${J2_VALUE:?submit_cluster.sh must export J2_VALUE}"
+: "${OUTPUT_JSON:?submit_cluster.sh must export OUTPUT_JSON}"
+
+source /home/chye/venvs/6adctmrg/bin/activate
+mkdir -p "$(dirname "$OUTPUT_JSON")"
+python "$BUNDLE_DIR/compute_six_correlation_lengths.py" \
+  --checkpoint "$CHECKPOINT" \
+  --J2 "$J2_VALUE" \
+  --output "$OUTPUT_JSON" \
+  --threads "${SLURM_CPUS_PER_TASK:-16}"
+
+echo "FINISHED AT $(date)"
+echo "***** END OF JOB *****"

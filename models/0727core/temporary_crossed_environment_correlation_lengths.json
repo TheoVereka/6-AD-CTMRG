@@ -1,0 +1,3170 @@
+{
+  "schema_version": 1,
+  "description": "Crossed env1/env3 row-to-row transfer spectra for two-C3.",
+  "root": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary",
+  "results": {
+    "J2=0,D=3": {
+      "J2": 0.0,
+      "D": 3,
+      "chi": 24,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p0\\2tensor_twoC3\\D_3\\tensor_best.pt",
+      "seed": 920623765,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "full_svd",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 7,
+      "ctm_steps_ba": 7,
+      "ctm_energy_proxy_ab": -3.239165516358054,
+      "ctm_energy_proxy_ba": -3.239165515392787,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 2.3213532320478256,
+            "imag": 0.0,
+            "abs": 2.3213532320478256,
+            "relative_residual": 8.90049683479779e-16
+          },
+          {
+            "real": 2.287222902175921,
+            "imag": 0.0,
+            "abs": 2.287222902175921,
+            "relative_residual": 9.876524855679971e-16
+          }
+        ],
+        "inverse_correlation_length": 0.014811930137480818,
+        "correlation_length": 67.51314587081073,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          24,
+          24
+        ],
+        "overlap_condition_number": 7023954742.710566,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.0846391000013682
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 1.9594456596994005,
+            "imag": 0.0,
+            "abs": 1.9594456596994005,
+            "relative_residual": 7.858208276727948e-16
+          },
+          {
+            "real": 1.9435954730670342,
+            "imag": 0.0,
+            "abs": 1.9435954730670342,
+            "relative_residual": 5.908049828304237e-16
+          }
+        ],
+        "inverse_correlation_length": 0.00812201215700857,
+        "correlation_length": 123.12219936005505,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          24,
+          24
+        ],
+        "overlap_condition_number": 7010179798.696653,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.05959480000092299
+      },
+      "comparison": {
+        "absolute_xi_difference": 55.60905348924432,
+        "relative_xi_difference": 0.5834075881563295,
+        "absolute_inverse_xi_difference": 0.006689917980472247,
+        "relative_inverse_xi_difference": 0.5834075881563295
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p0\\2tensor_twoC3\\D_3\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": 0.7855005525747268,
+            "imag": 0.0,
+            "abs": 0.7855005525747268,
+            "relative_residual": 6.1472028986403884e-15
+          },
+          {
+            "real": 0.7802883088058554,
+            "imag": 0.0,
+            "abs": 0.7802883088058554,
+            "relative_residual": 2.8095865867397844e-14
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.00665768310150811,
+        "correlation_length_from_eigenvalues": 150.2024029610959
+      },
+      "elapsed_seconds": 1.5495809000021836,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0,D=4": {
+      "J2": 0.0,
+      "D": 4,
+      "chi": 36,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p0\\2tensor_twoC3\\D_4\\tensor_best.pt",
+      "seed": 178689422,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "full_svd",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 9,
+      "ctm_steps_ba": 10,
+      "ctm_energy_proxy_ab": -3.263609481368487,
+      "ctm_energy_proxy_ba": -3.2636098760582843,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.008554316259263612,
+            "imag": 0.0,
+            "abs": 0.008554316259263612,
+            "relative_residual": 7.218829023079449e-16
+          },
+          {
+            "real": 0.006482529911204934,
+            "imag": 0.00100528327470977,
+            "abs": 0.006560014368282882,
+            "relative_residual": 1.0443688881142884e-15
+          }
+        ],
+        "inverse_correlation_length": 0.26544318797131483,
+        "correlation_length": 3.76728447108639,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          36,
+          36
+        ],
+        "overlap_condition_number": 70672881.30318236,
+        "eigensolver_matvec_count": 125,
+        "eigensolver_seconds": 0.22330470000088098
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.011886352542109398,
+            "imag": 0.0,
+            "abs": 0.011886352542109398,
+            "relative_residual": 6.7107555491717085e-16
+          },
+          {
+            "real": 0.009045833392154042,
+            "imag": 0.0,
+            "abs": 0.009045833392154042,
+            "relative_residual": 1.0170688705156565e-15
+          }
+        ],
+        "inverse_correlation_length": 0.27308664374758496,
+        "correlation_length": 3.6618414810660016,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          36,
+          36
+        ],
+        "overlap_condition_number": 85703943.3008262,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.11709609999888926
+      },
+      "comparison": {
+        "absolute_xi_difference": 0.10544299002038837,
+        "relative_xi_difference": 0.0283863783436971,
+        "absolute_inverse_xi_difference": 0.007643455776270125,
+        "relative_inverse_xi_difference": 0.028386378343697154
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p0\\2tensor_twoC3\\D_4\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": 0.007349765158529225,
+            "imag": 0.0,
+            "abs": 0.007349765158529225,
+            "relative_residual": 8.982731288190748e-15
+          },
+          {
+            "real": 0.001633136616870955,
+            "imag": 0.006481982671211609,
+            "abs": 0.006684551934068004,
+            "relative_residual": 2.8839656611651004e-15
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.0948691787556713,
+        "correlation_length_from_eigenvalues": 10.540831206892046
+      },
+      "elapsed_seconds": 6.876106499999878,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0,D=5": {
+      "J2": 0.0,
+      "D": 5,
+      "chi": 60,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p0\\2tensor_twoC3\\D_5\\tensor_best.pt",
+      "seed": 3658057028,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "augmented",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 42,
+      "ctm_steps_ba": 13,
+      "ctm_energy_proxy_ab": -3.266934700151073,
+      "ctm_energy_proxy_ba": -3.266750948955792,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.00028871752268034635,
+            "imag": 0.0,
+            "abs": 0.00028871752268034635,
+            "relative_residual": 1.2354604910566138e-15
+          },
+          {
+            "real": 0.00028019544699814,
+            "imag": 0.0,
+            "abs": 0.00028019544699814,
+            "relative_residual": 2.374812965761532e-15
+          }
+        ],
+        "inverse_correlation_length": 0.029961395287782248,
+        "correlation_length": 33.37628272631826,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          60,
+          60
+        ],
+        "overlap_condition_number": 970871.2506923947,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 1.0468918999977177
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.0002882050621178621,
+            "imag": 0.0,
+            "abs": 0.0002882050621178621,
+            "relative_residual": 1.2464041521293887e-15
+          },
+          {
+            "real": 0.00028804513592600554,
+            "imag": 0.0,
+            "abs": 0.00028804513592600554,
+            "relative_residual": 1.2913810563048204e-15
+          }
+        ],
+        "inverse_correlation_length": 0.0005550581900203945,
+        "correlation_length": 1801.612908302924,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          60,
+          60
+        ],
+        "overlap_condition_number": 839185.97022479,
+        "eigensolver_matvec_count": 127,
+        "eigensolver_seconds": 1.926759599999059
+      },
+      "comparison": {
+        "absolute_xi_difference": 1768.2366255766058,
+        "relative_xi_difference": 1.9272447317085337,
+        "absolute_inverse_xi_difference": 0.029406337097761852,
+        "relative_inverse_xi_difference": 1.9272447317085337
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p0\\2tensor_twoC3\\D_5\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": -0.00036251907624034206,
+            "imag": 0.0,
+            "abs": 0.00036251907624034206,
+            "relative_residual": 3.442820055684709e-15
+          },
+          {
+            "real": -0.00029864654363258774,
+            "imag": 7.0383452776199695e-06,
+            "abs": 0.00029872947013633944,
+            "relative_residual": 3.853516869141745e-15
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.19353871534587622,
+        "correlation_length_from_eigenvalues": 5.166924861585877
+      },
+      "elapsed_seconds": 50.87908279999829,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.24,D=3": {
+      "J2": 0.24,
+      "D": 3,
+      "chi": 30,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p24\\2tensor_twoC3\\D_3\\tensor_best.pt",
+      "seed": 1747121440,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "full_svd",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 70,
+      "ctm_steps_ba": 70,
+      "ctm_energy_proxy_ab": -2.619732034737943,
+      "ctm_energy_proxy_ba": -2.619754067999154,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.01062716039898122,
+            "imag": 0.0,
+            "abs": 0.01062716039898122,
+            "relative_residual": 4.96669663024815e-16
+          },
+          {
+            "real": 0.002187735490669064,
+            "imag": 0.004547730630902739,
+            "abs": 0.0050465870118708974,
+            "relative_residual": 2.5813644916758843e-15
+          }
+        ],
+        "inverse_correlation_length": 0.744700850238722,
+        "correlation_length": 1.3428210800074138,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          30,
+          30
+        ],
+        "overlap_condition_number": 13463563.915262744,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.064452300000994
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.009954705622843434,
+            "imag": 0.0,
+            "abs": 0.009954705622843434,
+            "relative_residual": 4.934470449961585e-16
+          },
+          {
+            "real": 0.004410102002262171,
+            "imag": 0.0025578805214967696,
+            "abs": 0.005098210708926162,
+            "relative_residual": 1.839173026921238e-15
+          }
+        ],
+        "inverse_correlation_length": 0.6691557295107352,
+        "correlation_length": 1.494420440412529,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          30,
+          30
+        ],
+        "overlap_condition_number": 10565230.716071978,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.05423750000045402
+      },
+      "comparison": {
+        "absolute_xi_difference": 0.15159936040511512,
+        "relative_xi_difference": 0.10686390940921854,
+        "absolute_inverse_xi_difference": 0.0755451207279868,
+        "relative_inverse_xi_difference": 0.10686390940921855
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p24\\2tensor_twoC3\\D_3\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": 0.006507292654185385,
+            "imag": 0.0,
+            "abs": 0.006507292654185385,
+            "relative_residual": 4.4714687986586955e-14
+          },
+          {
+            "real": 0.0007867903037975657,
+            "imag": 0.0038969905452838033,
+            "abs": 0.003975622503732116,
+            "relative_residual": 4.4735095774997754e-14
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.492742154229855,
+        "correlation_length_from_eigenvalues": 2.0294590008500037
+      },
+      "elapsed_seconds": 14.151708900000813,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.24,D=4": {
+      "J2": 0.24,
+      "D": 4,
+      "chi": 44,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p24\\2tensor_twoC3\\D_4\\tensor_best.pt",
+      "seed": 608852007,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "full_svd",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 18,
+      "ctm_steps_ba": 17,
+      "ctm_energy_proxy_ab": -2.6291125533081328,
+      "ctm_energy_proxy_ba": -2.628978227832439,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 2.1091745033858228e-05,
+            "imag": 0.0,
+            "abs": 2.1091745033858228e-05,
+            "relative_residual": 1.955696899464759e-15
+          },
+          {
+            "real": 2.0156436227826087e-05,
+            "imag": 0.0,
+            "abs": 2.0156436227826087e-05,
+            "relative_residual": 1.7989286588888445e-15
+          }
+        ],
+        "inverse_correlation_length": 0.04535808014518013,
+        "correlation_length": 22.0467885060224,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          44,
+          44
+        ],
+        "overlap_condition_number": 697804.8960816374,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.18566049999935785
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 9.643545560448579e-05,
+            "imag": 0.0,
+            "abs": 9.643545560448579e-05,
+            "relative_residual": 1.3779924883266727e-15
+          },
+          {
+            "real": 4.421504316134887e-05,
+            "imag": 1.0174206420651537e-05,
+            "abs": 4.5370524771595604e-05,
+            "relative_residual": 1.8742785271274798e-15
+          }
+        ],
+        "inverse_correlation_length": 0.7540112706251412,
+        "correlation_length": 1.3262401226057439,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          44,
+          44
+        ],
+        "overlap_condition_number": 5466999.297468207,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.17339500000161934
+      },
+      "comparison": {
+        "absolute_xi_difference": 20.720548383416656,
+        "relative_xi_difference": 1.7730306767380046,
+        "absolute_inverse_xi_difference": 0.708653190479961,
+        "relative_inverse_xi_difference": 1.7730306767380044
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p24\\2tensor_twoC3\\D_4\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": 1.6023748937996115e-05,
+            "imag": 7.048352584271432e-05,
+            "abs": 7.228200291392395e-05,
+            "relative_residual": 6.836671912850919e-15
+          },
+          {
+            "real": 1.6023748937996115e-05,
+            "imag": -7.048352584271432e-05,
+            "abs": 7.228200291392395e-05,
+            "relative_residual": 6.836671912850919e-15
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 2.2204460492503128e-16,
+        "correlation_length_from_eigenvalues": 4503599627370497.0
+      },
+      "elapsed_seconds": 14.75552339999922,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.24,D=5": {
+      "J2": 0.24,
+      "D": 5,
+      "chi": 60,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p24\\2tensor_twoC3\\D_5\\tensor_best.pt",
+      "seed": 1607170432,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "augmented",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 14,
+      "ctm_steps_ba": 18,
+      "ctm_energy_proxy_ab": -2.634130948171456,
+      "ctm_energy_proxy_ba": -2.6341119166253986,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.000963885213438647,
+            "imag": 0.0,
+            "abs": 0.000963885213438647,
+            "relative_residual": 4.811797244339517e-16
+          },
+          {
+            "real": 0.0007617380215710404,
+            "imag": 0.0,
+            "abs": 0.0007617380215710404,
+            "relative_residual": 8.042858611219968e-16
+          }
+        ],
+        "inverse_correlation_length": 0.23536952146429052,
+        "correlation_length": 4.248638454880474,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          60,
+          60
+        ],
+        "overlap_condition_number": 386596.0257101646,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 1.0008526000019629
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.0010053278332022584,
+            "imag": 0.0,
+            "abs": 0.0010053278332022584,
+            "relative_residual": 2.919832229973439e-16
+          },
+          {
+            "real": 0.0006360511513694124,
+            "imag": 0.0,
+            "abs": 0.0006360511513694124,
+            "relative_residual": 1.3610297899605274e-15
+          }
+        ],
+        "inverse_correlation_length": 0.4577899827045744,
+        "correlation_length": 2.184407780380223,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          60,
+          60
+        ],
+        "overlap_condition_number": 267988.09893362655,
+        "eigensolver_matvec_count": 127,
+        "eigensolver_seconds": 1.8366644000016095
+      },
+      "comparison": {
+        "absolute_xi_difference": 2.0642306745002514,
+        "relative_xi_difference": 0.6417583828904656,
+        "absolute_inverse_xi_difference": 0.22242046124028386,
+        "relative_inverse_xi_difference": 0.6417583828904656
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p24\\2tensor_twoC3\\D_5\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": 0.0005074141168924088,
+            "imag": 0.00012852801915362147,
+            "abs": 0.0005234391442462598,
+            "relative_residual": 3.70401321082982e-15
+          },
+          {
+            "real": 0.0005074141168924088,
+            "imag": -0.00012852801915362147,
+            "abs": 0.0005234391442462598,
+            "relative_residual": 3.70401321082982e-15
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.0,
+        "correlation_length_from_eigenvalues": null,
+        "correlation_length_unresolved": true
+      },
+      "elapsed_seconds": 56.439453899998625,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.25,D=3": {
+      "J2": 0.25,
+      "D": 3,
+      "chi": 24,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p25\\2tensor_twoC3\\D_3\\tensor_best.pt",
+      "seed": 3003368408,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "full_svd",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 9,
+      "ctm_steps_ba": 9,
+      "ctm_energy_proxy_ab": -2.5990122758614773,
+      "ctm_energy_proxy_ba": -2.5990125169187865,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.017741745482068486,
+            "imag": 0.0,
+            "abs": 0.017741745482068486,
+            "relative_residual": 3.932262960028445e-15
+          },
+          {
+            "real": 0.010476030061916075,
+            "imag": 0.0,
+            "abs": 0.010476030061916075,
+            "relative_residual": 1.3741163807268048e-15
+          }
+        ],
+        "inverse_correlation_length": 0.5268305682514659,
+        "correlation_length": 1.8981434644518989,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          24,
+          24
+        ],
+        "overlap_condition_number": 1055762.191995983,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.05703900000298745
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.017348373597204595,
+            "imag": 0.0,
+            "abs": 0.017348373597204595,
+            "relative_residual": 3.290854744870704e-15
+          },
+          {
+            "real": 0.010584074745134443,
+            "imag": 0.0,
+            "abs": 0.010584074745134443,
+            "relative_residual": 1.5191104392792141e-15
+          }
+        ],
+        "inverse_correlation_length": 0.4941482723285505,
+        "correlation_length": 2.0236840964509484,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          24,
+          24
+        ],
+        "overlap_condition_number": 1056704.9262893447,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.04669529999955557
+      },
+      "comparison": {
+        "absolute_xi_difference": 0.12554063199904952,
+        "relative_xi_difference": 0.06402149510630126,
+        "absolute_inverse_xi_difference": 0.03268229592291538,
+        "relative_inverse_xi_difference": 0.06402149510630137
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p25\\2tensor_twoC3\\D_3\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": 0.007627776148771384,
+            "imag": 0.0,
+            "abs": 0.007627776148771384,
+            "relative_residual": 1.51377201075685e-15
+          },
+          {
+            "real": 0.004650107506325069,
+            "imag": 0.0,
+            "abs": 0.004650107506325069,
+            "relative_residual": 2.3145975221775348e-15
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.49490600234354554,
+        "correlation_length_from_eigenvalues": 2.0205857178225064,
+        "correlation_length_unresolved": false
+      },
+      "elapsed_seconds": 0.8946566000013263,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.25,D=4": {
+      "J2": 0.25,
+      "D": 4,
+      "chi": 36,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p25\\2tensor_twoC3\\D_4\\tensor_best.pt",
+      "seed": 1630141498,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "full_svd",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 34,
+      "ctm_steps_ba": 17,
+      "ctm_energy_proxy_ab": -2.609609398418284,
+      "ctm_energy_proxy_ba": -2.6094663903042012,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.0013853662649667296,
+            "imag": 0.0,
+            "abs": 0.0013853662649667296,
+            "relative_residual": 1.9340475909121894e-15
+          },
+          {
+            "real": 0.0013795627733847375,
+            "imag": 0.0,
+            "abs": 0.0013795627733847375,
+            "relative_residual": 1.809592050743166e-15
+          }
+        ],
+        "inverse_correlation_length": 0.004197937830771299,
+        "correlation_length": 238.21219853945937,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          36,
+          36
+        ],
+        "overlap_condition_number": 146031.8436472372,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.12350679999872227
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.0035752683344245305,
+            "imag": 0.0,
+            "abs": 0.0035752683344245305,
+            "relative_residual": 1.6132331391476163e-15
+          },
+          {
+            "real": 0.003562667309633329,
+            "imag": 0.0,
+            "abs": 0.003562667309633329,
+            "relative_residual": 1.4924905354513267e-15
+          }
+        ],
+        "inverse_correlation_length": 0.003530723309914218,
+        "correlation_length": 283.2280845094871,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          36,
+          36
+        ],
+        "overlap_condition_number": 819113.4169859316,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.11335749999852851
+      },
+      "comparison": {
+        "absolute_xi_difference": 45.01588597002771,
+        "relative_xi_difference": 0.17265979416401234,
+        "absolute_inverse_xi_difference": 0.0006672145208570807,
+        "relative_inverse_xi_difference": 0.17265979416401225
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p25\\2tensor_twoC3\\D_4\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": 0.0007281869925487295,
+            "imag": 0.0001958215442547163,
+            "abs": 0.000754057274556426,
+            "relative_residual": 8.402051904246669e-15
+          },
+          {
+            "real": 0.0007281869925487295,
+            "imag": -0.0001958215442547163,
+            "abs": 0.000754057274556426,
+            "relative_residual": 8.402051904246669e-15
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": -1.1102230246251565e-16,
+        "correlation_length_from_eigenvalues": null,
+        "correlation_length_unresolved": true
+      },
+      "elapsed_seconds": 12.697275599999557,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.25,D=5": {
+      "J2": 0.25,
+      "D": 5,
+      "chi": 50,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p25\\2tensor_twoC3\\D_5\\tensor_best.pt",
+      "seed": 2037318389,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "augmented",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 12,
+      "ctm_steps_ba": 12,
+      "ctm_energy_proxy_ab": -2.615920834176589,
+      "ctm_energy_proxy_ba": -2.615909442020238,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.008434788616998243,
+            "imag": 0.0,
+            "abs": 0.008434788616998243,
+            "relative_residual": 6.985731847664394e-16
+          },
+          {
+            "real": 0.006961464098205413,
+            "imag": 0.0005131735722325988,
+            "abs": 0.006980353107532661,
+            "relative_residual": 1.0190482485293209e-15
+          }
+        ],
+        "inverse_correlation_length": 0.18926515149200332,
+        "correlation_length": 5.283592843779544,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          50,
+          50
+        ],
+        "overlap_condition_number": 1636086.1360834793,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.6841692999987572
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.002010026160504305,
+            "imag": 0.00013266512685270078,
+            "abs": 0.0020143994643055585,
+            "relative_residual": 1.1774998881375427e-15
+          },
+          {
+            "real": 0.002010026160504305,
+            "imag": -0.00013266512685270078,
+            "abs": 0.0020143994643055585,
+            "relative_residual": 1.1774998881375427e-15
+          }
+        ],
+        "inverse_correlation_length": 2.2204460492503128e-16,
+        "correlation_length": null,
+        "correlation_length_unresolved": true,
+        "corner_effective_ranks": [
+          50,
+          50
+        ],
+        "overlap_condition_number": 529874.3300560937,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.6748874999975669
+      },
+      "comparison": {
+        "absolute_xi_difference": null,
+        "relative_xi_difference": null,
+        "absolute_inverse_xi_difference": 0.1892651514920031,
+        "relative_inverse_xi_difference": 1.9999999999999953
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p25\\2tensor_twoC3\\D_5\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": 0.002538315970889129,
+            "imag": 0.00020149675373847098,
+            "abs": 0.002546301024984666,
+            "relative_residual": 2.445210501100156e-15
+          },
+          {
+            "real": 0.002538315970889129,
+            "imag": -0.00020149675373847098,
+            "abs": 0.002546301024984666,
+            "relative_residual": 2.445210501100156e-15
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.0,
+        "correlation_length_from_eigenvalues": null,
+        "correlation_length_unresolved": true
+      },
+      "elapsed_seconds": 19.99764099999811,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.26,D=3": {
+      "J2": 0.26,
+      "D": 3,
+      "chi": 24,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p26\\2tensor_twoC3\\D_3\\tensor_best.pt",
+      "seed": 3355503079,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "full_svd",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 70,
+      "ctm_steps_ba": 55,
+      "ctm_energy_proxy_ab": -2.5784071274596547,
+      "ctm_energy_proxy_ba": -2.5783440183119364,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.003167488270990813,
+            "imag": 0.0,
+            "abs": 0.003167488270990813,
+            "relative_residual": 1.337040778475307e-15
+          },
+          {
+            "real": 0.003116825332659615,
+            "imag": 0.0,
+            "abs": 0.003116825332659615,
+            "relative_residual": 1.164755710291001e-15
+          }
+        ],
+        "inverse_correlation_length": 0.016123968071700755,
+        "correlation_length": 62.01947284645795,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          24,
+          24
+        ],
+        "overlap_condition_number": 679827.849017243,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.06472109999958775
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.0028880816043254246,
+            "imag": 0.0,
+            "abs": 0.0028880816043254246,
+            "relative_residual": 5.635200537388383e-16
+          },
+          {
+            "real": 0.0025653484291067777,
+            "imag": 0.0,
+            "abs": 0.0025653484291067777,
+            "relative_residual": 9.693547557365724e-16
+          }
+        ],
+        "inverse_correlation_length": 0.11849816777169311,
+        "correlation_length": 8.438949047099785,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          24,
+          24
+        ],
+        "overlap_condition_number": 715555.6863518049,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.04913740000120015
+      },
+      "comparison": {
+        "absolute_xi_difference": 53.58052379935817,
+        "relative_xi_difference": 1.5209118330893876,
+        "absolute_inverse_xi_difference": 0.10237419969999235,
+        "relative_inverse_xi_difference": 1.5209118330893876
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p26\\2tensor_twoC3\\D_3\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": 0.003429269098421905,
+            "imag": 0.0,
+            "abs": 0.003429269098421905,
+            "relative_residual": 2.4423148529737295e-15
+          },
+          {
+            "real": 0.0033486113388695206,
+            "imag": 0.0,
+            "abs": 0.0033486113388695206,
+            "relative_residual": 6.116120836110053e-15
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.023801413444823658,
+        "correlation_length_from_eigenvalues": 42.01431155835329,
+        "correlation_length_unresolved": false
+      },
+      "elapsed_seconds": 7.693969599997217,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.26,D=4": {
+      "J2": 0.26,
+      "D": 4,
+      "chi": 36,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p26\\2tensor_twoC3\\D_4\\tensor_best.pt",
+      "seed": 2216623289,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "full_svd",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 14,
+      "ctm_steps_ba": 14,
+      "ctm_energy_proxy_ab": -2.5908816469556277,
+      "ctm_energy_proxy_ba": -2.5908636807887007,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.0017310142020369756,
+            "imag": 0.0,
+            "abs": 0.0017310142020369756,
+            "relative_residual": 6.435897760926381e-16
+          },
+          {
+            "real": 0.0016934394147684398,
+            "imag": 0.0,
+            "abs": 0.0016934394147684398,
+            "relative_residual": 4.668685532748606e-16
+          }
+        ],
+        "inverse_correlation_length": 0.02194586321097714,
+        "correlation_length": 45.56667424682608,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          36,
+          36
+        ],
+        "overlap_condition_number": 1088122.1730376375,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.12786299999788753
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.003493326665953581,
+            "imag": 0.0,
+            "abs": 0.003493326665953581,
+            "relative_residual": 7.996693182305687e-16
+          },
+          {
+            "real": 0.0031784953371638467,
+            "imag": 0.0,
+            "abs": 0.0031784953371638467,
+            "relative_residual": 1.2232296751670752e-15
+          }
+        ],
+        "inverse_correlation_length": 0.09444656122129541,
+        "correlation_length": 10.587997986045512,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          36,
+          36
+        ],
+        "overlap_condition_number": 132617.2661248967,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.11947399999917252
+      },
+      "comparison": {
+        "absolute_xi_difference": 34.978676260780574,
+        "relative_xi_difference": 1.2457975398992678,
+        "absolute_inverse_xi_difference": 0.07250069801031828,
+        "relative_inverse_xi_difference": 1.2457975398992676
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p26\\2tensor_twoC3\\D_4\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": 0.0029182932890378915,
+            "imag": 0.00017197963880616625,
+            "abs": 0.002923356412928039,
+            "relative_residual": 3.8890913635920584e-15
+          },
+          {
+            "real": 0.0029182932890378915,
+            "imag": -0.00017197963880616625,
+            "abs": 0.002923356412928039,
+            "relative_residual": 3.8890913635920584e-15
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.0,
+        "correlation_length_from_eigenvalues": null,
+        "correlation_length_unresolved": true
+      },
+      "elapsed_seconds": 7.804997200000798,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.26,D=5": {
+      "J2": 0.26,
+      "D": 5,
+      "chi": 50,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p26\\2tensor_twoC3\\D_5\\tensor_best.pt",
+      "seed": 1197445827,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "augmented",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 16,
+      "ctm_steps_ba": 11,
+      "ctm_energy_proxy_ab": -2.596285001055737,
+      "ctm_energy_proxy_ba": -2.596280353067796,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.0033052931847638864,
+            "imag": 0.0,
+            "abs": 0.0033052931847638864,
+            "relative_residual": 1.0282993106497018e-15
+          },
+          {
+            "real": 0.00271947086758989,
+            "imag": 2.1526621926455302e-05,
+            "abs": 0.0027195560658169328,
+            "relative_residual": 1.4810355089655928e-15
+          }
+        ],
+        "inverse_correlation_length": 0.19505652293796089,
+        "correlation_length": 5.126719091153168,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          50,
+          50
+        ],
+        "overlap_condition_number": 1738529.4540062502,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.6945938999997452
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.0027693265567604337,
+            "imag": 0.0,
+            "abs": 0.0027693265567604337,
+            "relative_residual": 1.1247897147311482e-15
+          },
+          {
+            "real": 0.002762290098723897,
+            "imag": 0.0,
+            "abs": 0.002762290098723897,
+            "relative_residual": 1.1956106318738965e-15
+          }
+        ],
+        "inverse_correlation_length": 0.0025440887429478455,
+        "correlation_length": 393.068049521455,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          50,
+          50
+        ],
+        "overlap_condition_number": 4577605.444476703,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.6915651999988768
+      },
+      "comparison": {
+        "absolute_xi_difference": 387.94133043030183,
+        "relative_xi_difference": 1.9485003872952353,
+        "absolute_inverse_xi_difference": 0.19251243419501304,
+        "relative_inverse_xi_difference": 1.9485003872952356
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p26\\2tensor_twoC3\\D_5\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": 0.0011335875637464336,
+            "imag": 0.0,
+            "abs": 0.0011335875637464336,
+            "relative_residual": 1.3342420602913806e-14
+          },
+          {
+            "real": 0.0010634703664780685,
+            "imag": 0.0,
+            "abs": 0.0010634703664780685,
+            "relative_residual": 1.356791061065235e-14
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.06384994762911801,
+        "correlation_length_from_eigenvalues": 15.661719972092222,
+        "correlation_length_unresolved": false
+      },
+      "elapsed_seconds": 29.41486040000018,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.27,D=3": {
+      "J2": 0.27,
+      "D": 3,
+      "chi": 24,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p27\\2tensor_twoC3\\D_3\\tensor_best.pt",
+      "seed": 4210705285,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "full_svd",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 9,
+      "ctm_steps_ba": 9,
+      "ctm_energy_proxy_ab": -2.5587011128074395,
+      "ctm_energy_proxy_ba": -2.5587010292752197,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.015835620800745354,
+            "imag": 0.0,
+            "abs": 0.015835620800745354,
+            "relative_residual": 2.7590874947873867e-15
+          },
+          {
+            "real": 0.009642403331158218,
+            "imag": 0.0,
+            "abs": 0.009642403331158218,
+            "relative_residual": 5.184885332550536e-16
+          }
+        ],
+        "inverse_correlation_length": 0.4960914978017281,
+        "correlation_length": 2.0157571827599994,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          24,
+          24
+        ],
+        "overlap_condition_number": 620654.4180385061,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.049547000002348796
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.01740467124534878,
+            "imag": 0.0,
+            "abs": 0.01740467124534878,
+            "relative_residual": 1.6331350243717173e-15
+          },
+          {
+            "real": 0.010710899717286058,
+            "imag": 0.0,
+            "abs": 0.010710899717286058,
+            "relative_residual": 5.897645769037013e-16
+          }
+        ],
+        "inverse_correlation_length": 0.48547674441977373,
+        "correlation_length": 2.0598309012621563,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          24,
+          24
+        ],
+        "overlap_condition_number": 619715.73024805,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.0499350999998569
+      },
+      "comparison": {
+        "absolute_xi_difference": 0.04407371850215691,
+        "relative_xi_difference": 0.021628151615685858,
+        "absolute_inverse_xi_difference": 0.01061475338195439,
+        "relative_inverse_xi_difference": 0.02162815161568573
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p27\\2tensor_twoC3\\D_3\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": 0.009614655376209025,
+            "imag": 0.0,
+            "abs": 0.009614655376209025,
+            "relative_residual": 5.2903322036212665e-15
+          },
+          {
+            "real": 0.0063687938365760395,
+            "imag": 0.0,
+            "abs": 0.0063687938365760395,
+            "relative_residual": 1.194178905052751e-15
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.41187843505146404,
+        "correlation_length_from_eigenvalues": 2.42790084378914,
+        "correlation_length_unresolved": false
+      },
+      "elapsed_seconds": 0.9003869999978633,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.27,D=4": {
+      "J2": 0.27,
+      "D": 4,
+      "chi": 36,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p27\\2tensor_twoC3\\D_4\\tensor_best.pt",
+      "seed": 1847981595,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "full_svd",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 10,
+      "ctm_steps_ba": 14,
+      "ctm_energy_proxy_ab": -2.5703882228029746,
+      "ctm_energy_proxy_ba": -2.570380297150962,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.001922641113105267,
+            "imag": 0.0,
+            "abs": 0.001922641113105267,
+            "relative_residual": 3.5350457760034117e-16
+          },
+          {
+            "real": 0.00022256355149845737,
+            "imag": 0.00023052368078472027,
+            "abs": 0.00032043049458212007,
+            "relative_residual": 3.0851313521098687e-15
+          }
+        ],
+        "inverse_correlation_length": 1.7917897122575026,
+        "correlation_length": 0.5581012063854776,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          36,
+          36
+        ],
+        "overlap_condition_number": 6755294.143236447,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.129528700002993
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.0005210937044369092,
+            "imag": 0.0,
+            "abs": 0.0005210937044369092,
+            "relative_residual": 4.23576577776279e-16
+          },
+          {
+            "real": 0.0003229463754559697,
+            "imag": 0.0,
+            "abs": 0.0003229463754559697,
+            "relative_residual": 9.461434024345681e-16
+          }
+        ],
+        "inverse_correlation_length": 0.4784435913670666,
+        "correlation_length": 2.090110554397185,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          36,
+          36
+        ],
+        "overlap_condition_number": 8831690.360449715,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.1197241000008944
+      },
+      "comparison": {
+        "absolute_xi_difference": 1.5320093480117076,
+        "relative_xi_difference": 1.1570142317915935,
+        "absolute_inverse_xi_difference": 1.313346120890436,
+        "relative_inverse_xi_difference": 1.1570142317915932
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p27\\2tensor_twoC3\\D_4\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": 0.0012669864470631986,
+            "imag": 0.0,
+            "abs": 0.0012669864470631986,
+            "relative_residual": 1.118842365757891e-14
+          },
+          {
+            "real": 0.000473499942207811,
+            "imag": 0.0,
+            "abs": 0.000473499942207811,
+            "relative_residual": 6.328850245639772e-15
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.9842446928190169,
+        "correlation_length_from_eigenvalues": 1.0160075104249306,
+        "correlation_length_unresolved": false
+      },
+      "elapsed_seconds": 7.160526600000594,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.27,D=5": {
+      "J2": 0.27,
+      "D": 5,
+      "chi": 50,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p27\\2tensor_twoC3\\D_5\\tensor_best.pt",
+      "seed": 3418126237,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "augmented",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 11,
+      "ctm_steps_ba": 12,
+      "ctm_energy_proxy_ab": -2.5821662280165,
+      "ctm_energy_proxy_ba": -2.5821571485362522,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.0007037328227532252,
+            "imag": 0.0,
+            "abs": 0.0007037328227532252,
+            "relative_residual": 2.8151983772058894e-15
+          },
+          {
+            "real": 0.0005485508196991527,
+            "imag": 5.003097014373657e-06,
+            "abs": 0.0005485736347769073,
+            "relative_residual": 1.775466407311174e-15
+          }
+        ],
+        "inverse_correlation_length": 0.24907725274297454,
+        "correlation_length": 4.014818651592848,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          50,
+          50
+        ],
+        "overlap_condition_number": 203305.26167316127,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.6862265000017942
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.009441176543392965,
+            "imag": 0.0,
+            "abs": 0.009441176543392965,
+            "relative_residual": 4.0459683491379637e-16
+          },
+          {
+            "real": 0.00817653079544335,
+            "imag": 0.0,
+            "abs": 0.00817653079544335,
+            "relative_residual": 7.077751429601033e-16
+          }
+        ],
+        "inverse_correlation_length": 0.14381265370640467,
+        "correlation_length": 6.9534910470500915,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          50,
+          50
+        ],
+        "overlap_condition_number": 9549395.279593926,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.6760291999999026
+      },
+      "comparison": {
+        "absolute_xi_difference": 2.9386723954572433,
+        "relative_xi_difference": 0.5358478154242549,
+        "absolute_inverse_xi_difference": 0.10526459903656987,
+        "relative_inverse_xi_difference": 0.535847815424255
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p27\\2tensor_twoC3\\D_5\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": 0.002959549612464911,
+            "imag": 0.0,
+            "abs": 0.002959549612464911,
+            "relative_residual": 4.643646633641861e-15
+          },
+          {
+            "real": 0.0029234151112190994,
+            "imag": 0.0,
+            "abs": 0.0029234151112190994,
+            "relative_residual": 5.64163773229162e-15
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.012284607291764374,
+        "correlation_length_from_eigenvalues": 81.40268355752829,
+        "correlation_length_unresolved": false
+      },
+      "elapsed_seconds": 21.70966419999968,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.28,D=3": {
+      "J2": 0.28,
+      "D": 3,
+      "chi": 24,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p28\\2tensor_twoC3\\D_3\\tensor_best.pt",
+      "seed": 1847126882,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "full_svd",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 39,
+      "ctm_steps_ba": 61,
+      "ctm_energy_proxy_ab": -2.538649229369161,
+      "ctm_energy_proxy_ba": -2.5385225326393623,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.0027338844732778277,
+            "imag": 0.0,
+            "abs": 0.0027338844732778277,
+            "relative_residual": 1.1008549293862284e-15
+          },
+          {
+            "real": 0.0026634144444262677,
+            "imag": 0.0,
+            "abs": 0.0026634144444262677,
+            "relative_residual": 7.844652250812312e-16
+          }
+        ],
+        "inverse_correlation_length": 0.02611455646663821,
+        "correlation_length": 38.29281961106699,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          24,
+          24
+        ],
+        "overlap_condition_number": 372510.17331109795,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.060471500000858214
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.0024988076261176417,
+            "imag": 0.0,
+            "abs": 0.0024988076261176417,
+            "relative_residual": 4.463515453334624e-15
+          },
+          {
+            "real": 0.0018064774105745701,
+            "imag": 0.0,
+            "abs": 0.0018064774105745701,
+            "relative_residual": 1.8746612858077156e-15
+          }
+        ],
+        "inverse_correlation_length": 0.32443490154278265,
+        "correlation_length": 3.0822824401588984,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          24,
+          24
+        ],
+        "overlap_condition_number": 416881.093339382,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.04687050000211457
+      },
+      "comparison": {
+        "absolute_xi_difference": 35.21053717090809,
+        "relative_xi_difference": 1.7020157256561907,
+        "absolute_inverse_xi_difference": 0.29832034507614447,
+        "relative_inverse_xi_difference": 1.7020157256561912
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p28\\2tensor_twoC3\\D_3\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": 0.008668223347347454,
+            "imag": 0.0,
+            "abs": 0.008668223347347454,
+            "relative_residual": 8.679922670933431e-15
+          },
+          {
+            "real": 0.005395797947891963,
+            "imag": 0.0,
+            "abs": 0.005395797947891963,
+            "relative_residual": 8.686518499847214e-15
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.474043357375292,
+        "correlation_length_from_eigenvalues": 2.1095116816673736,
+        "correlation_length_unresolved": false
+      },
+      "elapsed_seconds": 4.756894200003444,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.28,D=4": {
+      "J2": 0.28,
+      "D": 4,
+      "chi": 36,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p28\\2tensor_twoC3\\D_4\\tensor_best.pt",
+      "seed": 1394545285,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "full_svd",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 70,
+      "ctm_steps_ba": 13,
+      "ctm_energy_proxy_ab": -2.5554953399948572,
+      "ctm_energy_proxy_ba": -2.555480787691784,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.05052765718611364,
+            "imag": 0.0,
+            "abs": 0.05052765718611364,
+            "relative_residual": 1.5881172605792576e-15
+          },
+          {
+            "real": 0.008958177320104952,
+            "imag": 0.0,
+            "abs": 0.008958177320104952,
+            "relative_residual": 1.5631006250197114e-15
+          }
+        ],
+        "inverse_correlation_length": 1.7299540712202808,
+        "correlation_length": 0.5780500284002434,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          36,
+          36
+        ],
+        "overlap_condition_number": 4531265.354225533,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.11655270000119344
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.01030807270731742,
+            "imag": 0.0,
+            "abs": 0.01030807270731742,
+            "relative_residual": 7.450216682664695e-16
+          },
+          {
+            "real": 0.009927854273242696,
+            "imag": 0.0,
+            "abs": 0.009927854273242696,
+            "relative_residual": 8.852248080683986e-16
+          }
+        ],
+        "inverse_correlation_length": 0.03758297681500857,
+        "correlation_length": 26.607791206167978,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          36,
+          36
+        ],
+        "overlap_condition_number": 215469.72651858628,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.11553679999997257
+      },
+      "comparison": {
+        "absolute_xi_difference": 26.029741177767733,
+        "relative_xi_difference": 1.914948369864645,
+        "absolute_inverse_xi_difference": 1.6923710944052721,
+        "relative_inverse_xi_difference": 1.914948369864645
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p28\\2tensor_twoC3\\D_4\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": 0.0073028185036309754,
+            "imag": 0.0,
+            "abs": 0.0073028185036309754,
+            "relative_residual": 6.434414602035257e-15
+          },
+          {
+            "real": 0.006368315450996481,
+            "imag": 0.0,
+            "abs": 0.006368315450996481,
+            "relative_residual": 9.41406926637415e-16
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.1369253858082358,
+        "correlation_length_from_eigenvalues": 7.303247634448892,
+        "correlation_length_unresolved": false
+      },
+      "elapsed_seconds": 31.65095989999827,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.28,D=5": {
+      "J2": 0.28,
+      "D": 5,
+      "chi": 50,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p28\\2tensor_twoC3\\D_5\\tensor_best.pt",
+      "seed": 3078232957,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "augmented",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 12,
+      "ctm_steps_ba": 11,
+      "ctm_energy_proxy_ab": -2.56649147585612,
+      "ctm_energy_proxy_ba": -2.566483243060997,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.005911203883556543,
+            "imag": 0.0,
+            "abs": 0.005911203883556543,
+            "relative_residual": 8.284993251548629e-16
+          },
+          {
+            "real": -0.005698749008823327,
+            "imag": 0.0,
+            "abs": 0.005698749008823327,
+            "relative_residual": 1.007612809106483e-15
+          }
+        ],
+        "inverse_correlation_length": 0.03660283485814158,
+        "correlation_length": 27.32028827481841,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          50,
+          50
+        ],
+        "overlap_condition_number": 45091992.70436887,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.6953181999997469
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.008056503950607,
+            "imag": 0.0008851256110328807,
+            "abs": 0.008104980151329955,
+            "relative_residual": 7.541199897008609e-16
+          },
+          {
+            "real": 0.008056503950607,
+            "imag": -0.0008851256110328807,
+            "abs": 0.008104980151329955,
+            "relative_residual": 7.541199897008609e-16
+          }
+        ],
+        "inverse_correlation_length": 0.0,
+        "correlation_length": null,
+        "correlation_length_unresolved": true,
+        "corner_effective_ranks": [
+          50,
+          50
+        ],
+        "overlap_condition_number": 14361901.244482376,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.6764471999995294
+      },
+      "comparison": {
+        "absolute_xi_difference": null,
+        "relative_xi_difference": null,
+        "absolute_inverse_xi_difference": 0.03660283485814158,
+        "relative_inverse_xi_difference": 2.0
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p28\\2tensor_twoC3\\D_5\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": 5.207220153552311e-05,
+            "imag": 0.0,
+            "abs": 5.207220153552311e-05,
+            "relative_residual": 5.780554743342719e-15
+          },
+          {
+            "real": 4.907554406321176e-05,
+            "imag": 0.0,
+            "abs": 4.907554406321176e-05,
+            "relative_residual": 3.5510238439966557e-15
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.05927042012382043,
+        "correlation_length_from_eigenvalues": 16.871822367901622,
+        "correlation_length_unresolved": false
+      },
+      "elapsed_seconds": 21.44353190000038,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.29,D=3": {
+      "J2": 0.29,
+      "D": 3,
+      "chi": 30,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p29\\2tensor_twoC3\\D_3\\tensor_best.pt",
+      "seed": 1247167715,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "full_svd",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 14,
+      "ctm_steps_ba": 14,
+      "ctm_energy_proxy_ab": -2.519836831110041,
+      "ctm_energy_proxy_ba": -2.519836523197752,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.013111218654373777,
+            "imag": 0.0,
+            "abs": 0.013111218654373777,
+            "relative_residual": 3.844866481780153e-16
+          },
+          {
+            "real": 0.00488348096103429,
+            "imag": 0.0,
+            "abs": 0.00488348096103429,
+            "relative_residual": 2.9107306335705463e-15
+          }
+        ],
+        "inverse_correlation_length": 0.9876099722814977,
+        "correlation_length": 1.0125454663948763,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          30,
+          30
+        ],
+        "overlap_condition_number": 1219301.198692177,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.06185829999958514
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.010569660466123508,
+            "imag": 0.0,
+            "abs": 0.010569660466123508,
+            "relative_residual": 6.79590261819122e-16
+          },
+          {
+            "real": 0.004002973551866877,
+            "imag": 0.0,
+            "abs": 0.004002973551866877,
+            "relative_residual": 2.7281547480717722e-15
+          }
+        ],
+        "inverse_correlation_length": 0.9709502040453091,
+        "correlation_length": 1.0299189349089783,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          30,
+          30
+        ],
+        "overlap_condition_number": 1235447.5962719026,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.049146099998324644
+      },
+      "comparison": {
+        "absolute_xi_difference": 0.017373468514102042,
+        "relative_xi_difference": 0.017012260779684856,
+        "absolute_inverse_xi_difference": 0.016659768236188643,
+        "relative_inverse_xi_difference": 0.017012260779684905
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p29\\2tensor_twoC3\\D_3\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": 0.007284440069657257,
+            "imag": 0.0,
+            "abs": 0.007284440069657257,
+            "relative_residual": 1.2467118154936478e-14
+          },
+          {
+            "real": -0.0009276704627337473,
+            "imag": -0.00296725605456984,
+            "abs": 0.003108887418484307,
+            "relative_residual": 3.52014723267239e-15
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.8514756570404433,
+        "correlation_length_from_eigenvalues": 1.1744316959991519,
+        "correlation_length_unresolved": false
+      },
+      "elapsed_seconds": 2.2253406000018003,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.29,D=4": {
+      "J2": 0.29,
+      "D": 4,
+      "chi": 36,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p29\\2tensor_twoC3\\D_4\\tensor_best.pt",
+      "seed": 1625121563,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "full_svd",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 11,
+      "ctm_steps_ba": 10,
+      "ctm_energy_proxy_ab": -2.5361442472629765,
+      "ctm_energy_proxy_ba": -2.5361434972699133,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.045749175880076424,
+            "imag": 0.0,
+            "abs": 0.045749175880076424,
+            "relative_residual": 7.674322228917256e-16
+          },
+          {
+            "real": 0.008624519511009471,
+            "imag": 0.0,
+            "abs": 0.008624519511009471,
+            "relative_residual": 5.5694325118632956e-15
+          }
+        ],
+        "inverse_correlation_length": 1.6685645255118826,
+        "correlation_length": 0.5993175479343358,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          36,
+          36
+        ],
+        "overlap_condition_number": 6609188.133534193,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.12613169999895035
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.019810423925742386,
+            "imag": 0.0,
+            "abs": 0.019810423925742386,
+            "relative_residual": 2.4186629126532224e-16
+          },
+          {
+            "real": 0.006549652885128509,
+            "imag": 0.0,
+            "abs": 0.006549652885128509,
+            "relative_residual": 4.432349269991249e-15
+          }
+        ],
+        "inverse_correlation_length": 1.1067962064586248,
+        "correlation_length": 0.9035086984980399,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          36,
+          36
+        ],
+        "overlap_condition_number": 4325660.998926408,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.10941330000059679
+      },
+      "comparison": {
+        "absolute_xi_difference": 0.30419115056370416,
+        "relative_xi_difference": 0.4048254431087249,
+        "absolute_inverse_xi_difference": 0.5617683190532579,
+        "relative_inverse_xi_difference": 0.40482544310872487
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p29\\2tensor_twoC3\\D_4\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": 0.005046467030460794,
+            "imag": 0.0,
+            "abs": 0.005046467030460794,
+            "relative_residual": 6.857972858833614e-15
+          },
+          {
+            "real": 0.0025004381463848116,
+            "imag": 0.0,
+            "abs": 0.0025004381463848116,
+            "relative_residual": 6.8015364149419765e-15
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.7022224254537922,
+        "correlation_length_from_eigenvalues": 1.4240502207741046,
+        "correlation_length_unresolved": false
+      },
+      "elapsed_seconds": 6.87159149999934,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.29,D=5": {
+      "J2": 0.29,
+      "D": 5,
+      "chi": 50,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p29\\2tensor_twoC3\\D_5\\tensor_best.pt",
+      "seed": 691949726,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "augmented",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 11,
+      "ctm_steps_ba": 10,
+      "ctm_energy_proxy_ab": -2.5514803356629576,
+      "ctm_energy_proxy_ba": -2.5514762386783896,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.0005405710678568562,
+            "imag": 5.275727116838898e-06,
+            "abs": 0.0005405968115892964,
+            "relative_residual": 9.594002792918265e-16
+          },
+          {
+            "real": 0.0005405710678568562,
+            "imag": -5.275727116838898e-06,
+            "abs": 0.0005405968115892964,
+            "relative_residual": 9.594002792918265e-16
+          }
+        ],
+        "inverse_correlation_length": 0.0,
+        "correlation_length": null,
+        "correlation_length_unresolved": true,
+        "corner_effective_ranks": [
+          50,
+          50
+        ],
+        "overlap_condition_number": 148099.42101645714,
+        "eigensolver_matvec_count": 127,
+        "eigensolver_seconds": 1.2141729999966628
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.005707616150595156,
+            "imag": 0.0,
+            "abs": 0.005707616150595156,
+            "relative_residual": 5.225270286479457e-16
+          },
+          {
+            "real": -0.005575616841372387,
+            "imag": 0.0004339795087645318,
+            "abs": 0.005592480789043705,
+            "relative_residual": 1.2785718352946706e-15
+          }
+        ],
+        "inverse_correlation_length": 0.020378470487420662,
+        "correlation_length": 49.07139623738129,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          50,
+          50
+        ],
+        "overlap_condition_number": 65633012.851751074,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.6560247000015806
+      },
+      "comparison": {
+        "absolute_xi_difference": null,
+        "relative_xi_difference": null,
+        "absolute_inverse_xi_difference": 0.020378470487420662,
+        "relative_inverse_xi_difference": 2.0
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p29\\2tensor_twoC3\\D_5\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": -0.009359552378226171,
+            "imag": 0.0,
+            "abs": 0.009359552378226171,
+            "relative_residual": 3.4121418513544512e-15
+          },
+          {
+            "real": 0.005793296405820066,
+            "imag": 2.19739045750507e-05,
+            "abs": 0.005793338079049934,
+            "relative_residual": 6.07514022465338e-15
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.4796888161694942,
+        "correlation_length_from_eigenvalues": 2.0846848337749404,
+        "correlation_length_unresolved": false
+      },
+      "elapsed_seconds": 17.87832790000175,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.3,D=3": {
+      "J2": 0.3,
+      "D": 3,
+      "chi": 30,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p3\\2tensor_twoC3\\D_3\\tensor_best.pt",
+      "seed": 3621836089,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "full_svd",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 14,
+      "ctm_steps_ba": 14,
+      "ctm_energy_proxy_ab": -2.5009227996333183,
+      "ctm_energy_proxy_ba": -2.500926023619671,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.008646914051637023,
+            "imag": 0.0,
+            "abs": 0.008646914051637023,
+            "relative_residual": 6.434673792506926e-16
+          },
+          {
+            "real": 0.0035185861458714527,
+            "imag": 0.0019191340853390417,
+            "abs": 0.004007932647067393,
+            "relative_residual": 3.360673875797159e-15
+          }
+        ],
+        "inverse_correlation_length": 0.7689269412372143,
+        "correlation_length": 1.3005136721974988,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          30,
+          30
+        ],
+        "overlap_condition_number": 793153.6617986131,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.06405960000120103
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.009615243432290812,
+            "imag": 0.0,
+            "abs": 0.009615243432290812,
+            "relative_residual": 4.261126074584117e-16
+          },
+          {
+            "real": 0.003841718706791176,
+            "imag": 0.001959380561203538,
+            "abs": 0.004312536933839704,
+            "relative_residual": 2.9909956349681216e-15
+          }
+        ],
+        "inverse_correlation_length": 0.8018233500017808,
+        "correlation_length": 1.247157494225853,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          30,
+          30
+        ],
+        "overlap_condition_number": 791268.9914026399,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.05026540000108071
+      },
+      "comparison": {
+        "absolute_xi_difference": 0.053356177971645824,
+        "relative_xi_difference": 0.0418862360848178,
+        "absolute_inverse_xi_difference": 0.032896408764566565,
+        "relative_inverse_xi_difference": 0.04188623608481797
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p3\\2tensor_twoC3\\D_3\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": -0.0007235154275931976,
+            "imag": 0.0036070875609177607,
+            "abs": 0.0036789339822960957,
+            "relative_residual": 8.60408669486861e-15
+          },
+          {
+            "real": -0.0007235154275931976,
+            "imag": -0.0036070875609177607,
+            "abs": 0.0036789339822960957,
+            "relative_residual": 8.60408669486861e-15
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.0,
+        "correlation_length_from_eigenvalues": null,
+        "correlation_length_unresolved": true
+      },
+      "elapsed_seconds": 2.0226240000010876,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.3,D=4": {
+      "J2": 0.3,
+      "D": 4,
+      "chi": 36,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p3\\2tensor_twoC3\\D_4\\tensor_best.pt",
+      "seed": 3650097268,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "full_svd",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 70,
+      "ctm_steps_ba": 10,
+      "ctm_energy_proxy_ab": -2.517403308579614,
+      "ctm_energy_proxy_ba": -2.517401855941156,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": -0.0025764912925363742,
+            "imag": 0.0012321642642241645,
+            "abs": 0.0028559650128366127,
+            "relative_residual": 8.544893663376522e-16
+          },
+          {
+            "real": -0.0025764912925363742,
+            "imag": -0.0012321642642241645,
+            "abs": 0.0028559650128366127,
+            "relative_residual": 8.544893663376522e-16
+          }
+        ],
+        "inverse_correlation_length": 0.0,
+        "correlation_length": null,
+        "correlation_length_unresolved": true,
+        "corner_effective_ranks": [
+          36,
+          36
+        ],
+        "overlap_condition_number": 13740792.975393975,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.11210899999787216
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": -0.002885636684473003,
+            "imag": 0.0,
+            "abs": 0.002885636684473003,
+            "relative_residual": 9.233256623071223e-16
+          },
+          {
+            "real": -0.0020724946439408774,
+            "imag": 0.0,
+            "abs": 0.0020724946439408774,
+            "relative_residual": 1.6467177552767463e-15
+          }
+        ],
+        "inverse_correlation_length": 0.33099253979401555,
+        "correlation_length": 3.0212161295910884,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          36,
+          36
+        ],
+        "overlap_condition_number": 18101881.86225818,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.10632459999760613
+      },
+      "comparison": {
+        "absolute_xi_difference": null,
+        "relative_xi_difference": null,
+        "absolute_inverse_xi_difference": 0.33099253979401555,
+        "relative_inverse_xi_difference": 2.0
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p3\\2tensor_twoC3\\D_4\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": -0.0032435618900438024,
+            "imag": 0.0,
+            "abs": 0.0032435618900438024,
+            "relative_residual": 1.808619153832582e-14
+          },
+          {
+            "real": 0.0031493159774141828,
+            "imag": 0.0,
+            "abs": 0.0031493159774141828,
+            "relative_residual": 7.123684350229356e-15
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.029486795512017595,
+        "correlation_length_from_eigenvalues": 33.913485091740185,
+        "correlation_length_unresolved": false
+      },
+      "elapsed_seconds": 31.321996700000454,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.3,D=5": {
+      "J2": 0.3,
+      "D": 5,
+      "chi": 50,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p3\\2tensor_twoC3\\D_5\\tensor_best.pt",
+      "seed": 2303095820,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "augmented",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 10,
+      "ctm_steps_ba": 11,
+      "ctm_energy_proxy_ab": -2.5371453873554257,
+      "ctm_energy_proxy_ba": -2.537140464328575,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": -0.002759232253475277,
+            "imag": 0.007055833000585984,
+            "abs": 0.007576156146805348,
+            "relative_residual": 8.99408152142314e-16
+          },
+          {
+            "real": -0.002759232253475277,
+            "imag": -0.007055833000585984,
+            "abs": 0.007576156146805348,
+            "relative_residual": 8.99408152142314e-16
+          }
+        ],
+        "inverse_correlation_length": -1.1102230246251565e-16,
+        "correlation_length": null,
+        "correlation_length_unresolved": true,
+        "corner_effective_ranks": [
+          50,
+          50
+        ],
+        "overlap_condition_number": 40689014.88850607,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.6450081000002683
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": -0.01109848248564545,
+            "imag": 0.0,
+            "abs": 0.01109848248564545,
+            "relative_residual": 6.549547920022039e-16
+          },
+          {
+            "real": 0.00748478014682856,
+            "imag": 0.0,
+            "abs": 0.00748478014682856,
+            "relative_residual": 1.6185770662886746e-15
+          }
+        ],
+        "inverse_correlation_length": 0.3939367410282826,
+        "correlation_length": 2.538478633370745,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          50,
+          50
+        ],
+        "overlap_condition_number": 66674453.639127284,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 0.6446534000024258
+      },
+      "comparison": {
+        "absolute_xi_difference": null,
+        "relative_xi_difference": null,
+        "absolute_inverse_xi_difference": 0.3939367410282827,
+        "relative_inverse_xi_difference": 2.0
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p3\\2tensor_twoC3\\D_5\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": 0.00011644360036632113,
+            "imag": 0.0,
+            "abs": 0.00011644360036632113,
+            "relative_residual": 2.6078033078034094e-15
+          },
+          {
+            "real": 0.00010054698268403001,
+            "imag": 0.0,
+            "abs": 0.00010054698268403001,
+            "relative_residual": 3.714312673913094e-15
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.1467819311026448,
+        "correlation_length_from_eigenvalues": 6.812827658608051,
+        "correlation_length_unresolved": false
+      },
+      "elapsed_seconds": 18.54587719999836,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0,D=6": {
+      "J2": 0.0,
+      "D": 6,
+      "chi": 84,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p0\\2tensor_twoC3\\D_6\\tensor_best.pt",
+      "seed": 1385781624,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "augmented",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 69,
+      "ctm_steps_ba": 67,
+      "ctm_energy_proxy_ab": -3.2677299306670835,
+      "ctm_energy_proxy_ba": -3.2664689333960117,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 8.959438609949203e-05,
+            "imag": 0.0,
+            "abs": 8.959438609949203e-05,
+            "relative_residual": 9.917048567966229e-16
+          },
+          {
+            "real": 8.49012810104712e-05,
+            "imag": 0.0,
+            "abs": 8.49012810104712e-05,
+            "relative_residual": 1.8839280428342283e-15
+          }
+        ],
+        "inverse_correlation_length": 0.05380348121234124,
+        "correlation_length": 18.58615794865377,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          84,
+          84
+        ],
+        "overlap_condition_number": 23686.52234773445,
+        "eigensolver_matvec_count": 129,
+        "eigensolver_seconds": 12.239613099998678
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 8.593821584548296e-05,
+            "imag": 0.0,
+            "abs": 8.593821584548296e-05,
+            "relative_residual": 1.1693570577010186e-15
+          },
+          {
+            "real": 2.280515205196906e-05,
+            "imag": 6.993017048208922e-05,
+            "abs": 7.355476669643845e-05,
+            "relative_residual": 1.6627846058757109e-15
+          }
+        ],
+        "inverse_correlation_length": 0.155598363792042,
+        "correlation_length": 6.426802799395147,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          84,
+          84
+        ],
+        "overlap_condition_number": 21140.5928708802,
+        "eigensolver_matvec_count": 129,
+        "eigensolver_seconds": 12.5254294999977
+      },
+      "comparison": {
+        "absolute_xi_difference": 12.159355149258623,
+        "relative_xi_difference": 0.972244371367119,
+        "absolute_inverse_xi_difference": 0.10179488257970076,
+        "relative_inverse_xi_difference": 0.9722443713671193
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p0\\2tensor_twoC3\\D_6\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": 4.5709945790609186e-05,
+            "imag": 0.0,
+            "abs": 4.5709945790609186e-05,
+            "relative_residual": 3.684322615345105e-15
+          },
+          {
+            "real": 4.260609142147134e-05,
+            "imag": 0.0,
+            "abs": 4.260609142147134e-05,
+            "relative_residual": 3.2664092114510957e-15
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.07031867223392335,
+        "correlation_length_from_eigenvalues": 14.220973864144963,
+        "correlation_length_unresolved": false
+      },
+      "elapsed_seconds": 429.4506474000009,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.24,D=6": {
+      "J2": 0.24,
+      "D": 6,
+      "chi": 72,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p24\\2tensor_twoC3\\D_6\\tensor_best.pt",
+      "seed": 3526245205,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "augmented",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 15,
+      "ctm_steps_ba": 16,
+      "ctm_energy_proxy_ab": -2.638345073769492,
+      "ctm_energy_proxy_ba": -2.6383349558562745,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.023256281264735633,
+            "imag": 0.0013972523129238924,
+            "abs": 0.02329821736293283,
+            "relative_residual": 1.3528908845005937e-15
+          },
+          {
+            "real": 0.023256281264735633,
+            "imag": -0.0013972523129238924,
+            "abs": 0.02329821736293283,
+            "relative_residual": 1.3528908845005937e-15
+          }
+        ],
+        "inverse_correlation_length": 0.0,
+        "correlation_length": null,
+        "correlation_length_unresolved": true,
+        "corner_effective_ranks": [
+          72,
+          72
+        ],
+        "overlap_condition_number": 531251981.408724,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 4.827833399998781
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.0012996564775418248,
+            "imag": 0.0,
+            "abs": 0.0012996564775418248,
+            "relative_residual": 9.55561654269061e-16
+          },
+          {
+            "real": 0.0010604834052911568,
+            "imag": 0.0,
+            "abs": 0.0010604834052911568,
+            "relative_residual": 3.031250400488188e-15
+          }
+        ],
+        "inverse_correlation_length": 0.2033751346074726,
+        "correlation_length": 4.917021945333021,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          72,
+          72
+        ],
+        "overlap_condition_number": 1331774.321982666,
+        "eigensolver_matvec_count": 126,
+        "eigensolver_seconds": 8.954701700000442
+      },
+      "comparison": {
+        "absolute_xi_difference": null,
+        "relative_xi_difference": null,
+        "absolute_inverse_xi_difference": 0.2033751346074726,
+        "relative_inverse_xi_difference": 2.0
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p24\\2tensor_twoC3\\D_6\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": 0.16946549479431477,
+            "imag": 0.0,
+            "abs": 0.16946549479431477,
+            "relative_residual": 1.3491744350145924e-14
+          },
+          {
+            "real": 0.07096053665402717,
+            "imag": 0.0,
+            "abs": 0.07096053665402717,
+            "relative_residual": 2.323874325820301e-14
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.8705254348213293,
+        "correlation_length_from_eigenvalues": 1.1487315131754245,
+        "correlation_length_unresolved": false
+      },
+      "elapsed_seconds": 245.42278209999859,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.25,D=6": {
+      "J2": 0.25,
+      "D": 6,
+      "chi": 84,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p25\\2tensor_twoC3\\D_6\\tensor_best.pt",
+      "seed": 1350771153,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "augmented",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 14,
+      "ctm_steps_ba": 15,
+      "ctm_energy_proxy_ab": -2.6196844430297785,
+      "ctm_energy_proxy_ba": -2.619668378940333,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.0006315567033984309,
+            "imag": 0.0,
+            "abs": 0.0006315567033984309,
+            "relative_residual": 5.277203698086838e-16
+          },
+          {
+            "real": 0.00045376854751739054,
+            "imag": 0.0,
+            "abs": 0.00045376854751739054,
+            "relative_residual": 6.992307639449202e-16
+          }
+        ],
+        "inverse_correlation_length": 0.33060046854927966,
+        "correlation_length": 3.024799100824441,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          84,
+          84
+        ],
+        "overlap_condition_number": 652995.7947104512,
+        "eigensolver_matvec_count": 127,
+        "eigensolver_seconds": 12.296315999999933
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.0007651886663688375,
+            "imag": 0.0,
+            "abs": 0.0007651886663688375,
+            "relative_residual": 4.622385975361929e-16
+          },
+          {
+            "real": 0.0006742541209590758,
+            "imag": 2.696225531934365e-05,
+            "abs": 0.0006747929925852828,
+            "relative_residual": 8.471482301999776e-16
+          }
+        ],
+        "inverse_correlation_length": 0.1257164599386293,
+        "correlation_length": 7.954407883328624,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          84,
+          84
+        ],
+        "overlap_condition_number": 20575890.36087487,
+        "eigensolver_matvec_count": 125,
+        "eigensolver_seconds": 11.95596800000203
+      },
+      "comparison": {
+        "absolute_xi_difference": 4.929608782504183,
+        "relative_xi_difference": 0.8979899531212732,
+        "absolute_inverse_xi_difference": 0.20488400861065037,
+        "relative_inverse_xi_difference": 0.8979899531212733
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p25\\2tensor_twoC3\\D_6\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": 0.0003045914933249161,
+            "imag": 0.0,
+            "abs": 0.0003045914933249161,
+            "relative_residual": 4.2726833669246234e-15
+          },
+          {
+            "real": 0.00022719079618567007,
+            "imag": 0.0,
+            "abs": 0.00022719079618567007,
+            "relative_residual": 3.357979519098054e-15
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.29318133642677036,
+        "correlation_length_from_eigenvalues": 3.4108583178853746,
+        "correlation_length_unresolved": false
+      },
+      "elapsed_seconds": 332.5336726000023,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.26,D=6": {
+      "J2": 0.26,
+      "D": 6,
+      "chi": 72,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p26\\2tensor_twoC3\\D_6\\tensor_best.pt",
+      "seed": 1793455,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "augmented",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 17,
+      "ctm_steps_ba": 13,
+      "ctm_energy_proxy_ab": -2.601966508414197,
+      "ctm_energy_proxy_ba": -2.601946794914192,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.006221100729822546,
+            "imag": 0.0,
+            "abs": 0.006221100729822546,
+            "relative_residual": 5.855841121699367e-16
+          },
+          {
+            "real": 0.0035561687369895932,
+            "imag": 0.0004398288563786336,
+            "abs": 0.0035832646439867507,
+            "relative_residual": 1.9213264762903546e-15
+          }
+        ],
+        "inverse_correlation_length": 0.5516725607019725,
+        "correlation_length": 1.812669455097705,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          72,
+          72
+        ],
+        "overlap_condition_number": 7157551.147911035,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 4.850311999998667
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.026345104052713876,
+            "imag": 0.0,
+            "abs": 0.026345104052713876,
+            "relative_residual": 5.260675654528607e-16
+          },
+          {
+            "real": 0.021370308469286146,
+            "imag": 0.0015381511830123548,
+            "abs": 0.02142559201362346,
+            "relative_residual": 6.766674281114706e-16
+          }
+        ],
+        "inverse_correlation_length": 0.20669635726266383,
+        "correlation_length": 4.838014628043147,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          72,
+          72
+        ],
+        "overlap_condition_number": 149653633.4552047,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 4.841083500003151
+      },
+      "comparison": {
+        "absolute_xi_difference": 3.0253451729454417,
+        "relative_xi_difference": 0.9097846582773459,
+        "absolute_inverse_xi_difference": 0.3449762034393086,
+        "relative_inverse_xi_difference": 0.909784658277346
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p26\\2tensor_twoC3\\D_6\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": 0.002517663815814577,
+            "imag": 0.0,
+            "abs": 0.002517663815814577,
+            "relative_residual": 7.292778035475302e-15
+          },
+          {
+            "real": 0.002233358086040329,
+            "imag": 0.0,
+            "abs": 0.002233358086040329,
+            "relative_residual": 7.420872735302293e-15
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.11982509335455521,
+        "correlation_length_from_eigenvalues": 8.345497357895315,
+        "correlation_length_unresolved": false
+      },
+      "elapsed_seconds": 222.62745120000181,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.27,D=6": {
+      "J2": 0.27,
+      "D": 6,
+      "chi": 72,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p27\\2tensor_twoC3\\D_6\\tensor_best.pt",
+      "seed": 2315332809,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "augmented",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 12,
+      "ctm_steps_ba": 11,
+      "ctm_energy_proxy_ab": -2.585867444814603,
+      "ctm_energy_proxy_ba": -2.5858662248262654,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": -0.23462873629084213,
+            "imag": 0.0,
+            "abs": 0.23462873629084213,
+            "relative_residual": 5.085675735555648e-16
+          },
+          {
+            "real": -0.15391190222211115,
+            "imag": 0.0,
+            "abs": 0.15391190222211115,
+            "relative_residual": 1.135296986906353e-15
+          }
+        ],
+        "inverse_correlation_length": 0.421624044071222,
+        "correlation_length": 2.3717812445987474,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          72,
+          72
+        ],
+        "overlap_condition_number": 635159606.7906729,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 4.715141299999232
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.00041531081283163285,
+            "imag": 0.0,
+            "abs": 0.00041531081283163285,
+            "relative_residual": 7.05879558850273e-16
+          },
+          {
+            "real": 0.00038284953512200134,
+            "imag": 4.240201393182804e-05,
+            "abs": 0.00038519046889637273,
+            "relative_residual": 1.4854097888189666e-15
+          }
+        ],
+        "inverse_correlation_length": 0.07528925013423457,
+        "correlation_length": 13.282108643891151,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          72,
+          72
+        ],
+        "overlap_condition_number": 477271.28442840715,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 4.654208799998742
+      },
+      "comparison": {
+        "absolute_xi_difference": 10.910327399292404,
+        "relative_xi_difference": 1.3939445693066521,
+        "absolute_inverse_xi_difference": 0.3463347939369874,
+        "relative_inverse_xi_difference": 1.393944569306652
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p27\\2tensor_twoC3\\D_6\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": -0.003834026201786327,
+            "imag": 0.0010921098511764832,
+            "abs": 0.00398653494190391,
+            "relative_residual": 5.055143081157562e-15
+          },
+          {
+            "real": -0.003834026201786327,
+            "imag": -0.0010921098511764832,
+            "abs": 0.00398653494190391,
+            "relative_residual": 5.055143081157562e-15
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": -1.1102230246251565e-16,
+        "correlation_length_from_eigenvalues": null,
+        "correlation_length_unresolved": true
+      },
+      "elapsed_seconds": 148.61137280000185,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.28,D=6": {
+      "J2": 0.28,
+      "D": 6,
+      "chi": 72,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p28\\2tensor_twoC3\\D_6\\tensor_best.pt",
+      "seed": 1585770760,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "augmented",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 12,
+      "ctm_steps_ba": 11,
+      "ctm_energy_proxy_ab": -2.5709277461016296,
+      "ctm_energy_proxy_ba": -2.5709251066195407,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.013339200329312137,
+            "imag": 0.0,
+            "abs": 0.013339200329312137,
+            "relative_residual": 7.257216701783231e-16
+          },
+          {
+            "real": 0.01266325476068773,
+            "imag": 0.0,
+            "abs": 0.01266325476068773,
+            "relative_residual": 1.098721526089373e-15
+          }
+        ],
+        "inverse_correlation_length": 0.052002619586009845,
+        "correlation_length": 19.229800497762383,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          72,
+          72
+        ],
+        "overlap_condition_number": 495311242.3283059,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 4.685413900002459
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.01631910018204688,
+            "imag": 0.0,
+            "abs": 0.01631910018204688,
+            "relative_residual": 1.124269464363413e-15
+          },
+          {
+            "real": 0.013384204685317584,
+            "imag": 0.0,
+            "abs": 0.013384204685317584,
+            "relative_residual": 3.8400041593905647e-16
+          }
+        ],
+        "inverse_correlation_length": 0.19826095526001095,
+        "correlation_length": 5.043857469003626,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          72,
+          72
+        ],
+        "overlap_condition_number": 83585445.84299354,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 4.637580400001752
+      },
+      "comparison": {
+        "absolute_xi_difference": 14.185943028758757,
+        "relative_xi_difference": 1.1688343840208404,
+        "absolute_inverse_xi_difference": 0.1462583356740011,
+        "relative_inverse_xi_difference": 1.1688343840208404
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p28\\2tensor_twoC3\\D_6\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": -0.0011743886906239985,
+            "imag": 0.0,
+            "abs": 0.0011743886906239985,
+            "relative_residual": 9.702639509169948e-15
+          },
+          {
+            "real": -0.0010736274541726836,
+            "imag": 0.0,
+            "abs": 0.0010736274541726836,
+            "relative_residual": 1.0641750741164884e-14
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.08970468993672229,
+        "correlation_length_from_eigenvalues": 11.14768916436142,
+        "correlation_length_unresolved": false
+      },
+      "elapsed_seconds": 146.8014761000013,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.29,D=6": {
+      "J2": 0.29,
+      "D": 6,
+      "chi": 72,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p29\\2tensor_twoC3\\D_6\\tensor_best.pt",
+      "seed": 4243459687,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "augmented",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 10,
+      "ctm_steps_ba": 11,
+      "ctm_energy_proxy_ab": -2.5568390822833997,
+      "ctm_energy_proxy_ba": -2.5568386498817555,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.0573443795825757,
+            "imag": 0.0,
+            "abs": 0.0573443795825757,
+            "relative_residual": 5.798034119847248e-16
+          },
+          {
+            "real": -0.01397913078156016,
+            "imag": 0.05064545596634925,
+            "abs": 0.05253930250248268,
+            "relative_residual": 1.0523828908555672e-15
+          }
+        ],
+        "inverse_correlation_length": 0.08751332810837915,
+        "correlation_length": 11.426830879538368,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          72,
+          72
+        ],
+        "overlap_condition_number": 6358617996.001799,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 4.66982310000094
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": -0.06641243261191344,
+            "imag": 0.0,
+            "abs": 0.06641243261191344,
+            "relative_residual": 3.092323730703671e-16
+          },
+          {
+            "real": 0.026781938079551402,
+            "imag": 0.0,
+            "abs": 0.026781938079551402,
+            "relative_residual": 6.277352773670113e-16
+          }
+        ],
+        "inverse_correlation_length": 0.9081565690333893,
+        "correlation_length": 1.101131714616529,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          72,
+          72
+        ],
+        "overlap_condition_number": 584252261.1922352,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 4.647757899998396
+      },
+      "comparison": {
+        "absolute_xi_difference": 10.32569916492184,
+        "relative_xi_difference": 1.6484243287475084,
+        "absolute_inverse_xi_difference": 0.8206432409250101,
+        "relative_inverse_xi_difference": 1.6484243287475082
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p29\\2tensor_twoC3\\D_6\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": 0.0003070822291060573,
+            "imag": 0.0,
+            "abs": 0.0003070822291060573,
+            "relative_residual": 2.606669348876531e-15
+          },
+          {
+            "real": 0.00025441375523696584,
+            "imag": 0.0,
+            "abs": 0.00025441375523696584,
+            "relative_residual": 4.15972432850842e-15
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.18815365964155759,
+        "correlation_length_from_eigenvalues": 5.314804941371066,
+        "correlation_length_unresolved": false
+      },
+      "elapsed_seconds": 132.8090301000011,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    },
+    "J2=0.3,D=6": {
+      "J2": 0.3,
+      "D": 6,
+      "chi": 72,
+      "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p3\\2tensor_twoC3\\D_6\\tensor_best.pt",
+      "seed": 3500819528,
+      "dtype": "torch.float64",
+      "device": "cpu",
+      "rsvd_mode": "augmented",
+      "ctm_identity_init": true,
+      "ctm_steps_ab": 11,
+      "ctm_steps_ba": 11,
+      "ctm_energy_proxy_ab": -2.5434647824009895,
+      "ctm_energy_proxy_ba": -2.5434620171440825,
+      "env1_ab_x_env3_ba": {
+        "eigenvalues": [
+          {
+            "real": -0.014276366919806702,
+            "imag": 0.0,
+            "abs": 0.014276366919806702,
+            "relative_residual": 7.368193151587945e-16
+          },
+          {
+            "real": -0.0035399602443347508,
+            "imag": 0.009710553716664039,
+            "abs": 0.010335674724742857,
+            "relative_residual": 1.5457312763506653e-15
+          }
+        ],
+        "inverse_correlation_length": 0.32300403074567946,
+        "correlation_length": 3.0959365977304483,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          72,
+          72
+        ],
+        "overlap_condition_number": 403929643.38344073,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 4.71014009999999
+      },
+      "env3_ab_x_env1_ba": {
+        "eigenvalues": [
+          {
+            "real": 0.01806436057726984,
+            "imag": 0.0,
+            "abs": 0.01806436057726984,
+            "relative_residual": 1.0840794793304533e-15
+          },
+          {
+            "real": -0.013812875220505687,
+            "imag": 0.0,
+            "abs": 0.013812875220505687,
+            "relative_residual": 4.617502349622692e-16
+          }
+        ],
+        "inverse_correlation_length": 0.26833982411135926,
+        "correlation_length": 3.7266179304977354,
+        "correlation_length_unresolved": false,
+        "corner_effective_ranks": [
+          72,
+          72
+        ],
+        "overlap_condition_number": 838220786.0132922,
+        "eigensolver_matvec_count": 69,
+        "eigensolver_seconds": 4.714642499999172
+      },
+      "comparison": {
+        "absolute_xi_difference": 0.6306813327672871,
+        "relative_xi_difference": 0.18488128754643313,
+        "absolute_inverse_xi_difference": 0.0546642066343202,
+        "relative_inverse_xi_difference": 0.18488128754643315
+      },
+      "existing_env2_baseline": {
+        "source": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p3\\2tensor_twoC3\\D_6\\correlation_length.json",
+        "eigenvalues": [
+          {
+            "real": -0.002643432257107136,
+            "imag": 0.0,
+            "abs": 0.002643432257107136,
+            "relative_residual": 9.030880153304222e-15
+          },
+          {
+            "real": -0.0014587890347146494,
+            "imag": 0.0,
+            "abs": 0.0014587890347146494,
+            "relative_residual": 1.0872433904871607e-14
+          }
+        ],
+        "inverse_correlation_length_from_eigenvalues": 0.5944715068758121,
+        "correlation_length_from_eigenvalues": 1.682166409043562,
+        "correlation_length_unresolved": false
+      },
+      "elapsed_seconds": 134.30291000000216,
+      "index_conventions": {
+        "env1_x_env3": "B[top=b,bond=a,bottom=g] -- C3(A)[top=A_b,bond=A_g,bottom=A_a]",
+        "env3_x_env1": "C3(B)[top=B_a,bond=B_g,bottom=B_b] -- A[top=g,bond=a,bottom=b]",
+        "generalized_overlap": "N[Y,y,V,v] = C_upper[Y,V] C_lower[y,v] = C_upper kron C_lower; upper natural (T1,T2) corners are transposed because both crossed top rows are ordered (T2,T1)."
+      }
+    }
+  }
+}
