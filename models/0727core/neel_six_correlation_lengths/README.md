@@ -51,4 +51,7 @@ scp -r chye@CLUSTER:/scratch/chye/neel_six_correlation_lengths D:\destination\
 ```
 
 After download, `plot_six_inverse_xi.py` recursively finds only schema-v3
-results and ignores all obsolete schema-v2 JSON files.
+results and ignores all obsolete schema-v2 JSON files. It writes the original
+six-curve diagnostic figure and an additional
+`neel_generalized_inverse_xi_comparison.pdf` containing only the three
+generalized curves; the latter has both lower axis limits fixed at zero.

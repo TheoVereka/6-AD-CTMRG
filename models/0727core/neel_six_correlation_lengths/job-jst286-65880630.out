@@ -1,0 +1,6 @@
+***** START OF JOB *****
+STARTING AT mer 29 jui 2026 21:43:00 CEST
+RUN J2=0 D=10 chi=140 seed=514285335 threads=16
+DONE /scratch/chye/neel_six_correlation_lengths/results_straight_rows_v3/J2_0/D_10.json (5718.7 s)
+FINISHED AT mer 29 jui 2026 23:18:45 CEST
+***** END OF JOB *****
