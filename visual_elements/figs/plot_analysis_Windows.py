@@ -26,7 +26,6 @@ from scipy.optimize import curve_fit
 # PATHS
 # ──────────────────────────────────────────────────────────────────────────────
 DATA_DIR   = r'D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\0713summary'
-EXTERNAL_D10_DATA_DIR = r'D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\D345678910'
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR    = os.path.join(SCRIPT_DIR, 'analysis_plots_0713summary')
 os.makedirs(OUT_DIR, exist_ok=True)
@@ -534,75 +533,6 @@ def load_all():
             all_data[j2] = ansatz_data
     return all_data
 
-
-RE_EXTERNAL_FOLDER = re.compile(r'^(.+?)__J2_([0-9p]+)_')
-
-
-def discover_external_d10_files(data_dir, j2=0.30):
-    """Find the highest-chi legacy D=10 file for each ansatz at one J2."""
-    selected = {}
-    if not os.path.isdir(data_dir):
-        return selected
-    for folder_name in sorted(os.listdir(data_dir)):
-        folder_path = os.path.join(data_dir, folder_name)
-        match = RE_EXTERNAL_FOLDER.match(folder_name)
-        if not match or not os.path.isdir(folder_path):
-            continue
-        ansatz = match.group(1)
-        try:
-            folder_j2 = round(_parse_j2_from_str(match.group(2)), 6)
-        except ValueError:
-            continue
-        if folder_j2 != round(j2, 6) or is_banned(j2, ansatz, 10):
-            continue
-        for name in os.listdir(folder_path):
-            plain_match = RE_PLAIN_CHI.match(name)
-            if not plain_match or int(plain_match.group(1)) != 10:
-                continue
-            chi = int(plain_match.group(2))
-            path = os.path.join(folder_path, name)
-            try:
-                energy = parse_plain_file(path)['energy_per_site']
-            except Exception as exc:
-                print(f"  Warning: failed to parse external D=10 file {path}: {exc}")
-                continue
-            incumbent = selected.get(ansatz)
-            if incumbent is None or chi > incumbent[0] or (chi == incumbent[0] and energy < incumbent[1]):
-                selected[ansatz] = (chi, energy, path)
-    return {ansatz: item[2] for ansatz, item in selected.items()}
-
-
-def load_external_d10_j2_data(j2=0.30):
-    """Build a special J2 dataset with legacy D=10 injected, without mutating summaries."""
-    if is_banned(j2) or is_banned(j2, D=10):
-        return {}
-    if D_ALLOWED is not None and 10 not in D_ALLOWED:
-        return {}
-    summary_folders = discover_folders(DATA_DIR).get(round(j2, 6), {})
-    external_files = discover_external_d10_files(EXTERNAL_D10_DATA_DIR, j2)
-    result = {}
-    for ansatz, external_path in sorted(external_files.items()):
-        summary_folder = summary_folders.get(ansatz)
-        if summary_folder is None:
-            continue
-        D_data = load_folder_data(summary_folder, j2, ansatz)
-        try:
-            D_data[10] = parse_plain_file(external_path)
-        except Exception as exc:
-            print(f"  Warning: failed to inject {external_path}: {exc}")
-            continue
-        processed = process_parsed_D_data(D_data)
-        if processed:
-            processed['inverse_correlation_lengths'] = (
-                load_inverse_correlation_lengths(
-                    summary_folder,
-                    j2,
-                    ansatz,
-                )
-            )
-            result[ansatz] = processed
-            print(f"  External D=10: J2={j2:.2f} {ansatz} <- {external_path}")
-    return result
 
 # ──────────────────────────────────────────────────────────────────────────────
 # PER-J2 FIGURE
@@ -1515,18 +1445,6 @@ def main():
         ansatze = sorted(ansatz_map.keys())
         print(f"  J2={j2:.4g}  ansatze: {ansatze}")
         plot_j2_figure(j2, ansatz_map, OUT_DIR)
-
-    print("\nGenerating J2=0.30 figure with legacy external D=10 data ...")
-    external_d10_data = load_external_d10_j2_data(0.30)
-    if external_d10_data:
-        plot_j2_figure(
-            0.30,
-            external_d10_data,
-            OUT_DIR,
-            filename='J2_0p30_externalD10.pdf',
-        )
-    else:
-        print("  No usable external D=10 data found (or it is banned).")
 
     print("\nGenerating E vs J2 summary figures ...")
     plot_e_vs_j2_figures(all_data, OUT_DIR)

@@ -90,17 +90,19 @@ solver 的统一 bond-dimension 策略是：拒绝 D=2 correlation length；D=3�
 
 ## 3. scp 回本地并归位
 
-手动把集群 `results/` 中已经完成的 JSON 下载到任意本地目录，例如本 bundle 的
-`incoming_results/`。先做只读验证：
+把整个 scratch bundle 递归复制到本地 data 目录：
 
 ```powershell
-D:\Programs\Python312\python.exe models\0727core\correlation_length_cpu_cluster\import_completed_results.py --incoming models\0727core\correlation_length_cpu_cluster\incoming_results --dry-run
+scp -r chye@CLUSTER:/scratch/chye/correlation_length_cpu_cluster D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\
 ```
 
-确认后归位：
+这会形成
+`D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\correlation_length_cpu_cluster`。
+无参数运行 importer 即可从其中的 `results/` 读取结果、使用其中的 manifest 验证，
+然后归位：
 
 ```powershell
-D:\Programs\Python312\python.exe models\0727core\correlation_length_cpu_cluster\import_completed_results.py --incoming models\0727core\correlation_length_cpu_cluster\incoming_results
+D:\Programs\Python312\python.exe models\0727core\correlation_length_cpu_cluster\import_completed_results.py
 ```
 
 脚本以 manifest、文件名、J2、D、两枚特征值和 checkpoint SHA-256 多重校验，然后

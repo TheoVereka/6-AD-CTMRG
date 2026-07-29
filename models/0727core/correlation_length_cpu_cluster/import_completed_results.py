@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Validate and move downloaded cluster JSON files into 0713summary."""
+"""Import a fully downloaded CPU-cluster bundle into 0713summary.
+
+With no arguments, this script expects the cluster bundle at
+``D:/HyraiOn/ENS_Lyon/Internship/2026-EPFL/data/correlation_length_cpu_cluster``.
+
+It reads completed JSON files from that bundle's results/ directory and moves
+them into their directly plottable locations below 0713summary.
+"""
 
 from __future__ import annotations
 
@@ -21,8 +28,11 @@ from bundle_utils import (
 DEFAULT_SUMMARY_ROOT = Path(
     r"D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\0713summary"
 )
-DEFAULT_BUNDLE_ROOT = Path(__file__).resolve().parent
-DEFAULT_INCOMING = DEFAULT_BUNDLE_ROOT / "incoming_results"
+DEFAULT_DOWNLOADED_BUNDLE_ROOT = Path(
+    r"D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data"
+) / "correlation_length_cpu_cluster"
+DEFAULT_BUNDLE_ROOT = DEFAULT_DOWNLOADED_BUNDLE_ROOT
+DEFAULT_INCOMING = DEFAULT_DOWNLOADED_BUNDLE_ROOT / "results"
 
 
 def parse_args() -> argparse.Namespace:
@@ -31,7 +41,10 @@ def parse_args() -> argparse.Namespace:
         "--incoming",
         type=Path,
         default=DEFAULT_INCOMING,
-        help="Folder populated manually with scp; searched recursively.",
+        help=(
+            "Completed result directory; defaults to results/ inside the "
+            "recursively downloaded cluster bundle."
+        ),
     )
     parser.add_argument(
         "--summary-root", type=Path, default=DEFAULT_SUMMARY_ROOT
@@ -40,7 +53,10 @@ def parse_args() -> argparse.Namespace:
         "--bundle-root",
         type=Path,
         default=DEFAULT_BUNDLE_ROOT,
-        help="Local bundle holding checkpoint_manifest.json.",
+        help=(
+            "Downloaded bundle holding checkpoint_manifest.json; defaults "
+            "to data/correlation_length_cpu_cluster."
+        ),
     )
     parser.add_argument(
         "--overwrite",
