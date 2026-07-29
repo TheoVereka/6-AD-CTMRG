@@ -24,19 +24,18 @@ cd "${RUN_DIR}" || exit 2
 
 D_BOND="${1:?Pass D as the first job-script argument.}"
 case "${D_BOND}" in
-    2) CHI=16 ;;
     3) CHI=24 ;;
     4) CHI=36 ;;
     5) CHI=50 ;;
     6) CHI=72 ;;
     *)
-        echo "Unsupported D=${D_BOND}; expected one of 2,3,4,5,6."
+        echo "Unsupported D=${D_BOND}; expected one of 3,4,5,6."
         exit 2
         ;;
 esac
 
 EXTRA_ARGS=()
-if [[ "${D_BOND}" == "2" ]]; then
+if [[ "${D_BOND}" == "3" ]]; then
     EXTRA_ARGS+=(--run-implementation-regressions)
 fi
 

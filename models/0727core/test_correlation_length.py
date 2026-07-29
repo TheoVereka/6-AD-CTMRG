@@ -46,7 +46,6 @@ import correlation_length as corr
 
 
 CHI_MIN_BY_D = {
-    2: 16,
     3: 24,
     4: 36,
     5: 50,
@@ -1152,7 +1151,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     if args.D not in CHI_MIN_BY_D:
-        raise ValueError("This cluster suite supports D=2,3,4,5,6.")
+        raise ValueError("This cluster suite supports D=3,4,5,6.")
     if args.chi is None:
         args.chi = CHI_MIN_BY_D[args.D]
     if args.device == "auto":

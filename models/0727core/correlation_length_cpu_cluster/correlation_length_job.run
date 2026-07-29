@@ -1,0 +1,49 @@
+#!/bin/bash
+#SBATCH -q academic
+#SBATCH --partition academic
+#SBATCH -e ./job-%N-%j.error
+#SBATCH -o ./job-%N-%j.out
+#SBATCH --ntasks 1
+#SBATCH --cpus-per-task 16
+#SBATCH --time 6-23:59:50
+#SBATCH --mem 100G
+
+set -u
+
+echo "***** START OF JOB *****"
+
+module purge
+module load gcc
+
+echo "STARTING AT $(date)"
+
+source /home/chye/venvs/6adctmrg/bin/activate
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-16}"
+export MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK:-16}"
+export OPENBLAS_NUM_THREADS="${SLURM_CPUS_PER_TASK:-16}"
+
+J2_DIRECTORY="${1:?Pass a J2 directory token, for example J2_0p24.}"
+D_BOND="${2:?Pass D as the second job-script argument.}"
+BUNDLE_NAME="${3:-${BUNDLE_NAME:-correlation_length_cpu_cluster}}"
+SCRATCH_BUNDLE_DIR="/scratch/chye/${BUNDLE_NAME}"
+HOME_BUNDLE_DIR="/home/chye/${BUNDLE_NAME}"
+
+if [[ ! -d "${SCRATCH_BUNDLE_DIR}" ]]; then
+    echo "Missing scratch bundle: ${SCRATCH_BUNDLE_DIR}" >&2
+    exit 2
+fi
+if [[ ! -f "${HOME_BUNDLE_DIR}/run_one_correlation_length.py" ]]; then
+    echo "Missing home worker: ${HOME_BUNDLE_DIR}/run_one_correlation_length.py" >&2
+    exit 2
+fi
+
+python -u "${HOME_BUNDLE_DIR}/run_one_correlation_length.py" \
+    --bundle-root "${SCRATCH_BUNDLE_DIR}" \
+    "${J2_DIRECTORY}" \
+    "${D_BOND}"
+STATUS=$?
+
+echo "FINISHED at $(date) with status ${STATUS}"
+echo "***** END OF JOB *****"
+exit "${STATUS}"

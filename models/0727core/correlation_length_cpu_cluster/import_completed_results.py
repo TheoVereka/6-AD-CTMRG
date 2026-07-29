@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+"""Validate and move downloaded cluster JSON files into 0713summary."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+
+from bundle_utils import (
+    RESULT_NAME_PATTERN,
+    load_manifest,
+    manifest_index,
+    validate_result_payload,
+)
+
+
+DEFAULT_SUMMARY_ROOT = Path(
+    r"D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\0713summary"
+)
+DEFAULT_BUNDLE_ROOT = Path(__file__).resolve().parent
+DEFAULT_INCOMING = DEFAULT_BUNDLE_ROOT / "incoming_results"
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--incoming",
+        type=Path,
+        default=DEFAULT_INCOMING,
+        help="Folder populated manually with scp; searched recursively.",
+    )
+    parser.add_argument(
+        "--summary-root", type=Path, default=DEFAULT_SUMMARY_ROOT
+    )
+    parser.add_argument(
+        "--bundle-root",
+        type=Path,
+        default=DEFAULT_BUNDLE_ROOT,
+        help="Local bundle holding checkpoint_manifest.json.",
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Replace an existing destination correlation_length.json.",
+    )
+    parser.add_argument(
+        "--keep-source",
+        action="store_true",
+        help="Copy instead of the default move-after-validation behavior.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate and report destinations without changing files.",
+    )
+    return parser.parse_args()
+
+
+def within(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def main() -> int:
+    args = parse_args()
+    incoming = args.incoming.resolve()
+    summary_root = args.summary_root.resolve()
+    bundle_root = args.bundle_root.resolve()
+    if not incoming.is_dir():
+        raise NotADirectoryError(incoming)
+    if not summary_root.is_dir():
+        raise NotADirectoryError(summary_root)
+
+    manifest = load_manifest(bundle_root)
+    index = manifest_index(manifest)
+    candidates = sorted(
+        path
+        for path in incoming.rglob("*.json")
+        if RESULT_NAME_PATTERN.fullmatch(path.name)
+    )
+    if not candidates:
+        print(f"No completed result filenames found below {incoming}.")
+        return 0
+
+    seen: set[tuple[str, int]] = set()
+    imported = kept = failed = 0
+    for source in candidates:
+        match = RESULT_NAME_PATTERN.fullmatch(source.name)
+        assert match is not None
+        j2_directory, D_text = match.groups()
+        D_bond = int(D_text)
+        key = (j2_directory, D_bond)
+        item = index.get(key)
+        if item is None:
+            print(f"REJECT not present in manifest: {source}")
+            failed += 1
+            continue
+        if key in seen:
+            print(f"REJECT duplicate downloaded result for {key}: {source}")
+            failed += 1
+            continue
+        seen.add(key)
+
+        try:
+            with source.open("r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+            validate_result_payload(
+                payload, j2=float(item["j2"]), D_bond=D_bond
+            )
+            provenance = payload.get("cluster_bundle_provenance")
+            if not isinstance(provenance, dict):
+                raise ValueError("missing cluster_bundle_provenance")
+            if provenance.get("checkpoint_sha256") != item["sha256"]:
+                raise ValueError("checkpoint hash differs from manifest")
+        except (
+            OSError,
+            ValueError,
+            TypeError,
+            KeyError,
+            json.JSONDecodeError,
+        ) as error:
+            print(f"REJECT invalid or incomplete {source}: {error}")
+            failed += 1
+            continue
+
+        checkpoint = (
+            summary_root / str(item["original_relative_path"])
+        ).resolve()
+        destination = checkpoint.with_name("correlation_length.json")
+        if not within(checkpoint, summary_root):
+            print(f"REJECT manifest path escapes summary root: {checkpoint}")
+            failed += 1
+            continue
+        if not checkpoint.is_file():
+            print(f"REJECT local checkpoint is missing: {checkpoint}")
+            failed += 1
+            continue
+        if destination.exists() and not args.overwrite:
+            print(
+                f"REJECT destination exists (use --overwrite): {destination}"
+            )
+            failed += 1
+            continue
+
+        print(f"{'WOULD IMPORT' if args.dry_run else 'IMPORT'} {source}")
+        print(f"  -> {destination}")
+        if args.dry_run:
+            continue
+
+        cluster_checkpoint = payload.get("checkpoint")
+        payload["checkpoint"] = str(checkpoint)
+        payload["cluster_bundle_provenance"]["cluster_checkpoint"] = (
+            cluster_checkpoint
+        )
+        payload["cluster_bundle_provenance"]["imported_from"] = str(source)
+        payload["cluster_bundle_provenance"]["imported_utc"] = (
+            datetime.now(timezone.utc).isoformat()
+        )
+
+        temporary = destination.with_name(destination.name + ".importing")
+        try:
+            with temporary.open("w", encoding="utf-8") as handle:
+                json.dump(payload, handle, indent=2, allow_nan=True)
+                handle.write("\n")
+            os.replace(temporary, destination)
+        finally:
+            if temporary.exists():
+                temporary.unlink()
+        imported += 1
+        if args.keep_source:
+            kept += 1
+        else:
+            source.unlink()
+
+    print(
+        f"Import summary: imported={imported}, "
+        f"sources_kept={kept}, rejected={failed}, "
+        f"dry_run={args.dry_run}."
+    )
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

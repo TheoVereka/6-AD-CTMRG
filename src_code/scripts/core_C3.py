@@ -708,7 +708,7 @@ class SVD_PROPACK(torch.autograd.Function):
         # print(f"Performing SVD with k={k}, k_extra={k_extra}, rel_cutoff={rel_cutoff.item()}, m_dim={m_dim}, n_dim={n_dim}, k_total={k_total}")
 
 
-        if _RSVD_BACKWARD_MODE != 'full_svd': #and not use_full_svd:
+        if _RSVD_BACKWARD_MODE != 'full_svd' and not bool(use_full_svd):
             # ── Stable randomised SVD forward ──────────────────────────────────
             # Range-finder runs under no_grad (Q is treated as constant).
             # Gradient flows only through  B_proj = Q†A  (q×n, differentiable).

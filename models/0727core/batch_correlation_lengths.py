@@ -19,7 +19,7 @@ from pathlib import Path
 DEFAULT_ROOT = Path(
     r"D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\0713summary"
 )
-DEFAULT_DS = (2, 3, 4, 5, 6)
+DEFAULT_DS = (3, 4, 5, 6)
 ANSATZ_DIRECTORY = "2tensor_twoC3"
 OUTPUT_NAME = "correlation_length.json"
 LOG_NAME = "correlation_length.log"
@@ -46,12 +46,20 @@ def _valid_existing_result(
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
         hyperparameters = payload["calculation_hyperparameters"]
+        recorded_seed = hyperparameters["ctm_random_seed"]
+        if seed is None:
+            seed_matches = (
+                isinstance(recorded_seed, int)
+                and not hyperparameters.get("seed_was_user_specified", False)
+            )
+        else:
+            seed_matches = recorded_seed == seed
         return (
             int(payload["D_bond"]) == D_bond
             and "correlation_length" in payload
             and Path(payload["checkpoint"]).resolve() == checkpoint.resolve()
             and float(hyperparameters["J2"]) == j2
-            and hyperparameters["ctm_random_seed"] == seed
+            and seed_matches
         )
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
         return False
@@ -70,7 +78,7 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         nargs="+",
         default=list(DEFAULT_DS),
-        help="Bond dimensions to process (default: 2 3 4 5).",
+        help="Bond dimensions to process (default: 3 4 5 6; D=2 is disabled).",
     )
     parser.add_argument(
         "--device",

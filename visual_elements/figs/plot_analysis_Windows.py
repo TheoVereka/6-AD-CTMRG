@@ -31,8 +31,15 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR    = os.path.join(SCRIPT_DIR, 'analysis_plots_0713summary')
 os.makedirs(OUT_DIR, exist_ok=True)
 
-# None means: plot every summarized D value.
+# Treat every D below this threshold as absent from all plots and fits.
+MIN_PLOT_D = 3
+
+# None means: plot every summarized D value at or above MIN_PLOT_D.
 D_ALLOWED = None
+
+# Every 1/D subplot uses exactly the same horizontal scale.
+INVERSE_D_X_LEFT = -0.002
+INVERSE_D_X_MAX = (1.0 / MIN_PLOT_D) * 1.30
 
 # -----------------------------------------------------------------------------
 # MANUAL BANS
@@ -186,7 +193,7 @@ def parse_plain_file(fpath):
 
 def _legacy_load_folder_data(folder_path):
     """
-    For each D in D_ALLOWED: pick the plain file with the highest chi.
+    For each selected D >= MIN_PLOT_D, pick the file with the highest chi.
     Ignores lookahead files entirely.
     """
     plain_map = {}   # D → [(chi, path)]
@@ -195,7 +202,9 @@ def _legacy_load_folder_data(folder_path):
         if not m:
             continue
         D, chi = int(m.group(1)), int(m.group(2))
-        if D not in D_ALLOWED:
+        if D < MIN_PLOT_D:
+            continue
+        if D_ALLOWED is not None and D not in D_ALLOWED:
             continue
         plain_map.setdefault(D, []).append((chi, os.path.join(folder_path, fname)))
 
@@ -371,6 +380,8 @@ def load_folder_data(folder_path, j2, ansatz):
         if not match or not os.path.isdir(d_path):
             continue
         D = int(match.group(1))
+        if D < MIN_PLOT_D:
+            continue
         if D_ALLOWED is not None and D not in D_ALLOWED:
             continue
         if is_banned(j2, ansatz, D):
@@ -400,6 +411,8 @@ def load_inverse_correlation_lengths(folder_path, j2, ansatz):
         if not match or not os.path.isdir(d_path):
             continue
         D = int(match.group(1))
+        if D < MIN_PLOT_D:
+            continue
         if D_ALLOWED is not None and D not in D_ALLOWED:
             continue
         if is_banned(j2, ansatz, D):
@@ -652,7 +665,7 @@ def plot_col_energy(ax, v, show_xlabel):
     eps = np.array(v['energy_per_site'])
     ex  = v['extrap']
 
-    x_max = max(inv) * 1.30
+    x_max = INVERSE_D_X_MAX
     inv_line = np.linspace(0, x_max, 300)
 
     col = '#1f77b4'
@@ -676,7 +689,7 @@ def plot_col_energy(ax, v, show_xlabel):
             markeredgewidth=0.5, markeredgecolor='k',
             label=f'{ex["E_best"]:.5f}')
 
-    ax.set_xlim(left=-0.002, right=x_max)
+    ax.set_xlim(left=INVERSE_D_X_LEFT, right=x_max)
     ax.legend(fontsize=7, loc='upper right')
     ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.5g'))
     _set_xticks(ax, x_max, show_xlabel)
@@ -686,7 +699,7 @@ def plot_col_mag(ax, v, show_xlabel):
     inv = 1.0 / Ds
     ms  = np.array(v['mneel_list'])
 
-    x_max    = max(inv) * 1.30
+    x_max    = INVERSE_D_X_MAX
     inv_line = np.linspace(0, x_max, 300)
 
     col = '#9467bd'
@@ -718,7 +731,7 @@ def plot_col_mag(ax, v, show_xlabel):
                 markeredgewidth=0.5, markeredgecolor='k', zorder=7,
                 label=f'{m_ctr:.4f}')
 
-    ax.set_xlim(left=-0.002, right=x_max)
+    ax.set_xlim(left=INVERSE_D_X_LEFT, right=x_max)
     ax.legend(fontsize=7, loc='upper right')
     ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.4g'))
     _set_xticks(ax, x_max, show_xlabel)
@@ -728,7 +741,7 @@ def plot_col_nn(ax, v, show_xlabel):
     D_list = sorted(nn_grp.keys())
     inv    = [1.0 / D for D in D_list]
 
-    x_max = max(inv) * 1.30
+    x_max = INVERSE_D_X_MAX
     for target_rank in [1, 2, 3]:
         m_r = []
         for D in D_list:
@@ -739,7 +752,7 @@ def plot_col_nn(ax, v, show_xlabel):
         ax.plot(inv, m_r, 'o-', color=RANK_COLORS[target_rank], ms=5, lw=1.2,
                 label=RANK_LABELS[target_rank])
 
-    ax.set_xlim(left=-0.002, right=x_max)
+    ax.set_xlim(left=INVERSE_D_X_LEFT, right=x_max)
     ax.legend(fontsize=7, loc='upper right')
     ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.4g'))
     _set_xticks(ax, x_max, show_xlabel, force_label=True)
@@ -748,16 +761,19 @@ def plot_col_nn(ax, v, show_xlabel):
 
 
 def plot_col_inverse_xi(ax, v):
-    """Plot log(|lambda_max/lambda_second|) against inverse bond dimension."""
+    """Plot inverse xi against inverse D, using correlation data with D >= 3."""
     correlation_data = v.get('inverse_correlation_lengths', {})
     D_list = sorted(correlation_data)
+    if not D_list:
+        ax.axis('off')
+        return
     inv_D = np.asarray([1.0 / D for D in D_list], dtype=float)
     inverse_xi = np.asarray(
         [correlation_data[D]['inverse_xi'] for D in D_list],
         dtype=float,
     )
 
-    x_max = max(inv_D) * 1.30
+    x_max = INVERSE_D_X_MAX
     ax.plot(
         inv_D,
         inverse_xi,
@@ -767,7 +783,7 @@ def plot_col_inverse_xi(ax, v):
         lw=1.5,
         zorder=5,
     )
-    ax.set_xlim(left=-0.002, right=x_max)
+    ax.set_xlim(left=INVERSE_D_X_LEFT, right=x_max)
     ax.set_xlabel(r'$1/D$', fontsize=10)
     ax.set_ylabel(
         r'$\xi^{-1}=\ln|\lambda_{\max}/\lambda_{2}|$',

@@ -32,6 +32,7 @@ import gc
 import json
 import math
 import os
+import secrets
 import sys
 import time
 from collections.abc import Callable, Sequence
@@ -66,6 +67,8 @@ DEFAULT_MAX_INTERMEDIATE_MIB = 256.0
 DEFAULT_ARPACK_NCV = 64
 DEFAULT_ARPACK_MAXITER = 4000
 DEFAULT_CORNER_RELATIVE_CUTOFF = 1.0e-14
+DISABLED_CORRELATION_LENGTH_DS = frozenset({2})
+FULL_SVD_CORRELATION_LENGTH_DS = frozenset({3, 4})
 
 _MIB = 1024**2
 
@@ -1249,7 +1252,7 @@ def _diagonalize_operator(
     ncv: int,
     maxiter: int,
     dense_dimension_threshold: int,
-    seed: int,
+    seed: int | None,
 ) -> EigensolverResult:
     if tol < 0.0:
         raise ValueError("tol cannot be negative.")
@@ -1343,7 +1346,7 @@ def diagonalize_first_two_largest_eigval(
     ncv: int = DEFAULT_ARPACK_NCV,
     maxiter: int = DEFAULT_ARPACK_MAXITER,
     dense_dimension_threshold: int = 256,
-    seed: int = 0,
+    seed: int | None = None,
     return_result: bool = False,
 ) -> torch.Tensor | EigensolverResult:
     """Return the two eigenvalues with largest absolute value.
@@ -1469,13 +1472,39 @@ def obtain_per_D_correlation_length(
     arpack_ncv: int = DEFAULT_ARPACK_NCV,
     arpack_maxiter: int = DEFAULT_ARPACK_MAXITER,
     dense_dimension_threshold: int = 256,
-    seed: int = 0,
+    seed: int | None = None,
     progress_every: int = 0,
     matrix_free: bool = False,
     corner_relative_cutoff: float = DEFAULT_CORNER_RELATIVE_CUTOFF,
     return_result: bool = False,
 ) -> float | CorrelationLengthResult:
     """Run both CTMRG boundaries and compute one correlation length."""
+
+    D_bond = int(a.shape[0])
+    if D_bond in DISABLED_CORRELATION_LENGTH_DS:
+        raise ValueError(
+            "Correlation-length calculations are disabled for D=2 because "
+            "the CTM empty-row metric is numerically ill-conditioned."
+        )
+    effective_rsvd_mode = (
+        "full_svd"
+        if D_bond in FULL_SVD_CORRELATION_LENGTH_DS
+        else rsvd_mode
+    )
+    effective_force_full_svd = (
+        force_full_svd or D_bond in FULL_SVD_CORRELATION_LENGTH_DS
+    )
+
+    resolved_seed = (
+        secrets.randbits(32) if seed is None else int(seed)
+    )
+    if not 0 <= resolved_seed < 2**32:
+        raise ValueError("seed must be in the interval [0, 2**32).")
+    np.random.seed(resolved_seed)
+    torch.manual_seed(resolved_seed)
+    target_device = torch.device(device) if device is not None else a.device
+    if target_device.type == "cuda":
+        torch.cuda.manual_seed_all(resolved_seed)
 
     components = obtain_transfer_components(
         a,
@@ -1486,10 +1515,10 @@ def obtain_per_D_correlation_length(
         ctm_conv_mode=ctm_conv_mode,
         ctm_e_conv_threshold=ctm_e_conv_threshold,
         identity_init=identity_init,
-        rsvd_mode=rsvd_mode,
+        rsvd_mode=effective_rsvd_mode,
         rsvd_neumann_terms=rsvd_neumann_terms,
         rsvd_power_iters=rsvd_power_iters,
-        force_full_svd=force_full_svd,
+        force_full_svd=effective_force_full_svd,
         j1=j1,
         j2=j2,
         dtype=dtype,
@@ -1533,7 +1562,7 @@ def obtain_per_D_correlation_length(
         ncv=arpack_ncv,
         maxiter=arpack_maxiter,
         dense_dimension_threshold=dense_dimension_threshold,
-        seed=seed,
+        seed=resolved_seed,
         return_result=True,
     )
     if not isinstance(eigensolver, EigensolverResult):
@@ -1556,7 +1585,7 @@ def obtain_per_D_correlation_length(
         transfer_mode=(
             "matrix_free_corner_whitened"
             if matrix_free
-            else "dense_gpu_corner_whitened"
+            else f"dense_{transfer.device.type}_corner_whitened"
         ),
         transfer_matrix_gib=(
             0.0
@@ -1786,8 +1815,8 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help=(
-            "Optional CTMRG random seed. The LBFGS default leaves it unset. "
-            "The ARPACK start vector remains deterministic when omitted."
+            "Optional CTMRG/eigensolver seed. When omitted, draw a fresh "
+            "random 32-bit seed and record it in the output."
         ),
     )
     parser.add_argument(
@@ -1808,12 +1837,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     device = _parse_device(args.device)
     dtype = torch.float32 if args.single else torch.float64
-    if args.seed is not None:
-        np.random.seed(args.seed)
-        torch.manual_seed(args.seed)
-        if device.type == "cuda":
-            torch.cuda.manual_seed_all(args.seed)
-    eigensolver_seed = 0 if args.seed is None else args.seed
+    seed_was_user_specified = args.seed is not None
+    resolved_seed = secrets.randbits(32) if args.seed is None else int(args.seed)
+    if not 0 <= resolved_seed < 2**32:
+        raise ValueError("--seed must be in the interval [0, 2**32).")
     if device.type == "cuda":
         torch.set_num_threads(1)
 
@@ -1828,6 +1855,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     chi = int(chi)
 
     D_bond = int(a.shape[0])
+    if D_bond in DISABLED_CORRELATION_LENGTH_DS:
+        raise ValueError(
+            "Correlation-length calculations are disabled for D=2 because "
+            "the CTM empty-row metric is numerically ill-conditioned."
+        )
+    effective_rsvd_mode = (
+        "full_svd"
+        if D_bond in FULL_SVD_CORRELATION_LENGTH_DS
+        else args.rsvd_mode
+    )
     checkpoint_D = metadata.get("D_bond")
     if checkpoint_D is not None and int(checkpoint_D) != D_bond:
         raise ValueError(
@@ -1862,15 +1899,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         "energy_proxy": "main_C3_LBFGS_three_environment_energy",
         "J1": args.J1,
         "J2": args.J2,
-        "rsvd_mode": args.rsvd_mode,
+        "rsvd_mode_requested": args.rsvd_mode,
+        "rsvd_mode": effective_rsvd_mode,
         "rsvd_neumann_terms": args.rsvd_neumann_terms,
         "rsvd_power_iters": args.rsvd_power_iters,
-        "force_full_svd_forward": False,
+        "force_full_svd_forward": effective_rsvd_mode == "full_svd",
         "max_intermediate_mib": args.max_intermediate_mib,
         "transfer_mode": (
             "matrix_free_corner_whitened"
             if args.matrix_free
-            else "dense_gpu_corner_whitened"
+            else f"dense_{device.type}_corner_whitened"
         ),
         "corner_relative_cutoff": args.corner_relative_cutoff,
         "expected_dense_transfer_gib": expected_transfer_gib,
@@ -1878,8 +1916,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         "arpack_ncv": args.arpack_ncv,
         "arpack_maxiter": args.arpack_maxiter,
         "dense_diagonalization_dimension_threshold": args.dense_threshold,
-        "ctm_random_seed": args.seed,
-        "eigensolver_seed": eigensolver_seed,
+        "ctm_random_seed": resolved_seed,
+        "eigensolver_seed": resolved_seed,
+        "seed_was_user_specified": seed_was_user_specified,
     }
 
     print(
@@ -1887,6 +1926,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"dtype={dtype}, device={device}.",
         flush=True,
     )
+    if D_bond in FULL_SVD_CORRELATION_LENGTH_DS:
+        print(
+            f"D={D_bond} policy: forcing deterministic full-SVD CTMRG "
+            "truncations.",
+            flush=True,
+        )
     print(
         "Running CTMRG for the (a, b) and (b, a) boundaries, then building "
         f"the {calculation_hyperparameters['transfer_mode']} transfer operator.",
@@ -1921,7 +1966,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         arpack_ncv=args.arpack_ncv,
         arpack_maxiter=args.arpack_maxiter,
         dense_dimension_threshold=args.dense_threshold,
-        seed=eigensolver_seed,
+        seed=resolved_seed,
         progress_every=args.progress_every,
         matrix_free=args.matrix_free,
         corner_relative_cutoff=args.corner_relative_cutoff,
@@ -1947,9 +1992,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         output_directory = os.path.dirname(output_path)
         if output_directory:
             os.makedirs(output_directory, exist_ok=True)
-        with open(output_path, "w", encoding="utf-8") as handle:
+        temporary_output_path = output_path + ".tmp"
+        with open(temporary_output_path, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=2, allow_nan=True)
             handle.write("\n")
+        os.replace(temporary_output_path, output_path)
         print(f"Saved {output_path}", flush=True)
         sys.stdout.flush()
 

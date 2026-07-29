@@ -1,0 +1,10 @@
+__pycache__/
+checkpoints/
+results/
+incoming_results/
+checkpoint_manifest.json
+checkpoint_manifest.tsv
+job-*.out
+job-*.error
+*.copying
+*.importing
