@@ -397,11 +397,12 @@ def load_folder_data(folder_path, j2, ansatz):
 
 
 def load_inverse_correlation_lengths(folder_path, j2, ansatz):
-    """Discover correlation JSON files and compute inverse xi from eigenvalues.
+    """Discover v4 three-direction generalized correlation JSON files.
 
-    The plotted value is calculated directly as
-    ``log(abs(lambda_max / lambda_second))``.  The separately recorded
-    ``correlation_length`` field is deliberately not used.
+    Each directional value is recalculated directly as
+    ``log(abs(lambda_max / lambda_second))``.  Their sorted median is plotted;
+    their minimum and maximum are the asymmetric error-bar endpoints.  No
+    stored ``correlation_length`` or precomputed inverse value is trusted.
     """
     result = {}
     for name in sorted(os.listdir(folder_path)):
@@ -424,35 +425,57 @@ def load_inverse_correlation_lengths(folder_path, j2, ansatz):
             with open(fpath, encoding='utf-8') as handle:
                 payload = json.load(handle)
             if (
-                payload.get('transfer_network_schema')
-                != 'straight_row_env2_v3'
+                payload.get('schema')
+                != 'twoc3_three_generalized_correlation_lengths'
+                or payload.get('schema_version') != 4
+                or payload.get('transfer_network_schema')
+                != 'three_geometric_straight_rows_generalized_v4'
             ):
                 raise ValueError(
-                    'obsolete pre-v2 correlation-length transfer topology'
+                    'obsolete non-three-direction correlation-length result'
                 )
-            eigenvalues = payload['eigenvalues']
-            if len(eigenvalues) < 2:
-                raise ValueError('fewer than two recorded eigenvalues')
+            directional = {}
+            for direction in (
+                'env2',
+                'env1_ab_env3_ba',
+                'env3_ab_env1_ba',
+            ):
+                eigenvalues = payload['spectra'][direction]['eigenvalues']
+                if len(eigenvalues) < 2:
+                    raise ValueError(
+                        f'{direction}: fewer than two recorded eigenvalues'
+                    )
+                lambdas = [
+                    complex(float(value['real']), float(value['imag']))
+                    for value in eigenvalues[:2]
+                ]
+                lambda_max, lambda_second = sorted(
+                    lambdas,
+                    key=abs,
+                    reverse=True,
+                )
+                largest = abs(lambda_max)
+                second = abs(lambda_second)
+                if not np.isfinite(largest) or not np.isfinite(second):
+                    raise ValueError(
+                        f'{direction}: non-finite eigenvalue magnitude'
+                    )
+                if largest <= 0.0 or second <= 0.0:
+                    raise ValueError(
+                        f'{direction}: eigenvalue magnitudes must be positive'
+                    )
+                directional[direction] = math.log(
+                    abs(lambda_max / lambda_second)
+                )
 
-            lambdas = [
-                complex(float(value['real']), float(value['imag']))
-                for value in eigenvalues[:2]
-            ]
-            lambda_max, lambda_second = sorted(
-                lambdas,
-                key=abs,
-                reverse=True,
-            )
-            largest = abs(lambda_max)
-            second = abs(lambda_second)
-            if not np.isfinite(largest) or not np.isfinite(second):
-                raise ValueError('non-finite eigenvalue magnitude')
-            if largest <= 0.0 or second <= 0.0:
-                raise ValueError('both eigenvalue magnitudes must be positive')
-
+            lower, center, upper = sorted(directional.values())
             result[D] = {
-                'inverse_xi': math.log(abs(lambda_max / lambda_second)),
-                'lambda_magnitudes': (largest, second),
+                'inverse_xi': center,
+                'inverse_xi_lower': lower,
+                'inverse_xi_upper': upper,
+                'inverse_xi_lower_error': center - lower,
+                'inverse_xi_upper_error': upper - center,
+                'directional_inverse_xi': directional,
                 'source': fpath,
             }
         except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
@@ -575,9 +598,9 @@ def compute_j2_ylims(ansatz_map):
         for D_entry in v['nn_groups'].values():
             all_nn.extend(x for x in D_entry['means'] if not np.isnan(x))
         all_inverse_xi.extend(
-            entry['inverse_xi']
+            entry['inverse_xi_upper']
             for entry in v.get('inverse_correlation_lengths', {}).values()
-            if np.isfinite(entry['inverse_xi'])
+            if np.isfinite(entry['inverse_xi_upper'])
         )
 
     e_ylim  = _pad(min(all_e), max(all_e))
@@ -709,15 +732,26 @@ def plot_col_inverse_xi(ax, v):
         [correlation_data[D]['inverse_xi'] for D in D_list],
         dtype=float,
     )
+    lower_error = np.asarray(
+        [correlation_data[D]['inverse_xi_lower_error'] for D in D_list],
+        dtype=float,
+    )
+    upper_error = np.asarray(
+        [correlation_data[D]['inverse_xi_upper_error'] for D in D_list],
+        dtype=float,
+    )
 
     x_max = INVERSE_D_X_MAX
-    ax.plot(
+    ax.errorbar(
         inv_D,
         inverse_xi,
-        'o-',
+        yerr=np.vstack((lower_error, upper_error)),
+        fmt='o-',
         color='tab:brown',
         ms=6,
         lw=1.5,
+        capsize=3,
+        elinewidth=1.0,
         zorder=5,
     )
     ax.set_xlim(left=INVERSE_D_X_LEFT, right=x_max)

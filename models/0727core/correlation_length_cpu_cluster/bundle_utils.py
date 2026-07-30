@@ -13,7 +13,7 @@ ANSATZ_DIRECTORY = "2tensor_twoC3"
 MANIFEST_JSON = "checkpoint_manifest.json"
 MANIFEST_TSV = "checkpoint_manifest.tsv"
 CHECKPOINT_DIRECTORY = "checkpoints"
-RESULT_DIRECTORY = "results_straight_rows_v3"
+RESULT_DIRECTORY = "results_three_env_generalized_v4"
 J2_DIRECTORY_PATTERN = re.compile(r"^J2_(\d+(?:p\d+)?)$")
 CHECKPOINT_NAME_PATTERN = re.compile(
     r"^tensor_best__(J2_\d+(?:p\d+)?)__D_(\d+)\.pt$"
@@ -81,33 +81,63 @@ def validate_result_payload(
     D_bond: int,
 ) -> None:
     if (
-        payload.get("transfer_network_schema")
-        != "straight_row_env2_v3"
+        payload.get("schema")
+        != "twoc3_three_generalized_correlation_lengths"
+        or payload.get("schema_version") != 4
+        or payload.get("transfer_network_schema")
+        != "three_geometric_straight_rows_generalized_v4"
     ):
         raise ValueError(
-            "Result does not use the audited straight-row v3 topology"
+            "Result does not use the audited three-direction generalized v4 "
+            "topology"
         )
     if int(payload["D_bond"]) != D_bond:
         raise ValueError("D_bond does not match the requested job")
     recorded_j2 = float(payload["calculation_hyperparameters"]["J2"])
     if not math.isclose(recorded_j2, j2, rel_tol=0.0, abs_tol=1.0e-12):
         raise ValueError("J2 does not match the requested job")
-    eigenvalues = payload["eigenvalues"]
-    if not isinstance(eigenvalues, list) or len(eigenvalues) < 2:
-        raise ValueError("Result does not contain two eigenvalues")
-    for value in eigenvalues[:2]:
-        real = float(value["real"])
-        imag = float(value["imag"])
-        if not math.isfinite(real) or not math.isfinite(imag):
-            raise ValueError("Result contains a non-finite eigenvalue")
+    spectra = payload["spectra"]
+    required = ("env2", "env1_ab_env3_ba", "env3_ab_env1_ba")
+    inverse_values: list[float] = []
+    for key in required:
+        spectrum = spectra[key]
+        eigenvalues = spectrum["eigenvalues"]
+        if not isinstance(eigenvalues, list) or len(eigenvalues) < 2:
+            raise ValueError(f"{key} does not contain two eigenvalues")
+        magnitudes: list[float] = []
+        for value in eigenvalues[:2]:
+            real = float(value["real"])
+            imag = float(value["imag"])
+            if not math.isfinite(real) or not math.isfinite(imag):
+                raise ValueError(f"{key} contains a non-finite eigenvalue")
+            magnitudes.append(math.hypot(real, imag))
+        magnitudes.sort(reverse=True)
+        if magnitudes[1] <= 0.0:
+            raise ValueError(f"{key} has a zero subleading eigenvalue")
+        inverse_xi = math.log(magnitudes[0] / magnitudes[1])
+        recorded = float(spectrum["inverse_correlation_length"])
+        if not math.isclose(
+            recorded, inverse_xi, rel_tol=1.0e-11, abs_tol=1.0e-13
+        ):
+            raise ValueError(f"{key} inverse xi was not computed from lambdas")
+        inverse_values.append(inverse_xi)
+    summary = payload["inverse_correlation_length"]
+    ordered = sorted(inverse_values)
+    for field, expected in zip(
+        ("lower", "center", "upper"), ordered, strict=True
+    ):
+        if not math.isclose(
+            float(summary[field]), expected, rel_tol=1.0e-11, abs_tol=1.0e-13
+        ):
+            raise ValueError(f"Invalid inverse-xi summary field: {field}")
     if "correlation_length" not in payload:
         raise ValueError("Result has no correlation_length field")
-    hyperparameters = payload["calculation_hyperparameters"]
-    max_steps = int(hyperparameters["ctm_max_steps"])
-    if int(payload["ctm_steps_ab"]) >= max_steps:
-        raise ValueError("(a,b) CTMRG did not converge before its step limit")
-    if int(payload["ctm_steps_ba"]) >= max_steps:
-        raise ValueError("(b,a) CTMRG did not converge before its step limit")
+    ctm = payload["ctm"]
+    max_steps = int(ctm["max_steps"])
+    if int(ctm["steps_ab"]) > max_steps:
+        raise ValueError("(a,b) CTMRG did not converge within its step budget")
+    if int(ctm["steps_ba"]) > max_steps:
+        raise ValueError("(b,a) CTMRG did not converge within its step budget")
 
 
 def is_valid_result(path: Path, *, j2: float, D_bond: int) -> bool:

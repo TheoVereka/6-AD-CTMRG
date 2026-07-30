@@ -91,18 +91,29 @@ def _run_three_environments(
     D: int,
     ctm_max_steps: int,
     ctm_conv_tol: float,
+    j1: float,
+    j2: float,
     identity_init: bool,
     keep_double_layers: bool,
 ) -> ThreeEnvironments:
-    _, double_layers = corr._build_ctm_layers(raw_a, raw_b)
+    sites, double_layers = corr._build_ctm_layers(raw_a, raw_b)
+    energy_proxy, _ = corr._build_lbfgs_energy_proxy(
+        sites,
+        chi=chi,
+        D_bond=D,
+        j1=j1,
+        j2=j2,
+    )
     result = core.CTMRG_from_init_to_stop(
         *double_layers,
         chi,
         D**2,
-        ctm_max_steps,
+        # One sentinel iteration disambiguates convergence on the final
+        # allowed check from actual loop exhaustion in core_C3.
+        ctm_max_steps + 1,
         ctm_conv_tol,
         identity_init,
-        energy_proxy_fn=None,
+        energy_proxy_fn=energy_proxy,
     )
     # One matched refresh per representative, always from its predecessor.
     env1_values = core.update_environmentCTs_3to1_C3(
@@ -126,7 +137,15 @@ def _run_three_environments(
         double_layers=kept,
         ctm_steps=int(result[-1]),
     )
-    del result, env1_values, env2_values, env3_values, double_layers
+    del (
+        result,
+        env1_values,
+        env2_values,
+        env3_values,
+        double_layers,
+        sites,
+        energy_proxy,
+    )
     return output
 
 
@@ -232,8 +251,8 @@ def _is_valid_completed_output(path: Path, *, j2: float, D: int) -> bool:
             return False
         ctm = document["ctm"]
         if not (
-            ctm["converged_ab_before_limit"]
-            and ctm["converged_ba_before_limit"]
+            ctm["converged_ab_within_budget"]
+            and ctm["converged_ba_within_budget"]
         ):
             return False
         spectra = document["spectra"]
@@ -257,8 +276,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--threads", type=int, default=DEFAULT_THREADS)
     parser.add_argument("--seed", type=int)
-    parser.add_argument("--ctm-max-steps", type=int, default=300)
-    parser.add_argument("--ctm-conv-tol", type=float, default=1.0e-11)
+    parser.add_argument(
+        "--ctm-max-steps", type=int, default=corr.DEFAULT_CTM_MAX_STEPS
+    )
+    parser.add_argument(
+        "--ctm-conv-tol", type=float, default=corr.DEFAULT_CTM_CONV_TOL
+    )
+    parser.add_argument(
+        "--ctm-conv-mode",
+        choices=("SVdifference", "Edifference", "both"),
+        default=corr.DEFAULT_CTM_CONV_MODE,
+    )
+    parser.add_argument(
+        "--ctm-e-conv-threshold",
+        type=float,
+        default=corr.DEFAULT_CTM_E_CONV_THRESHOLD,
+    )
     parser.add_argument("--random-init", action="store_true")
     parser.add_argument("--eig-tol", type=float, default=0.0)
     parser.add_argument("--arpack-ncv", type=int, default=64)
@@ -339,7 +372,10 @@ def main() -> int:
         neumann_terms=corr.DEFAULT_RSVD_NEUMANN_TERMS,
         power_iters=corr.DEFAULT_RSVD_POWER_ITERS,
     )
-    core.set_ctm_conv_mode("SVdifference")
+    core.set_ctm_conv_mode(
+        args.ctm_conv_mode,
+        e_threshold=args.ctm_e_conv_threshold,
+    )
 
     started = time.perf_counter()
     print(
@@ -354,6 +390,8 @@ def main() -> int:
         D=D,
         ctm_max_steps=args.ctm_max_steps,
         ctm_conv_tol=args.ctm_conv_tol,
+        j1=corr.DEFAULT_J1,
+        j2=args.J2,
         identity_init=not args.random_init,
         keep_double_layers=True,
     )
@@ -364,6 +402,8 @@ def main() -> int:
         D=D,
         ctm_max_steps=args.ctm_max_steps,
         ctm_conv_tol=args.ctm_conv_tol,
+        j1=corr.DEFAULT_J1,
+        j2=args.J2,
         identity_init=not args.random_init,
         keep_double_layers=False,
     )
@@ -474,13 +514,15 @@ def main() -> int:
         "ctm": {
             "max_steps": args.ctm_max_steps,
             "convergence_tolerance": args.ctm_conv_tol,
-            "convergence_mode": "SVdifference",
+            "convergence_mode": args.ctm_conv_mode,
+            "energy_convergence_threshold": args.ctm_e_conv_threshold,
             "identity_init": not args.random_init,
             "svd_mode": "full_svd" if force_full else corr.DEFAULT_RSVD_MODE,
             "steps_ab": ab.ctm_steps,
             "steps_ba": ba.ctm_steps,
-            "converged_ab_before_limit": ab.ctm_steps < args.ctm_max_steps,
-            "converged_ba_before_limit": ba.ctm_steps < args.ctm_max_steps,
+            "converged_ab_within_budget": ab.ctm_steps <= args.ctm_max_steps,
+            "converged_ba_within_budget": ba.ctm_steps <= args.ctm_max_steps,
+            "internal_sentinel_max_steps": args.ctm_max_steps + 1,
         },
         "eigensolver": {
             "tolerance": args.eig_tol,

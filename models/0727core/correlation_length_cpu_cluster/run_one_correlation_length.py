@@ -36,7 +36,11 @@ def validate_solver_snapshot(manifest: dict[str, object]) -> None:
     if not isinstance(hashes, dict):
         raise ValueError("Manifest does not record solver source hashes")
     source_root = Path(__file__).resolve().parent
-    for filename in ("correlation_length.py", "core_C3.py"):
+    for filename in (
+        "correlation_length.py",
+        "core_C3.py",
+        "compute_three_generalized_correlation_lengths.py",
+    ):
         expected = hashes.get(filename)
         source = source_root / filename
         if not source.is_file():
@@ -57,7 +61,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path(__file__).resolve().parent,
         help=(
-            "Self-contained bundle holding checkpoints, the v3 result "
+            "Self-contained bundle holding checkpoints, the v4 result "
             "directory, and manifests."
         ),
     )
@@ -137,7 +141,9 @@ def main() -> int:
         raise FileNotFoundError(checkpoint)
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    solver = Path(__file__).resolve().with_name("correlation_length.py")
+    solver = Path(__file__).resolve().with_name(
+        "compute_three_generalized_correlation_lengths.py"
+    )
     if not solver.is_file():
         raise FileNotFoundError(solver)
     command = [
@@ -145,14 +151,8 @@ def main() -> int:
         "-u",
         str(solver),
         str(checkpoint),
-        "--device",
-        "cpu",
         "--J2",
         format(j2, ".12g"),
-        "--ctm-max-steps",
-        "300",
-        "--ctm-conv-tol",
-        "1e-11",
         "--progress-every",
         "10",
         "--output",
@@ -162,7 +162,7 @@ def main() -> int:
     process = subprocess.run(command, check=False)
     if process.returncode != 0:
         print(
-            f"correlation_length.py failed with exit code "
+            f"three-environment correlation solver failed with exit code "
             f"{process.returncode}.",
             file=sys.stderr,
             flush=True,

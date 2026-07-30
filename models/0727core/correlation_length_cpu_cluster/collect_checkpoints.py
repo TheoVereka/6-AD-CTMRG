@@ -90,7 +90,11 @@ def write_manifests(
         for item in items
     ]
     solver_files: dict[str, str] = {}
-    for filename in ("correlation_length.py", "core_C3.py"):
+    for filename in (
+        "correlation_length.py",
+        "core_C3.py",
+        "compute_three_generalized_correlation_lengths.py",
+    ):
         solver_path = bundle_root / filename
         if not solver_path.is_file():
             raise FileNotFoundError(

@@ -5,7 +5,7 @@ With no arguments, this script expects the cluster bundle at
 ``D:/HyraiOn/ENS_Lyon/Internship/2026-EPFL/data/correlation_length_cpu_cluster``.
 
 It reads completed JSON files from that bundle's
-results_straight_rows_v3/ directory and moves them into their directly
+results_three_env_generalized_v4/ directory and moves them into their directly
 plottable locations below 0713summary.
 """
 
@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from bundle_utils import (
+    RESULT_DIRECTORY,
     RESULT_NAME_PATTERN,
     load_manifest,
     manifest_index,
@@ -33,9 +34,9 @@ DEFAULT_DOWNLOADED_BUNDLE_ROOT = Path(
     r"D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data"
 ) / "correlation_length_cpu_cluster"
 DEFAULT_BUNDLE_ROOT = DEFAULT_DOWNLOADED_BUNDLE_ROOT
-DEFAULT_INCOMING = (
-    DEFAULT_DOWNLOADED_BUNDLE_ROOT / "results_straight_rows_v3"
-)
+# Search the downloaded bundle recursively.  This also tolerates scp placing
+# a second correlation_length_cpu_cluster directory below an existing one.
+DEFAULT_INCOMING = DEFAULT_DOWNLOADED_BUNDLE_ROOT
 
 
 def parse_args() -> argparse.Namespace:
@@ -45,9 +46,8 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_INCOMING,
         help=(
-            "Completed result directory; defaults to "
-            "results_straight_rows_v3/ inside the recursively downloaded "
-            "cluster bundle."
+            "Downloaded correlation_length_cpu_cluster tree. Only JSON files "
+            "below a results_three_env_generalized_v4 directory are considered."
         ),
     )
     parser.add_argument(
@@ -88,7 +88,7 @@ def within(path: Path, root: Path) -> bool:
     return True
 
 
-def is_current_v3_destination(
+def is_current_v4_destination(
     path: Path, *, j2: float, D_bond: int
 ) -> bool:
     try:
@@ -118,16 +118,35 @@ def main() -> int:
 
     manifest = load_manifest(bundle_root)
     index = manifest_index(manifest)
-    candidates = sorted(
+    discovered_candidates = sorted(
         path
         for path in incoming.rglob("*.json")
         if RESULT_NAME_PATTERN.fullmatch(path.name)
+        and RESULT_DIRECTORY in path.parts
     )
-    if not candidates:
+    if not discovered_candidates:
         print(f"No completed result filenames found below {incoming}.")
         return 0
 
-    seen: set[tuple[str, int]] = set()
+    # Repeated ``scp -r`` can leave identical nested bundle copies. Select the
+    # newest file for each (J2,D) rather than failing the entire import.
+    newest_by_key: dict[tuple[str, int], Path] = {}
+    for path in discovered_candidates:
+        match = RESULT_NAME_PATTERN.fullmatch(path.name)
+        assert match is not None
+        token, D_text = match.groups()
+        key = (token, int(D_text))
+        previous = newest_by_key.get(key)
+        if previous is None or path.stat().st_mtime_ns > previous.stat().st_mtime_ns:
+            newest_by_key[key] = path
+    candidates = sorted(newest_by_key.values())
+    duplicates = len(discovered_candidates) - len(candidates)
+    if duplicates:
+        print(
+            f"Ignoring {duplicates} older duplicate result file(s) from "
+            "nested downloaded bundles."
+        )
+
     imported = kept = failed = 0
     for source in candidates:
         match = RESULT_NAME_PATTERN.fullmatch(source.name)
@@ -140,12 +159,6 @@ def main() -> int:
             print(f"REJECT not present in manifest: {source}")
             failed += 1
             continue
-        if key in seen:
-            print(f"REJECT duplicate downloaded result for {key}: {source}")
-            failed += 1
-            continue
-        seen.add(key)
-
         try:
             with source.open("r", encoding="utf-8") as handle:
                 payload = json.load(handle)
@@ -181,16 +194,16 @@ def main() -> int:
             failed += 1
             continue
         if destination.exists() and not args.overwrite:
-            if is_current_v3_destination(
+            if is_current_v4_destination(
                 destination, j2=float(item["j2"]), D_bond=D_bond
             ):
                 print(
-                    f"REJECT current v3 destination exists "
+                    f"REJECT current v4 destination exists "
                     f"(use --overwrite): {destination}"
                 )
                 failed += 1
                 continue
-            print(f"REPLACE obsolete pre-v3 destination: {destination}")
+            print(f"REPLACE obsolete pre-v4 destination: {destination}")
 
         print(f"{'WOULD IMPORT' if args.dry_run else 'IMPORT'} {source}")
         print(f"  -> {destination}")

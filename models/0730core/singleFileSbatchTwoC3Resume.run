@@ -1,0 +1,53 @@
+#!/bin/bash
+#SBATCH --job-name=c3D10resume
+#SBATCH --qos=long
+#SBATCH --partition=h100
+#SBATCH --gres=gpu:1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=90G
+#SBATCH --time=167:59:50
+#SBATCH --output=output_%x_%j.log
+
+set -euo pipefail
+: "${J2:?J2 must be exported by submit_all_7.sh}"
+
+module load nvhpc/24.7-mpi
+module load cuda/12.5.1
+source /home/pghosh/venvs/6adctmrg_Kuma/bin/activate
+
+D=10
+EXTRA_ARGS=()
+
+case "${J2}" in
+    0.26)
+        CHECKPOINT="/home/pghosh/0730Kuma/26twoD10chi160.pt"
+        EXTRA_ARGS=(--chi-min 160)
+        ;;
+    0.27)
+        CHECKPOINT="/home/pghosh/0730Kuma/27twoD10chi140then160.pt"
+        ;;
+    *)
+        echo "Unsupported resume J2: ${J2}; expected 0.26 or 0.27." >&2
+        exit 2
+        ;;
+esac
+
+if [[ ! -f "${CHECKPOINT}" ]]; then
+    echo "Missing resume checkpoint: ${CHECKPOINT}" >&2
+    exit 1
+fi
+
+OUTDIR="./Results_J2_twoc3_${J2}/D_${D}"
+mkdir -p "${OUTDIR}"
+
+python /home/pghosh/0730Kuma/main_LBFGS.py \
+    --J2 "${J2}" \
+    --ansatz twoc3 \
+    --Ds "${D}" \
+    --output-dir "${OUTDIR}" \
+    --resume "${CHECKPOINT}" \
+    "${EXTRA_ARGS[@]}"
+
+echo "END OF JOB"
+cp -r /scratch/pghosh/Working_AD_Honeycomb_July30 /home/pghosh/Data_Backup/

@@ -13,7 +13,8 @@ both as the physical corner-metric generalized eigenproblem and, for
 diagnostics only, as an ordinary eigenproblem. The output schema is
 `three_geometric_straight_rows_v3`.
 
-The default CTMRG tolerance is `1e-11`. D=3 and D=4 force full-SVD CTMRG;
+CTMRG uses the production settings: at most 70 steps, SV tolerance `1e-7`,
+mode `both`, and energy tolerance `2e-8`. D=3 and D=4 force full-SVD CTMRG;
 D>=5 keeps the production augmented-rSVD policy. D=2 is rejected.
 
 ## Upload and submit

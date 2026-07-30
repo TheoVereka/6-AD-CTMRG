@@ -46,17 +46,20 @@ def _valid_existing_result(
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
         hyperparameters = payload["calculation_hyperparameters"]
-        recorded_seed = hyperparameters["ctm_random_seed"]
+        recorded_seed = payload["seed"]
         if seed is None:
             seed_matches = (
                 isinstance(recorded_seed, int)
-                and not hyperparameters.get("seed_was_user_specified", False)
+                and payload.get("seed_was_randomized", False)
             )
         else:
             seed_matches = recorded_seed == seed
         return (
-            payload.get("transfer_network_schema")
-            == "straight_row_env2_v3"
+            payload.get("schema")
+            == "twoc3_three_generalized_correlation_lengths"
+            and payload.get("schema_version") == 4
+            and payload.get("transfer_network_schema")
+            == "three_geometric_straight_rows_generalized_v4"
             and
             int(payload["D_bond"]) == D_bond
             and "correlation_length" in payload
@@ -84,17 +87,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Bond dimensions to process (default: 3 4 5 6; D=2 is disabled).",
     )
     parser.add_argument(
-        "--device",
-        default="auto",
-        help="auto, cpu, cuda, or a specific CUDA device (default: auto).",
-    )
-    parser.add_argument(
         "--chi",
         type=int,
         default=None,
         help="Override checkpoint chi for every selected job.",
     )
-    parser.add_argument("--single", action="store_true")
     parser.add_argument("--matrix-free", action="store_true")
     parser.add_argument("--ctm-max-steps", type=int, default=None)
     parser.add_argument("--ctm-conv-tol", type=float, default=None)
@@ -149,7 +146,10 @@ def main() -> int:
     if not args.Ds or any(D < 1 for D in args.Ds):
         raise ValueError("--Ds must contain positive integers.")
 
-    script = Path(__file__).with_name("correlation_length.py").resolve()
+    script = (
+        Path(__file__).with_name("correlation_length_cpu_cluster")
+        / "compute_three_generalized_correlation_lengths.py"
+    ).resolve()
     jobs: list[tuple[Path, Path, float, int]] = []
     missing: list[Path] = []
     for j2_directory in sorted(root.glob("J2_*")):
@@ -209,8 +209,6 @@ def main() -> int:
             sys.executable,
             str(script),
             str(checkpoint),
-            "--device",
-            args.device,
             "--J2",
             str(j2),
             "--output",
@@ -234,8 +232,6 @@ def main() -> int:
         _optional_argument(command, "--dense-threshold", args.dense_threshold)
         _optional_argument(command, "--seed", args.seed)
         _optional_argument(command, "--progress-every", args.progress_every)
-        if args.single:
-            command.append("--single")
         if args.matrix_free:
             command.append("--matrix-free")
 
