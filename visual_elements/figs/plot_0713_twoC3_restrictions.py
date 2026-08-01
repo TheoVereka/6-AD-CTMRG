@@ -35,6 +35,11 @@ DEFAULT_DIFFERENCE_OUTPUT = (
     / "analysis_plots_0713summary"
     / "energy_difference_twoC3_vs_less_restricted_D10.pdf"
 )
+DEFAULT_VUMPS_OUTPUT = (
+    Path(__file__).resolve().parent
+    / "analysis_plots_0713summary"
+    / "energy_difference_VUMPS_vs_twoC3_J2_0p30.pdf"
+)
 
 J2_MIN = 0.24
 J2_MAX = 0.30
@@ -54,6 +59,24 @@ MORE_RESTRICTED_D8 = {
     0.26: -0.432680783,
     0.28: -0.426623461,
     0.30: -0.421025828,
+}
+
+# External VUMPS data at J2=0.30: D -> energy per site.
+VUMPS_UNIF = {
+    4: -0.41956662,
+    5: -0.42177429,
+    6: -0.42275089,
+    7: -0.42352259,
+    8: -0.42421711,
+    9: -0.42464710,
+}
+VUMPS_PVB = {
+    4: -0.41969802,
+    5: -0.42040762,
+    6: -0.42113174,
+    7: -0.42125176,
+    8: -0.42127372,
+    9: -0.42124687,
 }
 
 
@@ -218,6 +241,49 @@ def plot_energy_difference(data_dir: Path, output: Path) -> None:
     print(f"Saved {output}")
 
 
+def plot_vumps_difference(data_dir: Path, output: Path) -> None:
+    """Plot external VUMPS energies minus 0713-summary 2C3 at J2=0.30."""
+    j2 = 0.30
+    Ds = sorted(set(VUMPS_UNIF) & set(VUMPS_PVB))
+    two_c3 = {D: load_two_c3_energy(data_dir, j2, D) for D in Ds}
+    inverse_D = [1.0 / D for D in Ds]
+
+    curves = [
+        (VUMPS_UNIF, r"$E_{\mathrm{unif}}-E_{\mathrm{2C3}}$", "tab:blue", "o"),
+        (VUMPS_PVB, r"$E_{\mathrm{PVB}}-E_{\mathrm{2C3}}$", "tab:orange", "s"),
+    ]
+
+    fig, ax = plt.subplots(figsize=(7.2, 4.8))
+    for external, label, color, marker in curves:
+        differences = [external[D] - two_c3[D] for D in Ds]
+        ax.plot(
+            inverse_D,
+            differences,
+            color=color,
+            marker=marker,
+            linewidth=1.5,
+            markersize=6,
+            label=label,
+        )
+
+    ax.axhline(0.0, color="black", linewidth=0.8, alpha=0.6)
+    ax.set_xticks([1.0 / D for D in reversed(Ds)])
+    ax.xaxis.set_major_formatter(ticker.FormatStrFormatter("%.3f"))
+    ax.yaxis.set_major_formatter(ticker.ScalarFormatter(useMathText=True))
+    ax.ticklabel_format(axis="y", style="sci", scilimits=(-3, -3))
+    ax.set_xlabel(r"$1/D$")
+    ax.set_ylabel(r"$E_{\mathrm{VUMPS}}(D)-E_{\mathrm{2C3}}(D)$")
+    ax.set_title(r"VUMPS vs 2C3 energy difference at $J_2=0.30$")
+    ax.grid(alpha=0.25)
+    ax.legend(fontsize=9)
+    fig.tight_layout()
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved {output}")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
@@ -225,6 +291,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--difference-output", type=Path, default=DEFAULT_DIFFERENCE_OUTPUT
     )
+    parser.add_argument("--vumps-output", type=Path, default=DEFAULT_VUMPS_OUTPUT)
     return parser.parse_args()
 
 
@@ -232,3 +299,4 @@ if __name__ == "__main__":
     args = parse_args()
     plot_energy_comparison(args.data_dir, args.output)
     plot_energy_difference(args.data_dir, args.difference_output)
+    plot_vumps_difference(args.data_dir, args.vumps_output)
