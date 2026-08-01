@@ -5,7 +5,7 @@ With no arguments, this script expects the cluster bundle at
 ``D:/HyraiOn/ENS_Lyon/Internship/2026-EPFL/data/correlation_length_cpu_cluster``.
 
 It reads completed JSON files from that bundle's
-results_three_env_generalized_v4/ directory and moves them into their directly
+results_three_env_ordinary_v5/ directory and moves them into their directly
 plottable locations below 0713summary.
 """
 
@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from bundle_utils import (
+    MANIFEST_JSON,
     RESULT_DIRECTORY,
     RESULT_NAME_PATTERN,
     load_manifest,
@@ -33,7 +34,6 @@ DEFAULT_SUMMARY_ROOT = Path(
 DEFAULT_DOWNLOADED_BUNDLE_ROOT = Path(
     r"D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data"
 ) / "correlation_length_cpu_cluster"
-DEFAULT_BUNDLE_ROOT = DEFAULT_DOWNLOADED_BUNDLE_ROOT
 # Search the downloaded bundle recursively.  This also tolerates scp placing
 # a second correlation_length_cpu_cluster directory below an existing one.
 DEFAULT_INCOMING = DEFAULT_DOWNLOADED_BUNDLE_ROOT
@@ -47,7 +47,7 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_INCOMING,
         help=(
             "Downloaded correlation_length_cpu_cluster tree. Only JSON files "
-            "below a results_three_env_generalized_v4 directory are considered."
+            "below a results_three_env_ordinary_v5 directory are considered."
         ),
     )
     parser.add_argument(
@@ -56,10 +56,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--bundle-root",
         type=Path,
-        default=DEFAULT_BUNDLE_ROOT,
+        default=None,
         help=(
-            "Downloaded bundle holding checkpoint_manifest.json; defaults "
-            "to data/correlation_length_cpu_cluster."
+            "Downloaded bundle holding checkpoint_manifest.json. By default "
+            "the newest ordinary-v5 manifest below --incoming is selected."
         ),
     )
     parser.add_argument(
@@ -88,7 +88,7 @@ def within(path: Path, root: Path) -> bool:
     return True
 
 
-def is_current_v4_destination(
+def is_current_v5_destination(
     path: Path, *, j2: float, D_bond: int
 ) -> bool:
     try:
@@ -110,11 +110,33 @@ def main() -> int:
     args = parse_args()
     incoming = args.incoming.resolve()
     summary_root = args.summary_root.resolve()
-    bundle_root = args.bundle_root.resolve()
     if not incoming.is_dir():
         raise NotADirectoryError(incoming)
     if not summary_root.is_dir():
         raise NotADirectoryError(summary_root)
+
+    if args.bundle_root is None:
+        manifest_paths = sorted(set(incoming.rglob(MANIFEST_JSON)))
+        compatible: list[Path] = []
+        for manifest_path in manifest_paths:
+            try:
+                candidate = load_manifest(manifest_path.parent)
+                hashes = candidate.get("solver_files_sha256", {})
+                if "compute_three_ordinary_correlation_lengths.py" in hashes:
+                    compatible.append(manifest_path)
+            except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                continue
+        if not compatible:
+            raise FileNotFoundError(
+                f"No ordinary-v5 {MANIFEST_JSON} found below {incoming}"
+            )
+        manifest_path = max(
+            compatible, key=lambda path: path.stat().st_mtime_ns
+        )
+        bundle_root = manifest_path.parent.resolve()
+        print(f"Using bundle manifest: {manifest_path}")
+    else:
+        bundle_root = args.bundle_root.resolve()
 
     manifest = load_manifest(bundle_root)
     index = manifest_index(manifest)
@@ -194,16 +216,16 @@ def main() -> int:
             failed += 1
             continue
         if destination.exists() and not args.overwrite:
-            if is_current_v4_destination(
+            if is_current_v5_destination(
                 destination, j2=float(item["j2"]), D_bond=D_bond
             ):
                 print(
-                    f"REJECT current v4 destination exists "
+                    f"REJECT current v5 destination exists "
                     f"(use --overwrite): {destination}"
                 )
                 failed += 1
                 continue
-            print(f"REPLACE obsolete pre-v4 destination: {destination}")
+            print(f"REPLACE obsolete non-v5 destination: {destination}")
 
         print(f"{'WOULD IMPORT' if args.dry_run else 'IMPORT'} {source}")
         print(f"  -> {destination}")

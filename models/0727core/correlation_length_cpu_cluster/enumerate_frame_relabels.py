@@ -133,6 +133,14 @@ def _parse_args():
     parser.add_argument("--max-intermediate-mib", type=float, default=512.0)
     parser.add_argument("--force-full-svd", action="store_true")
     parser.add_argument(
+        "--ba-first-virtual-perm", default="012",
+        choices=("012", "021", "102", "120", "201", "210"),
+    )
+    parser.add_argument(
+        "--ba-second-virtual-perm", default="012",
+        choices=("012", "021", "102", "120", "201", "210"),
+    )
+    parser.add_argument(
         "--edge-rule-index", type=int, action="append",
         help="Only test these six-bit edge rules (repeatable; default: all 64).",
     )
@@ -150,6 +158,8 @@ def _parse_args():
     )
     parser.add_argument("--physical-grow-sites", action="store_true")
     parser.add_argument("--enumerate-lower-order", action="store_true")
+    parser.add_argument("--enumerate-corner-powers", action="store_true")
+    parser.add_argument("--enumerate-corner-phase-pairs", action="store_true")
     return parser.parse_args()
 
 
@@ -186,8 +196,12 @@ def main() -> int:
         ctm_conv_tol=args.ctm_conv_tol, identity_init=True,
         j1=1.0, j2=args.J2, keep_double_layers=True,
     )
+    ba_first_perm = tuple(int(value) for value in args.ba_first_virtual_perm)
+    ba_second_perm = tuple(int(value) for value in args.ba_second_virtual_perm)
+    ba_first = b.permute(*ba_first_perm, 3).contiguous()
+    ba_second = a.permute(*ba_second_perm, 3).contiguous()
     ba = batch._run_three_environments(
-        b, a, chi=chi, ctm_max_steps=args.ctm_max_steps,
+        ba_first, ba_second, chi=chi, ctm_max_steps=args.ctm_max_steps,
         ctm_conv_tol=args.ctm_conv_tol, identity_init=True,
         j1=1.0, j2=args.J2, keep_double_layers=False,
     )
@@ -281,6 +295,85 @@ def main() -> int:
         print(f"CLOSEST {closest[0]}", flush=True)
         print(f"WROTE {args.output}", flush=True)
         return 0
+    if args.enumerate_corner_phase_pairs:
+        if args.edge_rule_index is None or len(set(args.edge_rule_index)) != 1:
+            raise ValueError(
+                "--enumerate-corner-phase-pairs requires exactly one "
+                "--edge-rule-index"
+            )
+        rule_index = next(iter(set(args.edge_rule_index)))
+        bits = tuple(itertools.product((False, True), repeat=6))[rule_index]
+        rule = dict(zip(bit_names, bits, strict=True))
+        raw_rows = _raw_rows(
+            ab, ba, ab.double_layers, rule, max_bytes=max_bytes,
+            physical_grow_sites=args.physical_grow_sites,
+        )
+        candidates = {}
+        for row_offset, row_key in enumerate(
+            ("env2", "env1_ab_env3_ba", "env3_ab_env1_ba")
+        ):
+            raw, _, _ = raw_rows[row_key]
+            candidates[row_key] = []
+            for upper_phase in PHASES:
+                for lower_phase in PHASES:
+                    spectrum = batch._spectrum(
+                        raw,
+                        getattr(ab, upper_phase).corner,
+                        getattr(ba, lower_phase).corner,
+                        seed=(seed + 100 * row_offset) % 2**32,
+                        eig_tol=args.eig_tol,
+                        arpack_ncv=args.arpack_ncv,
+                        arpack_maxiter=args.arpack_maxiter,
+                        dense_threshold=0,
+                        corner_relative_cutoff=args.corner_relative_cutoff,
+                    )
+                    item = {
+                        "upper_corner_phase": upper_phase,
+                        "lower_corner_phase": lower_phase,
+                        "inverse_xi": float(spectrum["inverse_correlation_length"]),
+                        "eigenvalues": spectrum["eigenvalues"],
+                    }
+                    candidates[row_key].append(item)
+                    print(
+                        f"{row_key} corners={upper_phase}/{lower_phase} "
+                        f"inverse_xi={item['inverse_xi']:.12g}", flush=True,
+                    )
+        closest = []
+        nonzero = {
+            key: [item for item in value if item["inverse_xi"] > 1.0e-8]
+            for key, value in candidates.items()
+        }
+        for first in nonzero["env2"]:
+            for second in nonzero["env1_ab_env3_ba"]:
+                for third in nonzero["env3_ab_env1_ba"]:
+                    values = (first["inverse_xi"], second["inverse_xi"], third["inverse_xi"])
+                    spread = max(values) - min(values)
+                    closest.append({
+                        "spread": spread,
+                        "relative_spread": spread / (sum(values) / 3.0),
+                        "env2": first,
+                        "env1_ab_env3_ba": second,
+                        "env3_ab_env1_ba": third,
+                    })
+        closest.sort(key=lambda item: item["spread"])
+        document = {
+            "checkpoint": str(args.checkpoint.resolve()),
+            "J2": args.J2, "D": D_bond, "chi": chi, "seed": seed,
+            "edge_rule_index": rule_index,
+            "row_candidates": candidates,
+            "closest_nonzero_triples": closest[:100],
+            "ctm": {
+                "steps_ab": ab.ctm_steps, "steps_ba": ba.ctm_steps,
+                "energy_ab": ab.final_energy_proxy,
+                "energy_ba": ba.final_energy_proxy,
+            },
+            "elapsed_seconds": time.perf_counter() - started,
+        }
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+        print(f"CLOSEST {closest[0]}", flush=True)
+        print(f"WROTE {args.output}", flush=True)
+        return 0
     selected_edge_rules = (
         set(args.edge_rule_index) if args.edge_rule_index is not None else None
     )
@@ -300,34 +393,46 @@ def main() -> int:
         tuple(itertools.product((False, True), repeat=3))
         if args.enumerate_lower_order else ((False, False, False),)
     )
+    corner_power_pairs = (
+        tuple(itertools.product(range(4), repeat=2))
+        if args.enumerate_corner_powers else ((1, 1),)
+    )
     for rule_index, bits in enumerate(itertools.product((False, True), repeat=6)):
         if selected_edge_rules is not None and rule_index not in selected_edge_rules:
             continue
         rule = dict(zip(bit_names, bits, strict=True))
         for corner_bits in corner_bit_sets:
          for lower_bits in lower_bit_sets:
-          for left_site_perm in local_permutations:
-           for right_site_perm in local_permutations:
-            corner_rule = dict(zip(PHASES, corner_bits, strict=True))
-            lower_swaps = dict(zip(PHASES, lower_bits, strict=True))
-            spectra = {}
-            raw_rows = _raw_rows(
+          for corner_powers in corner_power_pairs:
+           for left_site_perm in local_permutations:
+            for right_site_perm in local_permutations:
+             corner_rule = dict(zip(PHASES, corner_bits, strict=True))
+             lower_swaps = dict(zip(PHASES, lower_bits, strict=True))
+             spectra = {}
+             raw_rows = _raw_rows(
                 ab, ba, ab.double_layers, rule, max_bytes=max_bytes,
                 left_site_perm=left_site_perm,
                 right_site_perm=right_site_perm,
                 physical_grow_sites=args.physical_grow_sites,
                 lower_swaps=lower_swaps,
             )
-            phase_pairs = {
+             phase_pairs = {
                 "env2": ("env2", "env2"),
                 "env1_ab_env3_ba": ("env1", "env3"),
                 "env3_ab_env1_ba": ("env3", "env1"),
             }
-            failed = None
-            try:
+             failed = None
+             try:
                 for offset, key in enumerate(("env2", "env1_ab_env3_ba", "env3_ab_env1_ba")):
                     raw, upper_corner, lower_corner = raw_rows.pop(key)
                     upper_phase, lower_phase = phase_pairs[key]
+                    upper_power, lower_power = corner_powers
+                    upper_corner = torch.linalg.matrix_power(
+                        upper_corner, upper_power
+                    )
+                    lower_corner = torch.linalg.matrix_power(
+                        lower_corner, lower_power
+                    )
                     if corner_rule[upper_phase]:
                         upper_corner = upper_corner.T.contiguous()
                     if corner_rule[lower_phase]:
@@ -344,16 +449,16 @@ def main() -> int:
                         corner_relative_cutoff=args.corner_relative_cutoff,
                     )
                     spectra[key] = float(spectrum["inverse_correlation_length"])
-            except Exception as exc:
+             except Exception as exc:
                 failed = f"{type(exc).__name__}: {exc}"
-            if failed is None:
+             if failed is None:
                 values = list(spectra.values())
                 spread = max(values) - min(values)
                 relative_spread = spread / max(abs(sum(values) / len(values)), 1.0e-300)
-            else:
+             else:
                 spread = math.inf
                 relative_spread = math.inf
-            row = {
+             row = {
                 "rule_index": rule_index,
                 "transposed": [name for name in bit_names if rule[name]],
                 "corner_transposed_phases": [
@@ -364,19 +469,22 @@ def main() -> int:
                 "lower_swapped_phases": [
                     phase for phase in PHASES if lower_swaps[phase]
                 ],
+                "upper_corner_power": corner_powers[0],
+                "lower_corner_power": corner_powers[1],
                 "inverse_xi": spectra,
                 "spread": spread,
                 "relative_spread": relative_spread,
                 "error": failed,
             }
-            rows.append(row)
-            print(
+             rows.append(row)
+             print(
                 f"edge={rule_index:02d} corners={row['corner_transposed_phases']} "
                 f"sites={left_site_perm}/{right_site_perm} "
                 f"lower_swaps={row['lower_swapped_phases']} "
+                f"corner_powers={corner_powers} "
                 f"spread={spread:.12g} rel={relative_spread:.6g} values={spectra}",
                 flush=True,
-            )
+             )
 
     rows.sort(key=lambda item: item["spread"])
     document = {
@@ -385,6 +493,8 @@ def main() -> int:
         "D": D_bond,
         "chi": chi,
         "seed": seed,
+        "ba_first_virtual_perm": args.ba_first_virtual_perm,
+        "ba_second_virtual_perm": args.ba_second_virtual_perm,
         "ctm": {
             "steps_ab": ab.ctm_steps,
             "steps_ba": ba.ctm_steps,

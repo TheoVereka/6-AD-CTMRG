@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compute the three physical generalized 2C3 row-transfer spectra.
+"""Compute three ordinary 2C3 row-transfer spectra in the CTM gauge.
 
 For one two-C3 checkpoint this evaluates the three straight rows
 
@@ -7,7 +7,9 @@ For one two-C3 checkpoint this evaluates the three straight rows
 * env1(a,b) x env3(b,a);
 * env3(a,b) x env1(b,a).
 
-Only the corner-metric generalized eigenproblems are evaluated.  Every
+The raw row-to-row operators are diagonalized without a corner metric.  These
+ordinary spectra are gauge-fixed diagnostics, not claimed gauge-independent
+physical spectra.  Every
 inverse correlation length is defined directly from its eigenvalues as
 ``log(abs(lambda_1 / lambda_2))``.  The plot value is the median of the
 three directions and the lower/upper error-bar endpoints are their minimum
@@ -34,9 +36,9 @@ import correlation_length as corr
 import core_C3 as core
 
 
-SCHEMA = "twoc3_three_generalized_correlation_lengths"
-SCHEMA_VERSION = 4
-TRANSFER_NETWORK_SCHEMA = "three_geometric_straight_rows_generalized_v4"
+SCHEMA = "twoc3_three_ordinary_correlation_lengths"
+SCHEMA_VERSION = 5
+TRANSFER_NETWORK_SCHEMA = "three_geometric_straight_rows_ordinary_v5"
 DEFAULT_THREADS = int(os.environ.get("SLURM_CPUS_PER_TASK", "16"))
 
 
@@ -166,26 +168,17 @@ def _possibly_dense(
 
 def _spectrum(
     raw: corr.RowToRowTransferOperator,
-    upper_corner: torch.Tensor,
-    lower_corner: torch.Tensor,
     *,
     seed: int,
     eig_tol: float,
     arpack_ncv: int,
     arpack_maxiter: int,
     dense_threshold: int,
-    corner_relative_cutoff: float,
 ) -> dict[str, Any]:
-    generalized = corr.KroneckerCornerWhitenedTransferOperator(
-        raw,
-        upper_corner.T.contiguous(),
-        lower_corner,
-        relative_cutoff=corner_relative_cutoff,
-    )
     result = corr.diagonalize_first_two_largest_eigval(
-        generalized,
+        raw,
         tol=eig_tol,
-        ncv=min(arpack_ncv, generalized.shape[0]),
+        ncv=min(arpack_ncv, raw.shape[0]),
         maxiter=arpack_maxiter,
         dense_dimension_threshold=dense_threshold,
         seed=seed,
@@ -203,7 +196,7 @@ def _spectrum(
     if not math.isfinite(inverse_xi) or inverse_xi < 0.0:
         raise ValueError(f"Invalid inverse correlation length: {inverse_xi}")
     resolution = 64.0 * np.finfo(
-        np.float64 if generalized.dtype == torch.float64 else np.float32
+        np.float64 if raw.dtype == torch.float64 else np.float32
     ).eps
     payload = {
         "eigenvalues": [
@@ -224,17 +217,12 @@ def _spectrum(
             None if inverse_xi <= resolution else float(1.0 / inverse_xi)
         ),
         "correlation_length_unresolved": bool(inverse_xi <= resolution),
-        "corner_effective_ranks": [
-            int(value) for value in generalized.corner_effective_ranks
-        ],
-        "overlap_condition_number": float(
-            generalized.overlap_condition_number
-        ),
+        "eigenproblem": "ordinary_raw_row_transfer",
         "used_dense_solver": bool(result.used_dense_solver),
         "eigensolver_matvec_count": int(result.matvec_count),
         "eigensolver_seconds": float(result.elapsed_seconds),
     }
-    del generalized, raw
+    del raw
     return payload
 
 
@@ -302,11 +290,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "--arpack-maxiter", type=int, default=corr.DEFAULT_ARPACK_MAXITER
     )
     parser.add_argument("--dense-threshold", type=int, default=256)
-    parser.add_argument(
-        "--corner-relative-cutoff",
-        type=float,
-        default=corr.DEFAULT_CORNER_RELATIVE_CUTOFF,
-    )
     parser.add_argument("--progress-every", type=int, default=10)
     return parser
 
@@ -401,8 +384,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             C.permute(1, 2, 0).contiguous(),
             ba.env2.t1,
             ba.env2.t2,
-            ab.env2.corner,
-            ba.env2.corner,
         ),
         "env1_ab_env3_ba": (
             ab.env1.t2,
@@ -411,8 +392,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             E,
             ba.env3.t1,
             ba.env3.t2,
-            ab.env1.corner,
-            ba.env3.corner,
         ),
         "env3_ab_env1_ba": (
             ab.env3.t2,
@@ -421,16 +400,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             A.permute(2, 0, 1).contiguous(),
             ba.env1.t1,
             ba.env1.t2,
-            ab.env3.corner,
-            ba.env1.corner,
         ),
     }
     spectra: dict[str, dict[str, Any]] = {}
     for offset, key in enumerate(
         ("env2", "env1_ab_env3_ba", "env3_ab_env1_ba")
     ):
-        print(f"DIAGONALIZE generalized {key}", flush=True)
-        *network_tensors, upper_corner, lower_corner = transfer_specs.pop(key)
+        print(f"DIAGONALIZE ordinary {key}", flush=True)
+        network_tensors = transfer_specs.pop(key)
         side_by_side = corr.SideBySideRowToRowTransferOperator(
             *network_tensors,
             **operator_options,
@@ -442,14 +419,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         spectra[key] = _spectrum(
             raw,
-            upper_corner,
-            lower_corner,
             seed=(seed + offset) % 2**32,
             eig_tol=args.eig_tol,
             arpack_ncv=args.arpack_ncv,
             arpack_maxiter=args.arpack_maxiter,
             dense_threshold=args.dense_threshold,
-            corner_relative_cutoff=args.corner_relative_cutoff,
         )
 
     inverse_summary = _summary(spectra)
@@ -493,7 +467,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "arpack_ncv": int(args.arpack_ncv),
             "arpack_maxiter": int(args.arpack_maxiter),
             "dense_threshold": int(args.dense_threshold),
-            "corner_relative_cutoff": float(args.corner_relative_cutoff),
+            "eigenproblem": "ordinary_raw_row_transfer",
         },
         "spectra": spectra,
         "inverse_correlation_length": inverse_summary,

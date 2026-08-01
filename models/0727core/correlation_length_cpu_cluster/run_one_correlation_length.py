@@ -39,7 +39,7 @@ def validate_solver_snapshot(manifest: dict[str, object]) -> None:
     for filename in (
         "correlation_length.py",
         "core_C3.py",
-        "compute_three_generalized_correlation_lengths.py",
+        "compute_three_ordinary_correlation_lengths.py",
     ):
         expected = hashes.get(filename)
         source = source_root / filename
@@ -61,7 +61,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path(__file__).resolve().parent,
         help=(
-            "Self-contained bundle holding checkpoints, the v4 result "
+            "Self-contained bundle holding checkpoints, the v5 result "
             "directory, and manifests."
         ),
     )
@@ -142,7 +142,7 @@ def main() -> int:
 
     output.parent.mkdir(parents=True, exist_ok=True)
     solver = Path(__file__).resolve().with_name(
-        "compute_three_generalized_correlation_lengths.py"
+        "compute_three_ordinary_correlation_lengths.py"
     )
     if not solver.is_file():
         raise FileNotFoundError(solver)
@@ -162,7 +162,7 @@ def main() -> int:
     process = subprocess.run(command, check=False)
     if process.returncode != 0:
         print(
-            f"three-environment correlation solver failed with exit code "
+            f"three-environment ordinary solver failed with exit code "
             f"{process.returncode}.",
             file=sys.stderr,
             flush=True,

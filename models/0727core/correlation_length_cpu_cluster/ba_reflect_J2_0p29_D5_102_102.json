@@ -1,0 +1,43 @@
+{
+  "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\models\\0727core\\correlation_length_cpu_cluster\\checkpoints\\tensor_best__J2_0p29__D_5.pt",
+  "J2": 0.29,
+  "D": 5,
+  "chi": 50,
+  "seed": 173921,
+  "ba_first_virtual_perm": "102",
+  "ba_second_virtual_perm": "102",
+  "ctm": {
+    "steps_ab": 11,
+    "steps_ba": 12,
+    "energy_ab": -2.5514803361143987,
+    "energy_ba": -0.7420205941500367
+  },
+  "corner_orientation": "upper_transpose_lower_untransposed",
+  "rules_sorted_by_absolute_spread": [
+    {
+      "rule_index": 0,
+      "transposed": [],
+      "corner_transposed_phases": [],
+      "left_site_perm": [
+        0,
+        1,
+        2
+      ],
+      "right_site_perm": [
+        0,
+        1,
+        2
+      ],
+      "lower_swapped_phases": [],
+      "inverse_xi": {
+        "env2": 0.02142611181281244,
+        "env1_ab_env3_ba": 0.03511350322248354,
+        "env3_ab_env1_ba": 0.0
+      },
+      "spread": 0.03511350322248354,
+      "relative_spread": 1.8631274656130876,
+      "error": null
+    }
+  ],
+  "elapsed_seconds": 19.50023080000028
+}

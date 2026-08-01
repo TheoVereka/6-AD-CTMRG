@@ -93,7 +93,7 @@ def write_manifests(
     for filename in (
         "correlation_length.py",
         "core_C3.py",
-        "compute_three_generalized_correlation_lengths.py",
+        "compute_three_ordinary_correlation_lengths.py",
     ):
         solver_path = bundle_root / filename
         if not solver_path.is_file():

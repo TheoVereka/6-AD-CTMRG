@@ -408,7 +408,7 @@ def load_folder_data(folder_path, j2, ansatz):
 
 
 def load_inverse_correlation_lengths(folder_path, j2, ansatz):
-    """Discover v4 three-direction generalized correlation JSON files.
+    """Discover v5 three-direction ordinary correlation JSON files.
 
     Each directional value is recalculated directly as
     ``log(abs(lambda_max / lambda_second))``.  Their sorted median is plotted;
@@ -437,10 +437,10 @@ def load_inverse_correlation_lengths(folder_path, j2, ansatz):
                 payload = json.load(handle)
             if (
                 payload.get('schema')
-                != 'twoc3_three_generalized_correlation_lengths'
-                or payload.get('schema_version') != 4
+                != 'twoc3_three_ordinary_correlation_lengths'
+                or payload.get('schema_version') != 5
                 or payload.get('transfer_network_schema')
-                != 'three_geometric_straight_rows_generalized_v4'
+                != 'three_geometric_straight_rows_ordinary_v5'
             ):
                 raise ValueError(
                     'obsolete non-three-direction correlation-length result'

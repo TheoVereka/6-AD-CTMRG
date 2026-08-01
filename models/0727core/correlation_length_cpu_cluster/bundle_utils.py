@@ -13,7 +13,7 @@ ANSATZ_DIRECTORY = "2tensor_twoC3"
 MANIFEST_JSON = "checkpoint_manifest.json"
 MANIFEST_TSV = "checkpoint_manifest.tsv"
 CHECKPOINT_DIRECTORY = "checkpoints"
-RESULT_DIRECTORY = "results_three_env_generalized_v4"
+RESULT_DIRECTORY = "results_three_env_ordinary_v5"
 J2_DIRECTORY_PATTERN = re.compile(r"^J2_(\d+(?:p\d+)?)$")
 CHECKPOINT_NAME_PATTERN = re.compile(
     r"^tensor_best__(J2_\d+(?:p\d+)?)__D_(\d+)\.pt$"
@@ -82,13 +82,13 @@ def validate_result_payload(
 ) -> None:
     if (
         payload.get("schema")
-        != "twoc3_three_generalized_correlation_lengths"
-        or payload.get("schema_version") != 4
+        != "twoc3_three_ordinary_correlation_lengths"
+        or payload.get("schema_version") != 5
         or payload.get("transfer_network_schema")
-        != "three_geometric_straight_rows_generalized_v4"
+        != "three_geometric_straight_rows_ordinary_v5"
     ):
         raise ValueError(
-            "Result does not use the audited three-direction generalized v4 "
+            "Result does not use the three-direction ordinary v5 "
             "topology"
         )
     if int(payload["D_bond"]) != D_bond:
