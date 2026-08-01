@@ -249,6 +249,10 @@ from core_colum import (
     sym6_abcdef_to_free_params,
     initialize_sym6_free_params,
     pad_sym6_free_params,
+    sym2_params_to_abcdef,
+    sym2_abcdef_to_free_params,
+    initialize_sym2_free_params,
+    pad_sym2_free_params,
 )
 
 
@@ -702,7 +706,8 @@ def _derive_abcdef(params_list: list, cfg: dict, D_bond: int = None) -> tuple:
     """Derive the 6 single-layer tensors from *params_list* using *cfg*.
 
     For ansatze with a free-param morphism (cfg['free_morphism_fn'] is not None):
-      n_params==6 (sym6): free_morphism_fn(*params_list) → (a,b,c,d,e,f) directly.
+      n_params==6 (sym6) or n_params==2 (sym2):
+        free_morphism_fn(*params_list) → (a,b,c,d,e,f) directly.
       n_params==1 (neel): free_morphism_fn(h, D_bond) → a_sym, then derive_fn(a_sym)
         gives all 6 tensors.  D_bond is required for the neel morphism.
 
@@ -722,8 +727,8 @@ def _derive_abcdef(params_list: list, cfg: dict, D_bond: int = None) -> tuple:
     """
     free_morph = cfg.get('free_morphism_fn')
     if free_morph is not None:
-        if cfg['n_params'] == 6:
-            # sym6: (h_a..h_f) → (a,b,c,d,e,f) via gather morphism
+        if cfg['n_params'] in (2, 6):
+            # sym2/sym6: reduced h tensors → (a,b,c,d,e,f) via gather morphism
             return free_morph(*params_list)
         else:
             # neel: h → a_sym (needs D) → derive_fn → (a..f)
@@ -821,6 +826,19 @@ ANSATZ_REGISTRY: dict = {
         'description':     'Six-tensor ansatz with local mirror symmetry, '
                            'unconstrained free-param reparametrization '
                            '(a/d: leg1↔leg2, b/e: leg0↔leg1, c/f: leg0↔leg2)',
+    },
+    # Two free mirror-symmetric tensors; remaining sites are C3 permutations.
+    'sym2': {
+        'n_params':         2,
+        'free_morphism_fn': sym2_params_to_abcdef,
+        'symmetrize_fn':    None,
+        'derive_fn':        None,
+        'init_fn':          initialize_sym2_free_params,
+        'pad_fn':           pad_sym2_free_params,
+        'ckpt_keys':        ['h_a', 'h_b'],
+        'yaml_name':        'sym2_free_param',
+        'description':      'Two free mirror-symmetric tensors h_a/h_b; '
+                            'c,d,e,f use the twoc3 C3 permutations',
     },
     # Legacy sym6: optimize full D³d tensors with per-step symmetrize projection.
     'sym6_legacy': {
@@ -935,6 +953,13 @@ def _make_mean_field_params(
         a6_full = (_up(), _down(), _up(), _down(), _up(), _down())
         a6_sym  = symmetrize_six_local_reflections(*a6_full)
         return sym6_abcdef_to_free_params(*a6_sym)
+
+    if free_morph is not None and n == 2:
+        # sym2: only the mirror-symmetric A/B representatives are independent.
+        a_full, b_full = _up(), _down()
+        a_sym = (a_full + a_full.permute(0, 2, 1, 3)) / 2.0
+        b_sym = (b_full + b_full.permute(1, 0, 2, 3)) / 2.0
+        return sym2_abcdef_to_free_params(a_sym, b_sym)
 
     if n == 1:
         # Single raw tensor; derive_fn maps it to both sublattices.
@@ -1320,7 +1345,7 @@ def optimize_at_chi(
 
     Returns (best_params_tuple, best_loss, steps_done, cached_rhos, switched_to_lbfgs).
     best_params_tuple contains 1 tensor for single-tensor ansätze (neel/c6ypi/c3vypi),
-    2 tensors for two-tensor ansätze (twoc3/columnar),
+    2 tensors for two-tensor ansätze (twoc3/columnar/sym2),
     or 6 tensors for 6-tensor ansätze (unrestricted/sym6), matching ansatz_cfg['n_params'].
     switched_to_lbfgs is True if the optimizer switched from Adam to LBFGS during this run.
     """
@@ -1352,7 +1377,8 @@ def optimize_at_chi(
     if ansatz_cfg == ANSATZ_REGISTRY['neel'] or ansatz_cfg == ANSATZ_REGISTRY['neel_legacy']:
         effective_ADAM_LR = ADAM_LR/6
     elif ansatz_cfg in (ANSATZ_REGISTRY['twoc3'],
-                        ANSATZ_REGISTRY['columnar']):
+                        ANSATZ_REGISTRY['columnar'],
+                        ANSATZ_REGISTRY['sym2']):
         effective_ADAM_LR = ADAM_LR/3
     elif ansatz_cfg == ANSATZ_REGISTRY['c3vypi'] or ansatz_cfg == ANSATZ_REGISTRY['c6ypi']:
         effective_ADAM_LR = ADAM_LR/5

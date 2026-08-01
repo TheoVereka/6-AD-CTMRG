@@ -1,0 +1,228 @@
+{
+  "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\models\\0727core\\correlation_length_cpu_cluster\\checkpoints\\tensor_best__J2_0p29__D_5.pt",
+  "J2": 0.29,
+  "D": 5,
+  "chi": 50,
+  "seed": 173921,
+  "ctm": {
+    "steps_ab": 11,
+    "steps_ba": 11,
+    "energy_ab": -2.5514803361143987,
+    "energy_ba": -2.5514762394438204
+  },
+  "corner_orientation": "upper_transpose_lower_untransposed",
+  "rules_sorted_by_absolute_spread": [
+    {
+      "rule_index": 0,
+      "transposed": [],
+      "corner_transposed_phases": [],
+      "left_site_perm": [
+        0,
+        1,
+        2
+      ],
+      "right_site_perm": [
+        0,
+        1,
+        2
+      ],
+      "lower_swapped_phases": [
+        "env3"
+      ],
+      "inverse_xi": {
+        "env2": 0.0,
+        "env1_ab_env3_ba": 0.054846396844381945,
+        "env3_ab_env1_ba": 0.07214141161326999
+      },
+      "spread": 0.07214141161326999,
+      "relative_spread": 1.7042914392209816,
+      "error": null
+    },
+    {
+      "rule_index": 0,
+      "transposed": [],
+      "corner_transposed_phases": [],
+      "left_site_perm": [
+        0,
+        1,
+        2
+      ],
+      "right_site_perm": [
+        0,
+        1,
+        2
+      ],
+      "lower_swapped_phases": [],
+      "inverse_xi": {
+        "env2": 0.0,
+        "env1_ab_env3_ba": 0.11855961957812083,
+        "env3_ab_env1_ba": 0.07214141161326999
+      },
+      "spread": 0.11855961957812083,
+      "relative_spread": 1.8651124040194473,
+      "error": null
+    },
+    {
+      "rule_index": 0,
+      "transposed": [],
+      "corner_transposed_phases": [],
+      "left_site_perm": [
+        0,
+        1,
+        2
+      ],
+      "right_site_perm": [
+        0,
+        1,
+        2
+      ],
+      "lower_swapped_phases": [
+        "env1"
+      ],
+      "inverse_xi": {
+        "env2": 0.0,
+        "env1_ab_env3_ba": 0.11855961957812083,
+        "env3_ab_env1_ba": 0.12084728470900541
+      },
+      "spread": 0.12084728470900541,
+      "relative_spread": 1.5143333280489328,
+      "error": null
+    },
+    {
+      "rule_index": 0,
+      "transposed": [],
+      "corner_transposed_phases": [],
+      "left_site_perm": [
+        0,
+        1,
+        2
+      ],
+      "right_site_perm": [
+        0,
+        1,
+        2
+      ],
+      "lower_swapped_phases": [
+        "env1",
+        "env3"
+      ],
+      "inverse_xi": {
+        "env2": 0.0,
+        "env1_ab_env3_ba": 0.054846396844381945,
+        "env3_ab_env1_ba": 0.12084728470900541
+      },
+      "spread": 0.12084728470900541,
+      "relative_spread": 2.06348828780648,
+      "error": null
+    },
+    {
+      "rule_index": 0,
+      "transposed": [],
+      "corner_transposed_phases": [],
+      "left_site_perm": [
+        0,
+        1,
+        2
+      ],
+      "right_site_perm": [
+        0,
+        1,
+        2
+      ],
+      "lower_swapped_phases": [
+        "env1",
+        "env2"
+      ],
+      "inverse_xi": {
+        "env2": 0.32556927380418416,
+        "env1_ab_env3_ba": 0.11855961957812083,
+        "env3_ab_env1_ba": 0.12084728470900541
+      },
+      "spread": 0.20700965422606332,
+      "relative_spread": 1.099212651365666,
+      "error": null
+    },
+    {
+      "rule_index": 0,
+      "transposed": [],
+      "corner_transposed_phases": [],
+      "left_site_perm": [
+        0,
+        1,
+        2
+      ],
+      "right_site_perm": [
+        0,
+        1,
+        2
+      ],
+      "lower_swapped_phases": [
+        "env2"
+      ],
+      "inverse_xi": {
+        "env2": 0.32556927380418416,
+        "env1_ab_env3_ba": 0.11855961957812083,
+        "env3_ab_env1_ba": 0.07214141161326999
+      },
+      "spread": 0.2534278621909142,
+      "relative_spread": 1.4726463622176738,
+      "error": null
+    },
+    {
+      "rule_index": 0,
+      "transposed": [],
+      "corner_transposed_phases": [],
+      "left_site_perm": [
+        0,
+        1,
+        2
+      ],
+      "right_site_perm": [
+        0,
+        1,
+        2
+      ],
+      "lower_swapped_phases": [
+        "env2",
+        "env3"
+      ],
+      "inverse_xi": {
+        "env2": 0.32556927380418416,
+        "env1_ab_env3_ba": 0.054846396844381945,
+        "env3_ab_env1_ba": 0.07214141161326999
+      },
+      "spread": 0.27072287695980224,
+      "relative_spread": 1.7946214139888546,
+      "error": null
+    },
+    {
+      "rule_index": 0,
+      "transposed": [],
+      "corner_transposed_phases": [],
+      "left_site_perm": [
+        0,
+        1,
+        2
+      ],
+      "right_site_perm": [
+        0,
+        1,
+        2
+      ],
+      "lower_swapped_phases": [
+        "env1",
+        "env2",
+        "env3"
+      ],
+      "inverse_xi": {
+        "env2": 0.32556927380418416,
+        "env1_ab_env3_ba": 0.054846396844381945,
+        "env3_ab_env1_ba": 0.12084728470900541
+      },
+      "spread": 0.27072287695980224,
+      "relative_spread": 1.6202446683897744,
+      "error": null
+    }
+  ],
+  "elapsed_seconds": 29.265399300000354
+}

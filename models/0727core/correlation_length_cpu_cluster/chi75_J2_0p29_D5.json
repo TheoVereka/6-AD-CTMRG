@@ -1,0 +1,139 @@
+{
+  "schema": "twoc3_three_generalized_correlation_lengths",
+  "schema_version": 4,
+  "transfer_network_schema": "three_geometric_straight_rows_generalized_v4",
+  "completed_at_utc": "2026-08-01T11:08:40.830181+00:00",
+  "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\models\\0727core\\correlation_length_cpu_cluster\\checkpoints\\tensor_best__J2_0p29__D_5.pt",
+  "D_bond": 5,
+  "chi": 75,
+  "dtype": "torch.float64",
+  "device": "cpu",
+  "seed": 173921,
+  "seed_was_randomized": false,
+  "threads": 16,
+  "ctm": {
+    "max_steps": 150,
+    "sv_convergence_tolerance": 1e-08,
+    "convergence_mode": "both",
+    "energy_convergence_threshold": 2e-08,
+    "identity_init": true,
+    "svd_mode": "augmented",
+    "steps_ab": 12,
+    "steps_ba": 12,
+    "converged_ab_within_budget": true,
+    "converged_ba_within_budget": true,
+    "internal_sentinel_max_steps": 151,
+    "final_energy_proxy_ab": -2.5514776303128355,
+    "final_energy_proxy_ba": -2.551476567490892
+  },
+  "calculation_hyperparameters": {
+    "J1": 1.0,
+    "J2": 0.29,
+    "matrix_free": false,
+    "max_intermediate_mib": 1024.0,
+    "eig_tol": 0.0,
+    "arpack_ncv": 64,
+    "arpack_maxiter": 4000,
+    "dense_threshold": 256,
+    "corner_relative_cutoff": 1e-14
+  },
+  "spectra": {
+    "env2": {
+      "eigenvalues": [
+        {
+          "real": 0.05937063555255359,
+          "imag": 0.0,
+          "abs": 0.05937063555255359,
+          "relative_residual": 8.08197804645576e-15
+        },
+        {
+          "real": 0.025405276827178493,
+          "imag": 0.0,
+          "abs": 0.025405276827178493,
+          "relative_residual": 4.61441377236711e-15
+        }
+      ],
+      "inverse_correlation_length": 0.8488428516206132,
+      "correlation_length": 1.1780743609854252,
+      "correlation_length_unresolved": false,
+      "corner_effective_ranks": [
+        75,
+        75
+      ],
+      "overlap_condition_number": 16618781.541236894,
+      "used_dense_solver": false,
+      "eigensolver_matvec_count": 65,
+      "eigensolver_seconds": 0.37130119999892486
+    },
+    "env1_ab_env3_ba": {
+      "eigenvalues": [
+        {
+          "real": 0.0005893884789084718,
+          "imag": 0.0,
+          "abs": 0.0005893884789084718,
+          "relative_residual": 3.636100232145225e-15
+        },
+        {
+          "real": 0.0002929317128441934,
+          "imag": 0.0005006330735421326,
+          "abs": 0.0005800366046329105,
+          "relative_residual": 4.393375735934262e-15
+        }
+      ],
+      "inverse_correlation_length": 0.01599430997523509,
+      "correlation_length": 62.52223456644004,
+      "correlation_length_unresolved": false,
+      "corner_effective_ranks": [
+        75,
+        75
+      ],
+      "overlap_condition_number": 2835547.7781897057,
+      "used_dense_solver": false,
+      "eigensolver_matvec_count": 65,
+      "eigensolver_seconds": 0.3815140999995492
+    },
+    "env3_ab_env1_ba": {
+      "eigenvalues": [
+        {
+          "real": -0.12564328831488736,
+          "imag": 0.0,
+          "abs": 0.12564328831488736,
+          "relative_residual": 1.0804619839683526e-14
+        },
+        {
+          "real": 0.08486154956944693,
+          "imag": 0.0,
+          "abs": 0.08486154956944693,
+          "relative_residual": 1.7518996530540565e-14
+        }
+      ],
+      "inverse_correlation_length": 0.39242574693172466,
+      "correlation_length": 2.5482527785670057,
+      "correlation_length_unresolved": false,
+      "corner_effective_ranks": [
+        75,
+        75
+      ],
+      "overlap_condition_number": 266859804.0919901,
+      "used_dense_solver": false,
+      "eigensolver_matvec_count": 65,
+      "eigensolver_seconds": 0.3819002999989607
+    }
+  },
+  "inverse_correlation_length": {
+    "definition": "ln(abs(lambda_1/lambda_2))",
+    "aggregation": "lower=min, center=median, upper=max",
+    "lower": 0.01599430997523509,
+    "center": 0.39242574693172466,
+    "upper": 0.8488428516206132,
+    "lower_error": 0.37643143695648956,
+    "upper_error": 0.4564171046888886,
+    "direction_values": {
+      "env2": 0.8488428516206132,
+      "env1_ab_env3_ba": 0.01599430997523509,
+      "env3_ab_env1_ba": 0.39242574693172466
+    }
+  },
+  "correlation_length": 2.5482527785670057,
+  "elapsed_seconds": 396.62612530000115
+}

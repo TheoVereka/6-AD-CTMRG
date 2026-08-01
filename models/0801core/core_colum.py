@@ -1634,6 +1634,66 @@ def pad_sym6_free_params(
     return sym6_abcdef_to_free_params(*sym6)
 
 
+# sym2 morphism: two mirror-symmetric representatives plus C3 permutations
+
+def sym2_params_to_abcdef(h_a: torch.Tensor,
+                          h_b: torch.Tensor) -> tuple:
+    """Expand ``h_a,h_b`` and generate the other sites exactly as twoc3.
+
+    The A representative has leg1/leg2 mirror symmetry and the B
+    representative has leg0/leg1 mirror symmetry. Their C3 permutations
+    automatically produce the four other site-local mirrors used by sym6.
+    """
+    D = h_a.shape[0]
+    tri = _get_tri_idx(D, h_a.device)
+    a = h_a[:, tri, :]
+    b = h_b[tri, :, :]
+    return twoc3_abcdef_from_ab(a, b)
+
+
+def sym2_abcdef_to_free_params(a: torch.Tensor,
+                               b: torch.Tensor) -> tuple:
+    """Extract the two reduced tensors from symmetric A/B representatives."""
+    D = a.shape[0]
+    rows, cols = torch.triu_indices(D, D, device=a.device)
+    return a[:, rows, cols, :], b[rows, cols, :, :]
+
+
+def initialize_sym2_free_params(D: int, d_PHYS: int,
+                                noise_scale: float = 1.0) -> tuple:
+    """Random initialization of the two reduced sym2 tensors."""
+    global _USE_FULL_SVD
+    N = D * (D + 1) // 2
+    kw = dict(dtype=TENSORDTYPE, device=DEVICE)
+    h_a = torch.randn(D, N, d_PHYS, **kw) * noise_scale
+    h_b = torch.randn(N, D, d_PHYS, **kw) * noise_scale
+    _USE_FULL_SVD = True
+    return h_a, h_b
+
+
+def pad_sym2_free_params(
+        old_params: tuple,
+        old_D: int, new_D: int,
+        d_PHYS: int, noise: float,
+) -> tuple:
+    """Warm-start sym2 parameters while preserving both exact mirrors."""
+    global _USE_FULL_SVD
+    h_a, h_b = old_params
+    a, b, _, _, _, _ = sym2_params_to_abcdef(h_a.detach(), h_b.detach())
+    kw = dict(dtype=TENSORDTYPE, device=DEVICE)
+    scale = float(torch.sqrt(torch.tensor(old_D**3 * d_PHYS, dtype=RDTYPE)))
+
+    a_new = noise * torch.randn(new_D, new_D, new_D, d_PHYS, **kw)
+    b_new = noise * torch.randn(new_D, new_D, new_D, d_PHYS, **kw)
+    a_new[:old_D, :old_D, :old_D, :] += normalize_tensor(a) * scale
+    b_new[:old_D, :old_D, :old_D, :] += normalize_tensor(b) * scale
+
+    a_new = (a_new + a_new.permute(0, 2, 1, 3)) / 2.0
+    b_new = (b_new + b_new.permute(1, 0, 2, 3)) / 2.0
+    _USE_FULL_SVD = True
+    return sym2_abcdef_to_free_params(a_new, b_new)
+
+
 # ── neel morphism ─────────────────────────────────────────────────────────────
 
 def neel_param_to_a(h: torch.Tensor, D: int) -> torch.Tensor:
