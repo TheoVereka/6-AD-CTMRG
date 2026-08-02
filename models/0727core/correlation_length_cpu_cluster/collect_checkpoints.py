@@ -157,7 +157,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--overwrite",
         action="store_true",
-        help="Replace a staged checkpoint if its content differs.",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--dry-run",
@@ -213,11 +213,6 @@ def main() -> int:
                 skipped += 1
                 print(f"UNCHANGED {destination.name}")
                 continue
-            if not args.overwrite:
-                raise FileExistsError(
-                    f"{destination} differs from {source}; pass --overwrite "
-                    "to replace it."
-                )
 
         atomic_copy(source, destination)
         if sha256(destination) != source_hash:

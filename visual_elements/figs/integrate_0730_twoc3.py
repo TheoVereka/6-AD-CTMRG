@@ -1,22 +1,21 @@
 #!/usr/bin/env python3
-"""Integrate new 2C3 runs into 0713summary, resolving duplicates interactively.
+"""Integrate every ansatz into 0713summary, resolving duplicates interactively.
 
 Normal usage (after copying every source folder below 0730newdata)::
 
-    python integrate_0730_twoc3.py
+    python integrate_newdata_all_ansatze.py
 
 The workflow is deliberately ordered:
 
-1. Scan only ``2tensor_twoC3``/``twoc3`` runs in 0730newdata.
-2. Directly import a completed (J2, D) when exactly one new run supplies it and
-   0713summary does not already contain it.
+1. Scan every ansatz recorded by hyperparams or a standard run-folder name.
+2. Directly import a completed (ansatz, J2, D) when exactly one new run
+   supplies it and 0713summary does not already contain it.
 3. Copy every unresolved, unfinished run's ``*_best.pt`` and ``*.log`` files
-   into ``0730newdata/_unfinished_2C3_for_rerun`` using collision-free names.
-4. For completed duplicate (J2, D) pairs, show one J2 at a time.  Radio buttons
-   on the left enforce exactly one source per conflicting D.  Every change
-   redraws energy, m_Neel, and NN correlations for the selected mixed data.
-   Confirm atomically replaces those D entries in 0713summary and advances to
-   the next conflicting J2.  Closing a window before Confirm stops the workflow.
+   into ``0730newdata/_unfinished_all_ansatze_for_rerun`` with unique names.
+4. For completed duplicates, show one (ansatz, J2) at a time as one plot
+   column.  Radio buttons on the left enforce exactly one source per
+   conflicting D.  Every change redraws energy, m_Neel, and NN correlations.
+   Confirm replaces those D entries and advances to the next (ansatz, J2).
 
 A non-lookahead ``D_*_chi_*_energy_magnetization_correlation.txt`` containing a
 finite ``energy_per_site`` is the definition of a completed result, matching
@@ -33,6 +32,7 @@ import math
 import os
 import re
 import shutil
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -65,9 +65,40 @@ DEFAULT_NEW_ROOT = Path(
 DEFAULT_SUMMARY_ROOT = Path(
     r"D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\0713summary"
 )
-ANSATZ = "2tensor_twoC3"
-DEFAULT_RERUN_FOLDER = "_unfinished_2C3_for_rerun"
-DEFAULT_REPORT = "0730_twoc3_integration_report.json"
+DEFAULT_RERUN_FOLDER = "_unfinished_all_ansatze_for_rerun"
+LEGACY_RERUN_FOLDER = "_unfinished_2C3_for_rerun"
+DEFAULT_REPORT = "newdata_all_ansatze_integration_report.json"
+
+# yaml_name values from both models/0801core main registries.  Hyperparams and
+# standard run folders remain authoritative, so a future unknown yaml_name is
+# accepted without editing this list.  The table is used only for CLI/log/path
+# fallbacks when downloaded external data lacks hyperparams.
+KNOWN_YAML_ANSATZE = (
+    "6tensors",
+    "neel_free_param",
+    "neel_symmetrized",
+    "1tensor_C6Ypi",
+    "1tensor_C6_swave",
+    "sym6_free_param",
+    "sym2_free_param",
+    "sym6",
+    "1tensor_C3Vypi",
+    "2tensor_twoC3",
+    "2tensor_columnar",
+)
+CLI_ANSATZ_ALIASES = {
+    "unrestricted": "6tensors",
+    "neel": "neel_free_param",
+    "neel_legacy": "neel_symmetrized",
+    "c6ypi": "1tensor_C6Ypi",
+    "swave": "1tensor_C6_swave",
+    "sym6": "sym6_free_param",
+    "sym2": "sym2_free_param",
+    "sym6_legacy": "sym6",
+    "c3vypi": "1tensor_C3Vypi",
+    "twoc3": "2tensor_twoC3",
+    "columnar": "2tensor_columnar",
+}
 
 STANDARD_RUN_RE = re.compile(
     r"^(?P<ansatz>.+?)__J2_(?P<j2>[0-9]+p[0-9]+)"
@@ -81,8 +112,8 @@ BEST_RE = re.compile(
 SUMMARY_J2_RE = re.compile(r"^J2_(?P<j2>[0-9]+p[0-9]+)$")
 SUMMARY_D_RE = re.compile(r"^D_(?P<D>\d+)$")
 PATH_J2_PATTERNS = (
-    re.compile(r"J2[_-]?(?:two_?c3|twoc3|c3)?[_-]?(0(?:[p.]\d+))", re.IGNORECASE),
-    re.compile(r"J2[_-](0(?:[p.]\d+))", re.IGNORECASE),
+    re.compile(r"J2[^0-9+-]*([+-]?(?:\d+(?:[p.]\d*)?|[p.]\d+))", re.IGNORECASE),
+    re.compile(r"J2[_-]([+-]?(?:\d+(?:[p.]\d*)?|[p.]\d+))", re.IGNORECASE),
 )
 LOG_J2_RE = re.compile(
     r"\bJ1\s*=\s*[+-]?[\d.eE+-]+\s+J2\s*=\s*"
@@ -121,7 +152,7 @@ class RunMetadata:
 
 @dataclass(frozen=True)
 class Choice:
-    """One selectable completed run for one (J2, D)."""
+    """One selectable completed run for one (ansatz, J2, D)."""
 
     candidate: Candidate
     origin: str  # "new" or "summary"
@@ -130,8 +161,8 @@ class Choice:
     elapsed_hours: float | None
 
     @property
-    def key(self) -> tuple[str, int]:
-        return self.candidate.j2, self.candidate.D
+    def key(self) -> tuple[str, str, int]:
+        return self.candidate.ansatz, self.candidate.j2, self.candidate.D
 
     @property
     def display_label(self) -> str:
@@ -150,13 +181,14 @@ class Choice:
 
 @dataclass
 class ScanResult:
-    completed: dict[tuple[str, int], list[Choice]]
-    incomplete: dict[tuple[str, int], list["IncompleteRun"]]
+    completed: dict[tuple[str, str, int], list[Choice]]
+    incomplete: dict[tuple[str, str, int], list["IncompleteRun"]]
     warnings: list[str]
 
 
 @dataclass(frozen=True)
 class IncompleteRun:
+    ansatz: str
     j2: str
     D: int
     timestamp: str
@@ -167,16 +199,16 @@ class IncompleteRun:
     logs: tuple[Path, ...]
 
     @property
-    def key(self) -> tuple[str, int]:
-        return self.j2, self.D
+    def key(self) -> tuple[str, str, int]:
+        return self.ansatz, self.j2, self.D
 
 
 @dataclass
 class Preparation:
-    initial_summary: dict[tuple[str, int], Choice]
+    initial_summary: dict[tuple[str, str, int], Choice]
     new_scan: ScanResult
-    unique: dict[tuple[str, int], Choice]
-    conflicts: dict[tuple[str, int], list[Choice]]
+    unique: dict[tuple[str, str, int], Choice]
+    conflicts: dict[tuple[str, str, int], list[Choice]]
     archived: list[dict]
 
 
@@ -187,15 +219,25 @@ def _shorten(text: str, width: int) -> str:
     return f"{text[:keep]}…{text[-keep:]}"
 
 
-def _is_twoc3(value: str) -> bool:
-    compact = re.sub(r"[^a-z0-9]", "", value.lower())
-    return compact in {
-        "twoc3",
-        "2c3",
-        "2tensortwoc3",
-        "twotensortwoc3",
-        "twotensorc3",
-    }
+def _key_sort(key: tuple[str, str, int]) -> tuple[str, float, int]:
+    ansatz, j2, D = key
+    return ansatz.casefold(), float(j2.replace("p", ".")), D
+
+
+def _canonical_ansatz(value: str, *, cli_context: bool = False) -> str:
+    """Canonicalize a registry CLI key or yaml_name without merging ansatze."""
+    cleaned = value.strip().strip("'\"")
+    if not cleaned:
+        return ""
+    yaml_by_case = {name.casefold(): name for name in KNOWN_YAML_ANSATZE}
+    if not cli_context and cleaned.casefold() in yaml_by_case:
+        return yaml_by_case[cleaned.casefold()]
+    alias = CLI_ANSATZ_ALIASES.get(cleaned.casefold())
+    if alias is not None:
+        return alias
+    if cleaned.casefold() in yaml_by_case:
+        return yaml_by_case[cleaned.casefold()]
+    return cleaned
 
 
 def _read_text(path: Path) -> str:
@@ -231,7 +273,7 @@ def _direct_logs(job_dir: Path) -> tuple[Path, ...]:
 
 def _metadata_from_job(job_dir: Path, root: Path) -> RunMetadata | None:
     params = _load_hyperparams(job_dir / "hyperparams.yaml")
-    ansatz = str(params.get("ansatz", "")).strip()
+    ansatz = _canonical_ansatz(str(params.get("ansatz", "")))
     j2_value = params.get("J2")
     timestamp = str(params.get("run_timestamp", "")).strip()
 
@@ -240,7 +282,7 @@ def _metadata_from_job(job_dir: Path, root: Path) -> RunMetadata | None:
             break
         match = STANDARD_RUN_RE.match(ancestor.name)
         if match:
-            ansatz = ansatz or match.group("ansatz")
+            ansatz = ansatz or _canonical_ansatz(match.group("ansatz"))
             j2_value = j2_value if j2_value is not None else match.group("j2")
             timestamp = timestamp or match.group("timestamp")
             break
@@ -254,8 +296,16 @@ def _metadata_from_job(job_dir: Path, root: Path) -> RunMetadata | None:
             if match:
                 j2_value = match.group(1)
                 break
-    if not ansatz and re.search(r"(?:two_?c3|twoc3|2c3)", path_text, re.IGNORECASE):
-        ansatz = ANSATZ
+    if not ansatz:
+        for yaml_name in sorted(KNOWN_YAML_ANSATZE, key=len, reverse=True):
+            if yaml_name.casefold() in path_text.casefold():
+                ansatz = yaml_name
+                break
+    if not ansatz:
+        for cli_name, yaml_name in CLI_ANSATZ_ALIASES.items():
+            if re.search(rf"(?:^|[^a-z0-9]){re.escape(cli_name)}(?:[^a-z0-9]|$)", path_text, re.IGNORECASE):
+                ansatz = yaml_name
+                break
 
     log_texts = [_read_text(path) for path in _direct_logs(job_dir)]
     joined_logs = "\n".join(log_texts)
@@ -263,8 +313,10 @@ def _metadata_from_job(job_dir: Path, root: Path) -> RunMetadata | None:
         match = LOG_J2_RE.search(joined_logs)
         if match:
             j2_value = match.group("j2")
-    if not ansatz and re.search(r"Ansatz\s*:\s*(?:two_?c3|twoc3|2c3)", joined_logs, re.IGNORECASE):
-        ansatz = ANSATZ
+    if not ansatz:
+        match = re.search(r"Ansatz\s*:\s*['\"]?([^'\"\s]+)", joined_logs, re.IGNORECASE)
+        if match:
+            ansatz = _canonical_ansatz(match.group(1), cli_context=True)
     if not timestamp:
         match = STARTED_RE.search(joined_logs)
         if match:
@@ -274,29 +326,25 @@ def _metadata_from_job(job_dir: Path, root: Path) -> RunMetadata | None:
                 + match.group("time").replace(":", "")
             )
 
-    if not _is_twoc3(ansatz) or j2_value is None:
+    if not ansatz or j2_value is None:
         return None
     try:
         j2 = normalize_j2(str(j2_value))
     except ValueError:
         return None
-    return RunMetadata(ansatz=ANSATZ, j2=j2, timestamp=timestamp)
+    return RunMetadata(ansatz=ansatz, j2=j2, timestamp=timestamp)
 
 
-def _job_mentions_twoc3(job_dir: Path, root: Path) -> bool:
-    """Distinguish malformed 2C3 data from unrelated ansatze to ignore."""
+def _job_mentions_ansatz(job_dir: Path, root: Path) -> bool:
+    """Return whether an unidentifiable artifact directory appears to be a run."""
     params = _load_hyperparams(job_dir / "hyperparams.yaml")
     if params.get("ansatz") is not None:
-        return _is_twoc3(str(params["ansatz"]))
+        return bool(str(params["ansatz"]).strip())
     relative = job_dir.relative_to(root).as_posix()
-    if re.search(r"(?:two_?c3|twoc3|2c3)", relative, re.IGNORECASE):
+    if any(name.casefold() in relative.casefold() for name in KNOWN_YAML_ANSATZE):
         return True
     return any(
-        re.search(
-            r"Ansatz\s*:\s*(?:two_?c3|twoc3|2c3)",
-            _read_text(path),
-            re.IGNORECASE,
-        )
+        re.search(r"Ansatz\s*:", _read_text(path), re.IGNORECASE)
         for path in _direct_logs(job_dir)
     )
 
@@ -351,7 +399,7 @@ def _run_source_id(root: Path, job_dir: Path) -> str:
 
 
 def discover_new_runs(root: Path, excluded_names: set[str] | None = None) -> ScanResult:
-    """Discover completed and incomplete new 2C3 runs.
+    """Discover completed and incomplete runs for every ansatz.
 
     Each directory directly containing an observable or checkpoint is one run.
     Within that directory, multiple completed chi values for the same D are
@@ -359,21 +407,21 @@ def discover_new_runs(root: Path, excluded_names: set[str] | None = None) -> Sca
     """
     if not root.is_dir():
         raise FileNotFoundError(f"new-data directory does not exist: {root}")
-    excluded_names = excluded_names or {DEFAULT_RERUN_FOLDER}
+    excluded_names = excluded_names or {DEFAULT_RERUN_FOLDER, LEGACY_RERUN_FOLDER}
     job_dirs: set[Path] = set()
     for current, dirs, files in os.walk(root):
         dirs[:] = [name for name in dirs if name not in excluded_names]
         if any(OBS_RE.match(name) or BEST_RE.match(name) for name in files):
             job_dirs.add(Path(current))
 
-    completed: dict[tuple[str, int], list[Choice]] = {}
-    incomplete: dict[tuple[str, int], list[IncompleteRun]] = {}
+    completed: dict[tuple[str, str, int], list[Choice]] = {}
+    incomplete: dict[tuple[str, str, int], list[IncompleteRun]] = {}
     warnings: list[str] = []
     for job_dir in sorted(job_dirs):
         metadata = _metadata_from_job(job_dir, root)
         if metadata is None:
-            if _job_mentions_twoc3(job_dir, root):
-                warnings.append(f"cannot identify 2C3 metadata: {job_dir}")
+            if _job_mentions_ansatz(job_dir, root):
+                warnings.append(f"cannot identify ansatz/J2 metadata: {job_dir}")
             continue
         logs = _direct_logs(job_dir)
         by_D_observations: dict[int, list[Candidate]] = {}
@@ -397,7 +445,7 @@ def discover_new_runs(root: Path, excluded_names: set[str] | None = None) -> Sca
             chi = int(obs_match.group("chi"))
             lookahead_chi, lookahead_energy = read_lookahead(job_dir, D, chi)
             candidate = Candidate(
-                ansatz=ANSATZ,
+                ansatz=metadata.ansatz,
                 j2=metadata.j2,
                 timestamp=metadata.timestamp,
                 D=D,
@@ -431,6 +479,7 @@ def discover_new_runs(root: Path, excluded_names: set[str] | None = None) -> Sca
             if D in by_D_observations:
                 continue
             item = IncompleteRun(
+                ansatz=metadata.ansatz,
                 j2=metadata.j2,
                 D=D,
                 timestamp=metadata.timestamp,
@@ -463,8 +512,8 @@ def _load_manifest(path: Path) -> dict:
         return {}
 
 
-def discover_summary(summary_root: Path) -> tuple[dict[tuple[str, int], Choice], list[str]]:
-    result: dict[tuple[str, int], Choice] = {}
+def discover_summary(summary_root: Path) -> tuple[dict[tuple[str, str, int], Choice], list[str]]:
+    result: dict[tuple[str, str, int], Choice] = {}
     warnings: list[str] = []
     if not summary_root.exists():
         return result, warnings
@@ -476,74 +525,73 @@ def discover_summary(summary_root: Path) -> tuple[dict[tuple[str, int], Choice],
             j2 = normalize_j2(j2_match.group("j2"))
         except ValueError:
             continue
-        ansatz_dir = j2_dir / ANSATZ
-        if not ansatz_dir.is_dir():
-            continue
-        for d_dir in sorted(ansatz_dir.glob("D_*")):
-            d_match = SUMMARY_D_RE.match(d_dir.name)
-            if not d_match or not d_dir.is_dir():
-                continue
-            D = int(d_match.group("D"))
-            observation = d_dir / "energy_magnetization_correlation.txt"
-            energy = read_energy(observation)
-            if energy is None:
-                warnings.append(f"summary observable has no finite energy: {observation}")
-                continue
-            manifest = _load_manifest(d_dir / "manifest.json")
-            try:
-                chi = int(manifest.get("chi", 0))
-            except (TypeError, ValueError):
-                chi = 0
-            source_job = str(
-                manifest.get(
-                    "source_job",
-                    d_dir.relative_to(summary_root).as_posix(),
+        for ansatz_dir in sorted(path for path in j2_dir.iterdir() if path.is_dir()):
+            ansatz = ansatz_dir.name
+            for d_dir in sorted(ansatz_dir.glob("D_*")):
+                d_match = SUMMARY_D_RE.match(d_dir.name)
+                if not d_match or not d_dir.is_dir():
+                    continue
+                D = int(d_match.group("D"))
+                observation = d_dir / "energy_magnetization_correlation.txt"
+                energy = read_energy(observation)
+                if energy is None:
+                    warnings.append(f"summary observable has no finite energy: {observation}")
+                    continue
+                manifest = _load_manifest(d_dir / "manifest.json")
+                try:
+                    chi = int(manifest.get("chi", 0))
+                except (TypeError, ValueError):
+                    chi = 0
+                source_job = str(
+                    manifest.get(
+                        "source_job",
+                        d_dir.relative_to(summary_root).as_posix(),
+                    )
                 )
-            )
-            timestamp = ""
-            for component in Path(source_job).parts:
-                match = STANDARD_RUN_RE.match(component)
-                if match:
-                    timestamp = match.group("timestamp")
-            logs = tuple(d_dir.glob("*.log"))
-            if not timestamp:
-                timestamp = (
-                    str(manifest.get("run_timestamp", ""))
-                    or _started_timestamp(logs)
+                timestamp = ""
+                for component in Path(source_job).parts:
+                    match = STANDARD_RUN_RE.match(component)
+                    if match:
+                        timestamp = match.group("timestamp")
+                logs = tuple(d_dir.glob("*.log"))
+                if not timestamp:
+                    timestamp = (
+                        str(manifest.get("run_timestamp", ""))
+                        or _started_timestamp(logs)
+                    )
+                candidate = Candidate(
+                    ansatz=ansatz,
+                    j2=j2,
+                    timestamp=timestamp,
+                    D=D,
+                    chi=chi,
+                    energy=energy,
+                    job_dir=d_dir,
+                    observation=observation,
+                    source_job=source_job,
+                    lookahead_chi=manifest.get("lookahead_chi"),
+                    lookahead_energy=manifest.get("lookahead_energy_per_site"),
+                    selection_reason="existing_0713summary",
                 )
-            candidate = Candidate(
-                ansatz=ANSATZ,
-                j2=j2,
-                timestamp=timestamp,
-                D=D,
-                chi=chi,
-                energy=energy,
-                job_dir=d_dir,
-                observation=observation,
-                source_job=source_job,
-                lookahead_chi=manifest.get("lookahead_chi"),
-                lookahead_energy=manifest.get("lookahead_energy_per_site"),
-                selection_reason="existing_0713summary",
-            )
-            result[(j2, D)] = Choice(
-                candidate=candidate,
-                origin="summary",
-                source_label="0713summary",
-                run_id=source_job,
-                elapsed_hours=_elapsed_hours(logs, D),
-            )
+                result[(ansatz, j2, D)] = Choice(
+                    candidate=candidate,
+                    origin="summary",
+                    source_label="0713summary",
+                    run_id=source_job,
+                    elapsed_hours=_elapsed_hours(logs, D),
+                )
     return result, warnings
 
 
 def classify(
     new_scan: ScanResult,
-    summary: dict[tuple[str, int], Choice],
+    summary: dict[tuple[str, str, int], Choice],
 ) -> tuple[
-    dict[tuple[str, int], Choice],
-    dict[tuple[str, int], list[Choice]],
+    dict[tuple[str, str, int], Choice],
+    dict[tuple[str, str, int], list[Choice]],
 ]:
-    unique: dict[tuple[str, int], Choice] = {}
-    conflicts: dict[tuple[str, int], list[Choice]] = {}
+    unique: dict[tuple[str, str, int], Choice] = {}
+    conflicts: dict[tuple[str, str, int], list[Choice]] = {}
     for key, new_choices in new_scan.completed.items():
         old = summary.get(key)
         merged = ([old] if old is not None else []) + list(new_choices)
@@ -565,6 +613,7 @@ def _required_copy_warning(choice: Choice, copied: list[str]) -> str | None:
     if not missing:
         return None
     return (
+        f"ansatz={choice.candidate.ansatz} "
         f"J2={choice.candidate.j2.replace('p', '.')} D={choice.candidate.D} "
         f"source={choice.run_id} missing copied artifacts: {', '.join(missing)}"
     )
@@ -575,18 +624,20 @@ def import_choice(choice: Choice, summary_root: Path, dry_run: bool = False) -> 
     target = (
         summary_root
         / f"J2_{candidate.j2}"
-        / ANSATZ
+        / candidate.ansatz
         / f"D_{candidate.D}"
     )
     if dry_run:
         print(
-            f"WOULD IMPORT: J2={candidate.j2.replace('p', '.')} D={candidate.D} "
+            f"WOULD IMPORT: ansatz={candidate.ansatz} "
+            f"J2={candidate.j2.replace('p', '.')} D={candidate.D} "
             f"chi={candidate.chi} E={candidate.energy:.15g} from {choice.run_id}"
         )
         return []
     copied = copy_candidate(candidate, target)
     print(
-        f"IMPORTED: J2={candidate.j2.replace('p', '.')} D={candidate.D} "
+        f"IMPORTED: ansatz={candidate.ansatz} "
+        f"J2={candidate.j2.replace('p', '.')} D={candidate.D} "
         f"chi={candidate.chi} E={candidate.energy:.15g} from {choice.run_id}"
     )
     warning = _required_copy_warning(choice, copied)
@@ -595,26 +646,93 @@ def import_choice(choice: Choice, summary_root: Path, dry_run: bool = False) -> 
     return copied
 
 
+def import_choices_atomically(
+    choices: Iterable[Choice],
+    summary_root: Path,
+) -> None:
+    """Commit all newly selected D entries for one (ansatz, J2), or none."""
+    selected = [choice for choice in choices if choice.origin == "new"]
+    if not selected:
+        return
+    summary_root.parent.mkdir(parents=True, exist_ok=True)
+    stage_root = Path(tempfile.mkdtemp(prefix=".newdata_stage_", dir=summary_root.parent))
+    backup_root = Path(tempfile.mkdtemp(prefix=".newdata_backup_", dir=summary_root.parent))
+    staged: list[tuple[Choice, Path, Path, list[str]]] = []
+    committed: list[tuple[Path, Path | None]] = []
+    try:
+        for choice in selected:
+            candidate = choice.candidate
+            relative = (
+                Path(f"J2_{candidate.j2}")
+                / candidate.ansatz
+                / f"D_{candidate.D}"
+            )
+            stage_target = stage_root / relative
+            copied = copy_candidate(candidate, stage_target)
+            target = summary_root / relative
+            staged.append((choice, stage_target, target, copied))
+
+        for choice, stage_target, target, _copied in staged:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            backup = backup_root / target.relative_to(summary_root)
+            old_backup: Path | None = None
+            if target.exists():
+                backup.parent.mkdir(parents=True, exist_ok=True)
+                target.replace(backup)
+                old_backup = backup
+            try:
+                stage_target.replace(target)
+            except Exception:
+                if old_backup is not None and old_backup.exists():
+                    old_backup.replace(target)
+                raise
+            committed.append((target, old_backup))
+
+        for choice, _stage_target, _target, copied in staged:
+            candidate = choice.candidate
+            print(
+                f"IMPORTED: ansatz={candidate.ansatz} "
+                f"J2={candidate.j2.replace('p', '.')} D={candidate.D} "
+                f"chi={candidate.chi} E={candidate.energy:.15g} "
+                f"from {choice.run_id}"
+            )
+            warning = _required_copy_warning(choice, copied)
+            if warning:
+                print(f"WARNING: {warning}")
+    except Exception:
+        for target, old_backup in reversed(committed):
+            if target.exists():
+                shutil.rmtree(target)
+            if old_backup is not None and old_backup.exists():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                old_backup.replace(target)
+        raise
+    finally:
+        shutil.rmtree(stage_root, ignore_errors=True)
+        shutil.rmtree(backup_root, ignore_errors=True)
+
+
 def _slug(value: str, max_length: int = 44) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip("-._")
     return (cleaned or "source")[:max_length]
 
 
 def archive_incomplete_runs(
-    incomplete: dict[tuple[str, int], list[IncompleteRun]],
-    initial_summary: dict[tuple[str, int], Choice],
+    incomplete: dict[tuple[str, str, int], list[IncompleteRun]],
+    initial_summary: dict[tuple[str, str, int], Choice],
     rerun_dir: Path,
     dry_run: bool = False,
 ) -> list[dict]:
     """Copy every unresolved incomplete run, including duplicate attempts."""
     records: list[dict] = []
-    for key in sorted(incomplete, key=lambda item: (float(item[0].replace("p", ".")), item[1])):
+    for key in sorted(incomplete, key=_key_sort):
         if key in initial_summary:
             continue
         for run in incomplete[key]:
             digest = hashlib.sha1(run.run_id.encode("utf-8")).hexdigest()[:8]
             prefix = (
-                f"J2_{run.j2}_D{run.D}__{_slug(run.source_label)}__"
+                f"{_slug(run.ansatz)}__J2_{run.j2}_D{run.D}__"
+                f"{_slug(run.source_label)}__"
                 f"{_slug(run.timestamp or 'time-unknown')}__{digest}"
             )
             sources = list(run.checkpoints) + list(run.logs)
@@ -640,6 +758,7 @@ def archive_incomplete_runs(
                 )
             records.append(
                 {
+                    "ansatz": run.ansatz,
                     "J2_label": run.j2,
                     "D": run.D,
                     "source_label": run.source_label,
@@ -660,13 +779,13 @@ def prepare(
     initial_summary, summary_warnings = discover_summary(summary_root)
     new_scan = discover_new_runs(
         new_root,
-        excluded_names={rerun_dir.name},
+        excluded_names={rerun_dir.name, DEFAULT_RERUN_FOLDER, LEGACY_RERUN_FOLDER},
     )
     unique, conflicts = classify(new_scan, initial_summary)
 
     print(
         f"Found {sum(len(v) for v in new_scan.completed.values())} completed "
-        f"new runs across {len(new_scan.completed)} (J2,D) pairs; "
+        f"new runs across {len(new_scan.completed)} (ansatz,J2,D) groups; "
         f"{sum(len(v) for v in new_scan.incomplete.values())} unfinished runs."
     )
     print(
@@ -676,7 +795,7 @@ def prepare(
     for warning in summary_warnings + new_scan.warnings:
         print(f"WARNING: {warning}")
 
-    for key in sorted(unique, key=lambda item: (float(item[0].replace("p", ".")), item[1])):
+    for key in sorted(unique, key=_key_sort):
         import_choice(unique[key], summary_root, dry_run=dry_run)
     archived = archive_incomplete_runs(
         new_scan.incomplete,
@@ -699,17 +818,29 @@ def _parsed_observation(choice: Choice, analysis_module):
 
 def _current_summary_D_data(
     summary_root: Path,
+    ansatz: str,
     j2: str,
     analysis_module,
 ) -> dict[int, dict]:
-    folder = summary_root / f"J2_{j2}" / ANSATZ
+    folder = summary_root / f"J2_{j2}" / ansatz
     if not folder.is_dir():
         return {}
-    return analysis_module.load_folder_data(
-        str(folder),
-        float(j2.replace("p", ".")),
-        ANSATZ,
-    )
+    result: dict[int, dict] = {}
+    for d_dir in sorted(folder.glob("D_*")):
+        match = SUMMARY_D_RE.match(d_dir.name)
+        if not match or not d_dir.is_dir():
+            continue
+        D = int(match.group("D"))
+        if D < analysis_module.MIN_PLOT_D:
+            continue
+        observation = d_dir / "energy_magnetization_correlation.txt"
+        if not observation.is_file():
+            continue
+        try:
+            result[D] = analysis_module.parse_plain_file(str(observation))
+        except Exception as exc:
+            print(f"WARNING: cannot plot summary observable {observation}: {exc}")
+    return result
 
 
 def _control_columns(option_lists: list[list[Choice]]) -> list[list[tuple[int, list[Choice]]]]:
@@ -739,7 +870,8 @@ def _unique_display_labels(choices: list[Choice]) -> list[str]:
     return result
 
 
-def resolve_one_j2(
+def resolve_one_ansatz_j2(
+    ansatz: str,
     j2: str,
     conflicts: dict[int, list[Choice]],
     summary_root: Path,
@@ -821,12 +953,12 @@ def resolve_one_j2(
 
     def redraw() -> None:
         try:
-            D_data = _current_summary_D_data(summary_root, j2, analysis)
+            D_data = _current_summary_D_data(summary_root, ansatz, j2, analysis)
             for D, choice in selections.items():
                 D_data[D] = _parsed_observation(choice, analysis)
             processed = analysis.process_parsed_D_data(D_data)
             if processed is None:
-                raise ValueError("no plottable 2C3 observations for this J2")
+                raise ValueError("no plottable observations for this (ansatz, J2)")
             # plot_analysis_Windows normally omits D=2.  A conflict at D=2
             # must nevertheless be visible immediately when its radio choice
             # changes, so widen only this interactive figure when necessary.
@@ -840,7 +972,7 @@ def resolve_one_j2(
             analysis.plot_col_energy(axes[0], processed, show_xlabel=False)
             analysis.plot_col_mag(axes[1], processed, show_xlabel=False)
             analysis.plot_col_nn(axes[2], processed, show_xlabel=True)
-            ylims = analysis.compute_j2_ylims({ANSATZ: processed})
+            ylims = analysis.compute_j2_ylims({ansatz: processed})
             axes[0].set_ylim(ylims["energy"])
             axes[1].set_ylim(ylims["mag"])
             axes[2].set_ylim(ylims["nn"])
@@ -848,7 +980,7 @@ def resolve_one_j2(
             axes[1].set_ylabel(r"$m_{\mathrm{N\acute{e}el}}$")
             axes[2].set_ylabel(r"$\langle S_i \cdot S_j \rangle$ (NN)")
             axes[0].set_title(
-                f"J2={j2.replace('p', '.')} — 2 C3 selected sources",
+                f"{ansatz} — J2={j2.replace('p', '.')} — selected sources",
                 fontsize=13,
             )
             status_text.set_text(
@@ -901,9 +1033,10 @@ def resolve_one_j2(
             fig.canvas.draw_idle()
             return
         try:
-            for D, choice in sorted(selections.items()):
-                if choice.origin == "new":
-                    import_choice(choice, summary_root, dry_run=False)
+            import_choices_atomically(
+                (choice for _D, choice in sorted(selections.items())),
+                summary_root,
+            )
             confirmed["value"] = True
             plt.close(fig)
         except Exception as exc:
@@ -919,11 +1052,21 @@ def resolve_one_j2(
     return dict(selections) if confirmed["value"] else None
 
 
+def group_conflicts_by_ansatz_j2(
+    conflicts: dict[tuple[str, str, int], list[Choice]],
+) -> dict[tuple[str, str], dict[int, list[Choice]]]:
+    """Build exactly one future figure group per (ansatz, J2)."""
+    grouped: dict[tuple[str, str], dict[int, list[Choice]]] = {}
+    for (ansatz, j2, D), choices in conflicts.items():
+        grouped.setdefault((ansatz, j2), {})[D] = choices
+    return grouped
+
+
 def resolve_conflicts_interactively(
-    conflicts: dict[tuple[str, int], list[Choice]],
+    conflicts: dict[tuple[str, str, int], list[Choice]],
     summary_root: Path,
     backend: str,
-) -> tuple[dict[str, dict[int, Choice]], bool]:
+) -> tuple[dict[tuple[str, str], dict[int, Choice]], bool]:
     if not conflicts:
         return {}, True
 
@@ -944,19 +1087,20 @@ def resolve_conflicts_interactively(
     except ImportError:
         from . import plot_analysis_Windows as analysis
 
-    by_j2: dict[str, dict[int, list[Choice]]] = {}
-    for (j2, D), choices in conflicts.items():
-        by_j2.setdefault(j2, {})[D] = choices
+    by_ansatz_j2 = group_conflicts_by_ansatz_j2(conflicts)
 
-    decisions: dict[str, dict[int, Choice]] = {}
-    for j2 in sorted(by_j2, key=lambda value: float(value.replace("p", "."))):
+    decisions: dict[tuple[str, str], dict[int, Choice]] = {}
+    group_sort = lambda key: (key[0].casefold(), float(key[1].replace("p", ".")))
+    for ansatz, j2 in sorted(by_ansatz_j2, key=group_sort):
         print(
-            f"Opening conflict window for J2={j2.replace('p', '.')} "
-            f"({len(by_j2[j2])} conflicting D values) ..."
+            f"Opening conflict window for ansatz={ansatz} "
+            f"J2={j2.replace('p', '.')} "
+            f"({len(by_ansatz_j2[(ansatz, j2)])} conflicting D values) ..."
         )
-        selected = resolve_one_j2(
+        selected = resolve_one_ansatz_j2(
+            ansatz,
             j2,
-            by_j2[j2],
+            by_ansatz_j2[(ansatz, j2)],
             summary_root,
             analysis,
             plt,
@@ -964,11 +1108,11 @@ def resolve_conflicts_interactively(
         )
         if selected is None:
             print(
-                f"STOPPED: J2={j2.replace('p', '.')} was closed without Confirm. "
-                "Later J2 values were not opened."
+                f"STOPPED: ansatz={ansatz} J2={j2.replace('p', '.')} "
+                "was closed without Confirm. Later groups were not opened."
             )
             return decisions, False
-        decisions[j2] = selected
+        decisions[(ansatz, j2)] = selected
     return decisions, True
 
 
@@ -976,6 +1120,7 @@ def _choice_record(choice: Choice) -> dict:
     candidate = choice.candidate
     return {
         "origin": choice.origin,
+        "ansatz": candidate.ansatz,
         "source_label": choice.source_label,
         "run_id": choice.run_id,
         "timestamp": candidate.timestamp,
@@ -991,31 +1136,31 @@ def _choice_record(choice: Choice) -> dict:
 def write_report(
     path: Path,
     preparation: Preparation,
-    decisions: dict[str, dict[int, Choice]],
+    decisions: dict[tuple[str, str], dict[int, Choice]],
     all_confirmed: bool,
 ) -> None:
     payload = {
-        "schema": "0730_twoc3_integration",
-        "schema_version": 1,
+        "schema": "newdata_all_ansatze_integration",
+        "schema_version": 2,
         "all_conflicts_confirmed": all_confirmed,
         "unique_imports": [
             _choice_record(choice)
             for _, choice in sorted(
                 preparation.unique.items(),
-                key=lambda item: (float(item[0][0].replace("p", ".")), item[0][1]),
+                key=lambda item: _key_sort(item[0]),
             )
         ],
         "unfinished_archives": preparation.archived,
         "conflicts": {
-            f"J2_{j2}_D{D}": [_choice_record(choice) for choice in choices]
-            for (j2, D), choices in sorted(
+            f"{ansatz}__J2_{j2}_D{D}": [_choice_record(choice) for choice in choices]
+            for (ansatz, j2, D), choices in sorted(
                 preparation.conflicts.items(),
-                key=lambda item: (float(item[0][0].replace("p", ".")), item[0][1]),
+                key=lambda item: _key_sort(item[0]),
             )
         },
         "confirmed_choices": {
-            f"J2_{j2}_D{D}": _choice_record(choice)
-            for j2, selected in decisions.items()
+            f"{ansatz}__J2_{j2}_D{D}": _choice_record(choice)
+            for (ansatz, j2), selected in decisions.items()
             for D, choice in selected.items()
         },
         "warnings": preparation.new_scan.warnings,
@@ -1029,16 +1174,16 @@ def write_report(
     temporary.replace(path)
 
 
-def print_conflicts(conflicts: dict[tuple[str, int], list[Choice]]) -> None:
+def print_conflicts(conflicts: dict[tuple[str, str, int], list[Choice]]) -> None:
     if not conflicts:
         print("No completed duplicate conflicts.")
         return
     print("Completed duplicate conflicts:")
-    for (j2, D), choices in sorted(
+    for (ansatz, j2, D), choices in sorted(
         conflicts.items(),
-        key=lambda item: (float(item[0][0].replace("p", ".")), item[0][1]),
+        key=lambda item: _key_sort(item[0]),
     ):
-        print(f"  J2={j2.replace('p', '.')} D={D}")
+        print(f"  ansatz={ansatz} J2={j2.replace('p', '.')} D={D}")
         for choice in choices:
             print(f"    - {choice.display_label} [{choice.origin}] {choice.run_id}")
 
@@ -1052,13 +1197,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         help=(
             "unfinished output folder (default: "
-            "<new-root>/_unfinished_2C3_for_rerun)"
+            "<new-root>/_unfinished_all_ansatze_for_rerun)"
         ),
     )
     parser.add_argument(
         "--report",
         type=Path,
-        help="audit JSON path (default: <new-root>/0730_twoc3_integration_report.json)",
+        help="audit JSON path (default: <new-root>/newdata_all_ansatze_integration_report.json)",
     )
     parser.add_argument(
         "--backend",

@@ -11,6 +11,8 @@ if str(HERE) not in sys.path:
 
 import integrate_0730_twoc3 as integration
 
+TWOC3 = "2tensor_twoC3"
+
 
 def _observable(energy: float) -> str:
     return f"energy_per_site = {energy:.12f}\n"
@@ -51,8 +53,14 @@ def _make_run(
     return run
 
 
-def _make_summary(summary: Path, j2: str, D: int, energy: float) -> None:
-    target = summary / f"J2_{j2}" / integration.ANSATZ / f"D_{D}"
+def _make_summary(
+    summary: Path,
+    j2: str,
+    D: int,
+    energy: float,
+    ansatz: str = TWOC3,
+) -> None:
+    target = summary / f"J2_{j2}" / ansatz / f"D_{D}"
     target.mkdir(parents=True)
     (target / "energy_magnetization_correlation.txt").write_text(
         _observable(energy),
@@ -138,28 +146,34 @@ def test_prepare_classifies_imports_conflicts_and_unfinished(tmp_path: Path) -> 
         energies_by_chi={30: -0.431},
         checkpoint_chis=[30],
     )
-    # Non-2C3 data is ignored.
+    # Another ansatz is independently unique even when J2 and D are identical.
     _make_run(
         new,
         "source_other",
         "other",
-        0.34,
-        7,
-        energies_by_chi={70: -0.39},
-        checkpoint_chis=[70],
+        0.31,
+        4,
+        energies_by_chi={40: -0.39},
+        checkpoint_chis=[40],
         ansatz="1tensor_C6Ypi",
     )
 
     preparation = integration.prepare(new, summary, rerun, dry_run=False)
 
-    assert set(preparation.unique) == {("0p31", 4)}
-    assert preparation.unique[("0p31", 4)].candidate.chi == 40
-    imported = summary / "J2_0p31" / integration.ANSATZ / "D_4"
+    assert set(preparation.unique) == {
+        (TWOC3, "0p31", 4),
+        ("1tensor_C6Ypi", "0p31", 4),
+    }
+    assert preparation.unique[(TWOC3, "0p31", 4)].candidate.chi == 40
+    imported = summary / "J2_0p31" / TWOC3 / "D_4"
     assert (imported / "energy_magnetization_correlation.txt").is_file()
     assert (imported / "tensor_best.pt").is_file()
-    assert set(preparation.conflicts) == {("0p3", 3), ("0p32", 5)}
-    assert len(preparation.conflicts[("0p3", 3)]) == 2
-    assert len(preparation.conflicts[("0p32", 5)]) == 2
+    assert set(preparation.conflicts) == {
+        (TWOC3, "0p3", 3),
+        (TWOC3, "0p32", 5),
+    }
+    assert len(preparation.conflicts[(TWOC3, "0p3", 3)]) == 2
+    assert len(preparation.conflicts[(TWOC3, "0p32", 5)]) == 2
     assert len(preparation.archived) == 2
     assert len(list(rerun.glob("*.pt"))) == 2
     assert len(list(rerun.glob("*.log"))) == 2
@@ -171,7 +185,7 @@ def test_prepare_classifies_imports_conflicts_and_unfinished(tmp_path: Path) -> 
 
 def test_unique_labels_disambiguate_identical_display_text(tmp_path: Path) -> None:
     candidate = integration.Candidate(
-        ansatz=integration.ANSATZ,
+        ansatz=TWOC3,
         j2="0p3",
         timestamp="20260730_120000",
         D=4,
@@ -189,6 +203,135 @@ def test_unique_labels_disambiguate_identical_display_text(tmp_path: Path) -> No
     ]
     labels = integration._unique_display_labels(choices)
     assert len(labels) == len(set(labels)) == 2
+
+
+def test_every_0801_yaml_ansatz_is_kept_distinct(tmp_path: Path) -> None:
+    new = tmp_path / "newdata"
+    new.mkdir()
+    for index, ansatz in enumerate(integration.KNOWN_YAML_ANSATZE):
+        _make_run(
+            new,
+            f"source_{index}",
+            f"run_{index}",
+            0.20 + index * 0.001,
+            3,
+            energies_by_chi={30: -0.5 + index * 0.001},
+            checkpoint_chis=[30],
+            ansatz=ansatz,
+        )
+    _make_run(
+        new,
+        "future_source",
+        "future_run",
+        0.399,
+        4,
+        energies_by_chi={40: -0.399},
+        checkpoint_chis=[40],
+        ansatz="future_registry_ansatz",
+    )
+    scan = integration.discover_new_runs(new)
+    discovered = {ansatz for ansatz, _j2, _D in scan.completed}
+    assert discovered == set(integration.KNOWN_YAML_ANSATZE) | {
+        "future_registry_ansatz"
+    }
+    assert len(scan.completed) == len(integration.KNOWN_YAML_ANSATZE) + 1
+
+
+def test_group_confirm_stages_every_D_before_replacing_summary(tmp_path: Path) -> None:
+    new = tmp_path / "newdata"
+    summary = tmp_path / "summary"
+    new.mkdir()
+    summary.mkdir()
+    for D, energy in ((4, -0.44), (5, -0.45)):
+        _make_summary(summary, "0p3", D, -0.40 - D * 0.001)
+        _make_run(
+            new,
+            f"source_D{D}",
+            f"run_D{D}",
+            0.30,
+            D,
+            energies_by_chi={40: energy},
+            checkpoint_chis=[40],
+        )
+    scan = integration.discover_new_runs(new)
+    choices = [
+        scan.completed[(TWOC3, "0p3", D)][0]
+        for D in (4, 5)
+    ]
+
+    original_copy = integration.copy_candidate
+    calls = {"count": 0}
+
+    def fail_second(candidate, target):
+        calls["count"] += 1
+        if calls["count"] == 2:
+            raise RuntimeError("synthetic staging failure")
+        return original_copy(candidate, target)
+
+    integration.copy_candidate = fail_second
+    try:
+        try:
+            integration.import_choices_atomically(choices, summary)
+        except RuntimeError as exc:
+            assert "synthetic staging failure" in str(exc)
+        else:
+            raise AssertionError("atomic import should have failed")
+    finally:
+        integration.copy_candidate = original_copy
+
+    # Neither old D was touched because all selected data stages before commit.
+    for D in (4, 5):
+        energy = integration.read_energy(
+            summary
+            / "J2_0p3"
+            / TWOC3
+            / f"D_{D}"
+            / "energy_magnetization_correlation.txt"
+        )
+        assert energy == -0.40 - D * 0.001
+
+    integration.import_choices_atomically(choices, summary)
+    for D, expected in ((4, -0.44), (5, -0.45)):
+        energy = integration.read_energy(
+            summary
+            / "J2_0p3"
+            / TWOC3
+            / f"D_{D}"
+            / "energy_magnetization_correlation.txt"
+        )
+        assert energy == expected
+
+
+def test_conflict_figures_are_partitioned_by_ansatz_and_j2(tmp_path: Path) -> None:
+    def choice(ansatz: str, j2: str, D: int) -> integration.Choice:
+        candidate = integration.Candidate(
+            ansatz=ansatz,
+            j2=j2,
+            timestamp="20260801_120000",
+            D=D,
+            chi=40,
+            energy=-0.4,
+            job_dir=tmp_path,
+            observation=tmp_path / "obs.txt",
+            source_job=f"{ansatz}/{j2}/D{D}",
+            lookahead_chi=None,
+            lookahead_energy=None,
+        )
+        return integration.Choice(candidate, "new", "source", candidate.source_job, 1.0)
+
+    conflicts = {
+        (TWOC3, "0p3", 4): [choice(TWOC3, "0p3", 4)],
+        (TWOC3, "0p3", 5): [choice(TWOC3, "0p3", 5)],
+        ("2tensor_columnar", "0p3", 4): [choice("2tensor_columnar", "0p3", 4)],
+        (TWOC3, "0p31", 4): [choice(TWOC3, "0p31", 4)],
+    }
+    grouped = integration.group_conflicts_by_ansatz_j2(conflicts)
+    assert set(grouped) == {
+        (TWOC3, "0p3"),
+        ("2tensor_columnar", "0p3"),
+        (TWOC3, "0p31"),
+    }
+    assert set(grouped[(TWOC3, "0p3")]) == {4, 5}
 
 
 def test_single_D_conflict_plot_helpers() -> None:
@@ -231,5 +374,11 @@ if __name__ == "__main__":
         test_prepare_classifies_imports_conflicts_and_unfinished(Path(directory))
     with tempfile.TemporaryDirectory() as directory:
         test_unique_labels_disambiguate_identical_display_text(Path(directory))
+    with tempfile.TemporaryDirectory() as directory:
+        test_every_0801_yaml_ansatz_is_kept_distinct(Path(directory))
+    with tempfile.TemporaryDirectory() as directory:
+        test_group_confirm_stages_every_D_before_replacing_summary(Path(directory))
+    with tempfile.TemporaryDirectory() as directory:
+        test_conflict_figures_are_partitioned_by_ansatz_and_j2(Path(directory))
     test_single_D_conflict_plot_helpers()
-    print("All integrate_0730_twoc3 tests passed.")
+    print("All all-ansatz integration tests passed.")
