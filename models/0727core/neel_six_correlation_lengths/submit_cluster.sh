@@ -1,5 +1,5 @@
 #!/bin/bash
-# Submit every available D>=3 checkpoint as one independent Slurm job.
+# Submit every incomplete checkpoint as one independent Slurm job.
 
 set -euo pipefail
 shopt -s nullglob
@@ -26,12 +26,12 @@ for checkpoint in "$BUNDLE_DIR"/checkpoints/J2_*/D_*/tensor_best.pt; do
   j2_dir="$(basename "$(dirname "$(dirname "$checkpoint")")")"
   j2_text="${j2_dir#J2_}"
   J2_VALUE="${j2_text//p/.}"
-  OUTPUT_JSON="$BUNDLE_DIR/results_straight_rows_v3/$j2_dir/D_${D}.json"
-  if python "$BUNDLE_DIR/compute_six_correlation_lengths.py" \
+  OUTPUT_JSON="$BUNDLE_DIR/results/$j2_dir/D_${D}.json"
+  if python3 "$BUNDLE_DIR/check_result.py" \
+      --result "$OUTPUT_JSON" \
       --checkpoint "$checkpoint" \
       --J2 "$J2_VALUE" \
-      --output "$OUTPUT_JSON" \
-      --check-only; then
+      --D "$D"; then
     echo "SKIP existing $OUTPUT_JSON"
     ((skipped += 1))
     continue
@@ -41,9 +41,13 @@ for checkpoint in "$BUNDLE_DIR"/checkpoints/J2_*/D_*/tensor_best.pt; do
   if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "WOULD SUBMIT J2=${J2_VALUE}, D=${D} -> ${OUTPUT_JSON}"
   else
+    mkdir -p "$BUNDLE_DIR/logs"
     sbatch \
       --job-name="nxi_${j2_text}_D${D}" \
+      --dependency=singleton \
       --chdir="$BUNDLE_DIR" \
+      --output="$BUNDLE_DIR/logs/%x-%j.out" \
+      --error="$BUNDLE_DIR/logs/%x-%j.err" \
       --export="$export_spec" \
       "$BUNDLE_DIR/run_one.run"
   fi

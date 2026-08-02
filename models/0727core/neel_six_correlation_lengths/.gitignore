@@ -1,0 +1,9 @@
+# Everything below is reproducible locally or returned by Slurm.
+/checkpoints/
+/checkpoint_manifest.json
+/results/
+/figures/
+/logs/
+/job-*.out
+/job-*.error
+/*.tmp

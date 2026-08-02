@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import hashlib
 import itertools
 import json
 import math
@@ -41,7 +42,7 @@ from temporary_crossed_environment_correlation_lengths import (
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_THREADS = int(os.environ.get("SLURM_CPUS_PER_TASK", "16"))
-RESULT_DIRECTORY_NAME = "results_straight_rows_v3"
+RESULT_DIRECTORY_NAME = "results"
 SCHEMA_VERSION = 3
 TRANSFER_NETWORK_SCHEMA = "three_geometric_straight_rows_v3"
 
@@ -234,7 +235,17 @@ def _default_output(checkpoint: Path, j2: float, D: int) -> Path:
     return HERE / RESULT_DIRECTORY_NAME / tag / f"D_{D}.json"
 
 
-def _is_valid_completed_output(path: Path, *, j2: float, D: int) -> bool:
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _is_valid_completed_output(
+    path: Path, *, j2: float, D: int, checkpoint_sha256: str
+) -> bool:
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
         if document.get("schema") != "neel_six_correlation_lengths":
@@ -244,6 +255,8 @@ def _is_valid_completed_output(path: Path, *, j2: float, D: int) -> bool:
         if document.get("transfer_network_schema") != TRANSFER_NETWORK_SCHEMA:
             return False
         if int(document["D"]) != D:
+            return False
+        if document.get("checkpoint_sha256") != checkpoint_sha256:
             return False
         if not math.isclose(
             float(document["J2"]), j2, rel_tol=0.0, abs_tol=1.0e-12
@@ -339,18 +352,27 @@ def main() -> int:
         if args.output is not None
         else _default_output(checkpoint, args.J2, D)
     )
+    checkpoint_sha256 = _sha256(checkpoint)
     if args.check_only:
         return (
             0
             if _is_valid_completed_output(
-                output, j2=float(args.J2), D=D
+                output,
+                j2=float(args.J2),
+                D=D,
+                checkpoint_sha256=checkpoint_sha256,
             )
             else 1
         )
     if (
         output.is_file()
         and not args.overwrite
-        and _is_valid_completed_output(output, j2=float(args.J2), D=D)
+        and _is_valid_completed_output(
+            output,
+            j2=float(args.J2),
+            D=D,
+            checkpoint_sha256=checkpoint_sha256,
+        )
     ):
         print(f"SKIP existing {output}", flush=True)
         return 0
@@ -502,6 +524,7 @@ def main() -> int:
         "D": D,
         "chi": chi,
         "checkpoint": str(checkpoint),
+        "checkpoint_sha256": checkpoint_sha256,
         "checkpoint_derived_validation_only": bool(
             payload.get("derived_validation_only", False)
         ),

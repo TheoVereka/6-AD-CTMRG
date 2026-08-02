@@ -1,8 +1,6 @@
 #!/bin/bash
 #SBATCH -q academic
 #SBATCH --partition academic
-#SBATCH -e ./job-%N-%j.error
-#SBATCH -o ./job-%N-%j.out
 #SBATCH --ntasks 1
 #SBATCH --cpus-per-task 16
 #SBATCH --time 6-23:59:50
