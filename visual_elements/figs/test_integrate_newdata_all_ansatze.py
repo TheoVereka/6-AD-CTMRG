@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -9,7 +10,7 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
-import integrate_0730_twoc3 as integration
+import integrate_newdata_all_ansatze as integration
 
 TWOC3 = "2tensor_twoC3"
 
@@ -334,6 +335,98 @@ def test_conflict_figures_are_partitioned_by_ansatz_and_j2(tmp_path: Path) -> No
     assert set(grouped[(TWOC3, "0p3")]) == {4, 5}
 
 
+def test_olddata_is_an_exact_reviewed_ledger_for_full_scp_copies(tmp_path: Path) -> None:
+    old = tmp_path / "0730olddata"
+    new = tmp_path / "0730newdata"
+    old.mkdir()
+
+    # Byte-identical completed and incomplete runs represent already reviewed data.
+    _make_run(
+        old,
+        "source",
+        "identical_completed",
+        0.20,
+        3,
+        energies_by_chi={30: -0.50},
+        checkpoint_chis=[30],
+    )
+    _make_run(
+        old,
+        "source",
+        "identical_incomplete",
+        0.21,
+        4,
+        energies_by_chi={},
+        checkpoint_chis=[40],
+    )
+    _make_run(
+        old,
+        "source",
+        "old_incomplete_now_completed",
+        0.22,
+        5,
+        energies_by_chi={},
+        checkpoint_chis=[50],
+    )
+    _make_run(
+        old,
+        "source",
+        "changed_checkpoint",
+        0.23,
+        6,
+        energies_by_chi={60: -0.47},
+        checkpoint_chis=[60],
+    )
+    _make_run(
+        old,
+        "source",
+        "same_checkpoint_regenerated_observable",
+        0.235,
+        6,
+        energies_by_chi={60: -0.471},
+        checkpoint_chis=[60],
+    )
+    shutil.copytree(old, new)
+
+    # The old checkpoint becomes a newly completed pair when its observable arrives.
+    newly_completed = new / "source" / "old_incomplete_now_completed"
+    (newly_completed / "D_5_chi_50_energy_magnetization_correlation.txt").write_text(
+        _observable(-0.48),
+        encoding="utf-8",
+    )
+    # Same relative name but changed checkpoint content must be reviewed again.
+    changed = new / "source" / "changed_checkpoint" / "sweep_D6_chi60_best.pt"
+    changed.write_bytes(b"changed checkpoint contents")
+    regenerated = (
+        new
+        / "source"
+        / "same_checkpoint_regenerated_observable"
+        / "D_6_chi_60_energy_magnetization_correlation.txt"
+    )
+    regenerated.write_text(_observable(-0.472), encoding="utf-8")
+    # A genuinely new run in the re-scp'd source folder is also visible.
+    _make_run(
+        new,
+        "source",
+        "brand_new",
+        0.24,
+        7,
+        energies_by_chi={70: -0.46},
+        checkpoint_chis=[70],
+    )
+
+    scan = integration.discover_new_runs(new, old_root=old)
+    assert set(scan.completed) == {
+        (TWOC3, "0p22", 5),
+        (TWOC3, "0p23", 6),
+        (TWOC3, "0p24", 7),
+    }
+    assert not scan.incomplete
+    skipped_kinds = [record["kind"] for record in scan.reviewed_skipped]
+    assert skipped_kinds.count("completed") == 2
+    assert skipped_kinds.count("incomplete_checkpoint") == 1
+
+
 def test_single_D_conflict_plot_helpers() -> None:
     import plot_analysis_Windows as analysis
     import matplotlib.pyplot as plt
@@ -380,5 +473,7 @@ if __name__ == "__main__":
         test_group_confirm_stages_every_D_before_replacing_summary(Path(directory))
     with tempfile.TemporaryDirectory() as directory:
         test_conflict_figures_are_partitioned_by_ansatz_and_j2(Path(directory))
+    with tempfile.TemporaryDirectory() as directory:
+        test_olddata_is_an_exact_reviewed_ledger_for_full_scp_copies(Path(directory))
     test_single_D_conflict_plot_helpers()
     print("All all-ansatz integration tests passed.")

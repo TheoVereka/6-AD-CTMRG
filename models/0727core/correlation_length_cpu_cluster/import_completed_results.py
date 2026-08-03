@@ -24,6 +24,7 @@ from bundle_utils import (
     RESULT_NAME_PATTERN,
     load_manifest,
     manifest_index,
+    parse_result_name,
     validate_result_payload,
 )
 
@@ -59,7 +60,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Downloaded bundle holding checkpoint_manifest.json. By default "
-            "the newest ordinary-v5 manifest below --incoming is selected."
+            "the newest compatible ordinary manifest below --incoming is selected."
         ),
     )
     parser.add_argument(
@@ -88,13 +89,18 @@ def within(path: Path, root: Path) -> bool:
     return True
 
 
-def is_current_v5_destination(
-    path: Path, *, j2: float, D_bond: int
+def is_current_ordinary_destination(
+    path: Path, *, j2: float, D_bond: int, ansatz_directory: str
 ) -> bool:
     try:
         with path.open("r", encoding="utf-8") as handle:
             payload = json.load(handle)
-        validate_result_payload(payload, j2=j2, D_bond=D_bond)
+        validate_result_payload(
+            payload,
+            j2=j2,
+            D_bond=D_bond,
+            ansatz_directory=ansatz_directory,
+        )
     except (
         OSError,
         ValueError,
@@ -128,7 +134,7 @@ def main() -> int:
                 continue
         if not compatible:
             raise FileNotFoundError(
-                f"No ordinary-v5 {MANIFEST_JSON} found below {incoming}"
+                f"No compatible ordinary {MANIFEST_JSON} found below {incoming}"
             )
         manifest_path = max(
             compatible, key=lambda path: path.stat().st_mtime_ns
@@ -152,12 +158,9 @@ def main() -> int:
 
     # Repeated ``scp -r`` can leave identical nested bundle copies. Select the
     # newest file for each (J2,D) rather than failing the entire import.
-    newest_by_key: dict[tuple[str, int], Path] = {}
+    newest_by_key: dict[tuple[str, str, int], Path] = {}
     for path in discovered_candidates:
-        match = RESULT_NAME_PATTERN.fullmatch(path.name)
-        assert match is not None
-        token, D_text = match.groups()
-        key = (token, int(D_text))
+        key = parse_result_name(path.name)
         previous = newest_by_key.get(key)
         if previous is None or path.stat().st_mtime_ns > previous.stat().st_mtime_ns:
             newest_by_key[key] = path
@@ -171,11 +174,10 @@ def main() -> int:
 
     imported = kept = failed = 0
     for source in candidates:
-        match = RESULT_NAME_PATTERN.fullmatch(source.name)
-        assert match is not None
-        j2_directory, D_text = match.groups()
-        D_bond = int(D_text)
-        key = (j2_directory, D_bond)
+        ansatz_directory, j2_directory, D_bond = parse_result_name(
+            source.name
+        )
+        key = (ansatz_directory, j2_directory, D_bond)
         item = index.get(key)
         if item is None:
             print(f"REJECT not present in manifest: {source}")
@@ -185,11 +187,16 @@ def main() -> int:
             with source.open("r", encoding="utf-8") as handle:
                 payload = json.load(handle)
             validate_result_payload(
-                payload, j2=float(item["j2"]), D_bond=D_bond
+                payload,
+                j2=float(item["j2"]),
+                D_bond=D_bond,
+                ansatz_directory=ansatz_directory,
             )
             provenance = payload.get("cluster_bundle_provenance")
             if not isinstance(provenance, dict):
                 raise ValueError("missing cluster_bundle_provenance")
+            if provenance.get("ansatz_directory", ansatz_directory) != ansatz_directory:
+                raise ValueError("provenance ansatz differs from result filename")
             if provenance.get("checkpoint_sha256") != item["sha256"]:
                 raise ValueError("checkpoint hash differs from manifest")
         except (
@@ -216,16 +223,19 @@ def main() -> int:
             failed += 1
             continue
         if destination.exists() and not args.overwrite:
-            if is_current_v5_destination(
-                destination, j2=float(item["j2"]), D_bond=D_bond
+            if is_current_ordinary_destination(
+                destination,
+                j2=float(item["j2"]),
+                D_bond=D_bond,
+                ansatz_directory=ansatz_directory,
             ):
                 print(
-                    f"REJECT current v5 destination exists "
+                    f"REJECT current ordinary destination exists "
                     f"(use --overwrite): {destination}"
                 )
                 failed += 1
                 continue
-            print(f"REPLACE obsolete non-v5 destination: {destination}")
+            print(f"REPLACE obsolete non-ordinary destination: {destination}")
 
         print(f"{'WOULD IMPORT' if args.dry_run else 'IMPORT'} {source}")
         print(f"  -> {destination}")

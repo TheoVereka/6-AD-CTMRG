@@ -51,6 +51,7 @@ INVERSE_D_X_MAX = (1.0 / MIN_PLOT_D) * 1.30
 # -----------------------------------------------------------------------------
 BANNED_ANSATZE = {
     # '1tensor_C6Ypi',
+    '1tensor_C6_swave',
 }
 
 BANNED_DS = {
@@ -86,10 +87,11 @@ def is_banned(j2, ansatz=None, D=None):
     return False
 
 # Preferred column order for ansatze
-ANSATZ_ORDER = ['neel_symmetrized', '1tensor_C6Ypi', '1tensor_C3Vypi', '2tensor_twoC3', '6tensors']
+ANSATZ_ORDER = ['neel_free_param', 'neel_symmetrized', '1tensor_C6Ypi', '1tensor_C3Vypi', '2tensor_twoC3', '6tensors']
 
 # Pretty labels for ansatze
 ANSATZ_LABEL = {
+    'neel_free_param': 'Neel',
     'neel_symmetrized': 'Néel',
     '1tensor_C6Ypi':   'C6Yπ',
     '1tensor_C3Vypi':  'C3vYπ',
@@ -408,7 +410,7 @@ def load_folder_data(folder_path, j2, ansatz):
 
 
 def load_inverse_correlation_lengths(folder_path, j2, ansatz):
-    """Discover v5 three-direction ordinary correlation JSON files.
+    """Discover compatible v5/v6 three-direction ordinary JSON files.
 
     Each directional value is recalculated directly as
     ``log(abs(lambda_max / lambda_second))``.  Their sorted median is plotted;
@@ -435,13 +437,23 @@ def load_inverse_correlation_lengths(folder_path, j2, ansatz):
         try:
             with open(fpath, encoding='utf-8') as handle:
                 payload = json.load(handle)
-            if (
+            legacy_twoc3 = (
+                ansatz == '2tensor_twoC3'
+                and payload.get('schema')
+                == 'twoc3_three_ordinary_correlation_lengths'
+                and payload.get('schema_version') == 5
+                and payload.get('transfer_network_schema')
+                == 'three_geometric_straight_rows_ordinary_v5'
+            )
+            current_c3ctm = (
                 payload.get('schema')
-                != 'twoc3_three_ordinary_correlation_lengths'
-                or payload.get('schema_version') != 5
-                or payload.get('transfer_network_schema')
-                != 'three_geometric_straight_rows_ordinary_v5'
-            ):
+                == 'c3ctm_three_ordinary_correlation_lengths'
+                and payload.get('schema_version') == 6
+                and payload.get('transfer_network_schema')
+                == 'three_geometric_straight_rows_ordinary_v6'
+                and payload.get('ansatz_directory') == ansatz
+            )
+            if not (legacy_twoc3 or current_c3ctm):
                 raise ValueError(
                     'obsolete non-three-direction correlation-length result'
                 )

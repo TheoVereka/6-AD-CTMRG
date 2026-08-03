@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Collect and rename every 0713summary two-C3 tensor_best.pt checkpoint."""
+"""Collect every C3-CTM-compatible 0713summary tensor_best.pt checkpoint.
+
+Checkpoints below every other ansatz directory are deliberately ignored.
+"""
 
 from __future__ import annotations
 
@@ -13,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from bundle_utils import (
-    ANSATZ_DIRECTORY,
+    C3_COMPATIBLE_ANSATZ_DIRECTORIES,
     CHECKPOINT_DIRECTORY,
     MANIFEST_JSON,
     MANIFEST_TSV,
@@ -38,12 +41,16 @@ def sha256(path: Path) -> str:
 
 def discover(summary_root: Path) -> list[dict[str, object]]:
     items: list[dict[str, object]] = []
-    for source in sorted(
-        summary_root.glob(
-            f"J2_*/{ANSATZ_DIRECTORY}/D_*/tensor_best.pt"
+    sources = sorted(
+        source
+        for ansatz in C3_COMPATIBLE_ANSATZ_DIRECTORIES
+        for source in summary_root.glob(
+            f"J2_*/{ansatz}/D_*/tensor_best.pt"
         )
-    ):
+    )
+    for source in sources:
         j2_directory = source.parents[2].name
+        ansatz_directory = source.parents[1].name
         j2 = parse_j2_directory(j2_directory)
         D_directory = source.parent.name
         try:
@@ -57,12 +64,13 @@ def discover(summary_root: Path) -> list[dict[str, object]]:
         items.append(
             {
                 "j2_directory": j2_directory,
+                "ansatz_directory": ansatz_directory,
                 "j2": j2,
                 "D": D_bond,
                 "source": source,
                 "original_relative_path": relative.as_posix(),
                 "staged_filename": staged_checkpoint_name(
-                    j2_directory, D_bond
+                    ansatz_directory, j2_directory, D_bond
                 ),
                 "size_bytes": source.stat().st_size,
             }
@@ -103,10 +111,12 @@ def write_manifests(
         solver_files[filename] = sha256(solver_path)
 
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
         "created_utc": datetime.now(timezone.utc).isoformat(),
         "source_summary_root": str(summary_root),
-        "ansatz_directory": ANSATZ_DIRECTORY,
+        "c3_compatible_ansatz_directories": list(
+            C3_COMPATIBLE_ANSATZ_DIRECTORIES
+        ),
         "solver_files_sha256": solver_files,
         "items": serializable_items,
     }
@@ -125,6 +135,7 @@ def write_manifests(
         writer.writerow(
             (
                 "j2_directory",
+                "ansatz_directory",
                 "j2",
                 "D",
                 "staged_filename",
@@ -136,6 +147,7 @@ def write_manifests(
             writer.writerow(
                 (
                     item["j2_directory"],
+                    item["ansatz_directory"],
                     format(float(item["j2"]), ".12g"),
                     item["D"],
                     item["staged_filename"],
@@ -177,18 +189,27 @@ def main() -> int:
     discovered = discover(summary_root)
     if not discovered:
         raise FileNotFoundError(
-            f"No two-C3 tensor_best.pt files below {summary_root}"
+            f"No C3-compatible tensor_best.pt files below {summary_root}"
         )
     keys = [
-        (str(item["j2_directory"]), int(item["D"]))
+        (
+            str(item["ansatz_directory"]),
+            str(item["j2_directory"]),
+            int(item["D"]),
+        )
         for item in discovered
     ]
     if len(keys) != len(set(keys)):
-        raise ValueError("Duplicate (J2,D) checkpoints were discovered")
+        raise ValueError("Duplicate (ansatz,J2,D) checkpoints were discovered")
 
     print(
-        f"Discovered {len(discovered)} two-C3 checkpoint(s) under "
+        f"Discovered {len(discovered)} C3-compatible checkpoint(s) under "
         f"{summary_root}."
+    )
+    print(
+        "Ansatz filter: "
+        + ", ".join(C3_COMPATIBLE_ANSATZ_DIRECTORIES)
+        + "; all other ansatz checkpoints are ignored."
     )
     if args.dry_run:
         for item in discovered:
@@ -224,7 +245,7 @@ def main() -> int:
     referenced = {str(item["staged_filename"]) for item in discovered}
     stale = sorted(
         path.name
-        for path in checkpoint_directory.glob("tensor_best__J2_*__D_*.pt")
+        for path in checkpoint_directory.glob("tensor_best__*.pt")
         if path.name not in referenced
     )
     print(

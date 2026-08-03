@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Compute three ordinary 2C3 row-transfer spectra in the CTM gauge.
+"""Compute three ordinary row-transfer spectra for a C3-CTM ansatz.
 
-For one two-C3 checkpoint this evaluates the three straight rows
+For one C3-compatible checkpoint this evaluates the three straight rows
 
 * env2(a,b) x env2(b,a);
 * env1(a,b) x env3(b,a);
@@ -34,11 +34,12 @@ import torch
 
 import correlation_length as corr
 import core_C3 as core
+from bundle_utils import validate_ansatz_directory
 
 
-SCHEMA = "twoc3_three_ordinary_correlation_lengths"
-SCHEMA_VERSION = 5
-TRANSFER_NETWORK_SCHEMA = "three_geometric_straight_rows_ordinary_v5"
+SCHEMA = "c3ctm_three_ordinary_correlation_lengths"
+SCHEMA_VERSION = 6
+TRANSFER_NETWORK_SCHEMA = "three_geometric_straight_rows_ordinary_v6"
 DEFAULT_THREADS = int(os.environ.get("SLURM_CPUS_PER_TASK", "16"))
 
 
@@ -68,9 +69,8 @@ def _as_environment(values: Sequence[torch.Tensor]) -> Environment:
 
 
 @torch.no_grad()
-def _run_three_environments(
-    raw_a: torch.Tensor,
-    raw_b: torch.Tensor,
+def _run_three_environments_from_sites(
+    raw_sites: Sequence[torch.Tensor],
     *,
     chi: int,
     ctm_max_steps: int,
@@ -82,8 +82,17 @@ def _run_three_environments(
 ) -> ThreeEnvironments:
     """Run CTMRG once and refresh all representatives from predecessors."""
 
-    D = int(raw_a.shape[0])
-    sites, double_layers = corr._build_ctm_layers(raw_a, raw_b)
+    if len(raw_sites) != 6:
+        raise ValueError("A C3-CTM environment requires six derived sites")
+    D = int(raw_sites[0].shape[0])
+    sites = tuple(
+        core.normalize_single_layer_tensor_for_double_layer(site)
+        for site in raw_sites
+    )
+    double_layers = tuple(
+        tensor.detach().contiguous()
+        for tensor in core.abcdef_to_ABCDEF(*sites, D**2)
+    )
     energy_proxy, _ = corr._build_lbfgs_energy_proxy(
         sites,
         chi=chi,
@@ -140,6 +149,68 @@ def _run_three_environments(
         energy_proxy,
     )
     return output
+
+
+@torch.no_grad()
+def _run_three_environments(
+    raw_a: torch.Tensor,
+    raw_b: torch.Tensor,
+    **kwargs: Any,
+) -> ThreeEnvironments:
+    """Backward-compatible two-C3 wrapper used by old diagnostics."""
+
+    return _run_three_environments_from_sites(
+        core.twoc3_abcdef_from_ab(raw_a, raw_b), **kwargs
+    )
+
+
+def _load_c3_checkpoint(
+    path: Path,
+    ansatz_directory: str,
+    *,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> tuple[tuple[torch.Tensor, ...], dict[str, Any]]:
+    checkpoint = torch.load(path, map_location="cpu", weights_only=False)
+    if not isinstance(checkpoint, dict):
+        raise TypeError("The checkpoint must contain a dictionary")
+    D_value = checkpoint.get("D_bond")
+
+    if ansatz_directory == "2tensor_twoC3":
+        params = (checkpoint["a_raw"], checkpoint["b_raw"])
+        derived = core.twoc3_abcdef_from_ab(*params)
+    elif ansatz_directory == "1tensor_C6Ypi":
+        derived = core.c6ypi_abcdef_from_a(checkpoint["a_raw"])
+    elif ansatz_directory == "1tensor_C3Vypi":
+        derived = core.c3vypi_abcdef_from_a(checkpoint["a_raw"])
+    elif ansatz_directory == "neel_symmetrized":
+        a_sym = core.symmetrize_virtual_legs(checkpoint["a_raw"])
+        derived = core.neel_abcdef_from_a(a_sym)
+    elif ansatz_directory == "neel_free_param":
+        if D_value is None:
+            raise KeyError("neel_free_param checkpoint has no D_bond")
+        a_sym = core.neel_param_to_a(checkpoint["h_neel"], int(D_value))
+        derived = core.neel_abcdef_from_a(a_sym)
+    else:
+        raise ValueError(
+            f"Unsupported C3-compatible ansatz directory: {ansatz_directory}"
+        )
+
+    sites = tuple(
+        corr._prepare_raw_tensor(
+            tensor, dtype=dtype, device=device, name=f"site_{index}"
+        )
+        for index, tensor in enumerate(derived)
+    )
+    D = int(sites[0].shape[0])
+    if D_value is not None and int(D_value) != D:
+        raise ValueError("Checkpoint D_bond disagrees with tensor dimensions")
+    metadata = {
+        key: checkpoint.get(key)
+        for key in ("D_bond", "chi", "loss", "energy", "step", "timestamp")
+    }
+    del checkpoint, derived
+    return sites, metadata
 
 
 def _possibly_dense(
@@ -257,6 +328,7 @@ def _atomic_write(path: Path, payload: dict[str, Any]) -> None:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("checkpoint", type=Path)
+    parser.add_argument("--ansatz-directory", required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--chi", type=int)
     parser.add_argument("--threads", type=int, default=DEFAULT_THREADS)
@@ -296,6 +368,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
+    validate_ansatz_directory(args.ansatz_directory)
     if args.threads < 1:
         raise ValueError("--threads must be positive")
     if args.ctm_max_steps < 1:
@@ -305,14 +378,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     torch.set_num_threads(args.threads)
     device = torch.device("cpu")
     dtype = torch.float64
-    a, b, metadata = corr._load_twoc3_checkpoint(
-        str(args.checkpoint.resolve()),
+    sites, metadata = _load_c3_checkpoint(
+        args.checkpoint.resolve(),
+        args.ansatz_directory,
         device=device,
         dtype=dtype,
     )
-    D = int(a.shape[0])
+    D = int(sites[0].shape[0])
     if D < 3:
-        raise ValueError("2C3 correlation lengths are disabled for D<3")
+        raise ValueError("C3-CTM correlation lengths are disabled for D<3")
     chi_value = args.chi if args.chi is not None else metadata.get("chi")
     if chi_value is None:
         raise ValueError("--chi is required when absent from the checkpoint")
@@ -346,9 +420,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"mode={args.ctm_conv_mode}, energy={args.ctm_e_conv_threshold:g})",
         flush=True,
     )
-    ab = _run_three_environments(
-        a,
-        b,
+    ab = _run_three_environments_from_sites(
+        sites,
         chi=chi,
         ctm_max_steps=args.ctm_max_steps,
         ctm_conv_tol=args.ctm_conv_tol,
@@ -357,9 +430,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         j2=args.J2,
         keep_double_layers=True,
     )
-    ba = _run_three_environments(
-        b,
-        a,
+    reflected_sites = (
+        sites[1], sites[0], sites[3], sites[2], sites[5], sites[4]
+    )
+    ba = _run_three_environments_from_sites(
+        reflected_sites,
         chi=chi,
         ctm_max_steps=args.ctm_max_steps,
         ctm_conv_tol=args.ctm_conv_tol,
@@ -434,6 +509,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "transfer_network_schema": TRANSFER_NETWORK_SCHEMA,
         "completed_at_utc": datetime.now(timezone.utc).isoformat(),
         "checkpoint": str(args.checkpoint.resolve()),
+        "ansatz_directory": args.ansatz_directory,
         "D_bond": D,
         "chi": chi,
         "dtype": str(dtype),

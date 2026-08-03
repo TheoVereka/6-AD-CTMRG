@@ -14,6 +14,7 @@ from pathlib import Path
 
 from bundle_utils import (
     CHECKPOINT_DIRECTORY,
+    LEGACY_TWOC3_ANSATZ_DIRECTORY,
     RESULT_DIRECTORY,
     is_valid_result,
     load_manifest,
@@ -54,14 +55,21 @@ def validate_solver_snapshot(manifest: dict[str, object]) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("j2_directory", help="For example J2_0p24")
-    parser.add_argument("D", type=int)
+    parser.add_argument(
+        "case",
+        nargs="+",
+        help=(
+            "New form: ansatz_directory J2_directory D. The legacy "
+            "two-C3 form J2_directory D remains accepted for already-queued "
+            "Slurm scripts."
+        ),
+    )
     parser.add_argument(
         "--bundle-root",
         type=Path,
         default=Path(__file__).resolve().parent,
         help=(
-            "Self-contained bundle holding checkpoints, the v5 result "
+            "Self-contained bundle holding checkpoints, the ordinary result "
             "directory, and manifests."
         ),
     )
@@ -88,6 +96,7 @@ def add_provenance(
         payload = json.load(handle)
     payload["cluster_bundle_provenance"] = {
         "j2_directory": item["j2_directory"],
+        "ansatz_directory": item["ansatz_directory"],
         "j2": item["j2"],
         "D": item["D"],
         "staged_checkpoint": item["staged_filename"],
@@ -106,18 +115,31 @@ def add_provenance(
 
 def main() -> int:
     args = parse_args()
+    if len(args.case) == 3:
+        ansatz_directory, j2_directory, D_text = args.case
+    elif len(args.case) == 2:
+        ansatz_directory = LEGACY_TWOC3_ANSATZ_DIRECTORY
+        j2_directory, D_text = args.case
+    else:
+        raise ValueError(
+            "Expected ansatz_directory J2_directory D, or legacy "
+            "J2_directory D"
+        )
+    D_bond = int(D_text)
     bundle_root = args.bundle_root.resolve()
-    j2 = parse_j2_directory(args.j2_directory)
-    if args.D < 1:
+    j2 = parse_j2_directory(j2_directory)
+    if D_bond < 1:
         raise ValueError("D must be positive")
 
     manifest = load_manifest(bundle_root)
     validate_solver_snapshot(manifest)
-    item = manifest_index(manifest).get((args.j2_directory, args.D))
+    item = manifest_index(manifest).get(
+        (ansatz_directory, j2_directory, D_bond)
+    )
     if item is None:
         print(
             f"No checkpoint in manifest for "
-            f"({args.j2_directory}, D={args.D}).",
+            f"({ansatz_directory}, {j2_directory}, D={D_bond}).",
             file=sys.stderr,
         )
         return 2
@@ -128,10 +150,15 @@ def main() -> int:
     output = (
         bundle_root
         / RESULT_DIRECTORY
-        / result_name(args.j2_directory, args.D)
+        / result_name(ansatz_directory, j2_directory, D_bond)
     )
 
-    valid_existing = is_valid_result(output, j2=j2, D_bond=args.D)
+    valid_existing = is_valid_result(
+        output,
+        j2=j2,
+        D_bond=D_bond,
+        ansatz_directory=ansatz_directory,
+    )
     if args.check_only:
         return 0 if valid_existing else 1
     if valid_existing and not args.overwrite:
@@ -151,6 +178,8 @@ def main() -> int:
         "-u",
         str(solver),
         str(checkpoint),
+        "--ansatz-directory",
+        ansatz_directory,
         "--J2",
         format(j2, ".12g"),
         "--progress-every",
@@ -169,11 +198,21 @@ def main() -> int:
         )
         return process.returncode
 
-    if not is_valid_result(output, j2=j2, D_bond=args.D):
+    if not is_valid_result(
+        output,
+        j2=j2,
+        D_bond=D_bond,
+        ansatz_directory=ansatz_directory,
+    ):
         print(f"Solver did not produce a valid result: {output}", file=sys.stderr)
         return 1
     add_provenance(output, item=item, bundle_root=bundle_root)
-    if not is_valid_result(output, j2=j2, D_bond=args.D):
+    if not is_valid_result(
+        output,
+        j2=j2,
+        D_bond=D_bond,
+        ansatz_directory=ansatz_directory,
+    ):
         print(f"Result failed validation after provenance: {output}", file=sys.stderr)
         return 1
     print(f"DONE {output}", flush=True)
