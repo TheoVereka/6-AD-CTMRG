@@ -16,6 +16,7 @@ from bundle_utils import (
     CHECKPOINT_DIRECTORY,
     LEGACY_TWOC3_ANSATZ_DIRECTORY,
     RESULT_DIRECTORY,
+    is_completed_ordinary_result,
     is_valid_result,
     load_manifest,
     manifest_index,
@@ -132,7 +133,6 @@ def main() -> int:
         raise ValueError("D must be positive")
 
     manifest = load_manifest(bundle_root)
-    validate_solver_snapshot(manifest)
     item = manifest_index(manifest).get(
         (ansatz_directory, j2_directory, D_bond)
     )
@@ -153,17 +153,18 @@ def main() -> int:
         / result_name(ansatz_directory, j2_directory, D_bond)
     )
 
-    valid_existing = is_valid_result(
+    completed_existing = is_completed_ordinary_result(
         output,
         j2=j2,
         D_bond=D_bond,
         ansatz_directory=ansatz_directory,
     )
     if args.check_only:
-        return 0 if valid_existing else 1
-    if valid_existing and not args.overwrite:
-        print(f"SKIP valid existing result: {output}", flush=True)
+        return 0 if completed_existing else 1
+    if completed_existing and not args.overwrite:
+        print(f"SKIP completed ordinary result: {output}", flush=True)
         return 0
+    validate_solver_snapshot(manifest)
     if not checkpoint.is_file():
         raise FileNotFoundError(checkpoint)
 

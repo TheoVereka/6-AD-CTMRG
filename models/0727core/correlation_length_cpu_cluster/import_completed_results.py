@@ -22,10 +22,10 @@ from bundle_utils import (
     MANIFEST_JSON,
     RESULT_DIRECTORY,
     RESULT_NAME_PATTERN,
+    is_completed_ordinary_result,
     load_manifest,
     manifest_index,
     parse_result_name,
-    validate_result_payload,
 )
 
 
@@ -85,29 +85,6 @@ def within(path: Path, root: Path) -> bool:
     try:
         path.relative_to(root)
     except ValueError:
-        return False
-    return True
-
-
-def is_current_ordinary_destination(
-    path: Path, *, j2: float, D_bond: int, ansatz_directory: str
-) -> bool:
-    try:
-        with path.open("r", encoding="utf-8") as handle:
-            payload = json.load(handle)
-        validate_result_payload(
-            payload,
-            j2=j2,
-            D_bond=D_bond,
-            ansatz_directory=ansatz_directory,
-        )
-    except (
-        OSError,
-        ValueError,
-        TypeError,
-        KeyError,
-        json.JSONDecodeError,
-    ):
         return False
     return True
 
@@ -172,7 +149,7 @@ def main() -> int:
             "nested downloaded bundles."
         )
 
-    imported = kept = failed = 0
+    imported = skipped = kept = failed = 0
     for source in candidates:
         ansatz_directory, j2_directory, D_bond = parse_result_name(
             source.name
@@ -186,19 +163,18 @@ def main() -> int:
         try:
             with source.open("r", encoding="utf-8") as handle:
                 payload = json.load(handle)
-            validate_result_payload(
-                payload,
+            if not is_completed_ordinary_result(
+                source,
                 j2=float(item["j2"]),
                 D_bond=D_bond,
                 ansatz_directory=ansatz_directory,
-            )
+            ):
+                raise ValueError("not a complete matching ordinary-v5/v6 result")
             provenance = payload.get("cluster_bundle_provenance")
-            if not isinstance(provenance, dict):
-                raise ValueError("missing cluster_bundle_provenance")
-            if provenance.get("ansatz_directory", ansatz_directory) != ansatz_directory:
+            if isinstance(provenance, dict) and provenance.get(
+                "ansatz_directory", ansatz_directory
+            ) != ansatz_directory:
                 raise ValueError("provenance ansatz differs from result filename")
-            if provenance.get("checkpoint_sha256") != item["sha256"]:
-                raise ValueError("checkpoint hash differs from manifest")
         except (
             OSError,
             ValueError,
@@ -223,17 +199,14 @@ def main() -> int:
             failed += 1
             continue
         if destination.exists() and not args.overwrite:
-            if is_current_ordinary_destination(
+            if is_completed_ordinary_result(
                 destination,
                 j2=float(item["j2"]),
                 D_bond=D_bond,
                 ansatz_directory=ansatz_directory,
             ):
-                print(
-                    f"REJECT current ordinary destination exists "
-                    f"(use --overwrite): {destination}"
-                )
-                failed += 1
+                print(f"SKIP already imported ordinary result: {destination}")
+                skipped += 1
                 continue
             print(f"REPLACE obsolete non-ordinary destination: {destination}")
 
@@ -244,12 +217,30 @@ def main() -> int:
 
         cluster_checkpoint = payload.get("checkpoint")
         payload["checkpoint"] = str(checkpoint)
-        payload["cluster_bundle_provenance"]["cluster_checkpoint"] = (
-            cluster_checkpoint
-        )
-        payload["cluster_bundle_provenance"]["imported_from"] = str(source)
-        payload["cluster_bundle_provenance"]["imported_utc"] = (
-            datetime.now(timezone.utc).isoformat()
+        provenance = payload.get("cluster_bundle_provenance")
+        if not isinstance(provenance, dict):
+            provenance = {}
+            payload["cluster_bundle_provenance"] = provenance
+        recorded_hash = provenance.get("checkpoint_sha256")
+        if recorded_hash is None:
+            provenance_status = "missing_in_legacy_result"
+        elif recorded_hash == item["sha256"]:
+            provenance_status = "matches_current_manifest"
+        else:
+            provenance_status = "differs_from_current_manifest"
+        provenance.update(
+            {
+                "ansatz_directory": ansatz_directory,
+                "j2_directory": j2_directory,
+                "j2": item["j2"],
+                "D": D_bond,
+                "original_relative_path": item["original_relative_path"],
+                "current_manifest_checkpoint_sha256": item["sha256"],
+                "checkpoint_provenance_status": provenance_status,
+                "cluster_checkpoint": cluster_checkpoint,
+                "imported_from": str(source),
+                "imported_utc": datetime.now(timezone.utc).isoformat(),
+            }
         )
 
         temporary = destination.with_name(destination.name + ".importing")
@@ -269,6 +260,7 @@ def main() -> int:
 
     print(
         f"Import summary: imported={imported}, "
+        f"already_present={skipped}, "
         f"sources_kept={kept}, rejected={failed}, "
         f"dry_run={args.dry_run}."
     )

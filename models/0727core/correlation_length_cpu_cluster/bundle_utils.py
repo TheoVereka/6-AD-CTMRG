@@ -218,3 +218,60 @@ def is_valid_result(
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
         return False
     return True
+
+
+def is_completed_ordinary_result(
+    path: Path,
+    *,
+    j2: float,
+    D_bond: int,
+    ansatz_directory: str = LEGACY_TWOC3_ANSATZ_DIRECTORY,
+) -> bool:
+    """Return whether an atomic ordinary output exists for submission dedup.
+
+    This deliberately does not enforce CTMRG convergence diagnostics or the
+    current solver-source hash.  Those belong to strict import validation and
+    must not turn an already completed, expensive cluster calculation into a
+    duplicate job.
+    """
+
+    try:
+        validate_ansatz_directory(ansatz_directory)
+        with path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        legacy_twoc3 = (
+            ansatz_directory == LEGACY_TWOC3_ANSATZ_DIRECTORY
+            and payload.get("schema")
+            == "twoc3_three_ordinary_correlation_lengths"
+            and payload.get("schema_version") == 5
+            and payload.get("transfer_network_schema")
+            == "three_geometric_straight_rows_ordinary_v5"
+        )
+        current = (
+            payload.get("schema")
+            == "c3ctm_three_ordinary_correlation_lengths"
+            and payload.get("schema_version") == 6
+            and payload.get("transfer_network_schema")
+            == "three_geometric_straight_rows_ordinary_v6"
+            and payload.get("ansatz_directory") == ansatz_directory
+        )
+        if not (legacy_twoc3 or current):
+            return False
+        if int(payload["D_bond"]) != D_bond:
+            return False
+        recorded_j2 = float(payload["calculation_hyperparameters"]["J2"])
+        if not math.isclose(recorded_j2, j2, rel_tol=0.0, abs_tol=1.0e-12):
+            return False
+        spectra = payload["spectra"]
+        for key in ("env2", "env1_ab_env3_ba", "env3_ab_env1_ba"):
+            eigenvalues = spectra[key]["eigenvalues"]
+            if not isinstance(eigenvalues, list) or len(eigenvalues) < 2:
+                return False
+            for value in eigenvalues[:2]:
+                if not math.isfinite(float(value["real"])):
+                    return False
+                if not math.isfinite(float(value["imag"])):
+                    return False
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return False
+    return True

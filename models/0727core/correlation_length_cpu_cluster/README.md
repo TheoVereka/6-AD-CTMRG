@@ -57,8 +57,10 @@ All new outputs are written only below:
 /scratch/chye/correlation_length_cpu_cluster/results_three_env_ordinary_v5/
 ```
 
-The command may be rerun after a partial batch. It skips both valid completed
-ordinary results and matching active Slurm jobs. New jobs use names such as
+The command may be rerun after a partial batch. It skips every complete
+three-spectrum ordinary-v5/v6 JSON already present in the result directory,
+without requiring old CTMRG diagnostics to satisfy the newest strict import
+validator; it also skips matching active Slurm jobs. New jobs use names such as
 `clo6-2c3-0p29-D10` and encode the ansatz. During migration, active two-C3
 names `clo5-2c3-*` are recognized directly. For still older `cl-*` jobs, the
 submitter reads their `job-*-$JOB_ID.out` logs and reports whether an ordinary,
@@ -95,4 +97,11 @@ from repeated `scp -r` is harmless), validates compatible ordinary-v5/v6 data an
 metadata, and moves each completed JSON into the ansatz path recorded in the
 manifest, namely
 `0713summary/J2_*/<C3-compatible-ansatz>/D_*/correlation_length.json`, ready
-for `plot_analysis_Windows.py`.
+for `plot_analysis_Windows.py`. Complete ordinary outputs are accepted even
+when an old CTMRG diagnostic says the convergence budget was exhausted,
+because plotting recomputes each inverse correlation length directly from the
+recorded eigenvalues. Results already present at their destination are skipped
+idempotently rather than reported as import failures.
+Legacy ordinary files without bundle provenance, or whose recorded checkpoint
+hash predates the current manifest, are imported with an explicit provenance
+status annotation rather than rejected.
