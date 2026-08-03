@@ -68,6 +68,33 @@ BANNED_J2_ANSATZ_D = {
 }
 
 
+# -----------------------------------------------------------------------------
+# MANUAL BANS: INVERSE-CORRELATION-LENGTH SERIES ONLY
+# These exclusions affect both the 1/xi-vs-1/D row and the dedicated
+# observables-vs-1/xi figures. They do not remove points from the ordinary
+# energy, magnetization, or NN-correlation plots.
+# -----------------------------------------------------------------------------
+# By default, correlation-length series use only D >= 5.
+INVERSE_XI_MIN_D = 5
+
+INVERSE_XI_BANNED_ANSATZE = {
+    # '1tensor_C6Ypi',
+}
+
+INVERSE_XI_BANNED_DS = {
+    # 7,
+}
+
+INVERSE_XI_BANNED_J2 = {
+    # 0.30,
+}
+
+# Exact inverse-xi exclusions: (J2, ansatz, D)
+INVERSE_XI_BANNED_J2_ANSATZ_D = {
+    # (0.30, '2tensor_twoC3', 8),
+}
+
+
 def is_banned(j2, ansatz=None, D=None):
     """Return True when a global or exact manual ban matches this point."""
     j2_key = round(float(j2), 6)
@@ -81,6 +108,30 @@ def is_banned(j2, ansatz=None, D=None):
         exact_bans = {
             (round(float(banned_j2), 6), banned_ansatz, int(banned_D))
             for banned_j2, banned_ansatz, banned_D in BANNED_J2_ANSATZ_D
+        }
+        if (j2_key, ansatz, int(D)) in exact_bans:
+            return True
+    return False
+
+
+def is_inverse_xi_banned(j2, ansatz=None, D=None):
+    """Return True only for an inverse-xi-specific exclusion."""
+    j2_key = round(float(j2), 6)
+    if j2_key in {
+        round(float(value), 6) for value in INVERSE_XI_BANNED_J2
+    }:
+        return True
+    if ansatz is not None and ansatz in INVERSE_XI_BANNED_ANSATZE:
+        return True
+    if D is not None:
+        D_key = int(D)
+        if D_key < INVERSE_XI_MIN_D or D_key in INVERSE_XI_BANNED_DS:
+            return True
+    if ansatz is not None and D is not None:
+        exact_bans = {
+            (round(float(banned_j2), 6), banned_ansatz, int(banned_D))
+            for banned_j2, banned_ansatz, banned_D
+            in INVERSE_XI_BANNED_J2_ANSATZ_D
         }
         if (j2_key, ansatz, int(D)) in exact_bans:
             return True
@@ -429,6 +480,8 @@ def load_inverse_correlation_lengths(folder_path, j2, ansatz):
         if D_ALLOWED is not None and D not in D_ALLOWED:
             continue
         if is_banned(j2, ansatz, D):
+            continue
+        if is_inverse_xi_banned(j2, ansatz, D):
             continue
 
         fpath = os.path.join(d_path, 'correlation_length.json')
@@ -855,6 +908,143 @@ def plot_j2_figure(j2, ansatz_map, out_dir, filename=None):
     jstr  = _j2_fname(j2)
     fpath = os.path.join(out_dir, filename or f'J2_{jstr}.pdf')
     _save(fig, fpath)
+
+
+def _inverse_xi_observable_points(v):
+    """Return matched (1/xi, observable) points, keyed by plot row."""
+    inverse_xi = v.get('inverse_correlation_lengths', {})
+    energy_by_D = dict(zip(v['Ds'], v['energy_per_site']))
+    mag_by_D = dict(zip(v['Ds'], v['mneel_list']))
+    points = {'energy': [], 'mag': [], 'delta': []}
+
+    for D in sorted(inverse_xi):
+        x = float(inverse_xi[D]['inverse_xi'])
+        if not np.isfinite(x):
+            continue
+
+        energy = energy_by_D.get(D, float('nan'))
+        if np.isfinite(energy):
+            points['energy'].append((x, float(energy)))
+
+        mag = mag_by_D.get(D, float('nan'))
+        if np.isfinite(mag):
+            points['mag'].append((x, float(mag)))
+
+        entry = v.get('nn_groups', {}).get(D)
+        if entry is not None:
+            rank1_values = [
+                entry['means'][group]
+                for group, rank in enumerate(entry['ranks'])
+                if rank == 1
+            ]
+            rank3_values = [
+                entry['means'][group]
+                for group, rank in enumerate(entry['ranks'])
+                if rank == 3
+            ]
+            if rank1_values and rank3_values:
+                rank1 = float(np.mean(rank1_values))
+                rank3 = float(np.mean(rank3_values))
+                if np.isfinite(rank1) and np.isfinite(rank3):
+                    points['delta'].append((x, abs(rank1 - rank3)))
+    return points
+
+
+def plot_j2_observables_vs_inverse_xi(j2, ansatz_map, out_dir):
+    """Plot E, m_Neel and |rank1-rank3| as scatter plots against 1/xi."""
+    cols = [
+        ansatz
+        for ansatz in (
+            [a for a in ANSATZ_ORDER if a in ansatz_map]
+            + sorted(a for a in ansatz_map if a not in ANSATZ_ORDER)
+        )
+        if ansatz_map[ansatz].get('inverse_correlation_lengths')
+    ]
+    if not cols:
+        return False
+
+    points_by_ansatz = {
+        ansatz: _inverse_xi_observable_points(ansatz_map[ansatz])
+        for ansatz in cols
+    }
+    all_inverse_xi = [
+        float(entry['inverse_xi'])
+        for ansatz in cols
+        for entry in ansatz_map[ansatz]['inverse_correlation_lengths'].values()
+        if np.isfinite(entry['inverse_xi'])
+    ]
+    if not all_inverse_xi:
+        return False
+    shared_xmax = max(all_inverse_xi) * 1.02
+    if shared_xmax <= 0.0:
+        shared_xmax = 1e-6
+
+    all_energy = [
+        y for ansatz in cols for _, y in points_by_ansatz[ansatz]['energy']
+    ]
+    all_mag = [
+        y for ansatz in cols for _, y in points_by_ansatz[ansatz]['mag']
+    ]
+    all_delta = [
+        y for ansatz in cols for _, y in points_by_ansatz[ansatz]['delta']
+    ]
+    energy_ylim = _pad(min(all_energy), max(all_energy)) if all_energy else (-1, 0)
+    mag_max = max(all_mag) if all_mag else 0.0
+    delta_max = max(all_delta) if all_delta else 0.0
+    mag_ylim = (0.0, mag_max * 1.10 if mag_max > 0.0 else 1e-6)
+    delta_ylim = (0.0, delta_max * 1.10 if delta_max > 0.0 else 1e-6)
+
+    fig, axes = plt.subplots(
+        3,
+        len(cols),
+        figsize=(4.5 * len(cols), 10.5),
+        sharex='col',
+        sharey='row',
+        squeeze=False,
+        gridspec_kw={'hspace': 0.07, 'wspace': 0.30},
+    )
+    row_specs = (
+        ('energy', '#1f77b4', energy_ylim, 'Energy per site', '%.5g'),
+        ('mag', '#9467bd', mag_ylim,
+         r'm$_\mathrm{N\acute{e}el}$', '%.4g'),
+        ('delta', 'tab:orange', delta_ylim,
+         r'$\Delta_{\mathrm{NN}}=|\mathrm{rank1}-\mathrm{rank3}|$', '%.4g'),
+    )
+
+    for col_idx, ansatz in enumerate(cols):
+        axes[0, col_idx].set_title(
+            ANSATZ_LABEL.get(ansatz, ansatz), fontsize=13, pad=5
+        )
+        for row_idx, (key, color, ylim, ylabel, yformat) in enumerate(row_specs):
+            ax = axes[row_idx, col_idx]
+            pairs = points_by_ansatz[ansatz][key]
+            if pairs:
+                x, y = zip(*pairs)
+                ax.scatter(x, y, s=34, color=color, zorder=5)
+            ax.set_xlim(0.0, shared_xmax)
+            ax.set_ylim(ylim)
+            ax.yaxis.set_major_formatter(ticker.FormatStrFormatter(yformat))
+            if col_idx == 0:
+                ax.set_ylabel(ylabel, fontsize=10)
+            if row_idx == 2:
+                ax.set_xlabel(r'$1/\xi$', fontsize=10)
+
+    fig.suptitle(
+        rf'$J_2={j2:.4g}$: observables vs $1/\xi$',
+        fontsize=14,
+        y=1.005,
+    )
+    fig.subplots_adjust(
+        left=0.07,
+        right=0.985,
+        bottom=0.07,
+        top=0.92,
+        hspace=0.07,
+        wspace=0.30,
+    )
+    jstr = _j2_fname(j2)
+    _save(fig, os.path.join(out_dir, f'J2_{jstr}_vs_inverse_xi.pdf'))
+    return True
 
 # ──────────────────────────────────────────────────────────────────────────────
 # PART 2 & 3: Summary vs J2
@@ -1509,6 +1699,13 @@ def main():
         ansatze = sorted(ansatz_map.keys())
         print(f"  J2={j2:.4g}  ansatze: {ansatze}")
         plot_j2_figure(j2, ansatz_map, OUT_DIR)
+
+    print("\nGenerating per-J2 observables vs 1/xi figures ...")
+    inverse_xi_figures = 0
+    for j2, ansatz_map in sorted(all_data.items()):
+        if plot_j2_observables_vs_inverse_xi(j2, ansatz_map, OUT_DIR):
+            inverse_xi_figures += 1
+    print(f"  Generated {inverse_xi_figures} inverse-xi figures.")
 
     print("\nGenerating E vs J2 summary figures ...")
     plot_e_vs_j2_figures(all_data, OUT_DIR)
