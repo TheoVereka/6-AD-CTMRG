@@ -100,8 +100,11 @@ manifest, namely
 for `plot_analysis_Windows.py`. Complete ordinary outputs are accepted even
 when an old CTMRG diagnostic says the convergence budget was exhausted,
 because plotting recomputes each inverse correlation length directly from the
-recorded eigenvalues. Results already present at their destination are skipped
-idempotently rather than reported as import failures.
+recorded eigenvalues. An identical calculation already present at its
+destination is counted once in the summary without per-file spam. A different,
+later-completed cluster rerun (for example, one using a new random seed)
+automatically replaces the older destination; older or ambiguously dated
+sources require explicit `--overwrite`.
 Legacy ordinary files without bundle provenance, or whose recorded checkpoint
 hash predates the current manifest, are imported with an explicit provenance
 status annotation rather than rejected.

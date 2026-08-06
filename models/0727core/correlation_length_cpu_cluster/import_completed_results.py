@@ -78,6 +78,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Validate and report destinations without changing files.",
     )
+    parser.add_argument(
+        "--verbose-skips",
+        action="store_true",
+        help="Print one line for every identical already-imported result.",
+    )
     return parser.parse_args()
 
 
@@ -87,6 +92,50 @@ def within(path: Path, root: Path) -> bool:
     except ValueError:
         return False
     return True
+
+
+def ordinary_calculation_signature(payload: dict[str, object]) -> str:
+    """Identify numerical output independently of local import metadata."""
+
+    scientific_payload = {
+        "schema": payload.get("schema"),
+        "schema_version": payload.get("schema_version"),
+        "transfer_network_schema": payload.get("transfer_network_schema"),
+        "ansatz_directory": payload.get("ansatz_directory"),
+        "D_bond": payload.get("D_bond"),
+        "chi": payload.get("chi"),
+        "dtype": payload.get("dtype"),
+        "seed": payload.get("seed"),
+        "completed_at_utc": payload.get("completed_at_utc"),
+        "ctm": payload.get("ctm"),
+        "calculation_hyperparameters": payload.get(
+            "calculation_hyperparameters"
+        ),
+        "spectra": payload.get("spectra"),
+    }
+    return json.dumps(
+        scientific_payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=True,
+    )
+
+
+def completion_time(payload: dict[str, object]) -> datetime | None:
+    value = payload.get("completed_at_utc")
+    if not isinstance(value, str):
+        provenance = payload.get("cluster_bundle_provenance")
+        if isinstance(provenance, dict):
+            value = provenance.get("completed_utc")
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def main() -> int:
@@ -205,10 +254,46 @@ def main() -> int:
                 D_bond=D_bond,
                 ansatz_directory=ansatz_directory,
             ):
-                print(f"SKIP already imported ordinary result: {destination}")
-                skipped += 1
-                continue
-            print(f"REPLACE obsolete non-ordinary destination: {destination}")
+                try:
+                    with destination.open("r", encoding="utf-8") as handle:
+                        destination_payload = json.load(handle)
+                except (OSError, TypeError, json.JSONDecodeError) as error:
+                    print(f"REPLACE unreadable destination {destination}: {error}")
+                else:
+                    source_signature = ordinary_calculation_signature(payload)
+                    destination_signature = ordinary_calculation_signature(
+                        destination_payload
+                    )
+                    if source_signature == destination_signature:
+                        if args.verbose_skips:
+                            print(
+                                "SKIP identical already-imported calculation: "
+                                f"{destination}"
+                            )
+                        skipped += 1
+                        continue
+                    source_completed = completion_time(payload)
+                    destination_completed = completion_time(destination_payload)
+                    if (
+                        source_completed is not None
+                        and destination_completed is not None
+                        and source_completed > destination_completed
+                    ):
+                        print(
+                            "UPDATE destination from newer cluster calculation: "
+                            f"{destination}"
+                        )
+                    else:
+                        print(
+                            "SKIP different source because it is not newer than "
+                            f"the destination (use --overwrite to force): {source}"
+                        )
+                        skipped += 1
+                        continue
+            else:
+                print(
+                    f"REPLACE obsolete non-ordinary destination: {destination}"
+                )
 
         print(f"{'WOULD IMPORT' if args.dry_run else 'IMPORT'} {source}")
         print(f"  -> {destination}")
