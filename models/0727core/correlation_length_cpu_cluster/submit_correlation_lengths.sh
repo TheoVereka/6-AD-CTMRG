@@ -6,7 +6,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MANIFEST="${SCRIPT_DIR}/checkpoint_manifest.tsv"
 RUN_FILE="${SCRIPT_DIR}/correlation_length_job.run"
-ORDINARY_JOB_PREFIX="clo6"
+ORDINARY_JOB_PREFIX="clo7"
 
 D_SPEC=""
 D_SPEC_SET=0
@@ -87,6 +87,7 @@ if [[ -n "${MIN_D}" && ! "${MIN_D}" =~ ^[0-9]+$ ]]; then
 fi
 
 declare -A STAGED_BY_KEY
+declare -A HASH_BY_KEY
 declare -A J2_BY_TOKEN
 declare -A TOKEN_BY_VALUE
 declare -A KNOWN_ANSATZ
@@ -103,6 +104,7 @@ while IFS=$'\t' read -r TOKEN ANSATZ J2_VALUE D_BOND STAGED ORIGINAL SHA256; do
     fi
     KEY="${ANSATZ}|${TOKEN}|${D_BOND}"
     STAGED_BY_KEY["${KEY}"]="${STAGED}"
+    HASH_BY_KEY["${KEY}"]="${SHA256}"
     ALL_KEYS+=("${KEY}")
     J2_BY_TOKEN["${TOKEN}"]="${J2_VALUE}"
     TOKEN_BY_VALUE["${J2_VALUE}"]="${TOKEN}"
@@ -117,6 +119,11 @@ while IFS=$'\t' read -r TOKEN ANSATZ J2_VALUE D_BOND STAGED ORIGINAL SHA256; do
         ALL_DS+=("${D_BOND}")
     fi
 done < "${MANIFEST}"
+
+if [[ "${#ALL_KEYS[@]}" -eq 0 ]]; then
+    echo "No stale or missing current-tensor correlation lengths are present in the submit manifest."
+    exit 0
+fi
 
 # Snapshot every active Slurm job for this user before submitting.  The new
 # ordinary-v6 jobs have an explicit schema/ansatz prefix.  The legacy generic
@@ -150,6 +157,24 @@ ansatz_job_token() {
         2tensor_twoC3) echo "2c3" ;;
         *) echo "Unsupported C3 ansatz in manifest: $1" >&2; return 2 ;;
     esac
+}
+
+active_log_checkpoint_hash() {
+    local job_id="$1"
+    local log_file
+    local match
+    local -a logs=()
+    shopt -s nullglob
+    logs=("${SCRIPT_DIR}"/job-*-"${job_id}".out)
+    shopt -u nullglob
+    for log_file in "${logs[@]}"; do
+        match="$(grep -Eo 'CHECKPOINT_SHA256=[0-9a-fA-F]{64}' "${log_file}" | tail -n 1 || true)"
+        if [[ -n "${match}" ]]; then
+            echo "${match#CHECKPOINT_SHA256=}"
+            return 0
+        fi
+    done
+    return 1
 }
 
 legacy_log_class() {
@@ -253,27 +278,45 @@ for KEY in "${ALL_KEYS[@]}"; do
            --bundle-root "${SCRIPT_DIR}" \
            --check-only \
            "${ANSATZ}" "${TOKEN}" "${D_BOND}"; then
-        echo "SKIP valid existing result for ${ANSATZ}, ${TOKEN}, D=${D_BOND}"
+        echo "SKIP result for identical checkpoint hash: ${ANSATZ}, ${TOKEN}, D=${D_BOND}"
         skipped_completed=$((skipped_completed + 1))
         continue
     fi
 
     ANSATZ_TOKEN="$(ansatz_job_token "${ANSATZ}")"
     JOB_SUFFIX="${TOKEN#J2_}-D${D_BOND}"
-    JOB_NAME="${ORDINARY_JOB_PREFIX}-${ANSATZ_TOKEN}-${JOB_SUFFIX}"
+    CHECKPOINT_HASH="${HASH_BY_KEY[${KEY}]}"
+    HASH_TOKEN="${CHECKPOINT_HASH:0:12}"
+    JOB_NAME="${ORDINARY_JOB_PREFIX}-${ANSATZ_TOKEN}-${JOB_SUFFIX}-${HASH_TOKEN}"
+    V6_JOB_NAME="clo6-${ANSATZ_TOKEN}-${JOB_SUFFIX}"
     V5_JOB_NAME="clo5-2c3-${JOB_SUFFIX}"
     LEGACY_NAME="cl-${JOB_SUFFIX}"
     ACTIVE_NAME=""
     if [[ -n "${ACTIVE_JOB_BY_NAME[${JOB_NAME}]+x}" ]]; then
         ACTIVE_NAME="${JOB_NAME}"
-    elif [[ "${ANSATZ}" == "2tensor_twoC3" && -n "${ACTIVE_JOB_BY_NAME[${V5_JOB_NAME}]+x}" ]]; then
-        ACTIVE_NAME="${V5_JOB_NAME}"
-    elif [[ "${ANSATZ}" == "2tensor_twoC3" && -n "${ACTIVE_JOB_BY_NAME[${LEGACY_NAME}]+x}" ]]; then
-        IFS='|' read -r LEGACY_ID LEGACY_STATE \
-            <<< "${ACTIVE_JOB_BY_NAME[${LEGACY_NAME}]}"
-        LEGACY_CLASS="$(legacy_log_class "${LEGACY_ID}")"
-        ACTIVE_NAME="${LEGACY_NAME}"
-        echo "Legacy active job ${LEGACY_ID} currently classified as ${LEGACY_CLASS} from its log; treating it conservatively as a possible ordinary claim until it leaves squeue."
+    else
+        declare -a OLD_NAMES=("${V6_JOB_NAME}")
+        if [[ "${ANSATZ}" == "2tensor_twoC3" ]]; then
+            OLD_NAMES+=("${V5_JOB_NAME}" "${LEGACY_NAME}")
+        fi
+        for OLD_NAME in "${OLD_NAMES[@]}"; do
+            [[ -z "${ACTIVE_JOB_BY_NAME[${OLD_NAME}]+x}" ]] && continue
+            IFS='|' read -r OLD_ID OLD_STATE \
+                <<< "${ACTIVE_JOB_BY_NAME[${OLD_NAME}]}"
+            LOGGED_HASH="$(active_log_checkpoint_hash "${OLD_ID}" || true)"
+            if [[ -n "${LOGGED_HASH}" && "${LOGGED_HASH}" != "${CHECKPOINT_HASH}" ]]; then
+                echo "ACTIVE old job ${OLD_ID} (${OLD_NAME}) uses stale tensor ${LOGGED_HASH:0:12}; it does not block current tensor ${HASH_TOKEN}."
+                continue
+            fi
+            ACTIVE_NAME="${OLD_NAME}"
+            LEGACY_CLASS="$(legacy_log_class "${OLD_ID}")"
+            if [[ -n "${LOGGED_HASH}" ]]; then
+                echo "Old active job ${OLD_ID} matches current tensor ${HASH_TOKEN} and is classified as ${LEGACY_CLASS}."
+            else
+                echo "Old active job ${OLD_ID} has no logged tensor hash; treating it conservatively as a possible current-tensor claim until it leaves squeue."
+            fi
+            break
+        done
     fi
     if [[ -n "${ACTIVE_NAME}" ]]; then
         IFS='|' read -r ACTIVE_ID ACTIVE_STATE \

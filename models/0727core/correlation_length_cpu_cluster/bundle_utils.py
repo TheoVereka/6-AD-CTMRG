@@ -226,13 +226,13 @@ def is_completed_ordinary_result(
     j2: float,
     D_bond: int,
     ansatz_directory: str = LEGACY_TWOC3_ANSATZ_DIRECTORY,
+    checkpoint_sha256: str | None = None,
 ) -> bool:
     """Return whether an atomic ordinary output exists for submission dedup.
 
-    This deliberately does not enforce CTMRG convergence diagnostics or the
-    current solver-source hash.  Those belong to strict import validation and
-    must not turn an already completed, expensive cluster calculation into a
-    duplicate job.
+    CTMRG convergence diagnostics are deliberately not enforced here.  When
+    ``checkpoint_sha256`` is supplied, however, the result is complete only if
+    its provenance proves that it was calculated from exactly that tensor.
     """
 
     try:
@@ -262,6 +262,12 @@ def is_completed_ordinary_result(
         recorded_j2 = float(payload["calculation_hyperparameters"]["J2"])
         if not math.isclose(recorded_j2, j2, rel_tol=0.0, abs_tol=1.0e-12):
             return False
+        if checkpoint_sha256 is not None:
+            provenance = payload.get("cluster_bundle_provenance")
+            if not isinstance(provenance, dict):
+                return False
+            if provenance.get("checkpoint_sha256") != checkpoint_sha256:
+                return False
         spectra = payload["spectra"]
         for key in ("env2", "env1_ab_env3_ba", "env3_ab_env1_ba"):
             eigenvalues = spectra[key]["eigenvalues"]

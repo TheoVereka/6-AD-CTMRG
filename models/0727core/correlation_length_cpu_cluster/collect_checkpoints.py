@@ -20,6 +20,7 @@ from bundle_utils import (
     CHECKPOINT_DIRECTORY,
     MANIFEST_JSON,
     MANIFEST_TSV,
+    is_completed_ordinary_result,
     parse_j2_directory,
     staged_checkpoint_name,
 )
@@ -59,8 +60,31 @@ def discover(summary_root: Path) -> list[dict[str, object]]:
             raise ValueError(f"Invalid D directory: {source.parent}") from error
         if D_directory != f"D_{D_bond}" or D_bond < 1:
             raise ValueError(f"Invalid D directory: {source.parent}")
+        if D_bond < 3:
+            continue
 
         relative = source.relative_to(summary_root)
+        source_hash = sha256(source)
+        correlation_path = source.with_name("correlation_length.json")
+        if not correlation_path.is_file():
+            selection_reason = "missing_correlation"
+        elif is_completed_ordinary_result(
+            correlation_path,
+            j2=j2,
+            D_bond=D_bond,
+            ansatz_directory=ansatz_directory,
+            checkpoint_sha256=source_hash,
+        ):
+            selection_reason = "current_result_matches_tensor"
+        elif is_completed_ordinary_result(
+            correlation_path,
+            j2=j2,
+            D_bond=D_bond,
+            ansatz_directory=ansatz_directory,
+        ):
+            selection_reason = "result_checkpoint_hash_missing_or_mismatched"
+        else:
+            selection_reason = "missing_or_incomplete_ordinary_result"
         items.append(
             {
                 "j2_directory": j2_directory,
@@ -73,6 +97,10 @@ def discover(summary_root: Path) -> list[dict[str, object]]:
                     ansatz_directory, j2_directory, D_bond
                 ),
                 "size_bytes": source.stat().st_size,
+                "sha256": source_hash,
+                "selected_for_rerun": selection_reason
+                != "current_result_matches_tensor",
+                "selection_reason": selection_reason,
             }
         )
     return items
@@ -91,11 +119,12 @@ def atomic_copy(source: Path, destination: Path) -> None:
 def write_manifests(
     bundle_root: Path,
     summary_root: Path,
-    items: list[dict[str, object]],
+    all_items: list[dict[str, object]],
+    selected_items: list[dict[str, object]],
 ) -> None:
     serializable_items = [
         {key: value for key, value in item.items() if key != "source"}
-        for item in items
+        for item in all_items
     ]
     solver_files: dict[str, str] = {}
     for filename in (
@@ -118,6 +147,11 @@ def write_manifests(
             C3_COMPATIBLE_ANSATZ_DIRECTORIES
         ),
         "solver_files_sha256": solver_files,
+        "selection_policy": (
+            "D>=3 and no complete ordinary-v5/v6 result whose "
+            "cluster_bundle_provenance.checkpoint_sha256 equals the current "
+            "tensor_best.pt SHA256"
+        ),
         "items": serializable_items,
     }
 
@@ -143,7 +177,22 @@ def write_manifests(
                 "sha256",
             )
         )
+        selected_keys = {
+            (
+                str(item["ansatz_directory"]),
+                str(item["j2_directory"]),
+                int(item["D"]),
+            )
+            for item in selected_items
+        }
         for item in serializable_items:
+            key = (
+                str(item["ansatz_directory"]),
+                str(item["j2_directory"]),
+                int(item["D"]),
+            )
+            if key not in selected_keys:
+                continue
             writer.writerow(
                 (
                     item["j2_directory"],
@@ -156,6 +205,24 @@ def write_manifests(
                 )
             )
     os.replace(tsv_temporary, tsv_path)
+
+
+def clear_checkpoint_directory(
+    checkpoint_directory: Path, bundle_root: Path
+) -> int:
+    expected = (bundle_root / CHECKPOINT_DIRECTORY).resolve()
+    actual = checkpoint_directory.resolve()
+    if actual != expected:
+        raise ValueError(f"Refusing to clear unexpected directory: {actual}")
+    removed = 0
+    for path in checkpoint_directory.iterdir():
+        if path.is_dir():
+            raise IsADirectoryError(
+                f"Refusing to recursively remove unexpected directory: {path}"
+            )
+        path.unlink()
+        removed += 1
+    return removed
 
 
 def parse_args() -> argparse.Namespace:
@@ -202,9 +269,13 @@ def main() -> int:
     if len(keys) != len(set(keys)):
         raise ValueError("Duplicate (ansatz,J2,D) checkpoints were discovered")
 
+    selected = [
+        item for item in discovered if bool(item["selected_for_rerun"])
+    ]
+    current = len(discovered) - len(selected)
     print(
-        f"Discovered {len(discovered)} C3-compatible checkpoint(s) under "
-        f"{summary_root}."
+        f"Discovered {len(discovered)} C3-compatible D>=3 checkpoint(s): "
+        f"current={current}, selected_for_rerun={len(selected)}."
     )
     print(
         "Ansatz filter: "
@@ -212,51 +283,38 @@ def main() -> int:
         + "; all other ansatz checkpoints are ignored."
     )
     if args.dry_run:
-        for item in discovered:
+        for item in selected:
             print(
-                f"WOULD COPY {item['original_relative_path']} -> "
+                f"WOULD COPY [{item['selection_reason']}] "
+                f"{item['original_relative_path']} -> "
                 f"{CHECKPOINT_DIRECTORY}/{item['staged_filename']}"
             )
         return 0
 
     checkpoint_directory = bundle_root / CHECKPOINT_DIRECTORY
     checkpoint_directory.mkdir(parents=True, exist_ok=True)
-    copied = skipped = 0
-    for item in discovered:
+    removed = clear_checkpoint_directory(checkpoint_directory, bundle_root)
+    copied = 0
+    for item in selected:
         source = Path(item["source"])
         destination = checkpoint_directory / str(item["staged_filename"])
-        source_hash = sha256(source)
-        item["sha256"] = source_hash
-
-        if destination.exists():
-            destination_hash = sha256(destination)
-            if destination_hash == source_hash:
-                skipped += 1
-                print(f"UNCHANGED {destination.name}")
-                continue
+        source_hash = str(item["sha256"])
 
         atomic_copy(source, destination)
         if sha256(destination) != source_hash:
             raise OSError(f"Hash verification failed after copying {source}")
         copied += 1
-        print(f"COPIED {source} -> {destination.name}")
-
-    write_manifests(bundle_root, summary_root, discovered)
-    referenced = {str(item["staged_filename"]) for item in discovered}
-    stale = sorted(
-        path.name
-        for path in checkpoint_directory.glob("tensor_best__*.pt")
-        if path.name not in referenced
-    )
-    print(
-        f"Complete: copied={copied}, unchanged={skipped}, "
-        f"manifest_items={len(discovered)}."
-    )
-    if stale:
         print(
-            "WARNING: unreferenced staged checkpoint(s) were retained: "
-            + ", ".join(stale)
+            f"COPIED [{item['selection_reason']}] {source} -> "
+            f"{destination.name}"
         )
+
+    write_manifests(bundle_root, summary_root, discovered, selected)
+    print(
+        f"Complete: cleared={removed}, copied={copied}, "
+        f"manifest_all_items={len(discovered)}, "
+        f"submit_manifest_items={len(selected)}."
+    )
     return 0
 
 

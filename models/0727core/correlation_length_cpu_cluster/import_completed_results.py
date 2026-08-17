@@ -12,6 +12,7 @@ plottable locations below 0713summary.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -92,6 +93,14 @@ def within(path: Path, root: Path) -> bool:
     except ValueError:
         return False
     return True
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def ordinary_calculation_signature(payload: dict[str, object]) -> str:
@@ -198,7 +207,7 @@ def main() -> int:
             "nested downloaded bundles."
         )
 
-    imported = skipped = kept = failed = 0
+    imported = skipped = stale_source = kept = failed = 0
     for source in candidates:
         ansatz_directory, j2_directory, D_bond = parse_result_name(
             source.name
@@ -246,6 +255,28 @@ def main() -> int:
         if not checkpoint.is_file():
             print(f"REJECT local checkpoint is missing: {checkpoint}")
             failed += 1
+            continue
+        current_checkpoint_hash = sha256(checkpoint)
+        if current_checkpoint_hash != item["sha256"]:
+            print(
+                "REJECT local tensor_best.pt changed after collection; rerun "
+                f"collect_checkpoints.py: {checkpoint}"
+            )
+            failed += 1
+            continue
+        provenance = payload.get("cluster_bundle_provenance")
+        recorded_checkpoint_hash = (
+            provenance.get("checkpoint_sha256")
+            if isinstance(provenance, dict)
+            else None
+        )
+        if recorded_checkpoint_hash != current_checkpoint_hash:
+            if args.verbose_skips:
+                print(
+                    "SKIP stale cluster result whose calculation tensor "
+                    f"differs from current tensor_best.pt: {source}"
+                )
+            stale_source += 1
             continue
         if destination.exists() and not args.overwrite:
             if is_completed_ordinary_result(
@@ -346,6 +377,7 @@ def main() -> int:
     print(
         f"Import summary: imported={imported}, "
         f"already_present={skipped}, "
+        f"stale_source={stale_source}, "
         f"sources_kept={kept}, rejected={failed}, "
         f"dry_run={args.dry_run}."
     )

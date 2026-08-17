@@ -17,7 +17,6 @@ from bundle_utils import (
     LEGACY_TWOC3_ANSATZ_DIRECTORY,
     RESULT_DIRECTORY,
     is_completed_ordinary_result,
-    is_valid_result,
     load_manifest,
     manifest_index,
     parse_j2_directory,
@@ -152,12 +151,18 @@ def main() -> int:
         / RESULT_DIRECTORY
         / result_name(ansatz_directory, j2_directory, D_bond)
     )
+    expected_checkpoint_sha256 = str(item["sha256"])
+    print(
+        f"CHECKPOINT_SHA256={expected_checkpoint_sha256}",
+        flush=True,
+    )
 
     completed_existing = is_completed_ordinary_result(
         output,
         j2=j2,
         D_bond=D_bond,
         ansatz_directory=ansatz_directory,
+        checkpoint_sha256=expected_checkpoint_sha256,
     )
     if args.check_only:
         return 0 if completed_existing else 1
@@ -199,7 +204,7 @@ def main() -> int:
         )
         return process.returncode
 
-    if not is_valid_result(
+    if not is_completed_ordinary_result(
         output,
         j2=j2,
         D_bond=D_bond,
@@ -208,11 +213,12 @@ def main() -> int:
         print(f"Solver did not produce a valid result: {output}", file=sys.stderr)
         return 1
     add_provenance(output, item=item, bundle_root=bundle_root)
-    if not is_valid_result(
+    if not is_completed_ordinary_result(
         output,
         j2=j2,
         D_bond=D_bond,
         ansatz_directory=ansatz_directory,
+        checkpoint_sha256=expected_checkpoint_sha256,
     ):
         print(f"Result failed validation after provenance: {output}", file=sys.stderr)
         return 1
