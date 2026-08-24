@@ -71,6 +71,10 @@ DEFAULT_OLD_ROOT = Path(
 DEFAULT_SUMMARY_ROOT = Path(
     r"D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\0713summary"
 )
+DEFAULT_LEGACY_NEEL_ROOT = Path(
+    r"D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\D345678910"
+)
+LEGACY_NEEL_ROOT = DEFAULT_LEGACY_NEEL_ROOT
 DEFAULT_RERUN_FOLDER = "_unfinished_all_ansatze_for_rerun"
 LEGACY_RERUN_FOLDER = "_unfinished_2C3_for_rerun"
 DEFAULT_REPORT = "newdata_all_ansatze_integration_report.json"
@@ -763,8 +767,99 @@ def _required_copy_warning(choice: Choice, copied: list[str]) -> str | None:
     )
 
 
+def _is_legacy_neel_0255(candidate: Candidate) -> bool:
+    return (
+        candidate.ansatz == "neel_symmetrized"
+        and candidate.j2 == normalize_j2("0.255")
+    )
+
+
+def _legacy_neel_target(root: Path) -> Path:
+    if not root.is_dir():
+        return root / "neel_symmetrized__J2_0p255_rerun"
+    candidates = sorted(
+        path
+        for path in root.iterdir()
+        if path.is_dir()
+        and re.match(
+            r"^(?:neel_symmetrized|neel_legacy)__J2_0p255_",
+            path.name,
+            re.IGNORECASE,
+        )
+    )
+    if candidates:
+        return candidates[-1]
+    return root / "neel_symmetrized__J2_0p255_rerun"
+
+
+def import_legacy_neel_choice(
+    choice: Choice,
+    legacy_root: Path,
+    *,
+    dry_run: bool = False,
+) -> list[str]:
+    candidate = choice.candidate
+    target = _legacy_neel_target(legacy_root)
+    D, chi = candidate.D, candidate.chi
+    if dry_run:
+        print(
+            f"WOULD IMPORT LEGACY RERUN: J2=0.255 D={D} chi={chi} "
+            f"from {choice.run_id} -> {target}"
+        )
+        return []
+    target.mkdir(parents=True, exist_ok=True)
+    replace_patterns = (
+        f"D_{D}_chi_*_energy_magnetization_correlation.txt",
+        f"sweep_D{D}_chi*_best*.pt",
+        f"sweep_D_{D}_chi*_best*.pt",
+    )
+    for pattern in replace_patterns:
+        for old in target.glob(pattern):
+            if old.is_file():
+                old.unlink()
+
+    sources: list[tuple[Path, str]] = [(candidate.observation, candidate.observation.name)]
+    sources.extend(
+        (path, path.name)
+        for path in sorted(candidate.job_dir.glob(
+            f"D_{D}_chi_{chi}_lookahead_*_energy_magnetization_correlation.txt"
+        ))
+    )
+    checkpoint_patterns = (
+        f"sweep_D{D}_chi{chi}_best*.pt",
+        f"sweep_D_{D}_chi_{chi}_best*.pt",
+    )
+    for pattern in checkpoint_patterns:
+        sources.extend((path, path.name) for path in sorted(candidate.job_dir.glob(pattern)))
+
+    audit_prefix = f"rerun_J2_0p255_D{D}_{candidate.timestamp or 'time_unknown'}"
+    for log in _direct_logs(candidate.job_dir):
+        sources.append((log, f"{audit_prefix}_{log.name}"))
+    for name in ("hyperparams.yaml", "sweep_results.json"):
+        source = candidate.job_dir / name
+        if source.is_file():
+            sources.append((source, f"{audit_prefix}_{name}"))
+
+    copied: list[str] = []
+    for source, destination_name in sources:
+        destination = target / destination_name
+        temporary = destination.with_name(destination.name + ".copying")
+        shutil.copy2(source, temporary)
+        os.replace(temporary, destination)
+        copied.append(destination.name)
+    print(
+        f"IMPORTED LEGACY RERUN: J2=0.255 D={D} chi={chi} "
+        f"E={candidate.energy:.15g} -> {target}"
+    )
+    return copied
+
+
 def import_choice(choice: Choice, summary_root: Path, dry_run: bool = False) -> list[str]:
     candidate = choice.candidate
+    if _is_legacy_neel_0255(candidate):
+        return import_legacy_neel_choice(
+            choice, LEGACY_NEEL_ROOT, dry_run=dry_run
+        )
     target = (
         summary_root
         / f"J2_{candidate.j2}"
@@ -798,6 +893,12 @@ def import_choices_atomically(
     selected = [choice for choice in choices if choice.origin == "new"]
     if not selected:
         return
+    if all(_is_legacy_neel_0255(choice.candidate) for choice in selected):
+        for choice in selected:
+            import_legacy_neel_choice(choice, LEGACY_NEEL_ROOT)
+        return
+    if any(_is_legacy_neel_0255(choice.candidate) for choice in selected):
+        raise ValueError("Legacy J2=0.255 choices cannot be mixed with summary imports")
     summary_root.parent.mkdir(parents=True, exist_ok=True)
     stage_root = Path(tempfile.mkdtemp(prefix=".newdata_stage_", dir=summary_root.parent))
     backup_root = Path(tempfile.mkdtemp(prefix=".newdata_backup_", dir=summary_root.parent))
@@ -1357,6 +1458,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--summary-root", type=Path, default=DEFAULT_SUMMARY_ROOT)
     parser.add_argument(
+        "--legacy-neel-root",
+        type=Path,
+        default=DEFAULT_LEGACY_NEEL_ROOT,
+        help="destination for the special J2=0.255 neel_legacy rerun",
+    )
+    parser.add_argument(
         "--rerun-dir",
         type=Path,
         help=(
@@ -1391,10 +1498,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    global LEGACY_NEEL_ROOT
     args = parse_args(argv)
     new_root = args.new_root.resolve()
     old_root = args.old_root.resolve()
     summary_root = args.summary_root.resolve()
+    LEGACY_NEEL_ROOT = args.legacy_neel_root.resolve()
     rerun_dir = (
         args.rerun_dir.resolve()
         if args.rerun_dir

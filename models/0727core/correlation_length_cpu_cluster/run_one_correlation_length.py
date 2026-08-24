@@ -9,17 +9,22 @@ import json
 import os
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 from bundle_utils import (
     CHECKPOINT_DIRECTORY,
     LEGACY_TWOC3_ANSATZ_DIRECTORY,
+    ORDINARY_DIRECTIONS,
     RESULT_DIRECTORY,
+    is_completed_partial_result,
     is_completed_ordinary_result,
     load_manifest,
     manifest_index,
+    merge_partial_payloads,
     parse_j2_directory,
+    partial_result_name,
     result_name,
 )
 
@@ -38,9 +43,11 @@ def validate_solver_snapshot(manifest: dict[str, object]) -> None:
         raise ValueError("Manifest does not record solver source hashes")
     source_root = Path(__file__).resolve().parent
     for filename in (
+        "bundle_utils.py",
         "correlation_length.py",
         "core_C3.py",
         "compute_three_ordinary_correlation_lengths.py",
+        "run_one_correlation_length.py",
     ):
         expected = hashes.get(filename)
         source = source_root / filename
@@ -83,6 +90,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Recompute even if a valid result already exists.",
     )
+    parser.add_argument(
+        "--direction",
+        choices=ORDINARY_DIRECTIONS,
+        help="Run one split direction (used automatically for D>=10).",
+    )
     return parser.parse_args()
 
 
@@ -111,6 +123,71 @@ def add_provenance(
         json.dump(payload, handle, indent=2, allow_nan=True)
         handle.write("\n")
     os.replace(temporary, output)
+
+
+def merge_completed_directions(
+    *,
+    bundle_root: Path,
+    ansatz_directory: str,
+    j2_directory: str,
+    j2: float,
+    D_bond: int,
+    checkpoint_sha256: str,
+) -> bool:
+    result_root = bundle_root / RESULT_DIRECTORY
+    destination = result_root / result_name(
+        ansatz_directory, j2_directory, D_bond
+    )
+    if is_completed_ordinary_result(
+        destination,
+        j2=j2,
+        D_bond=D_bond,
+        ansatz_directory=ansatz_directory,
+        checkpoint_sha256=checkpoint_sha256,
+    ):
+        return True
+    partial_paths = {
+        direction: result_root
+        / partial_result_name(
+            ansatz_directory, j2_directory, D_bond, direction
+        )
+        for direction in ORDINARY_DIRECTIONS
+    }
+    if not all(
+        is_completed_partial_result(
+            path,
+            j2=j2,
+            D_bond=D_bond,
+            ansatz_directory=ansatz_directory,
+            direction=direction,
+            checkpoint_sha256=checkpoint_sha256,
+        )
+        for direction, path in partial_paths.items()
+    ):
+        return False
+    payloads = {
+        direction: json.loads(path.read_text(encoding="utf-8"))
+        for direction, path in partial_paths.items()
+    }
+    merged = merge_partial_payloads(payloads)
+    provenance = merged.setdefault("cluster_bundle_provenance", {})
+    provenance["split_directions"] = {
+        direction: str(path) for direction, path in partial_paths.items()
+    }
+    temporary = destination.with_name(
+        destination.name + f".merging.{os.getpid()}"
+    )
+    with temporary.open("w", encoding="utf-8") as handle:
+        json.dump(merged, handle, indent=2, allow_nan=True)
+        handle.write("\n")
+    os.replace(temporary, destination)
+    return is_completed_ordinary_result(
+        destination,
+        j2=j2,
+        D_bond=D_bond,
+        ansatz_directory=ansatz_directory,
+        checkpoint_sha256=checkpoint_sha256,
+    )
 
 
 def main() -> int:
@@ -149,7 +226,13 @@ def main() -> int:
     output = (
         bundle_root
         / RESULT_DIRECTORY
-        / result_name(ansatz_directory, j2_directory, D_bond)
+        / (
+            partial_result_name(
+                ansatz_directory, j2_directory, D_bond, args.direction
+            )
+            if args.direction is not None
+            else result_name(ansatz_directory, j2_directory, D_bond)
+        )
     )
     expected_checkpoint_sha256 = str(item["sha256"])
     print(
@@ -157,12 +240,35 @@ def main() -> int:
         flush=True,
     )
 
-    completed_existing = is_completed_ordinary_result(
-        output,
-        j2=j2,
-        D_bond=D_bond,
-        ansatz_directory=ansatz_directory,
-        checkpoint_sha256=expected_checkpoint_sha256,
+    canonical_output = (
+        bundle_root
+        / RESULT_DIRECTORY
+        / result_name(ansatz_directory, j2_directory, D_bond)
+    )
+    completed_existing = (
+        is_completed_ordinary_result(
+            canonical_output,
+            j2=j2,
+            D_bond=D_bond,
+            ansatz_directory=ansatz_directory,
+            checkpoint_sha256=expected_checkpoint_sha256,
+        )
+        or is_completed_partial_result(
+            output,
+            j2=j2,
+            D_bond=D_bond,
+            ansatz_directory=ansatz_directory,
+            direction=args.direction,
+            checkpoint_sha256=expected_checkpoint_sha256,
+        )
+        if args.direction is not None
+        else is_completed_ordinary_result(
+            output,
+            j2=j2,
+            D_bond=D_bond,
+            ansatz_directory=ansatz_directory,
+            checkpoint_sha256=expected_checkpoint_sha256,
+        )
     )
     if args.check_only:
         return 0 if completed_existing else 1
@@ -193,6 +299,14 @@ def main() -> int:
         "--output",
         str(output),
     ]
+    if args.direction is not None:
+        # All three split jobs must reconstruct the same CTM environments.
+        # A checkpoint-derived seed keeps CTMRG/rSVD identical across jobs;
+        # the solver still applies its fixed per-direction eigensolver offset.
+        common_seed = int(expected_checkpoint_sha256[:8], 16)
+        command.extend(
+            ("--direction", args.direction, "--seed", str(common_seed))
+        )
     print("RUN " + subprocess.list2cmdline(command), flush=True)
     process = subprocess.run(command, check=False)
     if process.returncode != 0:
@@ -204,24 +318,62 @@ def main() -> int:
         )
         return process.returncode
 
-    if not is_completed_ordinary_result(
-        output,
-        j2=j2,
-        D_bond=D_bond,
-        ansatz_directory=ansatz_directory,
-    ):
+    valid_without_provenance = (
+        is_completed_partial_result(
+            output,
+            j2=j2,
+            D_bond=D_bond,
+            ansatz_directory=ansatz_directory,
+            direction=args.direction,
+        )
+        if args.direction is not None
+        else is_completed_ordinary_result(
+            output,
+            j2=j2,
+            D_bond=D_bond,
+            ansatz_directory=ansatz_directory,
+        )
+    )
+    if not valid_without_provenance:
         print(f"Solver did not produce a valid result: {output}", file=sys.stderr)
         return 1
     add_provenance(output, item=item, bundle_root=bundle_root)
-    if not is_completed_ordinary_result(
-        output,
-        j2=j2,
-        D_bond=D_bond,
-        ansatz_directory=ansatz_directory,
-        checkpoint_sha256=expected_checkpoint_sha256,
-    ):
+    valid_with_provenance = (
+        is_completed_partial_result(
+            output,
+            j2=j2,
+            D_bond=D_bond,
+            ansatz_directory=ansatz_directory,
+            direction=args.direction,
+            checkpoint_sha256=expected_checkpoint_sha256,
+        )
+        if args.direction is not None
+        else is_completed_ordinary_result(
+            output,
+            j2=j2,
+            D_bond=D_bond,
+            ansatz_directory=ansatz_directory,
+            checkpoint_sha256=expected_checkpoint_sha256,
+        )
+    )
+    if not valid_with_provenance:
         print(f"Result failed validation after provenance: {output}", file=sys.stderr)
         return 1
+    if args.direction is not None:
+        # The last finishing direction creates the canonical three-direction
+        # JSON. Brief retries cover simultaneous Slurm-job completion.
+        for _ in range(10):
+            if merge_completed_directions(
+                bundle_root=bundle_root,
+                ansatz_directory=ansatz_directory,
+                j2_directory=j2_directory,
+                j2=j2,
+                D_bond=D_bond,
+                checkpoint_sha256=expected_checkpoint_sha256,
+            ):
+                print("MERGED all three split directions", flush=True)
+                break
+            time.sleep(1.0)
     print(f"DONE {output}", flush=True)
     return 0
 

@@ -273,72 +273,95 @@ for KEY in "${ALL_KEYS[@]}"; do
         continue
     fi
 
-    if [[ "${RESUBMIT_VALID}" -eq 0 ]] && \
-       python "${SCRIPT_DIR}/run_one_correlation_length.py" \
-           --bundle-root "${SCRIPT_DIR}" \
-           --check-only \
-           "${ANSATZ}" "${TOKEN}" "${D_BOND}"; then
-        echo "SKIP result for identical checkpoint hash: ${ANSATZ}, ${TOKEN}, D=${D_BOND}"
-        skipped_completed=$((skipped_completed + 1))
-        continue
-    fi
-
     ANSATZ_TOKEN="$(ansatz_job_token "${ANSATZ}")"
-    JOB_SUFFIX="${TOKEN#J2_}-D${D_BOND}"
     CHECKPOINT_HASH="${HASH_BY_KEY[${KEY}]}"
     HASH_TOKEN="${CHECKPOINT_HASH:0:12}"
-    JOB_NAME="${ORDINARY_JOB_PREFIX}-${ANSATZ_TOKEN}-${JOB_SUFFIX}-${HASH_TOKEN}"
-    V6_JOB_NAME="clo6-${ANSATZ_TOKEN}-${JOB_SUFFIX}"
-    V5_JOB_NAME="clo5-2c3-${JOB_SUFFIX}"
-    LEGACY_NAME="cl-${JOB_SUFFIX}"
-    ACTIVE_NAME=""
-    if [[ -n "${ACTIVE_JOB_BY_NAME[${JOB_NAME}]+x}" ]]; then
-        ACTIVE_NAME="${JOB_NAME}"
-    else
-        declare -a OLD_NAMES=("${V6_JOB_NAME}")
-        if [[ "${ANSATZ}" == "2tensor_twoC3" ]]; then
-            OLD_NAMES+=("${V5_JOB_NAME}" "${LEGACY_NAME}")
+    DIRECTIONS=(all)
+    if (( D_BOND >= 10 )); then
+        DIRECTIONS=(env2 env1_ab_env3_ba env3_ab_env1_ba)
+    fi
+    for DIRECTION in "${DIRECTIONS[@]}"; do
+        DIRECTION_ARGS=()
+        JOB_DIRECTION_SUFFIX=""
+        if [[ "${DIRECTION}" != "all" ]]; then
+            DIRECTION_ARGS=(--direction "${DIRECTION}")
+            case "${DIRECTION}" in
+                env2) JOB_DIRECTION_SUFFIX="-e2" ;;
+                env1_ab_env3_ba) JOB_DIRECTION_SUFFIX="-e13" ;;
+                env3_ab_env1_ba) JOB_DIRECTION_SUFFIX="-e31" ;;
+            esac
         fi
-        for OLD_NAME in "${OLD_NAMES[@]}"; do
-            [[ -z "${ACTIVE_JOB_BY_NAME[${OLD_NAME}]+x}" ]] && continue
-            IFS='|' read -r OLD_ID OLD_STATE \
-                <<< "${ACTIVE_JOB_BY_NAME[${OLD_NAME}]}"
-            LOGGED_HASH="$(active_log_checkpoint_hash "${OLD_ID}" || true)"
-            if [[ -n "${LOGGED_HASH}" && "${LOGGED_HASH}" != "${CHECKPOINT_HASH}" ]]; then
-                echo "ACTIVE old job ${OLD_ID} (${OLD_NAME}) uses stale tensor ${LOGGED_HASH:0:12}; it does not block current tensor ${HASH_TOKEN}."
-                continue
-            fi
-            ACTIVE_NAME="${OLD_NAME}"
-            LEGACY_CLASS="$(legacy_log_class "${OLD_ID}")"
-            if [[ -n "${LOGGED_HASH}" ]]; then
-                echo "Old active job ${OLD_ID} matches current tensor ${HASH_TOKEN} and is classified as ${LEGACY_CLASS}."
-            else
-                echo "Old active job ${OLD_ID} has no logged tensor hash; treating it conservatively as a possible current-tensor claim until it leaves squeue."
-            fi
-            break
-        done
-    fi
-    if [[ -n "${ACTIVE_NAME}" ]]; then
-        IFS='|' read -r ACTIVE_ID ACTIVE_STATE \
-            <<< "${ACTIVE_JOB_BY_NAME[${ACTIVE_NAME}]}"
-        echo "SKIP active job ${ACTIVE_ID} (${ACTIVE_STATE}, ${ACTIVE_NAME}) for ${ANSATZ}, ${TOKEN}, D=${D_BOND}"
-        skipped_active=$((skipped_active + 1))
-        continue
-    fi
+        if [[ "${RESUBMIT_VALID}" -eq 0 ]] && \
+           python "${SCRIPT_DIR}/run_one_correlation_length.py" \
+               --bundle-root "${SCRIPT_DIR}" \
+               --check-only \
+               "${DIRECTION_ARGS[@]}" \
+               "${ANSATZ}" "${TOKEN}" "${D_BOND}"; then
+            echo "SKIP result for identical checkpoint hash: ${ANSATZ}, ${TOKEN}, D=${D_BOND}, direction=${DIRECTION}"
+            skipped_completed=$((skipped_completed + 1))
+            continue
+        fi
 
-    if [[ "${DRY_RUN}" -eq 1 ]]; then
-        echo "WOULD SUBMIT ${ANSATZ}, ${TOKEN}, D=${D_BOND} as ${JOB_NAME}"
-    else
-        (
-            cd "${SCRIPT_DIR}"
-            sbatch \
-                --dependency=singleton \
-                --job-name="${JOB_NAME}" \
-                "${RUN_FILE}" "${ANSATZ}" "${TOKEN}" "${D_BOND}" "${SCRIPT_DIR}"
-        )
-        ACTIVE_JOB_BY_NAME["${JOB_NAME}"]="submitted-now|PENDING"
-    fi
-    submitted=$((submitted + 1))
+        JOB_SUFFIX="${TOKEN#J2_}-D${D_BOND}${JOB_DIRECTION_SUFFIX}"
+        JOB_NAME="${ORDINARY_JOB_PREFIX}-${ANSATZ_TOKEN}-${JOB_SUFFIX}-${HASH_TOKEN}"
+        V6_JOB_NAME="clo6-${ANSATZ_TOKEN}-${JOB_SUFFIX}"
+        V5_JOB_NAME="clo5-2c3-${JOB_SUFFIX}"
+        LEGACY_NAME="cl-${JOB_SUFFIX}"
+        ACTIVE_NAME=""
+        if [[ -n "${ACTIVE_JOB_BY_NAME[${JOB_NAME}]+x}" ]]; then
+            ACTIVE_NAME="${JOB_NAME}"
+        elif [[ "${DIRECTION}" != "all" ]]; then
+            ACTIVE_NAME=""
+        else
+            declare -a OLD_NAMES=("${V6_JOB_NAME}")
+            if [[ "${ANSATZ}" == "2tensor_twoC3" ]]; then
+                OLD_NAMES+=("${V5_JOB_NAME}" "${LEGACY_NAME}")
+            fi
+            for OLD_NAME in "${OLD_NAMES[@]}"; do
+                [[ -z "${ACTIVE_JOB_BY_NAME[${OLD_NAME}]+x}" ]] && continue
+                IFS='|' read -r OLD_ID OLD_STATE \
+                    <<< "${ACTIVE_JOB_BY_NAME[${OLD_NAME}]}"
+                LOGGED_HASH="$(active_log_checkpoint_hash "${OLD_ID}" || true)"
+                if [[ -n "${LOGGED_HASH}" && "${LOGGED_HASH}" != "${CHECKPOINT_HASH}" ]]; then
+                    echo "ACTIVE old job ${OLD_ID} (${OLD_NAME}) uses stale tensor ${LOGGED_HASH:0:12}; it does not block current tensor ${HASH_TOKEN}."
+                    continue
+                fi
+                ACTIVE_NAME="${OLD_NAME}"
+                LEGACY_CLASS="$(legacy_log_class "${OLD_ID}")"
+                if [[ -n "${LOGGED_HASH}" ]]; then
+                    echo "Old active job ${OLD_ID} matches current tensor ${HASH_TOKEN} and is classified as ${LEGACY_CLASS}."
+                else
+                    echo "Old active job ${OLD_ID} has no logged tensor hash; treating it conservatively as a possible current-tensor claim until it leaves squeue."
+                fi
+                break
+            done
+        fi
+        if [[ -n "${ACTIVE_NAME}" ]]; then
+            IFS='|' read -r ACTIVE_ID ACTIVE_STATE \
+                <<< "${ACTIVE_JOB_BY_NAME[${ACTIVE_NAME}]}"
+            echo "SKIP active job ${ACTIVE_ID} (${ACTIVE_STATE}, ${ACTIVE_NAME}) for ${ANSATZ}, ${TOKEN}, D=${D_BOND}, direction=${DIRECTION}"
+            skipped_active=$((skipped_active + 1))
+            continue
+        fi
+
+        if [[ "${DRY_RUN}" -eq 1 ]]; then
+            echo "WOULD SUBMIT ${ANSATZ}, ${TOKEN}, D=${D_BOND}, direction=${DIRECTION} as ${JOB_NAME}"
+        else
+            SBATCH_CASE=("${ANSATZ}" "${TOKEN}" "${D_BOND}" "${SCRIPT_DIR}")
+            if [[ "${DIRECTION}" != "all" ]]; then
+                SBATCH_CASE+=("${DIRECTION}")
+            fi
+            (
+                cd "${SCRIPT_DIR}"
+                sbatch \
+                    --dependency=singleton \
+                    --job-name="${JOB_NAME}" \
+                    "${RUN_FILE}" "${SBATCH_CASE[@]}"
+            )
+            ACTIVE_JOB_BY_NAME["${JOB_NAME}"]="submitted-now|PENDING"
+        fi
+        submitted=$((submitted + 1))
+    done
 done
 
 echo "Submission summary: submitted=${submitted}, skipped_completed=${skipped_completed}, skipped_active=${skipped_active}, missing=${missing}, dry_run=${DRY_RUN}."

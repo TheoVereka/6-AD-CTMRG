@@ -128,9 +128,11 @@ def write_manifests(
     ]
     solver_files: dict[str, str] = {}
     for filename in (
+        "bundle_utils.py",
         "correlation_length.py",
         "core_C3.py",
         "compute_three_ordinary_correlation_lengths.py",
+        "run_one_correlation_length.py",
     ):
         solver_path = bundle_root / filename
         if not solver_path.is_file():
@@ -150,7 +152,7 @@ def write_manifests(
         "selection_policy": (
             "D>=3 and no complete ordinary-v5/v6 result whose "
             "cluster_bundle_provenance.checkpoint_sha256 equals the current "
-            "tensor_best.pt SHA256"
+            "tensor_best.pt SHA256; D>=10 is submitted as three direction jobs"
         ),
         "items": serializable_items,
     }

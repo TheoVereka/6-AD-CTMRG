@@ -35,9 +35,21 @@ elif [[ "$#" -eq 4 ]]; then
     J2_DIRECTORY="$2"
     D_BOND="$3"
     BUNDLE_DIR="$4"
+    DIRECTION=""
+elif [[ "$#" -eq 5 ]]; then
+    ANSATZ_DIRECTORY="$1"
+    J2_DIRECTORY="$2"
+    D_BOND="$3"
+    BUNDLE_DIR="$4"
+    DIRECTION="$5"
 else
-    echo "Usage: $0 [ansatz_directory] J2_directory D bundle_dir" >&2
+    echo "Usage: $0 [ansatz_directory] J2_directory D bundle_dir [direction]" >&2
     exit 2
+fi
+
+DIRECTION_ARGS=()
+if [[ -n "${DIRECTION:-}" ]]; then
+    DIRECTION_ARGS=(--direction "${DIRECTION}")
 fi
 
 if [[ ! -d "${BUNDLE_DIR}" ]]; then
@@ -51,6 +63,7 @@ fi
 
 python -u "${BUNDLE_DIR}/run_one_correlation_length.py" \
     --bundle-root "${BUNDLE_DIR}" \
+    "${DIRECTION_ARGS[@]}" \
     "${ANSATZ_DIRECTORY}" \
     "${J2_DIRECTORY}" \
     "${D_BOND}"

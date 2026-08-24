@@ -1,12 +1,19 @@
 # C3-CTM three-direction ordinary correlation-length cluster bundle
 
+`submit_correlation_lengths.sh` keeps one job per case for `D<=9`. For
+`D=10` and `D=11` it automatically submits three independent direction jobs
+(`env2`, `env1_ab_env3_ba`, and `env3_ab_env1_ba`). The workers merge their
+atomic partial JSON files into the same complete ordinary-v6 JSON used by the
+existing plots. The import script also assembles downloaded partials when a
+cluster-side merged file was not included by `scp`.
+
 This directory is self-contained: it contains the C3-compatible checkpoints
 whose current tensors still need correlation lengths, the three-straight-row
 ordinary solver, the manifest, and the Slurm
 files. It no longer requires a second source-code copy below `/home/chye`.
 
-New output uses `three_geometric_straight_rows_ordinary_v6`. Every
-job computes the env2, env1(a,b)-env3(b,a), and env3(a,b)-env1(b,a)
+New output uses `three_geometric_straight_rows_ordinary_v6`. Collectively the
+jobs compute the env2, env1(a,b)-env3(b,a), and env3(a,b)-env1(b,a)
 raw row-transfer spectra without `C tensor C`. These are fixed-CTM-gauge
 diagnostics rather than gauge-invariance claims. CTMRG uses the production
 settings (`max_steps=70`, SV tolerance `1e-7`, mode `both`, energy tolerance

@@ -21,12 +21,17 @@ MANIFEST_JSON = "checkpoint_manifest.json"
 MANIFEST_TSV = "checkpoint_manifest.tsv"
 CHECKPOINT_DIRECTORY = "checkpoints"
 RESULT_DIRECTORY = "results_three_env_ordinary_v5"
+ORDINARY_DIRECTIONS = ("env2", "env1_ab_env3_ba", "env3_ab_env1_ba")
 J2_DIRECTORY_PATTERN = re.compile(r"^J2_(\d+(?:p\d+)?)$")
 CHECKPOINT_NAME_PATTERN = re.compile(
     r"^tensor_best__(?:(.+)__)?(J2_\d+(?:p\d+)?)__D_(\d+)\.pt$"
 )
 RESULT_NAME_PATTERN = re.compile(
     r"^correlation_length__(?:(.+)__)?(J2_\d+(?:p\d+)?)__D_(\d+)\.json$"
+)
+PARTIAL_RESULT_NAME_PATTERN = re.compile(
+    r"^correlation_length__(?:(.+)__)?(J2_\d+(?:p\d+)?)__D_(\d+)"
+    r"__(env2|env1_ab_env3_ba|env3_ab_env1_ba)\.json$"
 )
 
 
@@ -70,6 +75,31 @@ def result_name(
         f"correlation_length__{ansatz_directory}__{j2_directory}"
         f"__D_{D_bond}.json"
     )
+
+
+def partial_result_name(
+    ansatz_directory: str,
+    j2_directory: str,
+    D_bond: int,
+    direction: str,
+) -> str:
+    if direction not in ORDINARY_DIRECTIONS:
+        raise ValueError(f"Invalid ordinary direction: {direction!r}")
+    return result_name(ansatz_directory, j2_directory, D_bond).removesuffix(
+        ".json"
+    ) + f"__{direction}.json"
+
+
+def parse_partial_result_name(name: str) -> tuple[str, str, int, str]:
+    match = PARTIAL_RESULT_NAME_PATTERN.fullmatch(name)
+    if match is None:
+        raise ValueError(f"Invalid partial result filename: {name!r}")
+    ansatz, j2_directory, D_text, direction = match.groups()
+    if ansatz is None:
+        ansatz = LEGACY_TWOC3_ANSATZ_DIRECTORY
+    validate_ansatz_directory(ansatz)
+    parse_j2_directory(j2_directory)
+    return ansatz, j2_directory, int(D_text), direction
 
 
 def parse_result_name(name: str) -> tuple[str, str, int]:
@@ -156,7 +186,7 @@ def validate_result_payload(
     if not math.isclose(recorded_j2, j2, rel_tol=0.0, abs_tol=1.0e-12):
         raise ValueError("J2 does not match the requested job")
     spectra = payload["spectra"]
-    required = ("env2", "env1_ab_env3_ba", "env3_ab_env1_ba")
+    required = ORDINARY_DIRECTIONS
     inverse_values: list[float] = []
     for key in required:
         spectrum = spectra[key]
@@ -269,7 +299,7 @@ def is_completed_ordinary_result(
             if provenance.get("checkpoint_sha256") != checkpoint_sha256:
                 return False
         spectra = payload["spectra"]
-        for key in ("env2", "env1_ab_env3_ba", "env3_ab_env1_ba"):
+        for key in ORDINARY_DIRECTIONS:
             eigenvalues = spectra[key]["eigenvalues"]
             if not isinstance(eigenvalues, list) or len(eigenvalues) < 2:
                 return False
@@ -281,3 +311,155 @@ def is_completed_ordinary_result(
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
         return False
     return True
+
+
+def validate_partial_result_payload(
+    payload: dict[str, Any],
+    *,
+    j2: float,
+    D_bond: int,
+    ansatz_directory: str,
+    direction: str,
+    checkpoint_sha256: str | None = None,
+) -> None:
+    validate_ansatz_directory(ansatz_directory)
+    if direction not in ORDINARY_DIRECTIONS:
+        raise ValueError(f"Invalid ordinary direction: {direction!r}")
+    if payload.get("schema") != "c3ctm_single_ordinary_correlation_length_direction":
+        raise ValueError("Not a split ordinary-direction result")
+    if payload.get("schema_version") != 1:
+        raise ValueError("Unsupported split ordinary-direction schema")
+    if payload.get("transfer_network_schema") != "three_geometric_straight_rows_ordinary_v6":
+        raise ValueError("Unexpected transfer-network schema")
+    if payload.get("ansatz_directory") != ansatz_directory:
+        raise ValueError("Ansatz does not match the requested split job")
+    if payload.get("direction") != direction:
+        raise ValueError("Direction does not match the requested split job")
+    if int(payload["D_bond"]) != D_bond:
+        raise ValueError("D does not match the requested split job")
+    recorded_j2 = float(payload["calculation_hyperparameters"]["J2"])
+    if not math.isclose(recorded_j2, j2, rel_tol=0.0, abs_tol=1.0e-12):
+        raise ValueError("J2 does not match the requested split job")
+    spectrum = payload["spectra"][direction]
+    eigenvalues = spectrum["eigenvalues"]
+    if not isinstance(eigenvalues, list) or len(eigenvalues) < 2:
+        raise ValueError("Split result does not contain two eigenvalues")
+    magnitudes = []
+    for value in eigenvalues[:2]:
+        real, imag = float(value["real"]), float(value["imag"])
+        if not math.isfinite(real) or not math.isfinite(imag):
+            raise ValueError("Split result contains a non-finite eigenvalue")
+        magnitudes.append(math.hypot(real, imag))
+    magnitudes.sort(reverse=True)
+    expected = math.log(magnitudes[0] / magnitudes[1])
+    if not math.isclose(
+        float(spectrum["inverse_correlation_length"]),
+        expected,
+        rel_tol=1.0e-11,
+        abs_tol=1.0e-13,
+    ):
+        raise ValueError("Split inverse xi was not computed from eigenvalues")
+    if checkpoint_sha256 is not None:
+        provenance = payload.get("cluster_bundle_provenance")
+        if not isinstance(provenance, dict) or provenance.get(
+            "checkpoint_sha256"
+        ) != checkpoint_sha256:
+            raise ValueError("Split result checkpoint hash does not match")
+
+
+def is_completed_partial_result(
+    path: Path,
+    *,
+    j2: float,
+    D_bond: int,
+    ansatz_directory: str,
+    direction: str,
+    checkpoint_sha256: str | None = None,
+) -> bool:
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        validate_partial_result_payload(
+            payload,
+            j2=j2,
+            D_bond=D_bond,
+            ansatz_directory=ansatz_directory,
+            direction=direction,
+            checkpoint_sha256=checkpoint_sha256,
+        )
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return False
+    return True
+
+
+def merge_partial_payloads(
+    payloads: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    if set(payloads) != set(ORDINARY_DIRECTIONS):
+        raise ValueError("Exactly three ordinary directions are required")
+    reference = payloads[ORDINARY_DIRECTIONS[0]]
+    for direction, payload in payloads.items():
+        validate_partial_result_payload(
+            payload,
+            j2=float(reference["calculation_hyperparameters"]["J2"]),
+            D_bond=int(reference["D_bond"]),
+            ansatz_directory=str(reference["ansatz_directory"]),
+            direction=direction,
+        )
+        if int(payload["chi"]) != int(reference["chi"]):
+            raise ValueError("Split directions disagree on chi")
+    spectra = {
+        direction: payloads[direction]["spectra"][direction]
+        for direction in ORDINARY_DIRECTIONS
+    }
+    values = {
+        direction: float(spectra[direction]["inverse_correlation_length"])
+        for direction in ORDINARY_DIRECTIONS
+    }
+    lower, center, upper = sorted(values.values())
+    ctm_runs = {direction: payloads[direction]["ctm"] for direction in ORDINARY_DIRECTIONS}
+    provenance_runs = {
+        direction: payloads[direction].get("cluster_bundle_provenance")
+        for direction in ORDINARY_DIRECTIONS
+    }
+    merged = dict(reference)
+    merged.update(
+        {
+            "schema": "c3ctm_three_ordinary_correlation_lengths",
+            "schema_version": 6,
+            "completed_at_utc": max(
+                str(payloads[direction]["completed_at_utc"])
+                for direction in ORDINARY_DIRECTIONS
+            ),
+            "seed": {direction: payloads[direction]["seed"] for direction in ORDINARY_DIRECTIONS},
+            "seed_was_randomized": any(
+                bool(payloads[direction].get("seed_was_randomized"))
+                for direction in ORDINARY_DIRECTIONS
+            ),
+            "ctm": {
+                **reference["ctm"],
+                "steps_ab": max(int(value["steps_ab"]) for value in ctm_runs.values()),
+                "steps_ba": max(int(value["steps_ba"]) for value in ctm_runs.values()),
+                "direction_runs": ctm_runs,
+            },
+            "spectra": spectra,
+            "inverse_correlation_length": {
+                "definition": "ln(abs(lambda_1/lambda_2))",
+                "aggregation": "lower=min, center=median, upper=max",
+                "lower": lower,
+                "center": center,
+                "upper": upper,
+                "lower_error": center - lower,
+                "upper_error": upper - center,
+                "direction_values": values,
+            },
+            "correlation_length": None if center <= 0.0 else 1.0 / center,
+            "elapsed_seconds": sum(
+                float(payloads[direction].get("elapsed_seconds", 0.0))
+                for direction in ORDINARY_DIRECTIONS
+            ),
+            "split_direction_results": provenance_runs,
+        }
+    )
+    merged.pop("direction", None)
+    return merged

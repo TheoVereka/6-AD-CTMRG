@@ -21,12 +21,18 @@ from pathlib import Path
 
 from bundle_utils import (
     MANIFEST_JSON,
+    ORDINARY_DIRECTIONS,
+    PARTIAL_RESULT_NAME_PATTERN,
     RESULT_DIRECTORY,
     RESULT_NAME_PATTERN,
+    is_completed_partial_result,
     is_completed_ordinary_result,
     load_manifest,
     manifest_index,
+    merge_partial_payloads,
+    parse_partial_result_name,
     parse_result_name,
+    result_name,
 )
 
 
@@ -147,6 +153,65 @@ def completion_time(payload: dict[str, object]) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
+def assemble_downloaded_split_results(
+    incoming: Path,
+    index: dict[tuple[str, str, int], dict[str, object]],
+    *,
+    dry_run: bool = False,
+) -> int:
+    newest: dict[tuple[str, str, int, str], Path] = {}
+    for path in incoming.rglob("*.json"):
+        if RESULT_DIRECTORY not in path.parts or not PARTIAL_RESULT_NAME_PATTERN.fullmatch(path.name):
+            continue
+        key = parse_partial_result_name(path.name)
+        previous = newest.get(key)
+        if previous is None or path.stat().st_mtime_ns > previous.stat().st_mtime_ns:
+            newest[key] = path
+    grouped: dict[tuple[str, str, int], dict[str, Path]] = {}
+    for (ansatz, token, D_bond, direction), path in newest.items():
+        grouped.setdefault((ansatz, token, D_bond), {})[direction] = path
+    assembled = 0
+    for key, paths in grouped.items():
+        if set(paths) != set(ORDINARY_DIRECTIONS):
+            continue
+        item = index.get(key)
+        if item is None:
+            continue
+        ansatz, token, D_bond = key
+        if not all(
+            is_completed_partial_result(
+                paths[direction],
+                j2=float(item["j2"]),
+                D_bond=D_bond,
+                ansatz_directory=ansatz,
+                direction=direction,
+                checkpoint_sha256=str(item["sha256"]),
+            )
+            for direction in ORDINARY_DIRECTIONS
+        ):
+            continue
+        payloads = {
+            direction: json.loads(paths[direction].read_text(encoding="utf-8"))
+            for direction in ORDINARY_DIRECTIONS
+        }
+        merged = merge_partial_payloads(payloads)
+        destination = paths[ORDINARY_DIRECTIONS[0]].with_name(
+            result_name(ansatz, token, D_bond)
+        )
+        if dry_run:
+            assembled += 1
+            print(f"WOULD ASSEMBLE split D={D_bond} result: {destination}")
+            continue
+        temporary = destination.with_name(destination.name + ".assembling")
+        with temporary.open("w", encoding="utf-8") as handle:
+            json.dump(merged, handle, indent=2, allow_nan=True)
+            handle.write("\n")
+        os.replace(temporary, destination)
+        assembled += 1
+        print(f"ASSEMBLED split D={D_bond} result: {destination}")
+    return assembled
+
+
 def main() -> int:
     args = parse_args()
     incoming = args.incoming.resolve()
@@ -181,6 +246,9 @@ def main() -> int:
 
     manifest = load_manifest(bundle_root)
     index = manifest_index(manifest)
+    assembled = assemble_downloaded_split_results(
+        incoming, index, dry_run=args.dry_run
+    )
     discovered_candidates = sorted(
         path
         for path in incoming.rglob("*.json")
@@ -379,7 +447,7 @@ def main() -> int:
         f"already_present={skipped}, "
         f"stale_source={stale_source}, "
         f"sources_kept={kept}, rejected={failed}, "
-        f"dry_run={args.dry_run}."
+        f"split_results_assembled={assembled}, dry_run={args.dry_run}."
     )
     return 1 if failed else 0
 

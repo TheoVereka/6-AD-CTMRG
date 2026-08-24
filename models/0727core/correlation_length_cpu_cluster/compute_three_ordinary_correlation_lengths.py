@@ -329,6 +329,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("checkpoint", type=Path)
     parser.add_argument("--ansatz-directory", required=True)
+    parser.add_argument(
+        "--direction",
+        choices=("env2", "env1_ab_env3_ba", "env3_ab_env1_ba"),
+        help="Compute only one direction for a split D>=10 job.",
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--chi", type=int)
     parser.add_argument("--threads", type=int, default=DEFAULT_THREADS)
@@ -478,9 +483,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
     }
     spectra: dict[str, dict[str, Any]] = {}
-    for offset, key in enumerate(
-        ("env2", "env1_ab_env3_ba", "env3_ab_env1_ba")
-    ):
+    direction_order = ("env2", "env1_ab_env3_ba", "env3_ab_env1_ba")
+    selected_directions = (
+        (args.direction,) if args.direction is not None else direction_order
+    )
+    for key in selected_directions:
+        offset = direction_order.index(key)
         print(f"DIAGONALIZE ordinary {key}", flush=True)
         network_tensors = transfer_specs.pop(key)
         side_by_side = corr.SideBySideRowToRowTransferOperator(
@@ -501,11 +509,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             dense_threshold=args.dense_threshold,
         )
 
-    inverse_summary = _summary(spectra)
-    center_inverse_xi = float(inverse_summary["center"])
+    inverse_summary = _summary(spectra) if args.direction is None else None
+    center_inverse_xi = (
+        float(inverse_summary["center"])
+        if inverse_summary is not None
+        else float(spectra[args.direction]["inverse_correlation_length"])
+    )
     document = {
-        "schema": SCHEMA,
-        "schema_version": SCHEMA_VERSION,
+        "schema": (
+            SCHEMA
+            if args.direction is None
+            else "c3ctm_single_ordinary_correlation_length_direction"
+        ),
+        "schema_version": SCHEMA_VERSION if args.direction is None else 1,
         "transfer_network_schema": TRANSFER_NETWORK_SCHEMA,
         "completed_at_utc": datetime.now(timezone.utc).isoformat(),
         "checkpoint": str(args.checkpoint.resolve()),
@@ -516,6 +532,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "device": "cpu",
         "seed": seed,
         "seed_was_randomized": args.seed is None,
+        "direction": args.direction,
         "threads": args.threads,
         "ctm": {
             "max_steps": args.ctm_max_steps,
@@ -557,9 +574,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     _atomic_write(args.output.resolve(), document)
     print(
         f"DONE {args.output.resolve()} center 1/xi={center_inverse_xi:.12g} "
-        f"range=[{inverse_summary['lower']:.12g}, "
-        f"{inverse_summary['upper']:.12g}] "
-        f"({document['elapsed_seconds']:.1f} s)",
+        + (
+            f"range=[{inverse_summary['lower']:.12g}, {inverse_summary['upper']:.12g}] "
+            if inverse_summary is not None
+            else f"direction={args.direction} "
+        )
+        + f"({document['elapsed_seconds']:.1f} s)",
         flush=True,
     )
     return 0
