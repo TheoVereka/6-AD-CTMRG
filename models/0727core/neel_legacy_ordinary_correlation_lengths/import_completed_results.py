@@ -64,6 +64,18 @@ def main() -> int:
         ansatz = str(item["ansatz_directory"])
         token, D, j2 = str(item["j2_directory"]), int(item["D"]), float(item["j2"])
         expected_hash = str(item["sha256"])
+        current_checkpoint = legacy_root.parent / str(item["original_relative_path"])
+        expected_source_hash = str(item["source_checkpoint_sha256"])
+        if (
+            not current_checkpoint.is_file()
+            or sha256(current_checkpoint) != expected_source_hash
+        ):
+            print(
+                f"STALE MANIFEST J2={j2:g} D={D}: current checkpoint differs; "
+                "rerun collect_checkpoints.py"
+            )
+            incomplete += 1
+            continue
         source = result_root / result_name(ansatz, token, D)
         if not is_completed_ordinary_result(
             source,

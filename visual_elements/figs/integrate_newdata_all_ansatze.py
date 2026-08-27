@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Integrate every ansatz into 0713summary, resolving duplicates interactively.
+"""Integrate new data, routing legacy Neel to D345678910.
 
 Normal usage (after copying every source folder below 0730newdata)::
 
@@ -11,8 +11,8 @@ and olddata already had a readable matching observable.  The workflow is
 deliberately ordered:
 
 1. Scan every ansatz recorded by hyperparams or a standard run-folder name.
-2. Directly import a completed (ansatz, J2, D) when exactly one new run
-   supplies it and 0713summary does not already contain it.
+2. Route every legacy-Neel result to D345678910 and every other ansatz to
+   0713summary. Directly import a non-duplicate completed result.
 3. Copy every unresolved, unfinished run's ``*_best.pt`` and ``*.log`` files
    into ``0730newdata/_unfinished_all_ansatze_for_rerun`` with unique names.
 4. For completed duplicates, show one (ansatz, J2) at a time as one plot
@@ -121,6 +121,10 @@ BEST_RE = re.compile(
 )
 SUMMARY_J2_RE = re.compile(r"^J2_(?P<j2>[0-9]+p[0-9]+)$")
 SUMMARY_D_RE = re.compile(r"^D_(?P<D>\d+)$")
+LEGACY_NEEL_RUN_RE = re.compile(
+    r"^(?:neel_symmetrized|neel_legacy)__J2_(?P<j2>[0-9]+p[0-9]+)(?:_|$)",
+    re.IGNORECASE,
+)
 PATH_J2_PATTERNS = (
     re.compile(r"J2[^0-9+-]*([+-]?(?:\d+(?:[p.]\d*)?|[p.]\d+))", re.IGNORECASE),
     re.compile(r"J2[_-]([+-]?(?:\d+(?:[p.]\d*)?|[p.]\d+))", re.IGNORECASE),
@@ -731,6 +735,65 @@ def discover_summary(summary_root: Path) -> tuple[dict[tuple[str, str, int], Cho
     return result, warnings
 
 
+def discover_legacy_neel(
+    legacy_root: Path,
+) -> tuple[dict[tuple[str, str, int], Choice], list[str]]:
+    """Discover the current per-(J2,D) legacy-Neel choices in D345678910."""
+    grouped: dict[tuple[str, str, int], list[Candidate]] = {}
+    warnings: list[str] = []
+    if not legacy_root.exists():
+        return {}, warnings
+    for run_dir in sorted(path for path in legacy_root.iterdir() if path.is_dir()):
+        run_match = LEGACY_NEEL_RUN_RE.match(run_dir.name)
+        if run_match is None:
+            continue
+        try:
+            j2 = normalize_j2(run_match.group("j2"))
+        except ValueError:
+            continue
+        logs = _direct_logs(run_dir)
+        timestamp = _started_timestamp(logs)
+        for observation in sorted(run_dir.iterdir()):
+            obs_match = OBS_RE.match(observation.name)
+            if obs_match is None:
+                continue
+            energy = read_energy(observation)
+            if energy is None:
+                warnings.append(
+                    f"legacy observable has no finite energy: {observation}"
+                )
+                continue
+            D, chi = int(obs_match.group("D")), int(obs_match.group("chi"))
+            lookahead_chi, lookahead_energy = read_lookahead(run_dir, D, chi)
+            candidate = Candidate(
+                ansatz="neel_symmetrized",
+                j2=j2,
+                timestamp=timestamp,
+                D=D,
+                chi=chi,
+                energy=energy,
+                job_dir=run_dir,
+                observation=observation,
+                source_job=run_dir.relative_to(legacy_root).as_posix(),
+                lookahead_chi=lookahead_chi,
+                lookahead_energy=lookahead_energy,
+                selection_reason="existing_D345678910",
+            )
+            grouped.setdefault((candidate.ansatz, j2, D), []).append(candidate)
+
+    result = {}
+    for key, candidates in grouped.items():
+        candidate = choose_candidate(candidates)
+        result[key] = Choice(
+            candidate=candidate,
+            origin="summary",
+            source_label="D345678910",
+            run_id=candidate.source_job,
+            elapsed_hours=_elapsed_hours(_direct_logs(candidate.job_dir), candidate.D),
+        )
+    return result, warnings
+
+
 def classify(
     new_scan: ScanResult,
     summary: dict[tuple[str, str, int], Choice],
@@ -767,29 +830,50 @@ def _required_copy_warning(choice: Choice, copied: list[str]) -> str | None:
     )
 
 
-def _is_legacy_neel_0255(candidate: Candidate) -> bool:
-    return (
-        candidate.ansatz == "neel_symmetrized"
-        and candidate.j2 == normalize_j2("0.255")
-    )
+def _is_legacy_neel(candidate: Candidate) -> bool:
+    return candidate.ansatz == "neel_symmetrized"
 
 
-def _legacy_neel_target(root: Path) -> Path:
+def _legacy_neel_run_directories(root: Path, j2: str) -> list[Path]:
     if not root.is_dir():
-        return root / "neel_symmetrized__J2_0p255_rerun"
-    candidates = sorted(
-        path
-        for path in root.iterdir()
-        if path.is_dir()
-        and re.match(
-            r"^(?:neel_symmetrized|neel_legacy)__J2_0p255_",
-            path.name,
-            re.IGNORECASE,
-        )
-    )
+        return []
+    matches = []
+    for path in root.iterdir():
+        match = LEGACY_NEEL_RUN_RE.match(path.name)
+        if not path.is_dir() or match is None:
+            continue
+        try:
+            if normalize_j2(match.group("j2")) == j2:
+                matches.append(path)
+        except ValueError:
+            continue
+    return sorted(matches)
+
+
+def _legacy_neel_target(root: Path, j2: str, D: int) -> Path:
+    if not root.is_dir():
+        return root / f"neel_symmetrized__J2_{j2}_integrated_newdata"
+    current, _warnings = discover_legacy_neel(root)
+    existing = current.get(("neel_symmetrized", j2, D))
+    if existing is not None:
+        return existing.candidate.job_dir
+    candidates = _legacy_neel_run_directories(root, j2)
     if candidates:
         return candidates[-1]
-    return root / "neel_symmetrized__J2_0p255_rerun"
+    return root / f"neel_symmetrized__J2_{j2}_integrated_newdata"
+
+
+def _checkpoint_hashes(paths: Iterable[Path]) -> set[str]:
+    cache: dict[Path, str] = {}
+    return {_sha256(path, cache) for path in paths if path.is_file()}
+
+
+def _correlation_matches_checkpoints(path: Path, checkpoint_hashes: set[str]) -> bool:
+    if not path.is_file() or not checkpoint_hashes:
+        return False
+    payload = _load_manifest(path)
+    recorded = payload.get("cluster_bundle_provenance", {}).get("checkpoint_sha256")
+    return isinstance(recorded, str) and recorded in checkpoint_hashes
 
 
 def import_legacy_neel_choice(
@@ -799,24 +883,48 @@ def import_legacy_neel_choice(
     dry_run: bool = False,
 ) -> list[str]:
     candidate = choice.candidate
-    target = _legacy_neel_target(legacy_root)
+    target = _legacy_neel_target(legacy_root, candidate.j2, candidate.D)
     D, chi = candidate.D, candidate.chi
     if dry_run:
         print(
-            f"WOULD IMPORT LEGACY RERUN: J2=0.255 D={D} chi={chi} "
+            f"WOULD IMPORT LEGACY NEEL: J2={candidate.j2.replace('p', '.')} "
+            f"D={D} chi={chi} "
             f"from {choice.run_id} -> {target}"
         )
         return []
     target.mkdir(parents=True, exist_ok=True)
+    checkpoint_patterns = (
+        f"sweep_D{D}_chi{chi}_best*.pt",
+        f"sweep_D_{D}_chi_{chi}_best*.pt",
+    )
+    incoming_checkpoints = [
+        path
+        for pattern in checkpoint_patterns
+        for path in sorted(candidate.job_dir.glob(pattern))
+    ]
+    incoming_hashes = _checkpoint_hashes(incoming_checkpoints)
+    correlation = target / f"correlation_length_D_{D}.json"
+    keep_correlation = _correlation_matches_checkpoints(
+        correlation, incoming_hashes
+    )
     replace_patterns = (
         f"D_{D}_chi_*_energy_magnetization_correlation.txt",
         f"sweep_D{D}_chi*_best*.pt",
         f"sweep_D_{D}_chi*_best*.pt",
     )
-    for pattern in replace_patterns:
-        for old in target.glob(pattern):
-            if old.is_file():
-                old.unlink()
+    cleanup_directories = set(
+        _legacy_neel_run_directories(legacy_root, candidate.j2)
+    ) | {target}
+    for directory in cleanup_directories:
+        for pattern in replace_patterns:
+            for old in directory.glob(pattern):
+                if old.is_file():
+                    old.unlink()
+        old_correlation = directory / f"correlation_length_D_{D}.json"
+        preserve = directory == target and keep_correlation
+        if old_correlation.is_file() and not preserve:
+            old_correlation.unlink()
+            print(f"REMOVED STALE CORRELATION LENGTH: {old_correlation}")
 
     sources: list[tuple[Path, str]] = [(candidate.observation, candidate.observation.name)]
     sources.extend(
@@ -825,14 +933,13 @@ def import_legacy_neel_choice(
             f"D_{D}_chi_{chi}_lookahead_*_energy_magnetization_correlation.txt"
         ))
     )
-    checkpoint_patterns = (
-        f"sweep_D{D}_chi{chi}_best*.pt",
-        f"sweep_D_{D}_chi_{chi}_best*.pt",
-    )
-    for pattern in checkpoint_patterns:
-        sources.extend((path, path.name) for path in sorted(candidate.job_dir.glob(pattern)))
+    sources.extend((path, path.name) for path in incoming_checkpoints)
 
-    audit_prefix = f"rerun_J2_0p255_D{D}_{candidate.timestamp or 'time_unknown'}"
+    run_digest = hashlib.sha1(choice.run_id.encode("utf-8")).hexdigest()[:8]
+    audit_prefix = (
+        f"rerun_J2_{candidate.j2}_D{D}_"
+        f"{candidate.timestamp or 'time_unknown'}_{run_digest}"
+    )
     for log in _direct_logs(candidate.job_dir):
         sources.append((log, f"{audit_prefix}_{log.name}"))
     for name in ("hyperparams.yaml", "sweep_results.json"):
@@ -848,7 +955,8 @@ def import_legacy_neel_choice(
         os.replace(temporary, destination)
         copied.append(destination.name)
     print(
-        f"IMPORTED LEGACY RERUN: J2=0.255 D={D} chi={chi} "
+        f"IMPORTED LEGACY NEEL: J2={candidate.j2.replace('p', '.')} "
+        f"D={D} chi={chi} "
         f"E={candidate.energy:.15g} -> {target}"
     )
     return copied
@@ -856,7 +964,7 @@ def import_legacy_neel_choice(
 
 def import_choice(choice: Choice, summary_root: Path, dry_run: bool = False) -> list[str]:
     candidate = choice.candidate
-    if _is_legacy_neel_0255(candidate):
+    if _is_legacy_neel(candidate):
         return import_legacy_neel_choice(
             choice, LEGACY_NEEL_ROOT, dry_run=dry_run
         )
@@ -893,12 +1001,12 @@ def import_choices_atomically(
     selected = [choice for choice in choices if choice.origin == "new"]
     if not selected:
         return
-    if all(_is_legacy_neel_0255(choice.candidate) for choice in selected):
+    if all(_is_legacy_neel(choice.candidate) for choice in selected):
         for choice in selected:
             import_legacy_neel_choice(choice, LEGACY_NEEL_ROOT)
         return
-    if any(_is_legacy_neel_0255(choice.candidate) for choice in selected):
-        raise ValueError("Legacy J2=0.255 choices cannot be mixed with summary imports")
+    if any(_is_legacy_neel(choice.candidate) for choice in selected):
+        raise ValueError("Legacy-Neel choices cannot be mixed with summary imports")
     summary_root.parent.mkdir(parents=True, exist_ok=True)
     stage_root = Path(tempfile.mkdtemp(prefix=".newdata_stage_", dir=summary_root.parent))
     backup_root = Path(tempfile.mkdtemp(prefix=".newdata_backup_", dir=summary_root.parent))
@@ -1023,6 +1131,13 @@ def prepare(
     dry_run: bool = False,
 ) -> Preparation:
     initial_summary, summary_warnings = discover_summary(summary_root)
+    initial_summary = {
+        key: choice
+        for key, choice in initial_summary.items()
+        if not _is_legacy_neel(choice.candidate)
+    }
+    legacy_choices, legacy_warnings = discover_legacy_neel(LEGACY_NEEL_ROOT)
+    initial_summary.update(legacy_choices)
     new_scan = discover_new_runs(
         new_root,
         old_root=old_root,
@@ -1040,7 +1155,7 @@ def prepare(
         f"Unique imports: {len(unique)}; conflicting pairs: {len(conflicts)}; "
         f"existing summary pairs: {len(initial_summary)}."
     )
-    for warning in summary_warnings + new_scan.warnings:
+    for warning in summary_warnings + legacy_warnings + new_scan.warnings:
         print(f"WARNING: {warning}")
     for record in new_scan.reviewed_skipped:
         print(
@@ -1077,6 +1192,24 @@ def _current_summary_D_data(
     j2: str,
     analysis_module,
 ) -> dict[int, dict]:
+    if ansatz == "neel_symmetrized":
+        choices, warnings = discover_legacy_neel(LEGACY_NEEL_ROOT)
+        for warning in warnings:
+            print(f"WARNING: {warning}")
+        result = {}
+        for (choice_ansatz, choice_j2, D), choice in choices.items():
+            if choice_ansatz != ansatz or choice_j2 != j2:
+                continue
+            if D < analysis_module.MIN_PLOT_D:
+                continue
+            try:
+                result[D] = _parsed_observation(choice, analysis_module)
+            except Exception as exc:
+                print(
+                    f"WARNING: cannot plot legacy observable "
+                    f"{choice.candidate.observation}: {exc}"
+                )
+        return result
     folder = summary_root / f"J2_{j2}" / ansatz
     if not folder.is_dir():
         return {}
@@ -1461,7 +1594,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--legacy-neel-root",
         type=Path,
         default=DEFAULT_LEGACY_NEEL_ROOT,
-        help="destination for the special J2=0.255 neel_legacy rerun",
+        help="destination for every neel_legacy result",
     )
     parser.add_argument(
         "--rerun-dir",

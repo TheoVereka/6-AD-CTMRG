@@ -9,8 +9,8 @@ python models/0727core/neel_legacy_ordinary_correlation_lengths/collect_checkpoi
 It scans only the `(J2,D)` observables that still exist in `D345678910`.
 An old `neel_six_correlation_lengths/results` ordinary result is copied beside
 the observable only when its recorded source-checkpoint SHA-256 equals the
-currently selected `.pt`. J2=0.255 is never reused from `neel_six`; a completed
-new-format result for its current tensor is still recognized on later runs.
+currently selected `.pt`. There are no J2-specific exceptions: a matching hash
+is reused and a different hash is staged for a fresh ordinary calculation.
 
 Copy the entire `neel_legacy_ordinary_correlation_lengths` directory to the
 cluster, enter that directory, and submit:

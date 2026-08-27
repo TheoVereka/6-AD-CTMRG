@@ -24,7 +24,6 @@ DEFAULT_LEGACY_ROOT = DEFAULT_DATA_ROOT / "D345678910"
 DEFAULT_OLD_RESULTS = OLD_NEEL_BUNDLE / "results"
 DEFAULT_OLD_MANIFEST = OLD_NEEL_BUNDLE / "checkpoint_manifest.json"
 ANSATZ = "neel_symmetrized"
-FRESH_ONLY_J2 = {round(0.255, 12)}
 SOLVER_FILES = (
     "bundle_utils.py",
     "correlation_length.py",
@@ -276,16 +275,13 @@ def main() -> int:
         reason = "current_result_matches_tensor" if current else "missing_correlation"
         old = old_results.get((round(j2, 12), D))
         old_matches_tensor = old is not None and old[2] == source_hash
-        fresh_only = round(j2, 12) in FRESH_ONLY_J2
-        if not current and old_matches_tensor and not fresh_only:
+        if not current and old_matches_tensor:
             converted = convert_old_ordinary(
                 old[1], checkpoint=candidate.checkpoint, checkpoint_hash=staged_hash
             )
             atomic_json(destination, converted)
             current = True
             reason = f"converted_existing_ordinary:{old[0]}"
-        elif not current and fresh_only:
-            reason = "fresh_ordinary_required_for_J2_0p255"
         elif not current and old is not None and not old_matches_tensor:
             reason = "old_ordinary_checkpoint_hash_mismatch"
         item = {
