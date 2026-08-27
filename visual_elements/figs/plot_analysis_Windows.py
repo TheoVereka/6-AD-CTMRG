@@ -1266,10 +1266,14 @@ def plot_m_vs_j2_figures(all_data, out_dir):
 
 # ── Part 4: ΔNN (rank3 − rank1) vs J2 ────────────────────────────────────────
 
-D_CORR_SHOW = [3,4,5,6,7,8, 9, 10]
+D_CORR_SHOW = [3, 4, 5, 6, 7, 8, 9, 10, 11]
 CORR_ANSATZ_SKIP = {'neel_symmetrized'}
 
-D_CORR_COLORS = {3:"#fbfabc",4:"#ffefa9",5:"#fed78d",6:"#f9b664",7:"#db7a24",8: "#ae4829", 9: "#731608", 10: "#3B0202"}
+D_CORR_COLORS = {
+    3: "#fbfabc", 4: "#ffefa9", 5: "#fed78d", 6: "#f9b664",
+    7: "#db7a24", 8: "#ae4829", 9: "#731608", 10: "#3B0202",
+    11: "#160000",
+}
 
 def _rank_mean(nn_grp_D, target_rank):
     vals = [nn_grp_D['means'][g]
@@ -1316,7 +1320,7 @@ def plot_delta_nn_vs_j2(all_data, out_dir):
         _draw_delta_nn(axes[0, i], all_data, a)
     fig.suptitle(
         r'NN bond splitting $\Delta_{\mathrm{NN}}$ vs $J_2$'
-        r'  (D=8,9,10)',
+        r'  (D=3--11)',
         fontsize=13,
     )
     fig.tight_layout()

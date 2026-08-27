@@ -191,6 +191,9 @@ def plot_scatter_column(axes, values: dict) -> None:
         ax = axes[row]
         if x:
             ax.errorbar(x, y, xerr=[xlo, xhi], yerr=yerr, fmt="o", color=color, capsize=3)
+        ax.set_xlim(left=0.0)
+        if row == 1:
+            ax.set_ylim(bottom=0.0)
         ax.set_ylabel(ylabel)
         ax.grid(alpha=0.18)
     axes[2].set_xlabel(r"$1/\xi$")
@@ -207,9 +210,11 @@ def plot_per_j2(j2: float, values: dict) -> None:
         yerr=[values["mneel_error_by_D"].get(D, 0.0) for D in Ds],
         fmt="none", ecolor="#9467bd", capsize=2, alpha=0.75,
     )
+    axes[1, 0].set_ylim(bottom=0.0)
     base.plot_col_nn(axes[2, 0], values, show_xlabel=True)
     if values["inverse_correlation_lengths"]:
         base.plot_col_inverse_xi(axes[3, 0], values)
+        axes[3, 0].set_ylim(bottom=0.0)
     else:
         axes[3, 0].axis("off")
     plot_scatter_column(axes[:3, 1], values)
