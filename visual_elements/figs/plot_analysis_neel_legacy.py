@@ -31,30 +31,33 @@ def parse_j2(label: str) -> float:
     return round(float(label.replace("p", ".")), 6)
 
 
-def selected_folders() -> dict[float, Path]:
-    selected = {}
-    for path in sorted(DATA_ROOT.iterdir()):
-        match = FOLDER_RE.match(path.name)
-        if match and path.is_dir():
-            selected[parse_j2(match.group(1))] = path
-    return selected
-
-
-def load_observables(folder: Path) -> dict[int, dict]:
+def selected_observables() -> dict[float, dict[int, tuple[Path, dict]]]:
+    """Select each (J2,D) independently across all surviving legacy folders."""
     choices = {}
-    for path in folder.iterdir():
-        match = OBS_RE.match(path.name)
-        if not match:
+    for folder in sorted(DATA_ROOT.iterdir()):
+        folder_match = FOLDER_RE.match(folder.name)
+        if folder_match is None or not folder.is_dir():
             continue
-        D, chi = int(match.group(1)), int(match.group(2))
-        if not D_MIN <= D <= D_MAX:
-            continue
-        if D not in choices or chi > choices[D][0]:
-            choices[D] = (chi, path)
-    return {
-        D: base.parse_plain_file(str(path))
-        for D, (_chi, path) in sorted(choices.items())
-    }
+        j2 = parse_j2(folder_match.group(1))
+        for path in sorted(folder.iterdir()):
+            observable_match = OBS_RE.match(path.name)
+            if observable_match is None:
+                continue
+            D, chi = int(observable_match.group(1)), int(observable_match.group(2))
+            if not D_MIN <= D <= D_MAX:
+                continue
+            try:
+                parsed = base.parse_plain_file(str(path))
+            except (OSError, AttributeError, TypeError, ValueError):
+                continue
+            rank = (float(parsed["energy_per_site"]), chi, str(path).lower())
+            key = (j2, D)
+            if key not in choices or rank < choices[key][0]:
+                choices[key] = (rank, folder, parsed)
+    selected = {}
+    for (j2, D), (_rank, folder, parsed) in sorted(choices.items()):
+        selected.setdefault(j2, {})[D] = (folder, parsed)
+    return selected
 
 
 def inverse_xi_entry(path: Path) -> dict:
@@ -119,8 +122,8 @@ def aligned_magnetization_statistics(
 
 def load_all() -> dict[float, dict[str, dict]]:
     output = {}
-    for j2, folder in sorted(selected_folders().items()):
-        D_data = load_observables(folder)
+    for j2, points in sorted(selected_observables().items()):
+        D_data = {D: parsed for D, (_folder, parsed) in points.items()}
         if not D_data:
             continue
         values = base.process_parsed_D_data(D_data)
@@ -142,6 +145,7 @@ def load_all() -> dict[float, dict[str, dict]]:
         )
         values["inverse_correlation_lengths"] = {}
         for D in values["Ds"]:
+            folder = points[D][0]
             correlation = folder / f"correlation_length_D_{D}.json"
             if correlation.is_file():
                 try:

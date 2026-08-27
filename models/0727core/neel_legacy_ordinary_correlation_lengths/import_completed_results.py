@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 HERE = Path(__file__).resolve().parent
-DEFAULT_INCOMING = Path(r"D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\neel_legacy_ordinary_correlation_lengths")
+DEFAULT_INCOMING = HERE
 DEFAULT_LEGACY_ROOT = Path(r"D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\D345678910")
 
 

@@ -22,7 +22,9 @@ OLD_NEEL_BUNDLE = HERE.parent / "neel_six_correlation_lengths"
 DEFAULT_DATA_ROOT = Path(r"D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data")
 DEFAULT_LEGACY_ROOT = DEFAULT_DATA_ROOT / "D345678910"
 DEFAULT_OLD_RESULTS = OLD_NEEL_BUNDLE / "results"
+DEFAULT_OLD_MANIFEST = OLD_NEEL_BUNDLE / "checkpoint_manifest.json"
 ANSATZ = "neel_symmetrized"
+FRESH_ONLY_J2 = {round(0.255, 12)}
 SOLVER_FILES = (
     "bundle_utils.py",
     "correlation_length.py",
@@ -166,7 +168,30 @@ def convert_old_ordinary(
     }
 
 
-def old_results_index(root: Path) -> dict[tuple[float, int], tuple[Path, dict]]:
+def old_manifest_index(path: Path) -> dict[tuple[float, int], dict]:
+    if not path.is_file():
+        return {}
+    try:
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    output = {}
+    for case in manifest.get("cases", []):
+        try:
+            key = (round(float(case["J2"]), 12), int(case["D"]))
+            output[key] = {
+                "staged_sha256": str(case["sha256"]),
+                "source_checkpoint_sha256": str(case["source_checkpoint_sha256"]),
+            }
+        except (KeyError, TypeError, ValueError):
+            continue
+    return output
+
+
+def old_results_index(
+    root: Path, manifest_path: Path
+) -> dict[tuple[float, int], tuple[Path, dict, str]]:
+    provenance = old_manifest_index(manifest_path)
     output = {}
     for path in root.rglob("*.json"):
         try:
@@ -176,9 +201,18 @@ def old_results_index(root: Path) -> dict[tuple[float, int], tuple[Path, dict]]:
             if not all(key in payload["spectra"] for key in ORDINARY_OLD_KEYS):
                 continue
             key = (round(float(payload["J2"]), 12), int(payload["D"]))
+            old_case = provenance.get(key)
+            if old_case is None:
+                continue
+            if str(payload.get("checkpoint_sha256", "")) != old_case["staged_sha256"]:
+                continue
             previous = output.get(key)
             if previous is None or path.stat().st_mtime_ns > previous[0].stat().st_mtime_ns:
-                output[key] = (path, payload)
+                output[key] = (
+                    path,
+                    payload,
+                    old_case["source_checkpoint_sha256"],
+                )
         except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
             continue
     return output
@@ -189,6 +223,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data-root", type=Path, default=DEFAULT_DATA_ROOT)
     parser.add_argument("--legacy-root", type=Path, default=DEFAULT_LEGACY_ROOT)
     parser.add_argument("--old-results", type=Path, default=DEFAULT_OLD_RESULTS)
+    parser.add_argument("--old-manifest", type=Path, default=DEFAULT_OLD_MANIFEST)
     parser.add_argument("--min-D", type=int, default=4)
     parser.add_argument("--max-D", type=int, default=11)
     parser.add_argument("--dry-run", action="store_true")
@@ -204,7 +239,9 @@ def main() -> int:
         min_D=args.min_D,
         max_D=args.max_D,
     )
-    old_results = old_results_index(args.old_results.resolve())
+    old_results = old_results_index(
+        args.old_results.resolve(), args.old_manifest.resolve()
+    )
     if args.dry_run:
         print(f"Discovered {len(selected)} completed legacy Neel checkpoints.")
         return 0
@@ -220,6 +257,7 @@ def main() -> int:
     items = []
     selected_items = []
     for (j2, D), candidate in sorted(selected.items()):
+        source_hash = sha256(candidate.checkpoint)
         staged_name = staged_checkpoint_name(ANSATZ, f"J2_{j2:g}".replace(".", "p"), D)
         staged = checkpoint_dir / staged_name
         _canonical, symmetry_error = collector._canonical_payload(candidate)
@@ -237,13 +275,19 @@ def main() -> int:
         )
         reason = "current_result_matches_tensor" if current else "missing_correlation"
         old = old_results.get((round(j2, 12), D))
-        if not current and old is not None:
+        old_matches_tensor = old is not None and old[2] == source_hash
+        fresh_only = round(j2, 12) in FRESH_ONLY_J2
+        if not current and old_matches_tensor and not fresh_only:
             converted = convert_old_ordinary(
-                old[1], checkpoint=staged, checkpoint_hash=staged_hash
+                old[1], checkpoint=candidate.checkpoint, checkpoint_hash=staged_hash
             )
             atomic_json(destination, converted)
             current = True
             reason = f"converted_existing_ordinary:{old[0]}"
+        elif not current and fresh_only:
+            reason = "fresh_ordinary_required_for_J2_0p255"
+        elif not current and old is not None and not old_matches_tensor:
+            reason = "old_ordinary_checkpoint_hash_mismatch"
         item = {
             "j2_directory": f"J2_{j2:g}".replace(".", "p"),
             "ansatz_directory": ANSATZ,
@@ -255,7 +299,7 @@ def main() -> int:
             "legacy_observable": candidate.observable.name,
             "legacy_correlation_filename": destination.name,
             "sha256": staged_hash,
-            "source_checkpoint_sha256": sha256(candidate.checkpoint),
+            "source_checkpoint_sha256": source_hash,
             "virtual_symmetry_relative_error": symmetry_error,
             "selected_for_rerun": not current,
             "selection_reason": reason,

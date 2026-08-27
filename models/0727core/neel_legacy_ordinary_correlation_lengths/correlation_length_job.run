@@ -1,0 +1,74 @@
+#!/bin/bash
+#SBATCH -q academic
+#SBATCH --partition academic
+#SBATCH -e ./job-%N-%j.error
+#SBATCH -o ./job-%N-%j.out
+#SBATCH --ntasks 1
+#SBATCH --cpus-per-task 16
+#SBATCH --time 6-23:59:50
+#SBATCH --mem 100G
+
+set -u
+
+echo "***** START OF JOB *****"
+
+module purge
+module load gcc
+
+echo "STARTING AT $(date)"
+
+source /home/chye/venvs/6adctmrg/bin/activate
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-16}"
+export MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK:-16}"
+export OPENBLAS_NUM_THREADS="${SLURM_CPUS_PER_TASK:-16}"
+
+if [[ "$#" -eq 3 ]]; then
+    # Backward compatibility for already-pending two-C3 jobs submitted by the
+    # pre-v6 launcher: J2, D, bundle.
+    ANSATZ_DIRECTORY="2tensor_twoC3"
+    J2_DIRECTORY="$1"
+    D_BOND="$2"
+    BUNDLE_DIR="$3"
+elif [[ "$#" -eq 4 ]]; then
+    ANSATZ_DIRECTORY="$1"
+    J2_DIRECTORY="$2"
+    D_BOND="$3"
+    BUNDLE_DIR="$4"
+    DIRECTION=""
+elif [[ "$#" -eq 5 ]]; then
+    ANSATZ_DIRECTORY="$1"
+    J2_DIRECTORY="$2"
+    D_BOND="$3"
+    BUNDLE_DIR="$4"
+    DIRECTION="$5"
+else
+    echo "Usage: $0 [ansatz_directory] J2_directory D bundle_dir [direction]" >&2
+    exit 2
+fi
+
+DIRECTION_ARGS=()
+if [[ -n "${DIRECTION:-}" ]]; then
+    DIRECTION_ARGS=(--direction "${DIRECTION}")
+fi
+
+if [[ ! -d "${BUNDLE_DIR}" ]]; then
+    echo "Missing bundle: ${BUNDLE_DIR}" >&2
+    exit 2
+fi
+if [[ ! -f "${BUNDLE_DIR}/run_one_correlation_length.py" ]]; then
+    echo "Missing worker: ${BUNDLE_DIR}/run_one_correlation_length.py" >&2
+    exit 2
+fi
+
+python -u "${BUNDLE_DIR}/run_one_correlation_length.py" \
+    --bundle-root "${BUNDLE_DIR}" \
+    "${DIRECTION_ARGS[@]}" \
+    "${ANSATZ_DIRECTORY}" \
+    "${J2_DIRECTORY}" \
+    "${D_BOND}"
+STATUS=$?
+
+echo "FINISHED at $(date) with status ${STATUS}"
+echo "***** END OF JOB *****"
+exit "${STATUS}"
