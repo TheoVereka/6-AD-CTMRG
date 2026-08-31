@@ -14,12 +14,14 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.optimize import curve_fit
 
 import plot_analysis_Windows as base
 
 
 DATA_ROOT = Path(r"D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\D345678910")
 OUT_DIR = Path(__file__).resolve().parent / "analysis_plots_neel_legacy"
+CSV_OUT_DIR = Path(r"D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\processed\neel_legacy_plots")
 FOLDER_RE = re.compile(
     r"^(?:neel_symmetrized|neel_legacy)__J2_([0-9p]+)_", re.IGNORECASE
 )
@@ -164,6 +166,120 @@ def delta_and_error(entry: dict) -> tuple[float, float]:
     return delta, error
 
 
+def magnetization_vs_inverse_xi(values: dict) -> tuple[np.ndarray, ...]:
+    """Return the finite magnetization data and their plot uncertainties."""
+    correlation = values["inverse_correlation_lengths"]
+    mags = dict(zip(values["Ds"], values["mneel_list"]))
+    rows = []
+    for D in sorted(correlation):
+        if D not in mags:
+            continue
+        xi = correlation[D]
+        row = (
+            float(xi["inverse_xi"]),
+            float(xi["inverse_xi_lower_error"]),
+            float(xi["inverse_xi_upper_error"]),
+            float(mags[D]),
+            float(values["mneel_error_by_D"].get(D, 0.0)),
+        )
+        if all(np.isfinite(item) for item in row):
+            rows.append(row)
+    if not rows:
+        return tuple(np.array([], dtype=float) for _ in range(5))
+    return tuple(np.asarray(column, dtype=float) for column in zip(*rows))
+
+
+def fit_magnetization_vs_inverse_xi(
+    x: np.ndarray, y: np.ndarray, *, free_exponent: bool
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Fit |m0| + c*x or |m0| + b*x**alpha and return 1-sigma errors."""
+    parameter_count = 3 if free_exponent else 2
+    if len(x) < parameter_count or np.ptp(x) == 0.0:
+        return None
+
+    slope, intercept = np.polyfit(x, y, 1)
+    m0_guess = max(0.0, float(intercept))
+    try:
+        if free_exponent:
+            def model(x_value, m0, b, alpha):
+                return m0 + b * x_value**alpha
+
+            popt, pcov = curve_fit(
+                model,
+                x,
+                y,
+                p0=(m0_guess, float(slope), 1.0),
+                bounds=([-10, 0, 0.5], [np.inf, np.inf, 2]),
+                maxfev=20000,
+            )
+        else:
+            def model(x_value, m0, c1):
+                return m0 + c1 * x_value
+
+            popt, pcov = curve_fit(
+                model,
+                x,
+                y,
+                p0=(m0_guess, float(slope)),
+                bounds=([-10, 0], [np.inf, np.inf]),
+                maxfev=20000,
+            )
+    except (RuntimeError, TypeError, ValueError):
+        return None
+
+    standard_errors = np.sqrt(np.maximum(0.0, np.diag(pcov)))
+    return popt, standard_errors
+
+
+def add_magnetization_fit(ax, values: dict, *, free_exponent: bool) -> None:
+    """Draw magnetization versus inverse xi with the requested extrapolation."""
+    x, xlo, xhi, y, yerr = magnetization_vs_inverse_xi(values)
+    color = "#9467bd"
+    if len(x):
+        ax.errorbar(
+            x,
+            y,
+            xerr=[xlo, xhi],
+            yerr=yerr,
+            fmt="o",
+            color=color,
+            capsize=3,
+            label=r"$m_\mathrm{N\acute{e}el}$ data",
+        )
+
+    fit = fit_magnetization_vs_inverse_xi(x, y, free_exponent=free_exponent)
+    if fit is not None:
+        parameters, standard_errors = fit
+        x_line = np.linspace(0.0, max(float(np.max(x)) * 1.02, 1e-12), 300)
+        if free_exponent:
+            m0, b, alpha = parameters
+            y_line = m0 + b * x_line**alpha
+            label = (
+                rf"$|m_0|+b/\xi^\alpha$, $\alpha={alpha:.3g}$"
+                "\n"
+                rf"$m_0={m0:.5g}$, fit std $={standard_errors[0]:.2g}$"
+            )
+            linestyle = "-."
+        else:
+            m0, c1 = parameters
+            y_line = m0 + c1 * x_line
+            label = (
+                r"$|m_0|+c_1/\xi$"
+                "\n"
+                rf"$m_0={m0:.5g}$, fit std $={standard_errors[0]:.2g}$"
+            )
+            linestyle = "--"
+        ax.plot(x_line, y_line, color="tab:red", ls=linestyle, lw=1.2, label=label)
+
+    ax.set_xlim(left=0.0)
+    ax.set_ylim(bottom=0.0)
+    ax.set_xlabel(r"$1/\xi$")
+    ax.set_ylabel(r"m$_\mathrm{N\acute{e}el}$")
+    ax.grid(alpha=0.18)
+    if len(x):
+        ax.legend(fontsize=7, loc="best")
+
+
 def plot_scatter_column(axes, values: dict) -> None:
     correlation = values["inverse_correlation_lengths"]
     energies = dict(zip(values["Ds"], values["energy_per_site"]))
@@ -191,6 +307,27 @@ def plot_scatter_column(axes, values: dict) -> None:
         ax = axes[row]
         if x:
             ax.errorbar(x, y, xerr=[xlo, xhi], yerr=yerr, fmt="o", color=color, capsize=3)
+            if row == 1:
+                fit = fit_magnetization_vs_inverse_xi(
+                    np.asarray(x, dtype=float), np.asarray(y, dtype=float), free_exponent=False
+                )
+                if fit is not None:
+                    parameters, standard_errors = fit
+                    m0, c1 = parameters
+                    x_line = np.linspace(0.0, max(x) * 1.02, 300)
+                    ax.plot(
+                        x_line,
+                        m0 + c1 * x_line,
+                        color="tab:red",
+                        ls="--",
+                        lw=1.2,
+                        label=(
+                            r"$|m_0|+c_1/\xi$"
+                            "\n"
+                            rf"$m_0={m0:.5g}$, fit std $={standard_errors[0]:.2g}$"
+                        ),
+                    )
+                    ax.legend(fontsize=7, loc="best")
         ax.set_xlim(left=0.0)
         if row == 1:
             ax.set_ylim(bottom=0.0)
@@ -218,7 +355,7 @@ def plot_per_j2(j2: float, values: dict) -> None:
     else:
         axes[3, 0].axis("off")
     plot_scatter_column(axes[:3, 1], values)
-    axes[3, 1].axis("off")
+    add_magnetization_fit(axes[3, 1], values, free_exponent=True)
     axes[0, 0].set_title("vs $1/D$")
     axes[0, 1].set_title("observables vs $1/\\xi$")
     axes[0, 0].set_ylabel("Energy per site")
@@ -231,6 +368,7 @@ def plot_per_j2(j2: float, values: dict) -> None:
 def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     all_data = load_all()
+    base.export_plot_data_csvs(all_data, str(CSV_OUT_DIR))
     if not all_data:
         raise RuntimeError(f"No legacy Neel observations found below {DATA_ROOT}")
     for j2, ansatz_map in sorted(all_data.items()):

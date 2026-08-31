@@ -1,0 +1,29 @@
+#!/bin/bash
+#SBATCH --job-name=twoc3
+#SBATCH --qos=long
+#SBATCH --partition=h100
+#SBATCH --gres=gpu:1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=90G
+#SBATCH --time=167:59:50
+#SBATCH --output=output_%x_%j.log
+
+
+
+module load nvhpc/24.7-mpi
+module load cuda/12.5.1
+source /home/pghosh/venvs/6adctmrg_Kuma/bin/activate
+
+OUTDIR="./Results_chi160_J2_twoc3_0.30/D_11"
+mkdir -p "${OUTDIR}"
+
+python ./main_C3.py \
+    --J2 0.30 \
+    --ansatz twoc3 \
+    --Ds 11 \
+    --chi-min 160 \
+    --chi-max 160 \
+    --output-dir "${OUTDIR}"
+
+echo "END OF JOB"

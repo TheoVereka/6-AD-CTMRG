@@ -15,13 +15,15 @@ module load nvhpc/24.7-mpi
 module load cuda/12.5.1
 source /home/pghosh/venvs/6adctmrg_Kuma/bin/activate
 
-OUTDIR="./Results_second_J2_twoc3_0.30/D_11"
+OUTDIR="./Results_chi140_J2_twoc3_0.30/D_11"
 mkdir -p "${OUTDIR}"
 
 python ./main_C3.py \
     --J2 0.30 \
     --ansatz twoc3 \
     --Ds 11 \
+    --chi-min 140 \
+    --chi-max 140 \
     --output-dir "${OUTDIR}"
 
 echo "END OF JOB"
