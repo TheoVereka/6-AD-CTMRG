@@ -31,6 +31,8 @@ python models/0727core/neel_legacy_ordinary_correlation_lengths/import_completed
 The importer now reads the returned results from its own directory by default
 and writes `correlation_length_D_<D>.json` beside the exact selected legacy
 observable. `plot_analysis_neel_legacy.py` only plots correlation lengths after
-these JSON files exist.
+these JSON files exist. Imports are idempotent: a valid destination is reported
+as `ALREADY IMPORTED`, and downloaded results are retained unless
+`--delete-source` is explicitly passed.
 
 `submit_all.sh --dry-run` prints every Slurm job without submitting it.

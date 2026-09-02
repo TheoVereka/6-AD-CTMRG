@@ -29,7 +29,20 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--incoming", type=Path, default=DEFAULT_INCOMING)
     parser.add_argument("--legacy-root", type=Path, default=DEFAULT_LEGACY_ROOT)
-    parser.add_argument("--keep-source", action="store_true")
+    source_group = parser.add_mutually_exclusive_group()
+    source_group.add_argument(
+        "--keep-source",
+        dest="keep_source",
+        action="store_true",
+        help="retain downloaded result files (default)",
+    )
+    source_group.add_argument(
+        "--delete-source",
+        dest="keep_source",
+        action="store_false",
+        help="delete a downloaded result only after a successful import",
+    )
+    parser.set_defaults(keep_source=True)
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
@@ -78,6 +91,17 @@ def main() -> int:
             )
             incomplete += 1
             continue
+        destination = legacy_root / str(item["legacy_run_relative_path"]) / str(item["legacy_correlation_filename"])
+        if is_completed_ordinary_result(
+            destination,
+            j2=j2,
+            D_bond=D,
+            ansatz_directory=ansatz,
+            checkpoint_sha256=expected_hash,
+        ):
+            print(f"ALREADY IMPORTED J2={j2:g} D={D}: {destination}")
+            skipped += 1
+            continue
         source = result_root / result_name(ansatz, token, D)
         if not is_completed_ordinary_result(
             source,
@@ -123,7 +147,6 @@ def main() -> int:
             print(f"INCOMPLETE J2={j2:g} D={D}")
             incomplete += 1
             continue
-        destination = legacy_root / str(item["legacy_run_relative_path"]) / str(item["legacy_correlation_filename"])
         if destination.is_file() and not args.overwrite:
             if sha256(destination) == sha256(source):
                 skipped += 1
