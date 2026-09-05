@@ -27,13 +27,22 @@ GLOBAL_BANS = {
         # (0.250, 7),
     },
     "2C3": {
-        # (0.265, 8),
+        (0.265, 3),
     },
+}
+
+# Whole-D exclusions for each ansatz.
+GLOBAL_BANNED_DS = {
+    "Neel": {3},
+    "2C3": {3, 4, 5},
 }
 
 # J2 values hidden from every PDF but retained in exported raw data, errors,
 # and fit-parameter tables.
-PLOT_BANNED_J2 = {0.0}
+PLOT_BANNED_J2 = {
+    "Neel": {0.0, 0.32},
+    "2C3": {0.0},
+}
 
 # Independent exclusions for every figure that performs a fit/statistic.
 # Points remain visible as raw data.  Figure 14 is deliberately checked to
@@ -45,11 +54,14 @@ TWOC3_M_FIT_BANS = {
     (0.275, 3), (0.275, 4), (0.275, 5), (0.275, 6), (0.275, 7),
 }
 
+NEEL_M_EXTRAP_BANS = {(0.255, 4)}
+
 FIT_BANS = {
     2: set(), 3: set(), 4: set(), 5: set(),
     7: set(TWOC3_M_FIT_BANS), 8: set(TWOC3_M_FIT_BANS),
     9: set(TWOC3_M_FIT_BANS), 10: set(TWOC3_M_FIT_BANS),
-    13: set(), 14: set(), 16: set(), 17: {(0.255, 4)},
+    13: set(NEEL_M_EXTRAP_BANS), 14: set(),
+    16: set(NEEL_M_EXTRAP_BANS), 17: set(NEEL_M_EXTRAP_BANS),
     19: set(), 20: set(), 22: set(),
     24: set(), 25: set(), 27: set(), 28: set(),
 }
@@ -65,8 +77,14 @@ FIT_MAX_NFEV = 100_000
 FIT_CURVE_POINTS = 400
 
 # Plot controls intended for quick manual tuning after the first inspection.
-FIGSIZE = (7.2, 5.2)
+FIGSIZE = (6.65, 5.2)
+MAIN_AXES_INCHES = (1.15, 0.85, 5.00, 4.0)
+COLORBAR_EXTRA_WIDTH = 1.20
+LEGEND_EXTRA_WIDTH = 3.80
+TWO_COLUMN_LEGEND_EXTRA_WIDTH = 6.00
+COLORBAR_GAP = 0.25
+COLORBAR_WIDTH = 0.22
 MARKER_SIZE = 6.0
 CAPSIZE = 3.0
 RAW_ALPHA_MIN = 0.25
-VERTICAL_LINES_J2 = (0.243, 0.272)
+VERTICAL_LINES_J2 = (0.24, 0.27)

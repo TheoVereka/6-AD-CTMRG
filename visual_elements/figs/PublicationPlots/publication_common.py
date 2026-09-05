@@ -15,6 +15,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib import cm, colors
+from matplotlib.lines import Line2D
 import numpy as np
 from scipy.optimize import least_squares
 
@@ -53,21 +54,34 @@ BLUE = "#2166ac"
 RED = "#b2182b"
 
 
+NEEL_ENERGY_CMAP = colors.LinearSegmentedColormap.from_list(
+    "publication_purple_to_blue",
+    ("#3b0f70", "#365c9d", "#38a6d8", "#79d4f2"),
+)
+TWOC3_ENERGY_CMAP = colors.LinearSegmentedColormap.from_list(
+    "publication_red_to_dark_orange",
+    ("#6C0B13", "#b50802", "#fe5821", "#e4975f"),
+)
+
+
 def _key(j2: float, D: int) -> tuple[float, int]:
     return round(float(j2), 6), int(D)
 
 
 def _banned(ansatz: str, j2: float, D: int) -> bool:
-    return _key(j2, D) in {_key(*point) for point in cfg.GLOBAL_BANS[ansatz]}
+    return (
+        int(D) in cfg.GLOBAL_BANNED_DS[ansatz]
+        or _key(j2, D) in {_key(*point) for point in cfg.GLOBAL_BANS[ansatz]}
+    )
 
 
 def _fit_banned(figure: int, j2: float, D: int) -> bool:
     return _key(j2, D) in {_key(*point) for point in cfg.FIT_BANS.get(figure, set())}
 
 
-def _plot_allowed(j2: float) -> bool:
+def _plot_allowed(j2: float, ansatz: str) -> bool:
     return round(float(j2), 6) not in {
-        round(float(value), 6) for value in cfg.PLOT_BANNED_J2
+        round(float(value), 6) for value in cfg.PLOT_BANNED_J2[ansatz]
     }
 
 
@@ -369,16 +383,30 @@ def delta_statistic(rows: list[dict]) -> dict | None:
     if len(rows) < 2:
         return None
     values = np.asarray([row["delta"] for row in rows])
-    errors = _safe_sigma(np.asarray([row["delta_error"] for row in rows]))
-    weights = 1.0 / errors**2
-    central = float(np.sum(weights * values) / np.sum(weights))
-    error = float(np.sqrt(1.0 / np.sum(weights)))
+    errors = np.asarray([row["delta_error"] for row in rows])
+    # The three largest-D values are equal contributors.  This is a
+    # conservative uncertainty of the representative constant, not the
+    # uncertainty of an infinitely repeatable weighted mean:
+    #   sigma_total^2 = mean(sigma_i^2) + mean((Delta_i - Delta_bar)^2).
+    central = float(np.mean(values))
+    measurement_rms = float(np.sqrt(np.mean(errors**2)))
+    spreading_rms = rms(values)
+    error = float(np.hypot(measurement_rms, spreading_rms))
     return {"names": ["delta_extrap"], "values": np.asarray([central]),
-            "errors": np.asarray([error]), "n": len(rows), "Ds": [row["D"] for row in rows]}
+            "errors": np.asarray([error]), "n": len(rows),
+            "Ds": [row["D"] for row in rows],
+            "measurement_error_rms": measurement_rms,
+            "spreading_rms": spreading_rms}
 
 
-def _new_figure(*, twin: bool = False):
-    fig, ax = plt.subplots(figsize=cfg.FIGSIZE)
+def _new_figure(*, twin: bool = False, extra_width: float = 0.0):
+    width, height = cfg.FIGSIZE[0] + extra_width, cfg.FIGSIZE[1]
+    left, bottom, axes_width, axes_height = cfg.MAIN_AXES_INCHES
+    fig = plt.figure(figsize=(width, height))
+    ax = fig.add_axes([
+        left / width, bottom / height,
+        axes_width / width, axes_height / height,
+    ])
     return fig, ax, ax.twinx() if twin else None
 
 
@@ -408,7 +436,9 @@ def _fit_rows(figure: int, ansatz: str, j2: float, result: dict,
         {"figure": figure, "ansatz": ansatz, "J2": j2, "model": model,
          "n_points": result["n"], "parameter": name, "central": value,
          "error": error, "fit_bans": repr(excluded),
-         "statistic_Ds": repr(result.get("Ds", ""))}
+         "statistic_Ds": repr(result.get("Ds", "")),
+         "measurement_error_rms": result.get("measurement_error_rms", ""),
+         "spreading_rms": result.get("spreading_rms", "")}
         for name, value, error in zip(result["names"], result["values"], result["errors"])
     ]
 
@@ -416,7 +446,15 @@ def _fit_rows(figure: int, ansatz: str, j2: float, result: dict,
 def _colorbar(fig, ax, cmap, values):
     if values:
         norm = colors.Normalize(vmin=min(values), vmax=max(values) if max(values) > min(values) else min(values) + 1e-12)
-        fig.colorbar(cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax, label=r"$J_2$")
+        figure_width, figure_height = fig.get_size_inches()
+        left, bottom, axes_width, axes_height = cfg.MAIN_AXES_INCHES
+        cax = fig.add_axes([
+            (left + axes_width + cfg.COLORBAR_GAP) / figure_width,
+            bottom / figure_height,
+            cfg.COLORBAR_WIDTH / figure_width,
+            axes_height / figure_height,
+        ])
+        fig.colorbar(cm.ScalarMappable(norm=norm, cmap=cmap), cax=cax, label=r"$J_2$")
         return norm
     return colors.Normalize(0.0, 1.0)
 
@@ -436,18 +474,29 @@ def _outside_legend(ax, *, ncols: int = 1, handles=None, labels=None) -> None:
     )
 
 
+def _add_vertical_lines(ax) -> None:
+    for value in cfg.VERTICAL_LINES_J2:
+        ax.axvline(value, color="0.35", linestyle="--", linewidth=1.5)
+        ax.text(
+            value, 0.98, rf"$J_2={value:.2f}$",
+            transform=ax.get_xaxis_transform(), rotation=90,
+            ha="right", va="top", color="0.35",
+        )
+
+
 def _plot_m_xi(figure: int, rows: list[dict], *, fit_kind: str | None):
-    fig, ax, _ = _new_figure()
+    fig, ax, _ = _new_figure(extra_width=cfg.COLORBAR_EXTRA_WIDTH)
     data_out, fits_out = [], []
     by_j2 = _groups(_finite(rows, "inverse_xi", "inverse_xi_error", "m", "m_error"), "J2")
     cmap = cm.viridis
-    plotted_j2 = [j2 for j2 in by_j2 if _plot_allowed(j2)]
+    ansatz = rows[0]["ansatz"] if rows else ANSATZ_NEEL
+    plotted_j2 = [j2 for j2 in by_j2 if _plot_allowed(j2, ansatz)]
     norm = colors.Normalize(min(plotted_j2, default=0.0), max(plotted_j2, default=1.0) or 1.0)
     for j2, group in by_j2.items():
         color = cmap(norm(j2))
         x = [row["inverse_xi"] for row in group]
         y = [row["m"] for row in group]
-        if _plot_allowed(j2):
+        if _plot_allowed(j2, ansatz):
             _errorbar(ax, x, y, xerr=[row["inverse_xi_error"] for row in group],
                       yerr=[row["m_error"] for row in group], color=color)
         data_out.extend(_row(figure, row, series="raw", x=row["inverse_xi"], y=row["m"],
@@ -462,10 +511,10 @@ def _plot_m_xi(figure: int, rows: list[dict], *, fit_kind: str | None):
             continue
         xmax = max(x)
         xline = np.linspace(0.0, xmax, cfg.FIT_CURVE_POINTS)
-        if _plot_allowed(j2):
+        if _plot_allowed(j2, ansatz):
             ax.plot(xline, result["model"](result["values"], xline), color=color)
         m0, m0_error = result["values"][0], result["errors"][0]
-        if _plot_allowed(j2):
+        if _plot_allowed(j2, ansatz):
             _errorbar(ax, [0.0], [m0], yerr=[m0_error], color=color, marker="s", zorder=4)
         excluded = [_key(j2, row["D"]) for row in group if _fit_banned(figure, j2, row["D"])]
         fits_out.extend(_fit_rows(figure, group[0]["ansatz"], j2, result, fit_kind, excluded))
@@ -494,7 +543,7 @@ def _raw_vs_j2(ax, figure: int, rows: list[dict], *, observable: str,
     groups = _groups(_finite(rows, observable, *([error_field] if error_field else [])), "D")
     for index, (D, group) in enumerate(groups.items()):
         alpha = _alpha(index, len(groups))
-        plot_group = [row for row in group if _plot_allowed(row["J2"])]
+        plot_group = [row for row in group if _plot_allowed(row["J2"], row["ansatz"])]
         yerr = [row[error_field] for row in plot_group] if error_field else None
         if plot_group:
             _errorbar(ax, [row["J2"] for row in plot_group], [row[observable] for row in plot_group],
@@ -539,7 +588,7 @@ def _delta_extrap(figure: int, rows: list[dict]) -> tuple[list[dict], list[dict]
 
 def _draw_m_extrap(ax, figure: int, rows: list[dict], *, label=r"$m_{\mathrm{extrap}}$"):
     points, fits = _m_extrap(figure, rows)
-    plotted = [point for point in points if _plot_allowed(point["J2"])]
+    plotted = [point for point in points if _plot_allowed(point["J2"], point["ansatz"])]
     if plotted:
         _errorbar(ax, [p["J2"] for p in plotted], [p["value"] for p in plotted],
                   yerr=[[p["lower_error"] for p in plotted], [p["upper_error"] for p in plotted]],
@@ -551,7 +600,7 @@ def _draw_m_extrap(ax, figure: int, rows: list[dict], *, label=r"$m_{\mathrm{ext
 
 def _draw_delta_extrap(ax, figure: int, rows: list[dict], *, label=r"$\Delta_{\mathrm{extrap}}$"):
     points, fits = _delta_extrap(figure, rows)
-    plotted = [point for point in points if _plot_allowed(point["J2"])]
+    plotted = [point for point in points if _plot_allowed(point["J2"], point["ansatz"])]
     if plotted:
         _errorbar(ax, [p["J2"] for p in plotted], [p["value"] for p in plotted],
                   yerr=[p["error"] for p in plotted], color=ORANGE, label=label,
@@ -562,7 +611,8 @@ def _draw_delta_extrap(ax, figure: int, rows: list[dict], *, label=r"$\Delta_{\m
 
 
 def _plot_m_delta(figure: int, neel: list[dict], twoc3: list[dict], *, mode: str):
-    fig, left, right = _new_figure(twin=True)
+    extra_width = cfg.TWO_COLUMN_LEGEND_EXTRA_WIDTH if figure in (15, 16) else 0.0
+    fig, left, right = _new_figure(twin=True, extra_width=extra_width)
     data, fits = [], []
     if mode in ("raw", "raw_fit"):
         data += _raw_vs_j2(left, figure, neel, observable="m", error_field="m_error", color=PURPLE)
@@ -573,8 +623,7 @@ def _plot_m_delta(figure: int, neel: list[dict], twoc3: list[dict], *, mode: str
         new, fit = _draw_delta_extrap(right, figure, twoc3)
         data += new; fits += fit
     if mode == "fit":
-        for value in cfg.VERTICAL_LINES_J2:
-            left.axvline(value, color="0.35", linestyle="--", linewidth=1.5)
+        _add_vertical_lines(left)
     left.set_xlabel(r"$J_2$")
     left.set_ylabel(r"$m$", color=PURPLE)
     right.set_ylabel(r"$\Delta$", color=ORANGE)
@@ -585,10 +634,16 @@ def _plot_m_delta(figure: int, neel: list[dict], twoc3: list[dict], *, mode: str
     handles2, labels2 = right.get_legend_handles_labels()
     if handles1 or handles2:
         if figure in (15, 16):
+            target = max(len(handles1), len(handles2))
+            blank_count = target - len(handles1)
+            padded_handles1 = handles1 + [
+                Line2D([], [], linestyle="none") for _ in range(blank_count)
+            ]
+            padded_labels1 = labels1 + [""] * blank_count
             _outside_legend(
                 left, ncols=2,
-                handles=handles1 + handles2,
-                labels=labels1 + labels2,
+                handles=padded_handles1 + handles2,
+                labels=padded_labels1 + labels2,
             )
         else:
             left.legend(handles1 + handles2, labels1 + labels2)
@@ -612,15 +667,16 @@ def _energy_fits(figure: int, rows: list[dict], *, gapped: bool):
 
 
 def _plot_energy_invD(figure: int, rows: list[dict], *, fit: str | None, cmap):
-    fig, ax, _ = _new_figure()
+    fig, ax, _ = _new_figure(extra_width=cfg.COLORBAR_EXTRA_WIDTH)
     data, fits = [], []
     by_j2 = _groups(_finite(rows, "E"), "J2")
-    plotted_j2 = [j2 for j2 in by_j2 if _plot_allowed(j2)]
+    ansatz = rows[0]["ansatz"] if rows else ANSATZ_NEEL
+    plotted_j2 = [j2 for j2 in by_j2 if _plot_allowed(j2, ansatz)]
     norm = colors.Normalize(min(plotted_j2, default=0.0), max(plotted_j2, default=1.0) or 1.0)
     for j2, group in by_j2.items():
         color = cmap(norm(j2))
         x = [1.0 / row["D"] for row in group]
-        if _plot_allowed(j2):
+        if _plot_allowed(j2, ansatz):
             _errorbar(ax, x, [row["E"] for row in group], color=color)
         data.extend(_row(figure, row, series="raw", x=1.0 / row["D"], y=row["E"]) for row in group)
         if fit is None:
@@ -630,10 +686,10 @@ def _plot_energy_invD(figure: int, rows: list[dict], *, fit: str | None, cmap):
         if result is None:
             continue
         xline = np.linspace(0.0, max(x), cfg.FIT_CURVE_POINTS)
-        if _plot_allowed(j2):
+        if _plot_allowed(j2, ansatz):
             ax.plot(xline, result["model"](result["values"], xline), color=color)
         E0, E0_error = result["values"][0], result["errors"][0]
-        if _plot_allowed(j2):
+        if _plot_allowed(j2, ansatz):
             _errorbar(ax, [0.0], [E0], yerr=[E0_error], color=color, marker="s", zorder=4)
         excluded = [_key(j2, row["D"]) for row in group if _fit_banned(figure, j2, row["D"])]
         fits.extend(_fit_rows(figure, group[0]["ansatz"], j2, result, fit, excluded))
@@ -653,7 +709,7 @@ def _plot_energy_invD(figure: int, rows: list[dict], *, fit: str | None, cmap):
 
 def _segmented_curve(ax, points: list[dict], *, color: str, gapped: bool, label: str):
     points = sorted(
-        (point for point in points if _plot_allowed(point["J2"])),
+        (point for point in points if _plot_allowed(point["J2"], point["ansatz"])),
         key=lambda point: point["J2"],
     )
     if not points:
@@ -671,7 +727,7 @@ def _segmented_curve(ax, points: list[dict], *, color: str, gapped: bool, label:
 
 def _plot_energy_j2(figure: int, rows: list[dict], *, color: str,
                     include_fits: bool, raw: bool = True):
-    fig, ax, _ = _new_figure()
+    fig, ax, _ = _new_figure(extra_width=cfg.LEGEND_EXTRA_WIDTH)
     data, fits = [], []
     if raw:
         data += _raw_vs_j2(ax, figure, rows, observable="E", error_field=None, color=color)
@@ -702,8 +758,7 @@ def _plot_energy_combined(figure: int, neel: list[dict], twoc3: list[dict]):
         fits += fit_gapless + fit_gapped
         for name, points in (("gapless_E_extrap", gapless), ("gapped_E_extrap", gapped)):
             data.extend(_row(figure, p, series=name, x=p["J2"], y=p["value"], y_error=p["error"]) for p in points)
-    for value in cfg.VERTICAL_LINES_J2:
-        ax.axvline(value, color="0.35", linestyle="--", linewidth=1.5)
+    _add_vertical_lines(ax)
     ax.set_xlabel(r"$J_2$"); ax.set_ylabel(r"$E$"); ax.legend()
     return fig, data, fits
 
@@ -718,29 +773,29 @@ def render_figure(figure: int, dataset: dict[str, list[dict]]):
         kinds = {6: None, 7: "linear", 8: "abs_linear", 9: "power", 10: "abs_power"}
         return _plot_m_xi(figure, limited, fit_kind=kinds[figure])
     if figure == 11:
-        fig, ax, _ = _new_figure(); data = _raw_vs_j2(ax, figure, neel, observable="m", error_field="m_error", color=PURPLE)
+        fig, ax, _ = _new_figure(extra_width=cfg.LEGEND_EXTRA_WIDTH); data = _raw_vs_j2(ax, figure, neel, observable="m", error_field="m_error", color=PURPLE)
         ax.set_xlabel(r"$J_2$"); ax.set_ylabel(r"$m$"); ax.set_ylim(bottom=0.0); _outside_legend(ax); return fig, data, []
     if figure == 12:
-        fig, ax, _ = _new_figure(); data = _raw_vs_j2(ax, figure, twoc3, observable="delta", error_field="delta_error", color=ORANGE)
+        fig, ax, _ = _new_figure(extra_width=cfg.LEGEND_EXTRA_WIDTH); data = _raw_vs_j2(ax, figure, twoc3, observable="delta", error_field="delta_error", color=ORANGE)
         ax.set_xlabel(r"$J_2$"); ax.set_ylabel(r"$\Delta$"); ax.set_ylim(bottom=0.0); _outside_legend(ax); return fig, data, []
     if figure == 13:
-        fig, ax, _ = _new_figure(); data = _raw_vs_j2(ax, figure, neel, observable="m", error_field="m_error", color=PURPLE)
+        fig, ax, _ = _new_figure(extra_width=cfg.LEGEND_EXTRA_WIDTH); data = _raw_vs_j2(ax, figure, neel, observable="m", error_field="m_error", color=PURPLE)
         extra, fits = _draw_m_extrap(ax, figure, neel); data += extra
         ax.set_xlabel(r"$J_2$"); ax.set_ylabel(r"$m$"); ax.set_ylim(bottom=0.0); _outside_legend(ax); return fig, data, fits
     if figure == 14:
-        fig, ax, _ = _new_figure(); data = _raw_vs_j2(ax, figure, twoc3, observable="delta", error_field="delta_error", color=ORANGE)
+        fig, ax, _ = _new_figure(extra_width=cfg.LEGEND_EXTRA_WIDTH); data = _raw_vs_j2(ax, figure, twoc3, observable="delta", error_field="delta_error", color=ORANGE)
         extra, fits = _draw_delta_extrap(ax, figure, twoc3); data += extra
         ax.set_xlabel(r"$J_2$"); ax.set_ylabel(r"$\Delta$"); ax.set_ylim(bottom=0.0); _outside_legend(ax); return fig, data, fits
     if figure in (15, 16, 17):
         return _plot_m_delta(figure, neel, twoc3, mode={15: "raw", 16: "raw_fit", 17: "fit"}[figure])
     if figure in (18, 19, 20):
-        return _plot_energy_invD(figure, neel, fit={18: None, 19: "gapped", 20: "gapless"}[figure], cmap=cm.Blues)
+        return _plot_energy_invD(figure, neel, fit={18: None, 19: "gapped", 20: "gapless"}[figure], cmap=NEEL_ENERGY_CMAP)
     if figure == 21:
         return _plot_energy_j2(figure, neel, color=BLUE, include_fits=False)
     if figure == 22:
         return _plot_energy_j2(figure, neel, color=BLUE, include_fits=True)
     if figure in (23, 24, 25):
-        return _plot_energy_invD(figure, twoc3, fit={23: None, 24: "gapped", 25: "gapless"}[figure], cmap=cm.Reds)
+        return _plot_energy_invD(figure, twoc3, fit={23: None, 24: "gapped", 25: "gapless"}[figure], cmap=TWOC3_ENERGY_CMAP)
     if figure == 26:
         return _plot_energy_j2(figure, twoc3, color=RED, include_fits=False)
     if figure == 27:
@@ -773,7 +828,6 @@ def run_figure(figure: int, dataset: dict[str, list[dict]] | None = None) -> Pat
     cfg.PROCESSED_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     dataset = load_dataset() if dataset is None else dataset
     fig, data, fits = render_figure(figure, dataset)
-    fig.tight_layout()
     figure_path = cfg.FIGURE_OUTPUT_DIR / f"figure_{figure:02d}.pdf"
     fig.savefig(figure_path, bbox_inches="tight")
     plt.close(fig)
