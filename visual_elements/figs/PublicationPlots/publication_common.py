@@ -56,9 +56,9 @@ RED = "#b2182b"
 # Finite-D palettes follow the light-to-dark family used by
 # summary_deltaNNN_vs_J2.pdf, rather than encoding D only through alpha.
 PURPLE_D_COLORS = {
-    3: "#efedf5", 4: "#dadaeb", 5: "#bcbddc", 6: "#9e9ac8",
-    7: "#807dba", 8: "#6a51a3", 9: "#54278f", 10: "#3f007d",
-    11: "#24004f",
+    3: "#fde0ff", 4: "#e7b5ff", 5: "#cf72e8", 6: "#b536c9",
+    7: "#8c2fc2", 8: "#6339bd", 9: "#3f51b5", 10: "#174ea6",
+    11: "#082567",
 }
 ORANGE_D_COLORS = {
     3: "#fbfabc", 4: "#ffefa9", 5: "#fed78d", 6: "#f9b664",
@@ -839,6 +839,20 @@ def render_figure_12_bis(dataset: dict[str, list[dict]]):
     return fig, data
 
 
+def render_figure_11_bis(dataset: dict[str, list[dict]]):
+    fig, ax, _ = _new_figure(extra_width=cfg.LEGEND_EXTRA_WIDTH)
+    data = _raw_vs_j2(
+        ax, 11, dataset[ANSATZ_NEEL], observable="m",
+        error_field="m_error", color=PURPLE,
+        palette=PURPLE_D_COLORS, connect=True,
+    )
+    ax.set_xlabel(r"$J_2$")
+    ax.set_ylabel(r"$m$")
+    ax.set_ylim(bottom=0.0)
+    _outside_legend(ax)
+    return fig, data
+
+
 def _write_csv(path: Path, rows: list[dict]):
     if not rows:
         if path.exists():
@@ -867,6 +881,12 @@ def run_figure(figure: int, dataset: dict[str, list[dict]] | None = None) -> Pat
     plt.close(fig)
     _write_csv(cfg.PROCESSED_OUTPUT_DIR / f"figure_{figure:02d}_data.csv", data)
     _write_csv(cfg.PROCESSED_OUTPUT_DIR / f"figure_{figure:02d}_fits.csv", fits)
+    if figure == 11:
+        bis, bis_data = render_figure_11_bis(dataset)
+        bis_path = cfg.FIGURE_OUTPUT_DIR / "figure_11_bis.pdf"
+        bis.savefig(bis_path, bbox_inches="tight")
+        plt.close(bis)
+        _write_csv(cfg.PROCESSED_OUTPUT_DIR / "figure_11_bis_data.csv", bis_data)
     if figure == 12:
         bis, bis_data = render_figure_12_bis(dataset)
         bis_path = cfg.FIGURE_OUTPUT_DIR / "figure_12_bis.pdf"
