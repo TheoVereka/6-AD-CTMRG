@@ -53,6 +53,19 @@ ORANGE = "#d95f02"
 BLUE = "#2166ac"
 RED = "#b2182b"
 
+# Finite-D palettes follow the light-to-dark family used by
+# summary_deltaNNN_vs_J2.pdf, rather than encoding D only through alpha.
+PURPLE_D_COLORS = {
+    3: "#efedf5", 4: "#dadaeb", 5: "#bcbddc", 6: "#9e9ac8",
+    7: "#807dba", 8: "#6a51a3", 9: "#54278f", 10: "#3f007d",
+    11: "#24004f",
+}
+ORANGE_D_COLORS = {
+    3: "#fbfabc", 4: "#ffefa9", 5: "#fed78d", 6: "#f9b664",
+    7: "#db7a24", 8: "#ae4829", 9: "#731608", 10: "#3b0202",
+    11: "#160000",
+}
+
 
 NEEL_ENERGY_CMAP = colors.LinearSegmentedColormap.from_list(
     "publication_purple_to_blue",
@@ -538,16 +551,21 @@ def _plot_m_xi(figure: int, rows: list[dict], *, fit_kind: str | None):
 
 
 def _raw_vs_j2(ax, figure: int, rows: list[dict], *, observable: str,
-               error_field: str | None, color: str, label_prefix: str = r"$D=") -> list[dict]:
+               error_field: str | None, color: str, label_prefix: str = r"$D=",
+               palette: dict[int, str] | None = None,
+               connect: bool = False) -> list[dict]:
     output = []
     groups = _groups(_finite(rows, observable, *([error_field] if error_field else [])), "D")
     for index, (D, group) in enumerate(groups.items()):
-        alpha = _alpha(index, len(groups))
+        series_color = palette.get(int(D), color) if palette else color
+        alpha = 1.0 if palette else _alpha(index, len(groups))
         plot_group = [row for row in group if _plot_allowed(row["J2"], row["ansatz"])]
         yerr = [row[error_field] for row in plot_group] if error_field else None
         if plot_group:
             _errorbar(ax, [row["J2"] for row in plot_group], [row[observable] for row in plot_group],
-                      yerr=yerr, color=color, alpha=alpha, label=rf"{label_prefix}{D}$")
+                      yerr=yerr, color=series_color, alpha=alpha,
+                      label=rf"{label_prefix}{D}$",
+                      linestyle="-" if connect else "none")
         output.extend(_row(figure, row, series=f"raw_D{D}", x=row["J2"], y=row[observable],
                            y_error=row[error_field] if error_field else None) for row in group)
     return output
@@ -615,8 +633,10 @@ def _plot_m_delta(figure: int, neel: list[dict], twoc3: list[dict], *, mode: str
     fig, left, right = _new_figure(twin=True, extra_width=extra_width)
     data, fits = [], []
     if mode in ("raw", "raw_fit"):
-        data += _raw_vs_j2(left, figure, neel, observable="m", error_field="m_error", color=PURPLE)
-        data += _raw_vs_j2(right, figure, twoc3, observable="delta", error_field="delta_error", color=ORANGE)
+        data += _raw_vs_j2(left, figure, neel, observable="m", error_field="m_error",
+                           color=PURPLE, palette=PURPLE_D_COLORS)
+        data += _raw_vs_j2(right, figure, twoc3, observable="delta", error_field="delta_error",
+                           color=ORANGE, palette=ORANGE_D_COLORS)
     if mode in ("raw_fit", "fit"):
         new, fit = _draw_m_extrap(left, figure, neel)
         data += new; fits += fit
@@ -773,17 +793,17 @@ def render_figure(figure: int, dataset: dict[str, list[dict]]):
         kinds = {6: None, 7: "linear", 8: "abs_linear", 9: "power", 10: "abs_power"}
         return _plot_m_xi(figure, limited, fit_kind=kinds[figure])
     if figure == 11:
-        fig, ax, _ = _new_figure(extra_width=cfg.LEGEND_EXTRA_WIDTH); data = _raw_vs_j2(ax, figure, neel, observable="m", error_field="m_error", color=PURPLE)
+        fig, ax, _ = _new_figure(extra_width=cfg.LEGEND_EXTRA_WIDTH); data = _raw_vs_j2(ax, figure, neel, observable="m", error_field="m_error", color=PURPLE, palette=PURPLE_D_COLORS)
         ax.set_xlabel(r"$J_2$"); ax.set_ylabel(r"$m$"); ax.set_ylim(bottom=0.0); _outside_legend(ax); return fig, data, []
     if figure == 12:
-        fig, ax, _ = _new_figure(extra_width=cfg.LEGEND_EXTRA_WIDTH); data = _raw_vs_j2(ax, figure, twoc3, observable="delta", error_field="delta_error", color=ORANGE)
+        fig, ax, _ = _new_figure(extra_width=cfg.LEGEND_EXTRA_WIDTH); data = _raw_vs_j2(ax, figure, twoc3, observable="delta", error_field="delta_error", color=ORANGE, palette=ORANGE_D_COLORS)
         ax.set_xlabel(r"$J_2$"); ax.set_ylabel(r"$\Delta$"); ax.set_ylim(bottom=0.0); _outside_legend(ax); return fig, data, []
     if figure == 13:
-        fig, ax, _ = _new_figure(extra_width=cfg.LEGEND_EXTRA_WIDTH); data = _raw_vs_j2(ax, figure, neel, observable="m", error_field="m_error", color=PURPLE)
+        fig, ax, _ = _new_figure(extra_width=cfg.LEGEND_EXTRA_WIDTH); data = _raw_vs_j2(ax, figure, neel, observable="m", error_field="m_error", color=PURPLE, palette=PURPLE_D_COLORS)
         extra, fits = _draw_m_extrap(ax, figure, neel); data += extra
         ax.set_xlabel(r"$J_2$"); ax.set_ylabel(r"$m$"); ax.set_ylim(bottom=0.0); _outside_legend(ax); return fig, data, fits
     if figure == 14:
-        fig, ax, _ = _new_figure(extra_width=cfg.LEGEND_EXTRA_WIDTH); data = _raw_vs_j2(ax, figure, twoc3, observable="delta", error_field="delta_error", color=ORANGE)
+        fig, ax, _ = _new_figure(extra_width=cfg.LEGEND_EXTRA_WIDTH); data = _raw_vs_j2(ax, figure, twoc3, observable="delta", error_field="delta_error", color=ORANGE, palette=ORANGE_D_COLORS)
         extra, fits = _draw_delta_extrap(ax, figure, twoc3); data += extra
         ax.set_xlabel(r"$J_2$"); ax.set_ylabel(r"$\Delta$"); ax.set_ylim(bottom=0.0); _outside_legend(ax); return fig, data, fits
     if figure in (15, 16, 17):
@@ -803,6 +823,20 @@ def render_figure(figure: int, dataset: dict[str, list[dict]]):
     if figure == 28:
         return _plot_energy_combined(figure, neel, twoc3)
     raise ValueError(f"Unknown figure {figure}")
+
+
+def render_figure_12_bis(dataset: dict[str, list[dict]]):
+    fig, ax, _ = _new_figure(extra_width=cfg.LEGEND_EXTRA_WIDTH)
+    data = _raw_vs_j2(
+        ax, 12, dataset[ANSATZ_TWOC3], observable="delta",
+        error_field="delta_error", color=ORANGE,
+        palette=ORANGE_D_COLORS, connect=True,
+    )
+    ax.set_xlabel(r"$J_2$")
+    ax.set_ylabel(r"$\Delta$")
+    ax.set_ylim(bottom=0.0)
+    _outside_legend(ax)
+    return fig, data
 
 
 def _write_csv(path: Path, rows: list[dict]):
@@ -833,6 +867,12 @@ def run_figure(figure: int, dataset: dict[str, list[dict]] | None = None) -> Pat
     plt.close(fig)
     _write_csv(cfg.PROCESSED_OUTPUT_DIR / f"figure_{figure:02d}_data.csv", data)
     _write_csv(cfg.PROCESSED_OUTPUT_DIR / f"figure_{figure:02d}_fits.csv", fits)
+    if figure == 12:
+        bis, bis_data = render_figure_12_bis(dataset)
+        bis_path = cfg.FIGURE_OUTPUT_DIR / "figure_12_bis.pdf"
+        bis.savefig(bis_path, bbox_inches="tight")
+        plt.close(bis)
+        _write_csv(cfg.PROCESSED_OUTPUT_DIR / "figure_12_bis_data.csv", bis_data)
     print(figure_path)
     return figure_path
 
