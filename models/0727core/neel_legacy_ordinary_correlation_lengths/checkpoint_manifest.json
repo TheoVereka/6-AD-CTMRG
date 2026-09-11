@@ -1,6 +1,6 @@
 {
   "bundle_kind": "D345678910_neel_legacy_ordinary_only",
-  "created_utc": "2026-09-10T09:28:05.932655+00:00",
+  "created_utc": "2026-09-11T14:27:27.221770+00:00",
   "items": [
     {
       "D": 4,
@@ -411,8 +411,8 @@
       "legacy_observable": "D_4_chi_64_energy_magnetization_correlation.txt",
       "legacy_run_relative_path": "neel_symmetrized__J2_0p23_20260510_192543_20260516_140313_D456",
       "original_relative_path": "D345678910/neel_symmetrized__J2_0p23_20260510_192543_20260516_140313_D456/sweep_D4_chi64_best.pt",
-      "selected_for_rerun": true,
-      "selection_reason": "old_ordinary_checkpoint_hash_mismatch",
+      "selected_for_rerun": false,
+      "selection_reason": "current_result_matches_tensor",
       "sha256": "c3c8263c6b4af9ff8197c93c9fc76265eba1f1af1af36f659b115d65c16eb468",
       "source_checkpoint_sha256": "c3c8263c6b4af9ff8197c93c9fc76265eba1f1af1af36f659b115d65c16eb468",
       "staged_filename": "tensor_best__neel_symmetrized__J2_0p23__D_4.pt",
@@ -523,8 +523,8 @@
       "legacy_observable": "D_5_chi_80_energy_magnetization_correlation.txt",
       "legacy_run_relative_path": "neel_symmetrized__J2_0p235_20260525_D45678",
       "original_relative_path": "D345678910/neel_symmetrized__J2_0p235_20260525_D45678/sweep_D5_chi80_best.pt",
-      "selected_for_rerun": true,
-      "selection_reason": "old_ordinary_checkpoint_hash_mismatch",
+      "selected_for_rerun": false,
+      "selection_reason": "current_result_matches_tensor",
       "sha256": "251884c720fe2015d21476be81e92f4e692e47f34c31ac936fca127642df47e6",
       "source_checkpoint_sha256": "251884c720fe2015d21476be81e92f4e692e47f34c31ac936fca127642df47e6",
       "staged_filename": "tensor_best__neel_symmetrized__J2_0p235__D_5.pt",
@@ -541,10 +541,10 @@
       "original_relative_path": "D345678910/neel_symmetrized__J2_0p235_20260525_D45678/sweep_D6_chi96_best.pt",
       "selected_for_rerun": true,
       "selection_reason": "old_ordinary_checkpoint_hash_mismatch",
-      "sha256": "4367de0f9fc32d17068a5ecbe7264e0aba6e649f7287f502099bfedeecea8a82",
-      "source_checkpoint_sha256": "4367de0f9fc32d17068a5ecbe7264e0aba6e649f7287f502099bfedeecea8a82",
+      "sha256": "7baf3b3d247bc7a7cc9f7e9225c9aadd1407268b6e16b49bad87406312777364",
+      "source_checkpoint_sha256": "7baf3b3d247bc7a7cc9f7e9225c9aadd1407268b6e16b49bad87406312777364",
       "staged_filename": "tensor_best__neel_symmetrized__J2_0p235__D_6.pt",
-      "virtual_symmetry_relative_error": 1.4314753760904907e-17
+      "virtual_symmetry_relative_error": 5.504416589550125e-17
     },
     {
       "D": 7,
@@ -557,10 +557,10 @@
       "original_relative_path": "D345678910/neel_symmetrized__J2_0p235_20260525_D45678/sweep_D7_chi105_best.pt",
       "selected_for_rerun": true,
       "selection_reason": "old_ordinary_checkpoint_hash_mismatch",
-      "sha256": "01287f57cbf3e8719778b0644ff1a2702476ea324076aa5105b2aa4112655338",
-      "source_checkpoint_sha256": "01287f57cbf3e8719778b0644ff1a2702476ea324076aa5105b2aa4112655338",
+      "sha256": "0cacffc9931eb18fa6f60830ae8c0ec20a8037e201459a2c2c6d121ba0a51cd4",
+      "source_checkpoint_sha256": "0cacffc9931eb18fa6f60830ae8c0ec20a8037e201459a2c2c6d121ba0a51cd4",
       "staged_filename": "tensor_best__neel_symmetrized__J2_0p235__D_7.pt",
-      "virtual_symmetry_relative_error": 4.559068523823598e-17
+      "virtual_symmetry_relative_error": 4.0590594871220295e-17
     },
     {
       "D": 8,
@@ -568,15 +568,15 @@
       "j2": 0.235,
       "j2_directory": "J2_0p235",
       "legacy_correlation_filename": "correlation_length_D_8.json",
-      "legacy_observable": "D_8_chi_112_energy_magnetization_correlation.txt",
+      "legacy_observable": "D_8_chi_120_energy_magnetization_correlation.txt",
       "legacy_run_relative_path": "neel_symmetrized__J2_0p235_20260525_D45678",
-      "original_relative_path": "D345678910/neel_symmetrized__J2_0p235_20260525_D45678/sweep_D8_chi112_best.pt",
+      "original_relative_path": "D345678910/neel_symmetrized__J2_0p235_20260525_D45678/sweep_D8_chi120_best.pt",
       "selected_for_rerun": true,
       "selection_reason": "old_ordinary_checkpoint_hash_mismatch",
-      "sha256": "07a988d0aa111c45c6e1831ef50562eebb310c5ed389af759aa2446f758e3a50",
-      "source_checkpoint_sha256": "07a988d0aa111c45c6e1831ef50562eebb310c5ed389af759aa2446f758e3a50",
+      "sha256": "8079b25294648b5b42dd5de5e3fba1f58eb548299af5c2ee589d3f1281b450ef",
+      "source_checkpoint_sha256": "8079b25294648b5b42dd5de5e3fba1f58eb548299af5c2ee589d3f1281b450ef",
       "staged_filename": "tensor_best__neel_symmetrized__J2_0p235__D_8.pt",
-      "virtual_symmetry_relative_error": 3.5600278165910284e-17
+      "virtual_symmetry_relative_error": 1.963094669071206e-17
     },
     {
       "D": 9,
@@ -1064,15 +1064,15 @@
       "j2": 0.26,
       "j2_directory": "J2_0p26",
       "legacy_correlation_filename": "correlation_length_D_9.json",
-      "legacy_observable": "D_9_chi_126_energy_magnetization_correlation.txt",
+      "legacy_observable": "D_9_chi_135_energy_magnetization_correlation.txt",
       "legacy_run_relative_path": "neel_symmetrized__J2_0p26_20260510_182106_20260516_113317_D456",
-      "original_relative_path": "D345678910/neel_symmetrized__J2_0p26_20260510_182106_20260516_113317_D456/sweep_D9_chi126_best.pt",
+      "original_relative_path": "D345678910/neel_symmetrized__J2_0p26_20260510_182106_20260516_113317_D456/sweep_D9_chi135_best.pt",
       "selected_for_rerun": true,
       "selection_reason": "old_ordinary_checkpoint_hash_mismatch",
-      "sha256": "3dd47db0dfdbf61d5ca24278387ac725282d690a20d55ce8946b1f1cd4024c7e",
-      "source_checkpoint_sha256": "3dd47db0dfdbf61d5ca24278387ac725282d690a20d55ce8946b1f1cd4024c7e",
+      "sha256": "5f3b64f52bf9a2f5a0ca10b57798c449b00fb81de365820f3f614c0dfbe08f4f",
+      "source_checkpoint_sha256": "5f3b64f52bf9a2f5a0ca10b57798c449b00fb81de365820f3f614c0dfbe08f4f",
       "staged_filename": "tensor_best__neel_symmetrized__J2_0p26__D_9.pt",
-      "virtual_symmetry_relative_error": 3.927147295784615e-18
+      "virtual_symmetry_relative_error": 2.4532694666933983e-18
     },
     {
       "D": 4,
@@ -1131,8 +1131,8 @@
       "legacy_observable": "D_7_chi_112_energy_magnetization_correlation.txt",
       "legacy_run_relative_path": "neel_symmetrized__J2_0p265_20260510_184040_20260516_114158_D456",
       "original_relative_path": "D345678910/neel_symmetrized__J2_0p265_20260510_184040_20260516_114158_D456/sweep_D7_chi112_best.pt",
-      "selected_for_rerun": true,
-      "selection_reason": "old_ordinary_checkpoint_hash_mismatch",
+      "selected_for_rerun": false,
+      "selection_reason": "current_result_matches_tensor",
       "sha256": "eff8e03b8cd887674d21971b77f385fced07e544293ebc34cdeaaa7053656b1f",
       "source_checkpoint_sha256": "eff8e03b8cd887674d21971b77f385fced07e544293ebc34cdeaaa7053656b1f",
       "staged_filename": "tensor_best__neel_symmetrized__J2_0p265__D_7.pt",
@@ -1147,12 +1147,12 @@
       "legacy_observable": "D_8_chi_120_energy_magnetization_correlation.txt",
       "legacy_run_relative_path": "neel_symmetrized__J2_0p265_20260510_184040_20260516_114158_D456",
       "original_relative_path": "D345678910/neel_symmetrized__J2_0p265_20260510_184040_20260516_114158_D456/sweep_D8_chi120_best.pt",
-      "selected_for_rerun": false,
-      "selection_reason": "current_result_matches_tensor",
-      "sha256": "0eb2705aa45b030ab54cdc1c935bee47553babffb830c17305a43f01b18fb7c4",
-      "source_checkpoint_sha256": "0eb2705aa45b030ab54cdc1c935bee47553babffb830c17305a43f01b18fb7c4",
+      "selected_for_rerun": true,
+      "selection_reason": "missing_correlation",
+      "sha256": "41444e9a96fb29682f82e1fa999ab62da59dad7e79273961e83cf0f94b2baf21",
+      "source_checkpoint_sha256": "41444e9a96fb29682f82e1fa999ab62da59dad7e79273961e83cf0f94b2baf21",
       "staged_filename": "tensor_best__neel_symmetrized__J2_0p265__D_8.pt",
-      "virtual_symmetry_relative_error": 4.404723945384024e-17
+      "virtual_symmetry_relative_error": 1.8574063557090383e-17
     },
     {
       "D": 9,
@@ -1163,12 +1163,12 @@
       "legacy_observable": "D_9_chi_126_energy_magnetization_correlation.txt",
       "legacy_run_relative_path": "neel_symmetrized__J2_0p265_20260510_184040_20260516_114158_D456",
       "original_relative_path": "D345678910/neel_symmetrized__J2_0p265_20260510_184040_20260516_114158_D456/sweep_D9_chi126_best.pt",
-      "selected_for_rerun": false,
-      "selection_reason": "current_result_matches_tensor",
-      "sha256": "767ff12c77d800ce7461cea46ee457a1267db966d4934efb32d7e4b2467a4afc",
-      "source_checkpoint_sha256": "767ff12c77d800ce7461cea46ee457a1267db966d4934efb32d7e4b2467a4afc",
+      "selected_for_rerun": true,
+      "selection_reason": "old_ordinary_checkpoint_hash_mismatch",
+      "sha256": "943b0a5e94c3b135edd0c4a3f8612451787fb8aa2b3de90fb2735a7138a0dbfb",
+      "source_checkpoint_sha256": "943b0a5e94c3b135edd0c4a3f8612451787fb8aa2b3de90fb2735a7138a0dbfb",
       "staged_filename": "tensor_best__neel_symmetrized__J2_0p265__D_9.pt",
-      "virtual_symmetry_relative_error": 1.2546859082258766e-17
+      "virtual_symmetry_relative_error": 1.6996792668795603e-17
     },
     {
       "D": 4,
@@ -1245,10 +1245,10 @@
       "original_relative_path": "D345678910/neel_symmetrized__J2_0p27_20260510_183359_20260517_030958_D456/sweep_D8_chi120_best.pt",
       "selected_for_rerun": true,
       "selection_reason": "missing_correlation",
-      "sha256": "2e3eb066c6f590fe992fc7892f3b14c2292ae6db8c827f907c8f5fd10ab6ff31",
-      "source_checkpoint_sha256": "2e3eb066c6f590fe992fc7892f3b14c2292ae6db8c827f907c8f5fd10ab6ff31",
+      "sha256": "c56e100ad6e9e7072f07fa4d0cd2da119672fba72c5ecb5714ab92d9f0eb591a",
+      "source_checkpoint_sha256": "c56e100ad6e9e7072f07fa4d0cd2da119672fba72c5ecb5714ab92d9f0eb591a",
       "staged_filename": "tensor_best__neel_symmetrized__J2_0p27__D_8.pt",
-      "virtual_symmetry_relative_error": 2.2659825404947037e-17
+      "virtual_symmetry_relative_error": 0.0
     },
     {
       "D": 9,
@@ -1256,15 +1256,15 @@
       "j2": 0.27,
       "j2_directory": "J2_0p27",
       "legacy_correlation_filename": "correlation_length_D_9.json",
-      "legacy_observable": "D_9_chi_117_energy_magnetization_correlation.txt",
+      "legacy_observable": "D_9_chi_126_energy_magnetization_correlation.txt",
       "legacy_run_relative_path": "neel_symmetrized__J2_0p27_20260510_183359_20260517_030958_D456",
-      "original_relative_path": "D345678910/neel_symmetrized__J2_0p27_20260510_183359_20260517_030958_D456/sweep_D9_chi117_best.pt",
-      "selected_for_rerun": false,
-      "selection_reason": "current_result_matches_tensor",
-      "sha256": "87573b6bb21d67897df1214cd09e4730b56d479f6c2c1e937f1f4e055ac0a870",
-      "source_checkpoint_sha256": "87573b6bb21d67897df1214cd09e4730b56d479f6c2c1e937f1f4e055ac0a870",
+      "original_relative_path": "D345678910/neel_symmetrized__J2_0p27_20260510_183359_20260517_030958_D456/sweep_D9_chi126_best.pt",
+      "selected_for_rerun": true,
+      "selection_reason": "old_ordinary_checkpoint_hash_mismatch",
+      "sha256": "c09bc6674a18aae7ed753c196ad68b953473d751b52a275fc206615dbc71880a",
+      "source_checkpoint_sha256": "c09bc6674a18aae7ed753c196ad68b953473d751b52a275fc206615dbc71880a",
       "staged_filename": "tensor_best__neel_symmetrized__J2_0p27__D_9.pt",
-      "virtual_symmetry_relative_error": 3.8995799638800834e-17
+      "virtual_symmetry_relative_error": 1.497298509278717e-17
     },
     {
       "D": 4,
@@ -1355,12 +1355,12 @@
       "legacy_observable": "D_9_chi_126_energy_magnetization_correlation.txt",
       "legacy_run_relative_path": "neel_symmetrized__J2_0p275_20260510_192557_20260516_131308_D456",
       "original_relative_path": "D345678910/neel_symmetrized__J2_0p275_20260510_192557_20260516_131308_D456/sweep_D9_chi126_best.pt",
-      "selected_for_rerun": false,
-      "selection_reason": "current_result_matches_tensor",
-      "sha256": "4fb676bdb66ab7560976d0bb82f5b2b1beb2679ea3c2034ff8e6b8e65b74ce90",
-      "source_checkpoint_sha256": "4fb676bdb66ab7560976d0bb82f5b2b1beb2679ea3c2034ff8e6b8e65b74ce90",
+      "selected_for_rerun": true,
+      "selection_reason": "missing_correlation",
+      "sha256": "3d16ee0f3f2416a33f84af735c01df915b3d23456ba2b0a26e8d943e997cab87",
+      "source_checkpoint_sha256": "3d16ee0f3f2416a33f84af735c01df915b3d23456ba2b0a26e8d943e997cab87",
       "staged_filename": "tensor_best__neel_symmetrized__J2_0p275__D_9.pt",
-      "virtual_symmetry_relative_error": 2.3222436205677064e-17
+      "virtual_symmetry_relative_error": 1.0070831772447943e-17
     },
     {
       "D": 4,
@@ -1448,15 +1448,15 @@
       "j2": 0.28,
       "j2_directory": "J2_0p28",
       "legacy_correlation_filename": "correlation_length_D_9.json",
-      "legacy_observable": "D_9_chi_135_energy_magnetization_correlation.txt",
+      "legacy_observable": "D_9_chi_126_energy_magnetization_correlation.txt",
       "legacy_run_relative_path": "neel_symmetrized__J2_0p28_20260512_020019_20260516_131551_20260518_021013_D456",
-      "original_relative_path": "D345678910/neel_symmetrized__J2_0p28_20260512_020019_20260516_131551_20260518_021013_D456/sweep_D9_chi135_best.pt",
-      "selected_for_rerun": false,
-      "selection_reason": "current_result_matches_tensor",
-      "sha256": "7e1e6d5b8314aae4f3e2384cbca20fef416b974d56128c456dd39d18ca6b81a2",
-      "source_checkpoint_sha256": "7e1e6d5b8314aae4f3e2384cbca20fef416b974d56128c456dd39d18ca6b81a2",
+      "original_relative_path": "D345678910/neel_symmetrized__J2_0p28_20260512_020019_20260516_131551_20260518_021013_D456/sweep_D9_chi126_best.pt",
+      "selected_for_rerun": true,
+      "selection_reason": "old_ordinary_checkpoint_hash_mismatch",
+      "sha256": "656d3979f20758b50817d91d6aa7e557959ba6866bb1a3990a3846c1e52e1cfd",
+      "source_checkpoint_sha256": "656d3979f20758b50817d91d6aa7e557959ba6866bb1a3990a3846c1e52e1cfd",
       "staged_filename": "tensor_best__neel_symmetrized__J2_0p28__D_9.pt",
-      "virtual_symmetry_relative_error": 3.053776241537426e-17
+      "virtual_symmetry_relative_error": 9.505182576058233e-18
     },
     {
       "D": 4,
@@ -1544,15 +1544,15 @@
       "j2": 0.32,
       "j2_directory": "J2_0p32",
       "legacy_correlation_filename": "correlation_length_D_9.json",
-      "legacy_observable": "D_9_chi_126_energy_magnetization_correlation.txt",
+      "legacy_observable": "D_9_chi_135_energy_magnetization_correlation.txt",
       "legacy_run_relative_path": "neel_symmetrized__J2_0p32_20260510_192941_20260516_131551_D456",
-      "original_relative_path": "D345678910/neel_symmetrized__J2_0p32_20260510_192941_20260516_131551_D456/sweep_D9_chi126_best.pt",
-      "selected_for_rerun": false,
-      "selection_reason": "current_result_matches_tensor",
-      "sha256": "0c4b572ab53afe04062966b2283a68c5cced25b91578441bbb93df9e8ecc7d3d",
-      "source_checkpoint_sha256": "0c4b572ab53afe04062966b2283a68c5cced25b91578441bbb93df9e8ecc7d3d",
+      "original_relative_path": "D345678910/neel_symmetrized__J2_0p32_20260510_192941_20260516_131551_D456/sweep_D9_chi135_best.pt",
+      "selected_for_rerun": true,
+      "selection_reason": "missing_correlation",
+      "sha256": "56e97cf76a8beef9aa4bb455639ec6cada63f033986aade04d5f5154b6a74ddf",
+      "source_checkpoint_sha256": "56e97cf76a8beef9aa4bb455639ec6cada63f033986aade04d5f5154b6a74ddf",
       "staged_filename": "tensor_best__neel_symmetrized__J2_0p32__D_9.pt",
-      "virtual_symmetry_relative_error": 1.5465042838163784e-17
+      "virtual_symmetry_relative_error": 2.134969998559348e-17
     }
   ],
   "schema_version": 2,

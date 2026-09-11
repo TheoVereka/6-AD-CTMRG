@@ -513,19 +513,26 @@ def _add_vertical_lines(ax) -> None:
         )
 
 
-def _plot_m_xi(figure: int, rows: list[dict], *, fit_kind: str | None):
+def _plot_m_xi(figure: int, rows: list[dict], *, fit_kind: str | None,
+               plot_j2_allow: set[float] | None = None):
     fig, ax, _ = _new_figure(extra_width=cfg.COLORBAR_EXTRA_WIDTH)
     data_out, fits_out = [], []
     by_j2 = _groups(_finite(rows, "inverse_xi", "inverse_xi_error", "m", "m_error"), "J2")
     cmap = cm.viridis
     ansatz = rows[0]["ansatz"] if rows else ANSATZ_NEEL
-    plotted_j2 = [j2 for j2 in by_j2 if _plot_allowed(j2, ansatz)]
+    def show(j2):
+        return (
+            _plot_allowed(j2, ansatz)
+            and (plot_j2_allow is None or round(float(j2), 6) in plot_j2_allow)
+        )
+
+    plotted_j2 = [j2 for j2 in by_j2 if show(j2)]
     norm = colors.Normalize(min(plotted_j2, default=0.0), max(plotted_j2, default=1.0) or 1.0)
     for j2, group in by_j2.items():
         color = cmap(norm(j2))
         x = [row["inverse_xi"] for row in group]
         y = [row["m"] for row in group]
-        if _plot_allowed(j2, ansatz):
+        if show(j2):
             _errorbar(ax, x, y, xerr=[row["inverse_xi_error"] for row in group],
                       yerr=[row["m_error"] for row in group], color=color)
         data_out.extend(_row(figure, row, series="raw", x=row["inverse_xi"], y=row["m"],
@@ -540,10 +547,10 @@ def _plot_m_xi(figure: int, rows: list[dict], *, fit_kind: str | None):
             continue
         xmax = max(x)
         xline = np.linspace(0.0, xmax, cfg.FIT_CURVE_POINTS)
-        if _plot_allowed(j2, ansatz):
+        if show(j2):
             ax.plot(xline, result["model"](result["values"], xline), color=color)
         m0, m0_error = result["values"][0], result["errors"][0]
-        if _plot_allowed(j2, ansatz):
+        if show(j2):
             _errorbar(ax, [0.0], [m0], yerr=[m0_error], color=color, marker="s", zorder=4)
         excluded = [_key(j2, row["D"]) for row in group if _fit_banned(figure, j2, row["D"])]
         fits_out.extend(_fit_rows(figure, group[0]["ansatz"], j2, result, fit_kind, excluded))
@@ -569,7 +576,8 @@ def _plot_m_xi(figure: int, rows: list[dict], *, fit_kind: str | None):
 def _raw_vs_j2(ax, figure: int, rows: list[dict], *, observable: str,
                error_field: str | None, color: str, label_prefix: str = r"$D=",
                palette: dict[int, str] | None = None,
-               connect: bool = False) -> list[dict]:
+               connect: bool = False,
+               labeler: Callable[[int], str] | None = None) -> list[dict]:
     output = []
     groups = _groups(_finite(rows, observable, *([error_field] if error_field else [])), "D")
     for index, (D, group) in enumerate(groups.items()):
@@ -578,9 +586,10 @@ def _raw_vs_j2(ax, figure: int, rows: list[dict], *, observable: str,
         plot_group = [row for row in group if _plot_allowed(row["J2"], row["ansatz"])]
         yerr = [row[error_field] for row in plot_group] if error_field else None
         if plot_group:
+            label = labeler(int(D)) if labeler else rf"{label_prefix}{D}$"
             _errorbar(ax, [row["J2"] for row in plot_group], [row[observable] for row in plot_group],
                       yerr=yerr, color=series_color, alpha=alpha,
-                      label=rf"{label_prefix}{D}$",
+                      label=label,
                       linestyle="-" if connect else "none")
         output.extend(_row(figure, row, series=f"raw_D{D}", x=row["J2"], y=row[observable],
                            y_error=row[error_field] if error_field else None) for row in group)
@@ -814,6 +823,85 @@ def _plot_energy_combined(figure: int, neel: list[dict], twoc3: list[dict]):
     return fig, data, fits
 
 
+def _plot_raw_energy_ansatz_comparison(neel: list[dict], twoc3: list[dict]):
+    figure = "21_26"
+    fig, ax, _ = _new_figure(extra_width=cfg.TWO_COLUMN_LEGEND_EXTRA_WIDTH)
+    data = _raw_vs_j2(
+        ax, figure, neel, observable="E", error_field=None, color=BLUE,
+        labeler=lambda D: rf"$\mathrm{{N\acute{{e}}el}},\ D={D}$",
+    )
+    data += _raw_vs_j2(
+        ax, figure, twoc3, observable="E", error_field=None, color=RED,
+        labeler=lambda D: rf"$2\mathrm{{C}}3,\ D={D}$",
+    )
+    ax.set_xlabel(r"$J_2$")
+    ax.set_ylabel(r"$E$")
+    _outside_legend(ax, ncols=2)
+    return fig, data, []
+
+
+def _plot_neel_twoc3_m_comparison(dataset: dict[str, list[dict]]):
+    figure = "07_neel_2c3_comparison"
+    fig, ax, _ = _new_figure(extra_width=cfg.LEGEND_EXTRA_WIDTH)
+    data, fits = [], []
+    styles = {
+        (ANSATZ_NEEL, 0.23): ("#9c27b0", "o", "-"),
+        (ANSATZ_NEEL, 0.235): ("#3949ab", "s", "--"),
+        (ANSATZ_TWOC3, 0.23): ("#26a69a", "^", "-"),
+        (ANSATZ_TWOC3, 0.235): ("#00695c", "D", "--"),
+    }
+    for ansatz in (ANSATZ_NEEL, ANSATZ_TWOC3):
+        for j2 in cfg.ANSATZ_COMPARISON_J2:
+            group = _finite(
+                [row for row in dataset[ansatz] if _key(row["J2"], row["D"])[0] == round(j2, 6)],
+                "inverse_xi", "inverse_xi_error", "m", "m_error",
+            )
+            if not group:
+                continue
+            color, marker, linestyle = styles[(ansatz, j2)]
+            label = (
+                rf"$\mathrm{{N\acute{{e}}el}},\ J_2={j2:g}$"
+                if ansatz == ANSATZ_NEEL
+                else rf"$2\mathrm{{C}}3,\ J_2={j2:g}$"
+            )
+            _errorbar(
+                ax, [row["inverse_xi"] for row in group], [row["m"] for row in group],
+                xerr=[row["inverse_xi_error"] for row in group],
+                yerr=[row["m_error"] for row in group], color=color,
+                marker=marker, label=label,
+            )
+            data.extend(
+                _row(figure, row, series="raw", x=row["inverse_xi"], y=row["m"],
+                     x_error=row["inverse_xi_error"], y_error=row["m_error"])
+                for row in group
+            )
+            result = fit_m_xi(group, absolute=False, power=False)
+            if result is None:
+                continue
+            xline = np.linspace(0.0, max(row["inverse_xi"] for row in group), cfg.FIT_CURVE_POINTS)
+            ax.plot(xline, result["model"](result["values"], xline),
+                    color=color, linestyle=linestyle)
+            m0, m0_error = float(result["values"][0]), float(result["errors"][0])
+            _errorbar(ax, [0.0], [m0], yerr=[m0_error], color=color,
+                      marker=marker, zorder=4)
+            fits.extend(_fit_rows(figure, ansatz, j2, result,
+                                  "linear_m_vs_invxi", []))
+            data.append(_row(
+                figure, {"ansatz": ansatz, "J2": j2, "D": 0},
+                series="intercept", x=0.0, y=m0, y_error=m0_error,
+            ))
+    _fit_formula(
+        ax,
+        r"$m=m_{0}^{(A,J_2)}+c^{(A,J_2)}\xi^{-1}$",
+    )
+    ax.set_xlabel(r"$1/\xi$")
+    ax.set_ylabel(r"$m$")
+    ax.set_xlim(left=0.0)
+    ax.set_ylim(bottom=0.0)
+    _outside_legend(ax)
+    return fig, data, fits
+
+
 def render_figure(figure: int, dataset: dict[str, list[dict]]):
     neel, twoc3 = dataset[ANSATZ_NEEL], dataset[ANSATZ_TWOC3]
     if figure in range(1, 6):
@@ -822,7 +910,17 @@ def render_figure(figure: int, dataset: dict[str, list[dict]]):
     if figure in range(6, 11):
         limited = [row for row in twoc3 if row["J2"] <= cfg.TWOC3_M_VS_XI_J2_MAX]
         kinds = {6: None, 7: "linear", 8: "abs_linear", 9: "power", 10: "abs_power"}
-        return _plot_m_xi(figure, limited, fit_kind=kinds[figure])
+        plot_j2_allow = None
+        if figure == 7:
+            visible = sorted({
+                round(row["J2"], 6) for row in limited
+                if _plot_allowed(row["J2"], ANSATZ_TWOC3)
+            })
+            plot_j2_allow = set(visible[:cfg.FIGURE07_VISIBLE_J2_COUNT])
+        return _plot_m_xi(
+            figure, limited, fit_kind=kinds[figure],
+            plot_j2_allow=plot_j2_allow,
+        )
     if figure == 11:
         fig, ax, _ = _new_figure(extra_width=cfg.LEGEND_EXTRA_WIDTH); data = _raw_vs_j2(ax, figure, neel, observable="m", error_field="m_error", color=PURPLE, palette=PURPLE_D_COLORS)
         ax.set_xlabel(r"$J_2$"); ax.set_ylabel(r"$m$"); ax.set_ylim(bottom=0.0); _outside_legend(ax); return fig, data, []
@@ -928,6 +1026,32 @@ def run_figure(figure: int, dataset: dict[str, list[dict]] | None = None) -> Pat
     return figure_path
 
 
+def run_narrative_figure(
+    name: str, dataset: dict[str, list[dict]] | None = None,
+) -> int:
+    plt.style.use(cfg.STYLE_PATH)
+    cfg.FIGURE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    cfg.PROCESSED_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    dataset = load_dataset() if dataset is None else dataset
+    if name == "21_26":
+        fig, data, fits = _plot_raw_energy_ansatz_comparison(
+            dataset[ANSATZ_NEEL], dataset[ANSATZ_TWOC3]
+        )
+        stem = "figure_21_26"
+    elif name == "07_neel_2c3_comparison":
+        fig, data, fits = _plot_neel_twoc3_m_comparison(dataset)
+        stem = "figure_07_neel_2c3_comparison"
+    else:
+        raise ValueError(f"Unknown narrative figure {name}")
+    output = cfg.FIGURE_OUTPUT_DIR / f"{stem}.pdf"
+    fig.savefig(output, bbox_inches="tight")
+    plt.close(fig)
+    _write_csv(cfg.PROCESSED_OUTPUT_DIR / f"{stem}_data.csv", data)
+    _write_csv(cfg.PROCESSED_OUTPUT_DIR / f"{stem}_fits.csv", fits)
+    print(output)
+    return 0
+
+
 def run_figures(figures=range(1, 29)) -> None:
     dataset = load_dataset()
     if not dataset[ANSATZ_NEEL]:
@@ -936,6 +1060,8 @@ def run_figures(figures=range(1, 29)) -> None:
         raise RuntimeError(f"No 2C3 data found below {cfg.TWOC3_DATA_ROOT}")
     for figure in figures:
         run_figure(int(figure), dataset)
+    run_narrative_figure("07_neel_2c3_comparison", dataset)
+    run_narrative_figure("21_26", dataset)
 
 
 def single_main(figure: int) -> int:
