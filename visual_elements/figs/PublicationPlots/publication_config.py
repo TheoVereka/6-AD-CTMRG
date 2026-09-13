@@ -40,10 +40,10 @@ FIGURE02_J2_RANGES = {
 # Exact global exclusions.  Keep empty to use every discovered observable.
 GLOBAL_BANS = {
     "Neel": {
-        # (0.250, 7),
+        (0.275, 6),
+        (0.235, 4),#
     },
-    "2C3": {
-        (0.265, 3),
+    "2C3": {(0.265, 3), 
     },
 }
 
@@ -78,25 +78,32 @@ TWOC3_M_FIT_BANS = {
     (0.23 , 5),
     (0.235, 9),#
     (0.24 , 5),
-    (0.245 , 5),    
-    (0.25 , 5),
-    (0.265, 5), (0.265, 6), (0.265, 7), (0.265, 8),
-    (0.270, 5), (0.270, 6),
-    (0.275, 5), (0.275, 6), (0.275, 7),
+    (0.245, 8),   
+
+        (0.25 , 5),
+        (0.265, 5), (0.265, 6), (0.265, 7), (0.265, 8),
+        (0.270, 5), (0.270, 6),
+        (0.275, 5), (0.275, 6), (0.275, 7), 
 }
 
-NEEL_M_EXTRAP_BANS = {(0.23 ,8),#
-                      (0.245,7),
-                      (0.26 ,9),
-                      (0.265,8),
-                      (0.27 ,8),
-                      (0.275,6),
-                      (0.28 ,8),}
+NEEL_M_EXTRAP_BANS = {(0.23 , 8),#
+                      (0.24 , 4),
+                      (0.245, 4),
+                      (0.245, 7),
+                      (0.26 , 9),
+                      (0.265, 8),#
+                      (0.265, 9),
+                      (0.27 , 8),#
+                      (0.28 , 8),}
 
 # Shared by figures 14, 16, and 17 so their identical Delta_extrap curve is
 # computed from identical points.  At most one of the original largest-three-D
 # candidates may be banned for any J2.
 TWOC3_DELTA_EXTRAP_BANS = set()
+
+# Shared by figure 25 and every downstream panel that reuses the same 2C3
+# gapless-energy extrapolation (figures 27 and 28).  Raw points remain visible.
+TWOC3_GAPLESS_ENERGY_FIT_BANS = {(0.27, 6)}
 
 # The combined and single-J2 comparison panels use the same physical fits as
 # the corresponding ansatz-specific extrapolations.
@@ -106,8 +113,10 @@ MAGNETIZATION_COMPARISON_FIT_BANS = {
 }
 
 FIT_BANS = {
-    2: {"Neel": set()}, 3: {"Neel": set()},
-    4: {"Neel": set()}, 5: {"Neel": set()},
+    2: {"Neel": NEEL_M_EXTRAP_BANS},
+    3: {"Neel": NEEL_M_EXTRAP_BANS},
+    4: {"Neel": NEEL_M_EXTRAP_BANS},
+    5: {"Neel": NEEL_M_EXTRAP_BANS},
     7: {"2C3": TWOC3_M_FIT_BANS},
     8: {"2C3": TWOC3_M_FIT_BANS},
     9: {"2C3": TWOC3_M_FIT_BANS},

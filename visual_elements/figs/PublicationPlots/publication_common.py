@@ -88,29 +88,36 @@ def _banned(ansatz: str, j2: float, D: int) -> bool:
     )
 
 
-def _fit_bans_for(figure: int | str, ansatz: str) -> set[tuple[float, int]]:
+def _fit_bans_for(
+    figure: int | str, ansatz: str, model: str | None = None,
+) -> set[tuple[float, int]]:
     if isinstance(figure, str) and figure.startswith("02_"):
         figure = 2
     if isinstance(figure, str) and figure.startswith("07_neel_2c3_comparison"):
         return cfg.MAGNETIZATION_COMPARISON_FIT_BANS.get(ansatz, set())
-    return cfg.FIT_BANS.get(figure, {}).get(ansatz, set())
+    bans = set(cfg.FIT_BANS.get(figure, {}).get(ansatz, set()))
+    if ansatz == ANSATZ_TWOC3 and model == "gapless_energy":
+        bans.update(cfg.TWOC3_GAPLESS_ENERGY_FIT_BANS)
+    return bans
 
 
 def _fit_banned(
     figure: int | str, ansatz: str, j2: float, D: int,
+    model: str | None = None,
 ) -> bool:
     return _key(j2, D) in {
-        _key(*point) for point in _fit_bans_for(figure, ansatz)
+        _key(*point) for point in _fit_bans_for(figure, ansatz, model)
     }
 
 
 def _partition_fit_bans(
     figure: int | str, ansatz: str, j2: float, eligible_rows: list[dict],
+    model: str | None = None,
 ) -> tuple[list[tuple[float, int]], list[tuple[float, int]]]:
     """Return active bans and configured bans with no eligible fit datum."""
     j2_key = round(float(j2), 6)
     configured = {
-        _key(*point) for point in _fit_bans_for(figure, ansatz)
+        _key(*point) for point in _fit_bans_for(figure, ansatz, model)
         if _key(*point)[0] == j2_key
     }
     eligible = {_key(row["J2"], row["D"]) for row in eligible_rows}
@@ -547,7 +554,11 @@ def _fit_rows(figure: int, ansatz: str, j2: float, result: dict,
 
 def _colorbar(fig, ax, cmap, values):
     if values:
-        norm = colors.Normalize(vmin=min(values), vmax=max(values) if max(values) > min(values) else min(values) + 1e-12)
+        ticks = sorted({float(value) for value in values})
+        norm = colors.Normalize(
+            vmin=ticks[0],
+            vmax=ticks[-1] if ticks[-1] > ticks[0] else ticks[0] + 1e-12,
+        )
         figure_width, figure_height = fig.get_size_inches()
         left, bottom, axes_width, axes_height = cfg.MAIN_AXES_INCHES
         cax = fig.add_axes([
@@ -556,7 +567,10 @@ def _colorbar(fig, ax, cmap, values):
             cfg.COLORBAR_WIDTH / figure_width,
             axes_height / figure_height,
         ])
-        fig.colorbar(cm.ScalarMappable(norm=norm, cmap=cmap), cax=cax, label=r"$J_2$")
+        fig.colorbar(
+            cm.ScalarMappable(norm=norm, cmap=cmap),
+            cax=cax, label=r"$J_2$", ticks=ticks,
+        )
         return norm
     return colors.Normalize(0.0, 1.0)
 
@@ -686,7 +700,8 @@ def _raw_vs_j2(ax, figure: int, rows: list[dict], *, observable: str,
                       linestyle="-" if connect and not segmented else "none")
             if segmented:
                 _errorbar(
-                    ax, [], [], color=series_color, alpha=alpha,
+                    ax, [np.nan], [np.nan], yerr=[1.0],
+                    color=series_color, alpha=alpha,
                     label=label, linestyle="-",
                 )
                 for lower, upper in connect_ranges[int(D)]:
@@ -838,11 +853,14 @@ def _plot_m_delta(figure: int, neel: list[dict], twoc3: list[dict], *, mode: str
 
 def _energy_fits(figure: int, rows: list[dict], *, gapped: bool):
     points, fits = [], []
+    energy_model = "gapped_energy" if gapped else "gapless_energy"
     for j2, group in _groups(_observable_rows(rows, "E"), "J2").items():
         ansatz = group[0]["ansatz"]
         fit_group = [
             row for row in group
-            if not _fit_banned(figure, ansatz, j2, row["D"])
+            if not _fit_banned(
+                figure, ansatz, j2, row["D"], energy_model
+            )
         ]
         result = fit_energy(fit_group, gapped=gapped)
         if result is None:
@@ -850,7 +868,9 @@ def _energy_fits(figure: int, rows: list[dict], *, gapped: bool):
         points.append({"ansatz": group[0]["ansatz"], "J2": j2, "D": 0,
                        "value": float(result["values"][0]), "error": float(result["errors"][0]),
                        "result": result})
-        excluded, inactive = _partition_fit_bans(figure, ansatz, j2, group)
+        excluded, inactive = _partition_fit_bans(
+            figure, ansatz, j2, group, energy_model
+        )
         fits.extend(_fit_rows(
             figure, group[0]["ansatz"], j2, result,
             "gapped" if gapped else "gapless", excluded, inactive,
@@ -873,9 +893,12 @@ def _plot_energy_invD(figure: int, rows: list[dict], *, fit: str | None, cmap):
         data.extend(_row(figure, row, series="raw", x=1.0 / row["D"], y=row["E"]) for row in group)
         if fit is None:
             continue
+        energy_model = f"{fit}_energy"
         fit_group = [
             row for row in group
-            if not _fit_banned(figure, ansatz, j2, row["D"])
+            if not _fit_banned(
+                figure, ansatz, j2, row["D"], energy_model
+            )
         ]
         result = fit_energy(fit_group, gapped=fit == "gapped")
         if result is None:
@@ -886,7 +909,9 @@ def _plot_energy_invD(figure: int, rows: list[dict], *, fit: str | None, cmap):
         E0, E0_error = result["values"][0], result["errors"][0]
         if _plot_allowed(j2, ansatz):
             _errorbar(ax, [0.0], [E0], yerr=[E0_error], color=color, marker="s", zorder=4)
-        excluded, inactive = _partition_fit_bans(figure, ansatz, j2, group)
+        excluded, inactive = _partition_fit_bans(
+            figure, ansatz, j2, group, energy_model
+        )
         fits.extend(_fit_rows(
             figure, group[0]["ansatz"], j2, result, fit,
             excluded, inactive,
