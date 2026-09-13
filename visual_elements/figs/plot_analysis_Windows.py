@@ -535,11 +535,11 @@ def load_inverse_correlation_lengths(folder_path, j2, ansatz):
                     'obsolete non-three-direction correlation-length result'
                 )
             directional = {}
-            for direction in (
+            for direction in payload.get('accepted_directions', (
                 'env2',
                 'env1_ab_env3_ba',
                 'env3_ab_env1_ba',
-            ):
+            )):
                 eigenvalues = payload['spectra'][direction]['eigenvalues']
                 if len(eigenvalues) < 2:
                     raise ValueError(
@@ -568,7 +568,7 @@ def load_inverse_correlation_lengths(folder_path, j2, ansatz):
                     abs(lambda_max / lambda_second)
                 )
 
-            lower, center, upper = sorted(directional.values())
+            lower, center, upper = min(directional.values()), float(np.median(list(directional.values()))), max(directional.values())
             result[D] = {
                 'inverse_xi': center,
                 'inverse_xi_lower': lower,

@@ -71,8 +71,8 @@ PLOT_BANNED_J2 = {
 }
 
 # Independent exclusions for every figure that performs a fit/statistic.
-# Points remain visible as raw data.  Figure 14 is deliberately checked to
-# contain at most one entry, as its statistic uses the largest three D values.
+# Points remain visible as raw data.  The mapping is separated by ansatz so a
+# Neel-m ban in a twin-axis figure can never alter the 2C3 Delta statistic.
 TWOC3_M_FIT_BANS = {
         
     (0.23 , 5),
@@ -93,14 +93,40 @@ NEEL_M_EXTRAP_BANS = {(0.23 ,8),#
                       (0.275,6),
                       (0.28 ,8),}
 
+# Shared by figures 14, 16, and 17 so their identical Delta_extrap curve is
+# computed from identical points.  At most one of the original largest-three-D
+# candidates may be banned for any J2.
+TWOC3_DELTA_EXTRAP_BANS = set()
+
+# The combined and single-J2 comparison panels use the same physical fits as
+# the corresponding ansatz-specific extrapolations.
+MAGNETIZATION_COMPARISON_FIT_BANS = {
+    "Neel": NEEL_M_EXTRAP_BANS,
+    "2C3": TWOC3_M_FIT_BANS,
+}
+
 FIT_BANS = {
-    2: set(), 3: set(), 4: set(), 5: set(),
-    7: set(TWOC3_M_FIT_BANS), 8: set(TWOC3_M_FIT_BANS),
-    9: set(TWOC3_M_FIT_BANS), 10: set(TWOC3_M_FIT_BANS),
-    13: set(NEEL_M_EXTRAP_BANS), 14: set(),
-    16: set(NEEL_M_EXTRAP_BANS), 17: set(NEEL_M_EXTRAP_BANS),
-    19: set(), 20: set(), 22: set(),
-    24: set(), 25: set(), 27: set(), 28: set(),
+    2: {"Neel": set()}, 3: {"Neel": set()},
+    4: {"Neel": set()}, 5: {"Neel": set()},
+    7: {"2C3": TWOC3_M_FIT_BANS},
+    8: {"2C3": TWOC3_M_FIT_BANS},
+    9: {"2C3": TWOC3_M_FIT_BANS},
+    10: {"2C3": TWOC3_M_FIT_BANS},
+    13: {"Neel": NEEL_M_EXTRAP_BANS},
+    14: {"2C3": TWOC3_DELTA_EXTRAP_BANS},
+    16: {
+        "Neel": NEEL_M_EXTRAP_BANS,
+        "2C3": TWOC3_DELTA_EXTRAP_BANS,
+    },
+    17: {
+        "Neel": NEEL_M_EXTRAP_BANS,
+        "2C3": TWOC3_DELTA_EXTRAP_BANS,
+    },
+    19: {"Neel": set()}, 20: {"Neel": set()},
+    22: {"Neel": set()},
+    24: {"2C3": set()}, 25: {"2C3": set()},
+    27: {"2C3": set()},
+    28: {"Neel": set(), "2C3": set()},
 }
 
 # Data selection and numerical fit controls.

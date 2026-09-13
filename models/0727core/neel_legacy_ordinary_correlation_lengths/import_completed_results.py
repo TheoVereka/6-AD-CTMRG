@@ -61,12 +61,14 @@ def main() -> int:
     if manifest.get("bundle_kind") != "D345678910_neel_legacy_ordinary_only":
         raise ValueError(f"Wrong bundle kind: {manifest_path}")
     import sys
-    sys.path.insert(0, str(bundle_root))
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
     from bundle_utils import (
         ORDINARY_DIRECTIONS,
         is_completed_ordinary_result,
         is_completed_partial_result,
         merge_partial_payloads,
+        recover_split_payloads,
+        recover_complete_payload,
         partial_result_name,
         result_name,
     )
@@ -81,87 +83,63 @@ def main() -> int:
         expected_hash = str(item["sha256"])
         current_checkpoint = legacy_root.parent / str(item["original_relative_path"])
         expected_source_hash = str(item["source_checkpoint_sha256"])
-        if (
-            not current_checkpoint.is_file()
-            or sha256(current_checkpoint) != expected_source_hash
-        ):
-            print(
-                f"STALE MANIFEST J2={j2:g} D={D}: current checkpoint differs; "
-                "rerun collect_checkpoints.py"
-            )
+        if not current_checkpoint.is_file():
+            print(f"MISSING CHECKPOINT J2={j2:g} D={D}: {current_checkpoint}")
             incomplete += 1
             continue
+        actual_source_hash = sha256(current_checkpoint)
+        stale_manifest = actual_source_hash != expected_source_hash
+        if stale_manifest:
+            print(f"STALE MANIFEST J2={j2:g} D={D}: checking numerical recovery")
         destination = legacy_root / str(item["legacy_run_relative_path"]) / str(item["legacy_correlation_filename"])
-        if is_completed_ordinary_result(
-            destination,
-            j2=j2,
-            D_bond=D,
-            ansatz_directory=ansatz,
-            checkpoint_sha256=expected_hash,
-        ):
-            print(f"ALREADY IMPORTED J2={j2:g} D={D}: {destination}")
-            skipped += 1
-            continue
         source = result_root / result_name(ansatz, token, D)
-        if not is_completed_ordinary_result(
-            source,
-            j2=j2,
-            D_bond=D,
-            ansatz_directory=ansatz,
-            checkpoint_sha256=expected_hash,
-        ):
-            partials = {
-                direction: result_root / partial_result_name(ansatz, token, D, direction)
-                for direction in ORDINARY_DIRECTIONS
-            }
-            if all(
-                is_completed_partial_result(
-                    path,
-                    j2=j2,
-                    D_bond=D,
-                    ansatz_directory=ansatz,
-                    direction=direction,
-                    checkpoint_sha256=expected_hash,
-                )
-                for direction, path in partials.items()
-            ):
-                payloads = {
-                    direction: json.loads(path.read_text(encoding="utf-8"))
-                    for direction, path in partials.items()
-                }
-                merged = merge_partial_payloads(payloads)
-                if args.dry_run:
-                    print(f"WOULD ASSEMBLE AND IMPORT J2={j2:g} D={D}")
-                    continue
-                if not args.dry_run:
-                    temporary = source.with_name(source.name + ".assembling")
-                    temporary.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
-                    os.replace(temporary, source)
-        if not is_completed_ordinary_result(
-            source,
-            j2=j2,
-            D_bond=D,
-            ansatz_directory=ansatz,
-            checkpoint_sha256=expected_hash,
-        ):
-            print(f"INCOMPLETE J2={j2:g} D={D}")
+        payload = None
+        partials = {
+            direction: result_root / partial_result_name(ansatz, token, D, direction)
+            for direction in ORDINARY_DIRECTIONS
+        }
+        try:
+            available = {d: json.loads(p.read_text(encoding="utf-8")) for d, p in partials.items() if p.is_file()}
+            if len(available) >= 2:
+                payload = recover_split_payloads(available, expected_hash)
+            elif is_completed_ordinary_result(source, j2=j2, D_bond=D, ansatz_directory=ansatz):
+                payload = json.loads(source.read_text(encoding="utf-8"))
+                if payload.get("cluster_bundle_provenance", {}).get("checkpoint_sha256") != expected_hash:
+                    payload = recover_complete_payload(payload, expected_hash)
+            if payload is None:
+                raise ValueError("fewer than two directions and no complete result")
+            if stale_manifest:
+                payload = recover_complete_payload(payload, expected_hash)
+                payload["import_recovery"]["current_source_checkpoint_sha256"] = actual_source_hash
+                payload["import_recovery"]["manifest_source_checkpoint_sha256"] = expected_source_hash
+        except (OSError, ValueError, KeyError, TypeError, ZeroDivisionError) as error:
+            print(f"INCOMPLETE J2={j2:g} D={D}: {error}")
             incomplete += 1
             continue
+        if payload.get("import_recovery"):
+            print(f"RECOVER J2={j2:g} D={D}: {payload['import_recovery']}")
         if destination.is_file() and not args.overwrite:
-            if sha256(destination) == sha256(source):
+            try:
+                existing = json.loads(destination.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                existing = {}
+            signature_keys = ("spectra", "completed_at_utc", "accepted_directions", "import_recovery")
+            identical = all(existing.get(k) == payload.get(k) for k in signature_keys)
+            older = str(existing.get("completed_at_utc", "")) > str(payload.get("completed_at_utc", ""))
+            if identical or older:
+                print(f"ALREADY IMPORTED J2={j2:g} D={D}: {destination}")
                 skipped += 1
                 continue
         print(f"{'WOULD IMPORT' if args.dry_run else 'IMPORT'} {source} -> {destination}")
         if args.dry_run:
             continue
         destination.parent.mkdir(parents=True, exist_ok=True)
-        payload = json.loads(source.read_text(encoding="utf-8"))
         payload["checkpoint"] = str(legacy_root.parent / str(item["original_relative_path"]))
         temporary = destination.with_name(destination.name + ".importing")
         temporary.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
         os.replace(temporary, destination)
         imported += 1
-        if not args.keep_source:
+        if not args.keep_source and source.exists():
             source.unlink()
     print(f"Import summary: imported={imported}, skipped={skipped}, incomplete={incomplete}, dry_run={args.dry_run}.")
     return 1 if incomplete else 0

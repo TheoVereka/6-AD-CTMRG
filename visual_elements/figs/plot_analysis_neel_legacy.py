@@ -65,14 +65,14 @@ def selected_observables() -> dict[float, dict[int, tuple[Path, dict]]]:
 def inverse_xi_entry(path: Path) -> dict:
     payload = json.loads(path.read_text(encoding="utf-8"))
     directional = {}
-    for direction in ("env2", "env1_ab_env3_ba", "env3_ab_env1_ba"):
+    for direction in payload.get("accepted_directions", ("env2", "env1_ab_env3_ba", "env3_ab_env1_ba")):
         values = payload["spectra"][direction]["eigenvalues"][:2]
         magnitudes = sorted(
             (math.hypot(float(value["real"]), float(value["imag"])) for value in values),
             reverse=True,
         )
         directional[direction] = math.log(magnitudes[0] / magnitudes[1])
-    lower, center, upper = sorted(directional.values())
+    lower, center, upper = min(directional.values()), float(np.median(list(directional.values()))), max(directional.values())
     return {
         "inverse_xi": center,
         "inverse_xi_lower": lower,

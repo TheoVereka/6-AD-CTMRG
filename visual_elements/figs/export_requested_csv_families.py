@@ -3,6 +3,7 @@ import csv
 import json
 import math
 import re
+from statistics import median
 from pathlib import Path
 
 
@@ -49,8 +50,9 @@ def spectrum_inverse_xi(spectrum):
 
 
 def central_xi(payload, keys):
-    inverse_values = sorted(spectrum_inverse_xi(payload["spectra"][key]) for key in keys)
-    return 1.0 / inverse_values[1]
+    keys = payload.get("accepted_directions", keys)
+    inverse_values = [spectrum_inverse_xi(payload["spectra"][key]) for key in keys]
+    return 1.0 / median(inverse_values)
 
 
 def parse_m_neel(path):

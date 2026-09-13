@@ -30,6 +30,8 @@ from bundle_utils import (
     load_manifest,
     manifest_index,
     merge_partial_payloads,
+    recover_split_payloads,
+    recover_complete_payload,
     parse_partial_result_name,
     parse_result_name,
     result_name,
@@ -183,7 +185,7 @@ def assemble_downloaded_split_results(
     index: dict[tuple[str, str, int], dict[str, object]],
     *,
     dry_run: bool = False,
-) -> int:
+) -> dict[Path, dict]:
     newest: dict[tuple[str, str, int, str], Path] = {}
     for path in incoming.rglob("*.json"):
         if RESULT_DIRECTORY not in path.parts or not PARTIAL_RESULT_NAME_PATTERN.fullmatch(path.name):
@@ -195,36 +197,31 @@ def assemble_downloaded_split_results(
     grouped: dict[tuple[str, str, int], dict[str, Path]] = {}
     for (ansatz, token, D_bond, direction), path in newest.items():
         grouped.setdefault((ansatz, token, D_bond), {})[direction] = path
-    assembled = 0
+    assembled = {}
     for key, paths in grouped.items():
-        if set(paths) != set(ORDINARY_DIRECTIONS):
+        if len(paths) < 2:
+            print(f"SKIP split {key}: fewer than two directions")
             continue
         item = index.get(key)
         if item is None:
             continue
         ansatz, token, D_bond = key
-        if not all(
-            is_completed_partial_result(
-                paths[direction],
-                j2=float(item["j2"]),
-                D_bond=D_bond,
-                ansatz_directory=ansatz,
-                direction=direction,
-                checkpoint_sha256=str(item["sha256"]),
-            )
-            for direction in ORDINARY_DIRECTIONS
-        ):
+        try:
+            payloads = {
+                direction: json.loads(path.read_text(encoding="utf-8"))
+                for direction, path in paths.items()
+            }
+            merged = recover_split_payloads(payloads, str(item["sha256"]))
+        except (OSError, ValueError, TypeError, KeyError) as error:
+            print(f"SKIP split {key}: {error}")
             continue
-        payloads = {
-            direction: json.loads(paths[direction].read_text(encoding="utf-8"))
-            for direction in ORDINARY_DIRECTIONS
-        }
-        merged = merge_partial_payloads(payloads)
-        destination = paths[ORDINARY_DIRECTIONS[0]].with_name(
+        if merged.get("import_recovery"):
+            print(f"RECOVER {key}: {merged['import_recovery']['reason']}; accepted={merged['accepted_directions']}")
+        destination = next(iter(paths.values())).with_name(
             result_name(ansatz, token, D_bond)
         )
+        assembled[destination] = merged
         if dry_run:
-            assembled += 1
             print(f"WOULD ASSEMBLE split D={D_bond} result: {destination}")
             continue
         temporary = destination.with_name(destination.name + ".assembling")
@@ -232,7 +229,6 @@ def assemble_downloaded_split_results(
             json.dump(merged, handle, indent=2, allow_nan=True)
             handle.write("\n")
         os.replace(temporary, destination)
-        assembled += 1
         print(f"ASSEMBLED split D={D_bond} result: {destination}")
     return assembled
 
@@ -280,6 +276,7 @@ def main() -> int:
         if RESULT_NAME_PATTERN.fullmatch(path.name)
         and RESULT_DIRECTORY in path.parts
     )
+    discovered_candidates = sorted(set(discovered_candidates) | set(assembled))
     if not discovered_candidates:
         print(f"No completed result filenames found below {incoming}.")
         return 0
@@ -290,7 +287,7 @@ def main() -> int:
     for path in discovered_candidates:
         key = parse_result_name(path.name)
         previous = newest_by_key.get(key)
-        if previous is None or path.stat().st_mtime_ns > previous.stat().st_mtime_ns:
+        if previous is None or (path in assembled or path.stat().st_mtime_ns > previous.stat().st_mtime_ns):
             newest_by_key[key] = path
     candidates = sorted(newest_by_key.values())
     duplicates = len(discovered_candidates) - len(candidates)
@@ -312,9 +309,12 @@ def main() -> int:
             failed += 1
             continue
         try:
-            with source.open("r", encoding="utf-8") as handle:
-                payload = json.load(handle)
-            if not is_completed_ordinary_result(
+            if source in assembled:
+                payload = assembled[source]
+            else:
+                with source.open("r", encoding="utf-8") as handle:
+                    payload = json.load(handle)
+            if source not in assembled and not is_completed_ordinary_result(
                 source,
                 j2=float(item["j2"]),
                 D_bond=D_bond,
@@ -376,14 +376,14 @@ def main() -> int:
             if isinstance(provenance, dict)
             else None
         )
-        if recorded_checkpoint_hash != current_checkpoint_hash:
-            if args.verbose_skips:
-                print(
-                    "SKIP stale cluster result whose calculation tensor "
-                    f"differs from current tensor_best.pt: {source}"
-                )
-            stale_source += 1
-            continue
+        if recorded_checkpoint_hash != current_checkpoint_hash and payload.get("import_recovery", {}).get("expected_checkpoint_sha256") != current_checkpoint_hash:
+            try:
+                payload = recover_complete_payload(payload, current_checkpoint_hash)
+                print(f"RECOVER numerically consistent stale result: {source}")
+            except (ValueError, KeyError, TypeError, ZeroDivisionError) as error:
+                print(f"SKIP stale cluster result {source}: {error}")
+                stale_source += 1
+                continue
         if destination.exists() and not args.overwrite:
             if is_completed_ordinary_result(
                 destination,
@@ -485,7 +485,7 @@ def main() -> int:
         f"already_present={skipped}, "
         f"stale_source={stale_source}, "
         f"sources_kept={kept}, rejected={failed}, "
-        f"split_results_assembled={assembled}, dry_run={args.dry_run}."
+        f"split_results_assembled={len(assembled)}, dry_run={args.dry_run}."
     )
     return 1 if failed else 0
 

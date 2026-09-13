@@ -88,8 +88,33 @@ def _banned(ansatz: str, j2: float, D: int) -> bool:
     )
 
 
-def _fit_banned(figure: int, j2: float, D: int) -> bool:
-    return _key(j2, D) in {_key(*point) for point in cfg.FIT_BANS.get(figure, set())}
+def _fit_bans_for(figure: int | str, ansatz: str) -> set[tuple[float, int]]:
+    if isinstance(figure, str) and figure.startswith("02_"):
+        figure = 2
+    if isinstance(figure, str) and figure.startswith("07_neel_2c3_comparison"):
+        return cfg.MAGNETIZATION_COMPARISON_FIT_BANS.get(ansatz, set())
+    return cfg.FIT_BANS.get(figure, {}).get(ansatz, set())
+
+
+def _fit_banned(
+    figure: int | str, ansatz: str, j2: float, D: int,
+) -> bool:
+    return _key(j2, D) in {
+        _key(*point) for point in _fit_bans_for(figure, ansatz)
+    }
+
+
+def _partition_fit_bans(
+    figure: int | str, ansatz: str, j2: float, eligible_rows: list[dict],
+) -> tuple[list[tuple[float, int]], list[tuple[float, int]]]:
+    """Return active bans and configured bans with no eligible fit datum."""
+    j2_key = round(float(j2), 6)
+    configured = {
+        _key(*point) for point in _fit_bans_for(figure, ansatz)
+        if _key(*point)[0] == j2_key
+    }
+    eligible = {_key(row["J2"], row["D"]) for row in eligible_rows}
+    return sorted(configured & eligible), sorted(configured - eligible)
 
 
 def _plot_allowed(j2: float, ansatz: str) -> bool:
@@ -159,10 +184,30 @@ def delta(observation: dict) -> tuple[float, float]:
     return float(central), float(error)
 
 
-def inverse_xi(path: Path) -> tuple[float, float]:
+def inverse_xi(
+    path: Path, *, expected_j2: float | None = None,
+    expected_D: int | None = None, expected_chi: int | None = None,
+) -> tuple[float, float]:
     payload = json.loads(path.read_text(encoding="utf-8"))
+    if expected_D is not None and "D_bond" in payload:
+        if int(payload["D_bond"]) != int(expected_D):
+            raise ValueError(f"D mismatch in {path}")
+    if expected_chi is not None and "chi" in payload:
+        if int(payload["chi"]) != int(expected_chi):
+            raise ValueError(f"chi mismatch in {path}")
+    j2_metadata = [
+        payload.get("J2"), payload.get("j2"),
+        payload.get("calculation_hyperparameters", {}).get("J2"),
+        payload.get("cluster_bundle_provenance", {}).get("j2"),
+    ]
+    if expected_j2 is not None:
+        for stored_j2 in j2_metadata:
+            if stored_j2 is not None and not np.isclose(
+                float(stored_j2), float(expected_j2), atol=1e-10, rtol=0.0
+            ):
+                raise ValueError(f"J2 mismatch in {path}")
     directional = []
-    for direction in ("env2", "env1_ab_env3_ba", "env3_ab_env1_ba"):
+    for direction in payload.get("accepted_directions", ("env2", "env1_ab_env3_ba", "env3_ab_env1_ba")):
         eigenvalues = payload["spectra"][direction]["eigenvalues"][:2]
         magnitudes = sorted(
             [math.hypot(float(value["real"]), float(value["imag"])) for value in eigenvalues],
@@ -174,13 +219,19 @@ def inverse_xi(path: Path) -> tuple[float, float]:
     return float(np.mean(directional)), rms(directional)
 
 
-def _record(ansatz: str, j2: float, D: int, observation: dict, xi_path: Path | None) -> dict:
+def _record(
+    ansatz: str, j2: float, D: int, observation: dict,
+    xi_path: Path | None, *, xi_chi: int | None = None,
+) -> dict:
     m, m_error = magnetization(observation, legacy_neel=ansatz == ANSATZ_NEEL)
     dlt, dlt_error = delta(observation)
     inv_xi = inv_xi_error = float("nan")
     if xi_path is not None and xi_path.is_file():
         try:
-            inv_xi, inv_xi_error = inverse_xi(xi_path)
+            inv_xi, inv_xi_error = inverse_xi(
+                xi_path, expected_j2=j2, expected_D=D,
+                expected_chi=xi_chi,
+            )
         except (OSError, KeyError, TypeError, ValueError, ZeroDivisionError, json.JSONDecodeError):
             pass
     return {
@@ -192,7 +243,7 @@ def _record(ansatz: str, j2: float, D: int, observation: dict, xi_path: Path | N
 
 
 def load_neel() -> list[dict]:
-    choices: dict[tuple[float, int], tuple[tuple, Path, dict]] = {}
+    choices: dict[tuple[float, int], tuple[tuple, Path, dict, int]] = {}
     if not cfg.NEEL_DATA_ROOT.is_dir():
         return []
     for folder in sorted(cfg.NEEL_DATA_ROOT.iterdir()):
@@ -213,10 +264,13 @@ def load_neel() -> list[dict]:
                 continue
             rank = (observation["E"], -chi, str(path).lower())
             if (j2, D) not in choices or rank < choices[(j2, D)][0]:
-                choices[(j2, D)] = (rank, folder, observation)
+                choices[(j2, D)] = (rank, folder, observation, chi)
     return [
-        _record(ANSATZ_NEEL, j2, D, observation, folder / f"correlation_length_D_{D}.json")
-        for (j2, D), (_rank, folder, observation) in sorted(choices.items())
+        _record(
+            ANSATZ_NEEL, j2, D, observation,
+            folder / f"correlation_length_D_{D}.json", xi_chi=chi,
+        )
+        for (j2, D), (_rank, folder, observation, chi) in sorted(choices.items())
     ]
 
 
@@ -475,12 +529,15 @@ def _row(figure: int, source: dict, *, series: str, x: float, y: float,
 
 
 def _fit_rows(figure: int, ansatz: str, j2: float, result: dict,
-              model: str, excluded: list[tuple[float, int]]) -> list[dict]:
+              model: str, excluded: list[tuple[float, int]],
+              inactive: list[tuple[float, int]] | None = None) -> list[dict]:
     return [
         {"figure": figure, "ansatz": ansatz, "J2": j2, "model": model,
          "n_points": result["n"], "parameter": name, "central": value,
          "error": error, "fit_bans": repr(excluded),
+         "inactive_fit_bans": repr(inactive or []),
          "statistic_Ds": repr(result.get("Ds", "")),
+         "statistic_candidate_Ds": repr(result.get("candidate_Ds", "")),
          "measurement_error_rms": result.get("measurement_error_rms", ""),
          "spreading_rms": result.get("spreading_rms", ""),
          "intrinsic_scatter": result.get("intrinsic_scatter", "")}
@@ -561,7 +618,10 @@ def _plot_m_xi(figure: int, rows: list[dict], *, fit_kind: str | None,
                              x_error=row["inverse_xi_error"], y_error=row["m_error"]) for row in group)
         if fit_kind is None:
             continue
-        fit_group = [row for row in group if not _fit_banned(figure, j2, row["D"])]
+        fit_group = [
+            row for row in group
+            if not _fit_banned(figure, ansatz, j2, row["D"])
+        ]
         absolute = fit_kind.startswith("abs")
         power = fit_kind.endswith("power")
         result = fit_m_xi(fit_group, absolute=absolute, power=power)
@@ -574,8 +634,11 @@ def _plot_m_xi(figure: int, rows: list[dict], *, fit_kind: str | None,
         m0, m0_error = result["values"][0], result["errors"][0]
         if show(j2):
             _errorbar(ax, [0.0], [m0], yerr=[m0_error], color=color, marker="s", zorder=4)
-        excluded = [_key(j2, row["D"]) for row in group if _fit_banned(figure, j2, row["D"])]
-        fits_out.extend(_fit_rows(figure, group[0]["ansatz"], j2, result, fit_kind, excluded))
+        excluded, inactive = _partition_fit_bans(figure, ansatz, j2, group)
+        fits_out.extend(_fit_rows(
+            figure, group[0]["ansatz"], j2, result, fit_kind,
+            excluded, inactive,
+        ))
         data_out.append(_row(figure, {"ansatz": group[0]["ansatz"], "J2": j2, "D": 0},
                              series="intercept", x=0.0, y=m0, y_error=m0_error))
     _colorbar(fig, ax, cmap, plotted_j2)
@@ -619,9 +682,13 @@ def _raw_vs_j2(ax, figure: int, rows: list[dict], *, observable: str,
             segmented = connect_ranges is not None and int(D) in connect_ranges
             _errorbar(ax, [row["J2"] for row in plot_group], [row[observable] for row in plot_group],
                       yerr=yerr, color=series_color, alpha=alpha,
-                      label=label,
+                      label=None if segmented else label,
                       linestyle="-" if connect and not segmented else "none")
             if segmented:
+                _errorbar(
+                    ax, [], [], color=series_color, alpha=alpha,
+                    label=label, linestyle="-",
+                )
                 for lower, upper in connect_ranges[int(D)]:
                     segment = [
                         row for row in plot_group
@@ -641,11 +708,12 @@ def _raw_vs_j2(ax, figure: int, rows: list[dict], *, observable: str,
 def _m_extrap(figure: int, rows: list[dict]) -> tuple[list[dict], list[dict]]:
     points, fit_rows = [], []
     for j2, group in _groups(_observable_rows(rows, "m"), "J2").items():
+        eligible_group = _finite(
+            group, "inverse_xi", "inverse_xi_error", "m", "m_error"
+        )
         fit_group = [
-            row for row in group
-            if not _fit_banned(figure, j2, row["D"])
-            and np.isfinite(row["inverse_xi"])
-            and np.isfinite(row["inverse_xi_error"])
+            row for row in eligible_group
+            if not _fit_banned(figure, ANSATZ_NEEL, j2, row["D"])
         ]
         result = fit_m_xi(fit_group, absolute=False, power=False)
         if result is None:
@@ -657,24 +725,40 @@ def _m_extrap(figure: int, rows: list[dict]) -> tuple[list[dict], list[dict]]:
         upper = max(0.0, raw_central + sigma)
         points.append({"ansatz": ANSATZ_NEEL, "J2": j2, "D": 0, "value": central,
                        "lower_error": central - lower, "upper_error": upper - central})
-        excluded = [_key(j2, row["D"]) for row in group if _fit_banned(figure, j2, row["D"])]
-        fit_rows.extend(_fit_rows(figure, ANSATZ_NEEL, j2, result, "linear_m_vs_invxi", excluded))
+        excluded, inactive = _partition_fit_bans(
+            figure, ANSATZ_NEEL, j2, eligible_group
+        )
+        fit_rows.extend(_fit_rows(
+            figure, ANSATZ_NEEL, j2, result, "linear_m_vs_invxi",
+            excluded, inactive,
+        ))
     return points, fit_rows
 
 
 def _delta_extrap(figure: int, rows: list[dict]) -> tuple[list[dict], list[dict]]:
     points, fit_rows = [], []
     for j2, group in _groups(_observable_rows(rows, "delta"), "J2").items():
-        fit_group = [row for row in group if not _fit_banned(figure, j2, row["D"])]
+        candidates = sorted(
+            _finite(group, "delta", "delta_error"), key=lambda row: row["D"]
+        )[-cfg.DELTA_STATISTIC_N_LARGEST_D:]
+        fit_group = [
+            row for row in candidates
+            if not _fit_banned(figure, ANSATZ_TWOC3, j2, row["D"])
+        ]
         result = delta_statistic(fit_group)
         if result is None:
             continue
+        result["candidate_Ds"] = [row["D"] for row in candidates]
         central, error = float(result["values"][0]), float(result["errors"][0])
         points.append({"ansatz": ANSATZ_TWOC3, "J2": j2, "D": 0,
                        "value": central, "error": error})
-        excluded = [_key(j2, row["D"]) for row in group if _fit_banned(figure, j2, row["D"])]
-        fit_rows.extend(_fit_rows(figure, ANSATZ_TWOC3, j2, result,
-                                  "inverse_variance_constant", excluded))
+        excluded, inactive = _partition_fit_bans(
+            figure, ANSATZ_TWOC3, j2, candidates
+        )
+        fit_rows.extend(_fit_rows(
+            figure, ANSATZ_TWOC3, j2, result,
+            "equal_weight_constant", excluded, inactive,
+        ))
     return points, fit_rows
 
 
@@ -755,16 +839,22 @@ def _plot_m_delta(figure: int, neel: list[dict], twoc3: list[dict], *, mode: str
 def _energy_fits(figure: int, rows: list[dict], *, gapped: bool):
     points, fits = [], []
     for j2, group in _groups(_observable_rows(rows, "E"), "J2").items():
-        fit_group = [row for row in group if not _fit_banned(figure, j2, row["D"])]
+        ansatz = group[0]["ansatz"]
+        fit_group = [
+            row for row in group
+            if not _fit_banned(figure, ansatz, j2, row["D"])
+        ]
         result = fit_energy(fit_group, gapped=gapped)
         if result is None:
             continue
         points.append({"ansatz": group[0]["ansatz"], "J2": j2, "D": 0,
                        "value": float(result["values"][0]), "error": float(result["errors"][0]),
                        "result": result})
-        excluded = [_key(j2, row["D"]) for row in group if _fit_banned(figure, j2, row["D"])]
-        fits.extend(_fit_rows(figure, group[0]["ansatz"], j2, result,
-                              "gapped" if gapped else "gapless", excluded))
+        excluded, inactive = _partition_fit_bans(figure, ansatz, j2, group)
+        fits.extend(_fit_rows(
+            figure, group[0]["ansatz"], j2, result,
+            "gapped" if gapped else "gapless", excluded, inactive,
+        ))
     return points, fits
 
 
@@ -783,7 +873,10 @@ def _plot_energy_invD(figure: int, rows: list[dict], *, fit: str | None, cmap):
         data.extend(_row(figure, row, series="raw", x=1.0 / row["D"], y=row["E"]) for row in group)
         if fit is None:
             continue
-        fit_group = [row for row in group if not _fit_banned(figure, j2, row["D"])]
+        fit_group = [
+            row for row in group
+            if not _fit_banned(figure, ansatz, j2, row["D"])
+        ]
         result = fit_energy(fit_group, gapped=fit == "gapped")
         if result is None:
             continue
@@ -793,8 +886,11 @@ def _plot_energy_invD(figure: int, rows: list[dict], *, fit: str | None, cmap):
         E0, E0_error = result["values"][0], result["errors"][0]
         if _plot_allowed(j2, ansatz):
             _errorbar(ax, [0.0], [E0], yerr=[E0_error], color=color, marker="s", zorder=4)
-        excluded = [_key(j2, row["D"]) for row in group if _fit_banned(figure, j2, row["D"])]
-        fits.extend(_fit_rows(figure, group[0]["ansatz"], j2, result, fit, excluded))
+        excluded, inactive = _partition_fit_bans(figure, ansatz, j2, group)
+        fits.extend(_fit_rows(
+            figure, group[0]["ansatz"], j2, result, fit,
+            excluded, inactive,
+        ))
         data.append(_row(figure, {"ansatz": group[0]["ansatz"], "J2": j2, "D": 0},
                          series=f"{fit}_E0", x=0.0, y=E0, y_error=E0_error))
     _colorbar(fig, ax, cmap, plotted_j2)
@@ -869,17 +965,17 @@ def _plot_raw_energy_ansatz_comparison(neel: list[dict], twoc3: list[dict]):
     figure = "21+26"
     fig, ax, _ = _new_figure(extra_width=cfg.TWO_COLUMN_LEGEND_EXTRA_WIDTH)
     data = _raw_vs_j2(
-        ax, figure, neel, observable="E", error_field=None, color=BLUE,
-        labeler=lambda D: rf"$\mathrm{{N\acute{{e}}el}},\ D={D}$",
-    )
-    neel_handles, neel_labels = ax.get_legend_handles_labels()
-    data += _raw_vs_j2(
         ax, figure, twoc3, observable="E", error_field=None, color=RED,
         labeler=lambda D: rf"$2\mathrm{{C}}3,\ D={D}$",
     )
+    twoc3_handles, twoc3_labels = ax.get_legend_handles_labels()
+    data += _raw_vs_j2(
+        ax, figure, neel, observable="E", error_field=None, color=BLUE,
+        labeler=lambda D: rf"$\mathrm{{N\acute{{e}}el}},\ D={D}$",
+    )
     all_handles, all_labels = ax.get_legend_handles_labels()
-    twoc3_handles = all_handles[len(neel_handles):]
-    twoc3_labels = all_labels[len(neel_labels):]
+    neel_handles = all_handles[len(twoc3_handles):]
+    neel_labels = all_labels[len(twoc3_labels):]
     target = max(len(neel_handles), len(twoc3_handles))
     missing = target - len(neel_handles)
     neel_handles += [Line2D([], [], linestyle="none") for _ in range(missing)]
@@ -898,8 +994,11 @@ def _plot_raw_energy_ansatz_comparison(neel: list[dict], twoc3: list[dict]):
     return fig, data, []
 
 
-def _plot_neel_twoc3_m_comparison(dataset: dict[str, list[dict]]):
-    figure = "07_neel_2c3_comparison"
+def _plot_neel_twoc3_m_comparison(
+    dataset: dict[str, list[dict]], *,
+    comparison_j2: tuple[float, ...] | None = None,
+    figure: str = "07_neel_2c3_comparison",
+):
     fig, ax, _ = _new_figure(extra_width=cfg.LEGEND_EXTRA_WIDTH)
     data, fits = [], []
     styles = {
@@ -908,8 +1007,9 @@ def _plot_neel_twoc3_m_comparison(dataset: dict[str, list[dict]]):
         (ANSATZ_TWOC3, 0.23): ("#26a69a", "^", "-"),
         (ANSATZ_TWOC3, 0.235): ("#00695c", "D", "--"),
     }
+    comparison_j2 = comparison_j2 or cfg.ANSATZ_COMPARISON_J2
     for ansatz in (ANSATZ_NEEL, ANSATZ_TWOC3):
-        for j2 in cfg.ANSATZ_COMPARISON_J2:
+        for j2 in comparison_j2:
             group = _finite(
                 _observable_rows(
                     [row for row in dataset[ansatz] if _key(row["J2"], row["D"])[0] == round(j2, 6)],
@@ -936,7 +1036,11 @@ def _plot_neel_twoc3_m_comparison(dataset: dict[str, list[dict]]):
                      x_error=row["inverse_xi_error"], y_error=row["m_error"])
                 for row in group
             )
-            result = fit_m_xi(group, absolute=False, power=False)
+            fit_group = [
+                row for row in group
+                if not _fit_banned(figure, ansatz, j2, row["D"])
+            ]
+            result = fit_m_xi(fit_group, absolute=False, power=False)
             if result is None:
                 continue
             xline = np.linspace(0.0, max(row["inverse_xi"] for row in group), cfg.FIT_CURVE_POINTS)
@@ -945,8 +1049,13 @@ def _plot_neel_twoc3_m_comparison(dataset: dict[str, list[dict]]):
             m0, m0_error = float(result["values"][0]), float(result["errors"][0])
             _errorbar(ax, [0.0], [m0], yerr=[m0_error], color=color,
                       marker=marker, zorder=4)
-            fits.extend(_fit_rows(figure, ansatz, j2, result,
-                                  "linear_m_vs_invxi", []))
+            excluded, inactive = _partition_fit_bans(
+                figure, ansatz, j2, group
+            )
+            fits.extend(_fit_rows(
+                figure, ansatz, j2, result,
+                "linear_m_vs_invxi", excluded, inactive,
+            ))
             data.append(_row(
                 figure, {"ansatz": ansatz, "J2": j2, "D": 0},
                 series="intercept", x=0.0, y=m0, y_error=m0_error,
@@ -1109,8 +1218,10 @@ def run_figure_02_variant(
 
 
 def run_figure(figure: int, dataset: dict[str, list[dict]] | None = None) -> Path:
-    if figure == 14 and len(cfg.FIT_BANS[14]) > 1:
-        raise ValueError("Figure 14 FIT_BANS may contain at most one (J2, D) point")
+    if len(cfg.TWOC3_DELTA_EXTRAP_BANS) > 1:
+        raise ValueError(
+            "TWOC3_DELTA_EXTRAP_BANS may contain at most one (J2, D) point"
+        )
     plt.style.use(cfg.STYLE_PATH)
     cfg.PROCESSED_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     dataset = load_dataset() if dataset is None else dataset
@@ -1154,6 +1265,15 @@ def run_narrative_figure(
     elif name == "07_neel_2c3_comparison":
         fig, data, fits = _plot_neel_twoc3_m_comparison(dataset)
         stem = "figure_07_neel_2c3_comparison"
+    elif name in {
+        "07_neel_2c3_comparison_0p23",
+        "07_neel_2c3_comparison_0p235",
+    }:
+        j2 = 0.23 if name.endswith("0p23") else 0.235
+        fig, data, fits = _plot_neel_twoc3_m_comparison(
+            dataset, comparison_j2=(j2,), figure=name,
+        )
+        stem = f"figure_{name}"
     else:
         raise ValueError(f"Unknown narrative figure {name}")
     output = cfg.FIGURE_OUTPUT_DIR / f"{stem}.pdf"
@@ -1183,6 +1303,8 @@ def run_figures(figures=range(1, 29)) -> None:
         for suffix in cfg.FIGURE02_J2_RANGES:
             run_figure_02_variant(suffix, dataset)
     run_narrative_figure("07_neel_2c3_comparison", dataset)
+    run_narrative_figure("07_neel_2c3_comparison_0p23", dataset)
+    run_narrative_figure("07_neel_2c3_comparison_0p235", dataset)
     run_narrative_figure("21+26", dataset)
 
 

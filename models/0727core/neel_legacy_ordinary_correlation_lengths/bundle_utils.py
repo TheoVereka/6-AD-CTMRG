@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import re
+from statistics import median
 from pathlib import Path
 from typing import Any
 
@@ -152,6 +153,88 @@ def manifest_index(
     return index
 
 
+def accepted_directions(payload: dict[str, Any]) -> tuple[str, ...]:
+    directions = tuple(payload.get("accepted_directions", ORDINARY_DIRECTIONS))
+    if len(directions) not in (2, 3) or len(set(directions)) != len(directions):
+        raise ValueError("Expected two or three distinct accepted directions")
+    if not set(directions) <= set(ORDINARY_DIRECTIONS):
+        raise ValueError("Unknown accepted direction")
+    return directions
+
+
+def recover_complete_payload(payload: dict[str, Any], expected_hash: str) -> dict[str, Any]:
+    directions = accepted_directions(payload)
+    values = []
+    for direction in directions:
+        spectrum = payload["spectra"][direction]
+        magnitudes = sorted((math.hypot(float(v["real"]), float(v["imag"])) for v in spectrum["eigenvalues"][:2]), reverse=True)
+        value = math.log(magnitudes[0] / magnitudes[1])
+        if not math.isfinite(value):
+            raise ValueError("Non-finite inverse xi")
+        values.append(value)
+    scale = max(map(abs, values))
+    spread = (max(values) - min(values)) / scale if scale else 0.0
+    if len(values) != 3 or spread >= 1e-4:
+        raise ValueError(f"Stale complete result relative spread={spread:.6g} is not below 1e-4")
+    result = dict(payload)
+    result["accepted_directions"] = list(directions)
+    result["direction_count"] = len(directions)
+    result["import_recovery"] = {
+        "reason": "relative_spread_below_1e-4", "relative_spread": spread,
+        "relative_tolerance": 1e-4, "expected_checkpoint_sha256": expected_hash,
+        "excluded_directions": [],
+    }
+    return result
+
+
+def recover_split_payloads(payloads: dict[str, dict[str, Any]], expected_hash: str) -> dict[str, Any]:
+    """Retain a coherent pair, or numerically equivalent mixed directions.
+
+    Hashes are never rewritten. Recovery is an explicit import exception and
+    does not satisfy the strict checkpoint check used by cluster submission.
+    Relative spread is (max-min)/max(abs(values)), strictly below 1e-4.
+    """
+    for direction, payload in payloads.items():
+        validate_partial_result_payload(
+            payload, j2=float(payload["calculation_hyperparameters"]["J2"]),
+            D_bond=int(payload["D_bond"]), ansatz_directory=payload["ansatz_directory"],
+            direction=direction,
+        )
+    groups: dict[tuple, dict] = {}
+    for direction, payload in payloads.items():
+        provenance = payload.get("cluster_bundle_provenance", {})
+        checkpoint_hash = provenance.get("checkpoint_sha256")
+        if not checkpoint_hash:
+            raise ValueError(f"Missing checkpoint hash for {direction}")
+        key = (checkpoint_hash, payload["chi"], payload.get("seed"))
+        groups.setdefault(key, {})[direction] = payload
+    values = [float(p["spectra"][d]["inverse_correlation_length"]) for d, p in payloads.items()]
+    scale = max(map(abs, values), default=0.0)
+    spread = (max(values) - min(values)) / scale if scale else 0.0
+    hashes = {key[0] for key in groups}
+    if len(groups) == 1 and hashes == {expected_hash}:
+        selected = payloads
+        reason = None
+    elif len(payloads) == 3 and spread < 1e-4:
+        selected = payloads
+        reason = "relative_spread_below_1e-4"
+    elif len(groups) > 1 and any(len(group) >= 2 for group in groups.values()):
+        selected = max(groups.values(), key=len)
+        reason = "coherent_pair_from_mixed_results"
+    else:
+        raise ValueError(f"Checkpoint mismatch without a recoverable pair (relative spread={spread:.6g})")
+    merged = merge_partial_payloads(selected, allow_mixed=reason == "relative_spread_below_1e-4")
+    if reason:
+        merged["import_recovery"] = {
+            "reason": reason, "expected_checkpoint_sha256": expected_hash,
+            "relative_spread": spread, "relative_tolerance": 1e-4,
+            "excluded_directions": [d for d in payloads if d not in selected],
+            "observed_direction_values": {d: p["spectra"][d]["inverse_correlation_length"] for d, p in payloads.items()},
+            "observed_provenance": {d: p.get("cluster_bundle_provenance") for d, p in payloads.items()},
+        }
+    return merged
+
+
 def validate_result_payload(
     payload: dict[str, Any],
     *,
@@ -186,7 +269,7 @@ def validate_result_payload(
     if not math.isclose(recorded_j2, j2, rel_tol=0.0, abs_tol=1.0e-12):
         raise ValueError("J2 does not match the requested job")
     spectra = payload["spectra"]
-    required = ORDINARY_DIRECTIONS
+    required = accepted_directions(payload)
     inverse_values: list[float] = []
     for key in required:
         spectrum = spectra[key]
@@ -213,7 +296,7 @@ def validate_result_payload(
     summary = payload["inverse_correlation_length"]
     ordered = sorted(inverse_values)
     for field, expected in zip(
-        ("lower", "center", "upper"), ordered, strict=True
+        ("lower", "center", "upper"), (min(ordered), median(ordered), max(ordered)), strict=True
     ):
         if not math.isclose(
             float(summary[field]), expected, rel_tol=1.0e-11, abs_tol=1.0e-13
@@ -299,7 +382,7 @@ def is_completed_ordinary_result(
             if provenance.get("checkpoint_sha256") != checkpoint_sha256:
                 return False
         spectra = payload["spectra"]
-        for key in ORDINARY_DIRECTIONS:
+        for key in accepted_directions(payload):
             eigenvalues = spectra[key]["eigenvalues"]
             if not isinstance(eigenvalues, list) or len(eigenvalues) < 2:
                 return False
@@ -393,11 +476,12 @@ def is_completed_partial_result(
 
 
 def merge_partial_payloads(
-    payloads: dict[str, dict[str, Any]],
+    payloads: dict[str, dict[str, Any]], *, allow_mixed: bool = False,
 ) -> dict[str, Any]:
-    if set(payloads) != set(ORDINARY_DIRECTIONS):
-        raise ValueError("Exactly three ordinary directions are required")
-    reference = payloads[ORDINARY_DIRECTIONS[0]]
+    directions = tuple(d for d in ORDINARY_DIRECTIONS if d in payloads)
+    if len(directions) not in (2, 3) or set(directions) != set(payloads):
+        raise ValueError("Two or three ordinary directions are required")
+    reference = payloads[directions[0]]
     for direction, payload in payloads.items():
         validate_partial_result_payload(
             payload,
@@ -406,35 +490,37 @@ def merge_partial_payloads(
             ansatz_directory=str(reference["ansatz_directory"]),
             direction=direction,
         )
-        if int(payload["chi"]) != int(reference["chi"]):
+        if not allow_mixed and int(payload["chi"]) != int(reference["chi"]):
             raise ValueError("Split directions disagree on chi")
     spectra = {
         direction: payloads[direction]["spectra"][direction]
-        for direction in ORDINARY_DIRECTIONS
+        for direction in directions
     }
     values = {
         direction: float(spectra[direction]["inverse_correlation_length"])
-        for direction in ORDINARY_DIRECTIONS
+        for direction in directions
     }
-    lower, center, upper = sorted(values.values())
-    ctm_runs = {direction: payloads[direction]["ctm"] for direction in ORDINARY_DIRECTIONS}
+    lower, center, upper = min(values.values()), median(values.values()), max(values.values())
+    ctm_runs = {direction: payloads[direction]["ctm"] for direction in directions}
     provenance_runs = {
         direction: payloads[direction].get("cluster_bundle_provenance")
-        for direction in ORDINARY_DIRECTIONS
+        for direction in directions
     }
     merged = dict(reference)
     merged.update(
         {
             "schema": "c3ctm_three_ordinary_correlation_lengths",
             "schema_version": 6,
+            "accepted_directions": list(directions),
+            "direction_count": len(directions),
             "completed_at_utc": max(
                 str(payloads[direction]["completed_at_utc"])
-                for direction in ORDINARY_DIRECTIONS
+                for direction in directions
             ),
-            "seed": {direction: payloads[direction]["seed"] for direction in ORDINARY_DIRECTIONS},
+            "seed": {direction: payloads[direction]["seed"] for direction in directions},
             "seed_was_randomized": any(
                 bool(payloads[direction].get("seed_was_randomized"))
-                for direction in ORDINARY_DIRECTIONS
+                for direction in directions
             ),
             "ctm": {
                 **reference["ctm"],
@@ -456,7 +542,7 @@ def merge_partial_payloads(
             "correlation_length": None if center <= 0.0 else 1.0 / center,
             "elapsed_seconds": sum(
                 float(payloads[direction].get("elapsed_seconds", 0.0))
-                for direction in ORDINARY_DIRECTIONS
+                for direction in directions
             ),
             "split_direction_results": provenance_runs,
         }
