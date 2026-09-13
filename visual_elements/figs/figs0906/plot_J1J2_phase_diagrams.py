@@ -151,7 +151,10 @@ def draw(studies: list[dict], basename: str) -> None:
     )
 
     output = HERE / f"{basename}.pdf"
+    png_dir = HERE / "png"
+    png_dir.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, bbox_inches="tight")
+    fig.savefig(png_dir / f"{basename}.png", bbox_inches="tight", dpi=300)
     print(output)
     plt.close(fig)
 

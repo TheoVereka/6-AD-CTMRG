@@ -130,13 +130,13 @@ def main() -> int:
                     for direction, path in partials.items()
                 }
                 merged = merge_partial_payloads(payloads)
+                if args.dry_run:
+                    print(f"WOULD ASSEMBLE AND IMPORT J2={j2:g} D={D}")
+                    continue
                 if not args.dry_run:
                     temporary = source.with_name(source.name + ".assembling")
                     temporary.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
                     os.replace(temporary, source)
-            if not source.is_file() and args.dry_run:
-                print(f"WOULD ASSEMBLE AND IMPORT J2={j2:g} D={D}")
-                continue
         if not is_completed_ordinary_result(
             source,
             j2=j2,

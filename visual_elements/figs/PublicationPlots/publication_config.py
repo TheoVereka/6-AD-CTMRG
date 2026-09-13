@@ -19,7 +19,23 @@ PROCESSED_OUTPUT_DIR = Path(
     r"D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\processed\publicationPlots"
 )
 FIGURE_OUTPUT_DIR = HERE / "figures"
+ARCHIVED_FIGURE_OUTPUT_DIR = FIGURE_OUTPUT_DIR / "archivedFigures"
 STYLE_PATH = HERE / "plottingStyle" / "everyday_stylesheet.mplstyle"
+
+# These numbered PDFs are retained for reference but kept out of the main
+# publication-figure directory.  The bis figures deliberately remain main.
+ARCHIVED_FIGURES = {
+    3, 4, 5,
+    8, 9, 10, 11, 12,
+    18, 19, 20, 21,
+    23, 24, 25, 26,
+}
+
+FIGURE02_J2_RANGES = {
+    "a": (0.200, 0.235),
+    "b": (0.240, 0.265),
+    "c": (0.270, 0.280),
+}
 
 # Exact global exclusions.  Keep empty to use every discovered observable.
 GLOBAL_BANS = {
@@ -58,13 +74,24 @@ PLOT_BANNED_J2 = {
 # Points remain visible as raw data.  Figure 14 is deliberately checked to
 # contain at most one entry, as its statistic uses the largest three D values.
 TWOC3_M_FIT_BANS = {
-    # Remove only the non-monotone low-D prefixes at the higher J2 values.
-    (0.265, 3), (0.265, 4), (0.265, 5), (0.265, 6),
-    (0.270, 3), (0.270, 4), (0.270, 5), (0.270, 6),
-    (0.275, 3), (0.275, 4), (0.275, 5), (0.275, 6), (0.275, 7),
+        
+    (0.23 , 5),
+    (0.235, 9),#
+    (0.24 , 5),
+    (0.245 , 5),    
+    (0.25 , 5),
+    (0.265, 5), (0.265, 6), (0.265, 7), (0.265, 8),
+    (0.270, 5), (0.270, 6),
+    (0.275, 5), (0.275, 6), (0.275, 7),
 }
 
-NEEL_M_EXTRAP_BANS = {(0.255, 4)}
+NEEL_M_EXTRAP_BANS = {(0.23 ,8),#
+                      (0.245,7),
+                      (0.26 ,9),
+                      (0.265,8),
+                      (0.27 ,8),
+                      (0.275,6),
+                      (0.28 ,8),}
 
 FIT_BANS = {
     2: set(), 3: set(), 4: set(), 5: set(),
@@ -87,6 +114,7 @@ ENERGY_SWITCH_J2 = 0.270
 POWER_ALPHA_BOUNDS = (1.50, 3.00)
 FIT_MAX_NFEV = 100_000
 FIT_CURVE_POINTS = 400
+PNG_DPI = 300
 
 # Plot controls intended for quick manual tuning after the first inspection.
 FIGSIZE = (6.65, 5.2)

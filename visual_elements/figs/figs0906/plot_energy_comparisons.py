@@ -85,7 +85,10 @@ def new_figure(extra_width: float = 3.5):
 def finish(fig, ax, basename: str, *, ncols: int = 1) -> None:
     ax.legend(loc="center left", bbox_to_anchor=(1.03, 0.5), ncols=ncols, fontsize=16)
     output = HERE / f"{basename}.pdf"
+    png_dir = HERE / "png"
+    png_dir.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, bbox_inches="tight")
+    fig.savefig(png_dir / f"{basename}.png", bbox_inches="tight", dpi=300)
     print(output)
     plt.close(fig)
 

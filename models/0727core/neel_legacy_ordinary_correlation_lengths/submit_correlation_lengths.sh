@@ -1,5 +1,5 @@
 #!/bin/bash
-# Submit one Slurm job per selected manifest checkpoint.
+# Submit independent direction jobs for D>=8, replacing sequential jobs safely.
 
 set -euo pipefail
 
@@ -130,6 +130,7 @@ fi
 # prefix is also treated as an active claim during migration because an older
 # running batch may already be computing the same ordinary result.
 declare -A ACTIVE_JOB_BY_NAME
+declare -A ACTIVE_IDS_BY_NAME
 SLURM_USER="${USER:-$(id -un)}"
 if ! SQUEUE_OUTPUT="$(
     squeue --noheader --user="${SLURM_USER}" --format="%i|%.128j|%T"
@@ -146,6 +147,7 @@ while IFS='|' read -r JOB_ID JOB_NAME JOB_STATE; do
     JOB_STATE="${JOB_STATE#"${JOB_STATE%%[![:space:]]*}"}"
     JOB_STATE="${JOB_STATE%"${JOB_STATE##*[![:space:]]}"}"
     ACTIVE_JOB_BY_NAME["${JOB_NAME}"]="${JOB_ID}|${JOB_STATE}"
+    ACTIVE_IDS_BY_NAME["${JOB_NAME}"]="${ACTIVE_IDS_BY_NAME[${JOB_NAME}]-} ${JOB_ID}"
 done <<< "${SQUEUE_OUTPUT}"
 
 ansatz_job_token() {
@@ -260,6 +262,7 @@ submitted=0
 skipped_completed=0
 skipped_active=0
 missing=0
+cancelled=0
 for KEY in "${ALL_KEYS[@]}"; do
     IFS='|' read -r ANSATZ TOKEN D_BOND <<< "${KEY}"
     [[ -z "${SELECTED_ANSATZ_SET[${ANSATZ}]+x}" ]] && continue
@@ -277,7 +280,7 @@ for KEY in "${ALL_KEYS[@]}"; do
     CHECKPOINT_HASH="${HASH_BY_KEY[${KEY}]}"
     HASH_TOKEN="${CHECKPOINT_HASH:0:12}"
     DIRECTIONS=(all)
-    if (( D_BOND >= 10 )); then
+    if (( D_BOND >= 8 )); then
         DIRECTIONS=(env2 env1_ab_env3_ba env3_ab_env1_ba)
     fi
     for DIRECTION in "${DIRECTIONS[@]}"; do
@@ -351,17 +354,54 @@ for KEY in "${ALL_KEYS[@]}"; do
             if [[ "${DIRECTION}" != "all" ]]; then
                 SBATCH_CASE+=("${DIRECTION}")
             fi
-            (
+            SUBMITTED_ID="$(
                 cd "${SCRIPT_DIR}"
                 sbatch \
+                    --parsable \
                     --dependency=singleton \
                     --job-name="${JOB_NAME}" \
                     "${RUN_FILE}" "${SBATCH_CASE[@]}"
-            )
-            ACTIVE_JOB_BY_NAME["${JOB_NAME}"]="submitted-now|PENDING"
+            )"
+            SUBMITTED_ID="${SUBMITTED_ID%%;*}"
+            if [[ ! "${SUBMITTED_ID}" =~ ^[0-9]+$ ]]; then
+                echo "Invalid sbatch job ID: ${SUBMITTED_ID}; leaving sequential jobs intact." >&2
+                exit 2
+            fi
+            echo "SUBMITTED ${SUBMITTED_ID} (${JOB_NAME})"
+            ACTIVE_JOB_BY_NAME["${JOB_NAME}"]="${SUBMITTED_ID}|PENDING"
         fi
         submitted=$((submitted + 1))
     done
+
+    # Reached only after every direction is complete, already queued, or
+    # successfully submitted. set -e leaves the old job intact on sbatch failure.
+    if (( D_BOND >= 8 )); then
+        SEQUENTIAL_SUFFIX="${TOKEN#J2_}-D${D_BOND}"
+        CURRENT_SEQUENTIAL_NAME="${ORDINARY_JOB_PREFIX}-${ANSATZ_TOKEN}-${SEQUENTIAL_SUFFIX}-${HASH_TOKEN}"
+        SEQUENTIAL_NAMES=("${CURRENT_SEQUENTIAL_NAME}" "clo6-${ANSATZ_TOKEN}-${SEQUENTIAL_SUFFIX}")
+        if [[ "${ANSATZ}" == "2tensor_twoC3" ]]; then
+            SEQUENTIAL_NAMES+=("clo5-2c3-${SEQUENTIAL_SUFFIX}" "cl-${SEQUENTIAL_SUFFIX}")
+        fi
+        for OLD_NAME in "${SEQUENTIAL_NAMES[@]}"; do
+            for OLD_ID in ${ACTIVE_IDS_BY_NAME[${OLD_NAME}]-}; do
+                if [[ "${OLD_NAME}" != "${CURRENT_SEQUENTIAL_NAME}" ]]; then
+                    LOGGED_HASH="$(active_log_checkpoint_hash "${OLD_ID}" || true)"
+                    if [[ "${LOGGED_HASH}" != "${CHECKPOINT_HASH}" ]] || \
+                       { [[ "${OLD_NAME}" == cl-* ]] && [[ "$(legacy_log_class "${OLD_ID}")" != ordinary ]]; }; then
+                        echo "KEEP old job ${OLD_ID} (${OLD_NAME}): current-tensor ordinary calculation is not confirmed."
+                        continue
+                    fi
+                fi
+                if [[ "${DRY_RUN}" -eq 1 ]]; then
+                    echo "WOULD CANCEL sequential job ${OLD_ID} (${OLD_NAME}) after all three directions are covered"
+                else
+                    scancel "${OLD_ID}"
+                    echo "CANCELLED sequential job ${OLD_ID} (${OLD_NAME}) after all three directions are covered"
+                fi
+                cancelled=$((cancelled + 1))
+            done
+        done
+    fi
 done
 
-echo "Submission summary: submitted=${submitted}, skipped_completed=${skipped_completed}, skipped_active=${skipped_active}, missing=${missing}, dry_run=${DRY_RUN}."
+echo "Submission summary: submitted=${submitted}, skipped_completed=${skipped_completed}, skipped_active=${skipped_active}, cancelled_sequential=${cancelled}, missing=${missing}, dry_run=${DRY_RUN}."

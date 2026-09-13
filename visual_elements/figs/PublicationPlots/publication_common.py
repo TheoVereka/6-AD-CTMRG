@@ -599,6 +599,7 @@ def _raw_vs_j2(ax, figure: int, rows: list[dict], *, observable: str,
                error_field: str | None, color: str, label_prefix: str = r"$D=",
                palette: dict[int, str] | None = None,
                connect: bool = False,
+               connect_ranges: dict[int, tuple[tuple[float, float], ...]] | None = None,
                labeler: Callable[[int], str] | None = None) -> list[dict]:
     output = []
     groups = _groups(
@@ -615,10 +616,23 @@ def _raw_vs_j2(ax, figure: int, rows: list[dict], *, observable: str,
         yerr = [row[error_field] for row in plot_group] if error_field else None
         if plot_group:
             label = labeler(int(D)) if labeler else rf"{label_prefix}{D}$"
+            segmented = connect_ranges is not None and int(D) in connect_ranges
             _errorbar(ax, [row["J2"] for row in plot_group], [row[observable] for row in plot_group],
                       yerr=yerr, color=series_color, alpha=alpha,
                       label=label,
-                      linestyle="-" if connect else "none")
+                      linestyle="-" if connect and not segmented else "none")
+            if segmented:
+                for lower, upper in connect_ranges[int(D)]:
+                    segment = [
+                        row for row in plot_group
+                        if lower - 1e-12 <= row["J2"] <= upper + 1e-12
+                    ]
+                    if len(segment) >= 2:
+                        ax.plot(
+                            [row["J2"] for row in segment],
+                            [row[observable] for row in segment],
+                            color=series_color, alpha=alpha,
+                        )
         output.extend(_row(figure, row, series=f"raw_D{D}", x=row["J2"], y=row[observable],
                            y_error=row[error_field] if error_field else None) for row in group)
     return output
@@ -852,20 +866,35 @@ def _plot_energy_combined(figure: int, neel: list[dict], twoc3: list[dict]):
 
 
 def _plot_raw_energy_ansatz_comparison(neel: list[dict], twoc3: list[dict]):
-    figure = "21_26"
+    figure = "21+26"
     fig, ax, _ = _new_figure(extra_width=cfg.TWO_COLUMN_LEGEND_EXTRA_WIDTH)
     data = _raw_vs_j2(
         ax, figure, neel, observable="E", error_field=None, color=BLUE,
         labeler=lambda D: rf"$\mathrm{{N\acute{{e}}el}},\ D={D}$",
     )
+    neel_handles, neel_labels = ax.get_legend_handles_labels()
     data += _raw_vs_j2(
         ax, figure, twoc3, observable="E", error_field=None, color=RED,
         labeler=lambda D: rf"$2\mathrm{{C}}3,\ D={D}$",
     )
+    all_handles, all_labels = ax.get_legend_handles_labels()
+    twoc3_handles = all_handles[len(neel_handles):]
+    twoc3_labels = all_labels[len(neel_labels):]
+    target = max(len(neel_handles), len(twoc3_handles))
+    missing = target - len(neel_handles)
+    neel_handles += [Line2D([], [], linestyle="none") for _ in range(missing)]
+    neel_labels += [""] * missing
+    missing = target - len(twoc3_handles)
+    twoc3_handles += [Line2D([], [], linestyle="none") for _ in range(missing)]
+    twoc3_labels += [""] * missing
     _add_vertical_lines(ax)
     ax.set_xlabel(r"$J_2$")
     ax.set_ylabel(r"$E$")
-    _outside_legend(ax, ncols=2)
+    _outside_legend(
+        ax, ncols=2,
+        handles=neel_handles + twoc3_handles,
+        labels=neel_labels + twoc3_labels,
+    )
     return fig, data, []
 
 
@@ -992,6 +1021,7 @@ def render_figure_12_bis(dataset: dict[str, list[dict]]):
         ax, 12, dataset[ANSATZ_TWOC3], observable="delta",
         error_field="delta_error", color=ORANGE,
         palette=ORANGE_D_COLORS, connect=True,
+        connect_ranges={11: ((0.230, 0.235), (0.275, 0.340))},
     )
     ax.set_xlabel(r"$J_2$")
     ax.set_ylabel(r"$\Delta$")
@@ -1029,29 +1059,80 @@ def _write_csv(path: Path, rows: list[dict]):
         writer.writeheader(); writer.writerows(rows)
 
 
+def _save_figure(fig, pdf_path: Path) -> None:
+    """Save a PDF and its PNG counterpart in a dedicated png subdirectory."""
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+    png_dir = pdf_path.parent / "png"
+    png_dir.mkdir(parents=True, exist_ok=True)
+    fig.savefig(pdf_path, bbox_inches="tight")
+    fig.savefig(
+        png_dir / f"{pdf_path.stem}.png",
+        bbox_inches="tight", dpi=cfg.PNG_DPI,
+    )
+
+
+def _numbered_output_dir(figure: int) -> Path:
+    if figure in cfg.ARCHIVED_FIGURES:
+        return cfg.ARCHIVED_FIGURE_OUTPUT_DIR
+    return cfg.FIGURE_OUTPUT_DIR
+
+
+def render_figure_02_variant(
+    suffix: str, dataset: dict[str, list[dict]],
+):
+    try:
+        lower, upper = cfg.FIGURE02_J2_RANGES[suffix]
+    except KeyError as exc:
+        raise ValueError(f"Unknown figure 02 variant {suffix!r}") from exc
+    selected = [
+        row for row in dataset[ANSATZ_NEEL]
+        if lower - 1e-12 <= row["J2"] <= upper + 1e-12
+    ]
+    return _plot_m_xi(f"02_{suffix}", selected, fit_kind="linear")
+
+
+def run_figure_02_variant(
+    suffix: str, dataset: dict[str, list[dict]] | None = None,
+) -> Path:
+    plt.style.use(cfg.STYLE_PATH)
+    cfg.PROCESSED_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    dataset = load_dataset() if dataset is None else dataset
+    fig, data, fits = render_figure_02_variant(suffix, dataset)
+    stem = f"figure_02_{suffix}"
+    output = cfg.FIGURE_OUTPUT_DIR / f"{stem}.pdf"
+    _save_figure(fig, output)
+    plt.close(fig)
+    _write_csv(cfg.PROCESSED_OUTPUT_DIR / f"{stem}_data.csv", data)
+    _write_csv(cfg.PROCESSED_OUTPUT_DIR / f"{stem}_fits.csv", fits)
+    print(output)
+    return output
+
+
 def run_figure(figure: int, dataset: dict[str, list[dict]] | None = None) -> Path:
     if figure == 14 and len(cfg.FIT_BANS[14]) > 1:
         raise ValueError("Figure 14 FIT_BANS may contain at most one (J2, D) point")
     plt.style.use(cfg.STYLE_PATH)
-    cfg.FIGURE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     cfg.PROCESSED_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     dataset = load_dataset() if dataset is None else dataset
     fig, data, fits = render_figure(figure, dataset)
-    figure_path = cfg.FIGURE_OUTPUT_DIR / f"figure_{figure:02d}.pdf"
-    fig.savefig(figure_path, bbox_inches="tight")
+    figure_path = _numbered_output_dir(figure) / f"figure_{figure:02d}.pdf"
+    _save_figure(fig, figure_path)
     plt.close(fig)
+    if figure in cfg.ARCHIVED_FIGURES:
+        (cfg.FIGURE_OUTPUT_DIR / f"figure_{figure:02d}.pdf").unlink(missing_ok=True)
+        (cfg.FIGURE_OUTPUT_DIR / "png" / f"figure_{figure:02d}.png").unlink(missing_ok=True)
     _write_csv(cfg.PROCESSED_OUTPUT_DIR / f"figure_{figure:02d}_data.csv", data)
     _write_csv(cfg.PROCESSED_OUTPUT_DIR / f"figure_{figure:02d}_fits.csv", fits)
     if figure == 11:
         bis, bis_data = render_figure_11_bis(dataset)
         bis_path = cfg.FIGURE_OUTPUT_DIR / "figure_11_bis.pdf"
-        bis.savefig(bis_path, bbox_inches="tight")
+        _save_figure(bis, bis_path)
         plt.close(bis)
         _write_csv(cfg.PROCESSED_OUTPUT_DIR / "figure_11_bis_data.csv", bis_data)
     if figure == 12:
         bis, bis_data = render_figure_12_bis(dataset)
         bis_path = cfg.FIGURE_OUTPUT_DIR / "figure_12_bis.pdf"
-        bis.savefig(bis_path, bbox_inches="tight")
+        _save_figure(bis, bis_path)
         plt.close(bis)
         _write_csv(cfg.PROCESSED_OUTPUT_DIR / "figure_12_bis_data.csv", bis_data)
     print(figure_path)
@@ -1065,35 +1146,44 @@ def run_narrative_figure(
     cfg.FIGURE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     cfg.PROCESSED_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     dataset = load_dataset() if dataset is None else dataset
-    if name == "21_26":
+    if name == "21+26":
         fig, data, fits = _plot_raw_energy_ansatz_comparison(
             dataset[ANSATZ_NEEL], dataset[ANSATZ_TWOC3]
         )
-        stem = "figure_21_26"
+        stem = "figure_21+26"
     elif name == "07_neel_2c3_comparison":
         fig, data, fits = _plot_neel_twoc3_m_comparison(dataset)
         stem = "figure_07_neel_2c3_comparison"
     else:
         raise ValueError(f"Unknown narrative figure {name}")
     output = cfg.FIGURE_OUTPUT_DIR / f"{stem}.pdf"
-    fig.savefig(output, bbox_inches="tight")
+    _save_figure(fig, output)
     plt.close(fig)
     _write_csv(cfg.PROCESSED_OUTPUT_DIR / f"{stem}_data.csv", data)
     _write_csv(cfg.PROCESSED_OUTPUT_DIR / f"{stem}_fits.csv", fits)
+    if name == "21+26":
+        (cfg.FIGURE_OUTPUT_DIR / "figure_21_26.pdf").unlink(missing_ok=True)
+        (cfg.FIGURE_OUTPUT_DIR / "png" / "figure_21_26.png").unlink(missing_ok=True)
+        (cfg.PROCESSED_OUTPUT_DIR / "figure_21_26_data.csv").unlink(missing_ok=True)
+        (cfg.PROCESSED_OUTPUT_DIR / "figure_21_26_fits.csv").unlink(missing_ok=True)
     print(output)
     return 0
 
 
 def run_figures(figures=range(1, 29)) -> None:
+    figures = [int(figure) for figure in figures]
     dataset = load_dataset()
     if not dataset[ANSATZ_NEEL]:
         raise RuntimeError(f"No Neel data found below {cfg.NEEL_DATA_ROOT}")
     if not dataset[ANSATZ_TWOC3]:
         raise RuntimeError(f"No 2C3 data found below {cfg.TWOC3_DATA_ROOT}")
     for figure in figures:
-        run_figure(int(figure), dataset)
+        run_figure(figure, dataset)
+    if 2 in figures:
+        for suffix in cfg.FIGURE02_J2_RANGES:
+            run_figure_02_variant(suffix, dataset)
     run_narrative_figure("07_neel_2c3_comparison", dataset)
-    run_narrative_figure("21_26", dataset)
+    run_narrative_figure("21+26", dataset)
 
 
 def single_main(figure: int) -> int:
