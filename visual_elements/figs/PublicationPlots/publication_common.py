@@ -834,6 +834,7 @@ def _plot_raw_energy_ansatz_comparison(neel: list[dict], twoc3: list[dict]):
         ax, figure, twoc3, observable="E", error_field=None, color=RED,
         labeler=lambda D: rf"$2\mathrm{{C}}3,\ D={D}$",
     )
+    _add_vertical_lines(ax)
     ax.set_xlabel(r"$J_2$")
     ax.set_ylabel(r"$E$")
     _outside_legend(ax, ncols=2)
