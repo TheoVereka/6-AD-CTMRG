@@ -34,7 +34,17 @@ GLOBAL_BANS = {
 # Whole-D exclusions for each ansatz.
 GLOBAL_BANNED_DS = {
     "Neel": {3},
-    "2C3": {3, 4, 5},
+    "2C3": {3, 4},
+}
+
+# Observable-specific lower-D cutoffs, applied consistently to plotting,
+# fitting/statistics, and each figure's exported CSV rows.
+OBSERVABLE_MIN_D = {
+    "2C3": {
+        "m": 5,
+        "delta": 6,
+        "E": 6,
+    },
 }
 
 # J2 values hidden from every PDF but retained in exported raw data, errors,

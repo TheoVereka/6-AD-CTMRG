@@ -262,6 +262,16 @@ def _finite(rows: list[dict], *fields: str) -> list[dict]:
     return [row for row in rows if all(np.isfinite(row[field]) for field in fields)]
 
 
+def _observable_rows(rows: list[dict], observable: str) -> list[dict]:
+    """Apply the ansatz/observable D cutoff before plotting, fitting, or export."""
+    return [
+        row for row in rows
+        if row["D"] >= cfg.OBSERVABLE_MIN_D.get(row["ansatz"], {}).get(
+            observable, cfg.MIN_D
+        )
+    ]
+
+
 def _groups(rows: list[dict], field: str) -> dict[float | int, list[dict]]:
     output = {}
     for row in rows:
@@ -276,7 +286,10 @@ def _safe_sigma(values: np.ndarray) -> np.ndarray:
 
 
 def fit_m_xi(rows: list[dict], *, absolute: bool, power: bool) -> dict | None:
-    rows = _finite(rows, "inverse_xi", "inverse_xi_error", "m", "m_error")
+    rows = _finite(
+        _observable_rows(rows, "m"),
+        "inverse_xi", "inverse_xi_error", "m", "m_error",
+    )
     minimum = 3 if power else 2
     if len(rows) < minimum:
         return None
@@ -353,7 +366,7 @@ def _covariance(result, n_data: int, *, absolute_sigma: bool = False) -> np.ndar
 
 
 def fit_linear_invD(rows: list[dict]) -> dict | None:
-    rows = _finite(rows, "m", "m_error")
+    rows = _finite(_observable_rows(rows, "m"), "m", "m_error")
     if len(rows) < 2:
         return None
     x = np.asarray([1.0 / row["D"] for row in rows])
@@ -369,7 +382,7 @@ def fit_linear_invD(rows: list[dict]) -> dict | None:
 
 
 def fit_energy(rows: list[dict], *, gapped: bool) -> dict | None:
-    rows = _finite(rows, "E")
+    rows = _finite(_observable_rows(rows, "E"), "E")
     if len(rows) < 3:
         return None
     x = np.asarray([1.0 / row["D"] for row in rows])
@@ -406,7 +419,10 @@ def fit_energy(rows: list[dict], *, gapped: bool) -> dict | None:
 
 
 def delta_statistic(rows: list[dict]) -> dict | None:
-    rows = sorted(_finite(rows, "delta", "delta_error"), key=lambda row: row["D"])
+    rows = sorted(
+        _finite(_observable_rows(rows, "delta"), "delta", "delta_error"),
+        key=lambda row: row["D"],
+    )
     rows = rows[-cfg.DELTA_STATISTIC_N_LARGEST_D:]
     if len(rows) < 2:
         return None
@@ -517,7 +533,13 @@ def _plot_m_xi(figure: int, rows: list[dict], *, fit_kind: str | None,
                plot_j2_allow: set[float] | None = None):
     fig, ax, _ = _new_figure(extra_width=cfg.COLORBAR_EXTRA_WIDTH)
     data_out, fits_out = [], []
-    by_j2 = _groups(_finite(rows, "inverse_xi", "inverse_xi_error", "m", "m_error"), "J2")
+    by_j2 = _groups(
+        _finite(
+            _observable_rows(rows, "m"),
+            "inverse_xi", "inverse_xi_error", "m", "m_error",
+        ),
+        "J2",
+    )
     cmap = cm.viridis
     ansatz = rows[0]["ansatz"] if rows else ANSATZ_NEEL
     def show(j2):
@@ -579,7 +601,13 @@ def _raw_vs_j2(ax, figure: int, rows: list[dict], *, observable: str,
                connect: bool = False,
                labeler: Callable[[int], str] | None = None) -> list[dict]:
     output = []
-    groups = _groups(_finite(rows, observable, *([error_field] if error_field else [])), "D")
+    groups = _groups(
+        _finite(
+            _observable_rows(rows, observable),
+            observable, *([error_field] if error_field else []),
+        ),
+        "D",
+    )
     for index, (D, group) in enumerate(groups.items()):
         series_color = palette.get(int(D), color) if palette else color
         alpha = 1.0 if palette else _alpha(index, len(groups))
@@ -598,7 +626,7 @@ def _raw_vs_j2(ax, figure: int, rows: list[dict], *, observable: str,
 
 def _m_extrap(figure: int, rows: list[dict]) -> tuple[list[dict], list[dict]]:
     points, fit_rows = [], []
-    for j2, group in _groups(rows, "J2").items():
+    for j2, group in _groups(_observable_rows(rows, "m"), "J2").items():
         fit_group = [
             row for row in group
             if not _fit_banned(figure, j2, row["D"])
@@ -622,7 +650,7 @@ def _m_extrap(figure: int, rows: list[dict]) -> tuple[list[dict], list[dict]]:
 
 def _delta_extrap(figure: int, rows: list[dict]) -> tuple[list[dict], list[dict]]:
     points, fit_rows = [], []
-    for j2, group in _groups(rows, "J2").items():
+    for j2, group in _groups(_observable_rows(rows, "delta"), "J2").items():
         fit_group = [row for row in group if not _fit_banned(figure, j2, row["D"])]
         result = delta_statistic(fit_group)
         if result is None:
@@ -712,7 +740,7 @@ def _plot_m_delta(figure: int, neel: list[dict], twoc3: list[dict], *, mode: str
 
 def _energy_fits(figure: int, rows: list[dict], *, gapped: bool):
     points, fits = [], []
-    for j2, group in _groups(rows, "J2").items():
+    for j2, group in _groups(_observable_rows(rows, "E"), "J2").items():
         fit_group = [row for row in group if not _fit_banned(figure, j2, row["D"])]
         result = fit_energy(fit_group, gapped=gapped)
         if result is None:
@@ -729,7 +757,7 @@ def _energy_fits(figure: int, rows: list[dict], *, gapped: bool):
 def _plot_energy_invD(figure: int, rows: list[dict], *, fit: str | None, cmap):
     fig, ax, _ = _new_figure(extra_width=cfg.COLORBAR_EXTRA_WIDTH)
     data, fits = [], []
-    by_j2 = _groups(_finite(rows, "E"), "J2")
+    by_j2 = _groups(_finite(_observable_rows(rows, "E"), "E"), "J2")
     ansatz = rows[0]["ansatz"] if rows else ANSATZ_NEEL
     plotted_j2 = [j2 for j2 in by_j2 if _plot_allowed(j2, ansatz)]
     norm = colors.Normalize(min(plotted_j2, default=0.0), max(plotted_j2, default=1.0) or 1.0)
@@ -854,7 +882,10 @@ def _plot_neel_twoc3_m_comparison(dataset: dict[str, list[dict]]):
     for ansatz in (ANSATZ_NEEL, ANSATZ_TWOC3):
         for j2 in cfg.ANSATZ_COMPARISON_J2:
             group = _finite(
-                [row for row in dataset[ansatz] if _key(row["J2"], row["D"])[0] == round(j2, 6)],
+                _observable_rows(
+                    [row for row in dataset[ansatz] if _key(row["J2"], row["D"])[0] == round(j2, 6)],
+                    "m",
+                ),
                 "inverse_xi", "inverse_xi_error", "m", "m_error",
             )
             if not group:
