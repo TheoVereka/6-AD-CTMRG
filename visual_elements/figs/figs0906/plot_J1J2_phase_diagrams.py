@@ -72,6 +72,10 @@ STUDIES = [
         (0.000, 0.220, "Neel"), (0.220, 0.370, "QSL"),
         (0.370, 0.400, "Columnar"), (0.400, 0.500, "Stripe"),
     ]),
+    dict(label="This work 2026", year=2026, method="CTMRG", phases=[
+        (0.000, 0.240, "Neel"), (0.240, 0.270, "QSL"),
+        (0.270, 0.500, "PVB"),
+    ]),
 ]
 
 REMOVED_FROM_VARIATIONAL = {
