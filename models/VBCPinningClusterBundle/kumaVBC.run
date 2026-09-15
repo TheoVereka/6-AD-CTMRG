@@ -1,0 +1,25 @@
+#!/bin/bash
+#SBATCH --job-name=vbcZ6
+#SBATCH --qos=long
+#SBATCH --partition=h100
+#SBATCH --gres=gpu:1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=90G
+#SBATCH --time=167:59:50
+#SBATCH --output=output_%x_%j.log
+
+set -euo pipefail
+module load nvhpc/24.7-mpi
+module load cuda/12.5.1
+source /home/pghosh/venvs/6adctmrg_Kuma/bin/activate
+
+# The batch script itself is a Slurm spool copy. The submitter exports the
+# actual SCP bundle path; SLURM_SUBMIT_DIR/PWD are fallbacks for direct sbatch.
+BUNDLE_DIR="${BUNDLE_DIR:-${SLURM_SUBMIT_DIR:-${PWD}}}"
+BUNDLE_DIR="$(cd -- "${BUNDLE_DIR}" && pwd)"
+if [[ "${REPLICA:-}" == "2" ]]; then
+    unset SEED_CKPT
+fi
+export STAGE_HOURS="${STAGE_HOURS:-26}"
+bash "${BUNDLE_DIR}/run_vbc_branch.sh"

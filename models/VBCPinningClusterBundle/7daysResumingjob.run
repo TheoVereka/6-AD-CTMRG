@@ -1,0 +1,33 @@
+#!/bin/bash
+#SBATCH --qos long
+#SBATCH --partition gpu
+#SBATCH -e ./job-%N-%j.error
+#SBATCH -o ./job-%N-%j.out
+#SBATCH --gres=gpu:1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=40G
+#SBATCH --time=167:59:50
+#SBATCH --exclude=i39
+
+# Izar replica 2: independent deterministic random start and a seven-day
+# allocation. Manual resubmission resumes completed/partial field stages.
+set -euo pipefail
+: "${REPLICA:?REPLICA must be exported}"
+[[ "${REPLICA}" == "2" ]] || { echo "7daysResumingjob.run is replica 2 only" >&2; exit 2; }
+unset SEED_CKPT
+
+echo "***** START OF IZAR REPLICA 2 *****"
+module load gcc/11.3.0
+module load cuda/11.8.0
+source /home/chye/venvs/6adctmrg_Izar/bin/activate
+
+# Slurm executes a spool copy of this script, so BASH_SOURCE points into
+# /var/spool/slurmd rather than to the submitted bundle.
+BUNDLE_DIR="${BUNDLE_DIR:-${SLURM_SUBMIT_DIR:-${PWD}}}"
+BUNDLE_DIR="$(cd -- "${BUNDLE_DIR}" && pwd)"
+bash "${BUNDLE_DIR}/izar_memory_guard.sh"
+export STAGE_HOURS="${STAGE_HOURS:-26}"
+bash "${BUNDLE_DIR}/run_vbc_branch.sh"
+
+echo "***** END OF IZAR REPLICA 2 *****"

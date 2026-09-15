@@ -1,0 +1,93 @@
+#!/bin/bash
+#SBATCH --job-name=vbcZ6
+#SBATCH --qos=long
+#SBATCH --partition=h100
+#SBATCH --gres=gpu:1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=90G
+#SBATCH --time=167:59:50
+#SBATCH --output=output_%x_%j.log
+
+# Follow one VBC texture adiabatically to the unbiased Hamiltonian.  The two
+# branches always use the identical twoC3 tensors; only the temporary NN
+# source differs.  Consequently only the h=0 energies are compared.
+set -euo pipefail
+
+: "${D:?D must be exported}"
+: "${CHI:?CHI must be exported}"
+: "${J2:?J2 must be exported}"
+: "${BRANCH:?BRANCH must be exported (plaquette or dimer-plaquette)}"
+: "${ORIENTATION:?ORIENTATION must be exported (0, 1, or 2)}"
+: "${REPLICA:?REPLICA must be exported}"
+
+if [[ "${BRANCH}" != "plaquette" && "${BRANCH}" != "dimer-plaquette" ]]; then
+    echo "Invalid BRANCH=${BRANCH}" >&2
+    exit 2
+fi
+if [[ ! "${ORIENTATION}" =~ ^[012]$ ]]; then
+    echo "Invalid ORIENTATION=${ORIENTATION}" >&2
+    exit 2
+fi
+
+module load nvhpc/24.7-mpi
+module load cuda/12.5.1
+source /home/pghosh/venvs/6adctmrg_Kuma/bin/activate
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "${SCRIPT_DIR}"
+
+# Tested 0907-core values. Override either variable through sbatch --export.
+STAGE_HOURS="${STAGE_HOURS:-26}"
+FIELDS_TEXT="${VBC_FIELDS:-0.08 0.04 0.02 0.01 0.0}"
+read -r -a FIELDS <<< "${FIELDS_TEXT}"
+
+OUTROOT="${OUTROOT:-./Results_VBC_branches}"
+RUNROOT="${OUTROOT}/J2_${J2}/D_${D}/orientation_${ORIENTATION}/${BRANCH}/replica_${REPLICA}"
+mkdir -p "${RUNROOT}"
+
+# Independent, reproducible replicas. Decimal J2 is converted to an integer.
+J2_CODE="${J2/./}"
+SEED=$((100000 * REPLICA + 1000 * D + 10 * ORIENTATION + 10#${J2_CODE}))
+PREVIOUS_CKPT="${SEED_CKPT:-}"
+
+for FIELD in "${FIELDS[@]}"; do
+    FIELD_LABEL="${FIELD/./p}"
+    STAGE_DIR="${RUNROOT}/h_${FIELD_LABEL}"
+    mkdir -p "${STAGE_DIR}"
+
+    EXTRA_ARGS=(--no-mean-field-init)
+    if [[ -n "${PREVIOUS_CKPT}" ]]; then
+        if [[ ! -f "${PREVIOUS_CKPT}" ]]; then
+            echo "Missing continuation checkpoint: ${PREVIOUS_CKPT}" >&2
+            exit 3
+        fi
+        EXTRA_ARGS+=(--resume "${PREVIOUS_CKPT}")
+    fi
+
+    echo "branch=${BRANCH} orientation=${ORIENTATION} replica=${REPLICA} h=${FIELD}"
+    python ./main_C3.py \
+        --J2 "${J2}" \
+        --ansatz twoc3 \
+        --Ds "${D}" \
+        --chi-min "${CHI}" \
+        --chi-max "${CHI}" \
+        --chi-step 1 \
+        --hours "${STAGE_HOURS}" \
+        --vbc-branch "${BRANCH}" \
+        --vbc-orientation "${ORIENTATION}" \
+        --vbc-field "${FIELD}" \
+        --fix-seed \
+        --seed "${SEED}" \
+        --output-dir "${STAGE_DIR}" \
+        "${EXTRA_ARGS[@]}"
+
+    PREVIOUS_CKPT="${STAGE_DIR}/sweep_D${D}_chi${CHI}_best.pt"
+    if [[ ! -f "${PREVIOUS_CKPT}" ]]; then
+        echo "Stage h=${FIELD} did not produce ${PREVIOUS_CKPT}" >&2
+        exit 4
+    fi
+done
+
+echo "END OF VBC BRANCH: ${RUNROOT}"
+
