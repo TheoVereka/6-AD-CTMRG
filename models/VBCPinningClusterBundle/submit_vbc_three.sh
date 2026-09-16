@@ -13,6 +13,9 @@ J2="0.30"
 D_VALUES=(5 6 7 8 9 10 11)
 BRANCHES=(plaquette dimer-plaquette rank-split)
 OUTROOT="${OUTROOT:-${BUNDLE_DIR}/Results_VBC_three}"
+# Explicitly override an inherited Izar STAGE_HOURS=12 in sbatch --export=ALL.
+# Five 26 h stages fit within Kuma's 168 h allocation, leaving overhead.
+STAGE_HOURS_PER_FIELD="${THREE_STAGE_HOURS:-26}"
 
 kuma_chi_for_D() {
     case "$1" in
@@ -78,10 +81,10 @@ for D in "${D_VALUES[@]}"; do
         esac
         sbatch --chdir="${BUNDLE_DIR}" \
             --job-name="k3D${D}${SHORT_BRANCH}" \
-            --export="ALL,BUNDLE_DIR=${BUNDLE_DIR},OUTROOT=${OUTROOT},D=${D},CHI=${CHI},J2=${J2},BRANCH=${BRANCH},ORIENTATION=${ORIENTATION},RANK_ORDER=${RANK_ORDER},REPLICA=1,SEED_CKPT=${SEED_CKPT}" \
+            --export="ALL,BUNDLE_DIR=${BUNDLE_DIR},OUTROOT=${OUTROOT},STAGE_HOURS=${STAGE_HOURS_PER_FIELD},D=${D},CHI=${CHI},J2=${J2},BRANCH=${BRANCH},ORIENTATION=${ORIENTATION},RANK_ORDER=${RANK_ORDER},REPLICA=1,SEED_CKPT=${SEED_CKPT}" \
             "${BUNDLE_DIR}/kumaVBC.run"
         submitted=$((submitted + 1))
     done
 done
 
-echo "Kuma three-source sweep: submitted=${submitted} (replica 1 only)."
+echo "Kuma three-source sweep: submitted=${submitted} (replica 1 only, ${STAGE_HOURS_PER_FIELD} h per field)."

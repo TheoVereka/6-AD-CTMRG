@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import math
 import re
 from dataclasses import asdict, dataclass
@@ -35,9 +36,17 @@ REPLICA_RE = re.compile(r"replica_(\d+)")
 
 
 def read_scalar_hyperparams(path: Path) -> dict[str, str]:
-    """Read the scalar subset needed here without requiring PyYAML."""
+    """Read scalar hyperparameters from PyYAML or the driver's JSON fallback."""
+    raw = path.read_text(encoding="utf-8", errors="replace")
+    try:
+        document = json.loads(raw)
+    except json.JSONDecodeError:
+        document = None
+    if isinstance(document, dict):
+        return {str(key): str(value) for key, value in document.items()
+                if isinstance(value, (str, int, float, bool))}
     values: dict[str, str] = {}
-    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+    for raw_line in raw.splitlines():
         match = re.match(r"^([A-Za-z0-9_]+)\s*:\s*(.*?)\s*$", raw_line)
         if match:
             values[match.group(1)] = match.group(2).strip("'\"")
@@ -276,6 +285,11 @@ def main() -> int:
     args = parse_args()
     if not args.input.is_dir():
         raise FileNotFoundError(f"branch result directory does not exist: {args.input}")
+    if (args.input.name == "Results_VBC_three" or
+            next(args.input.glob("J2_*/D_*/orientation_*/rank-split"), None) is not None):
+        raise SystemExit(
+            "This is a three-source sweep. Use analyze_three_source_runs.py "
+            "with the same --input directory.")
     rows = select_highest_chi(discover(args.input))
     if not rows:
         raise RuntimeError("no VBC branch observations found")

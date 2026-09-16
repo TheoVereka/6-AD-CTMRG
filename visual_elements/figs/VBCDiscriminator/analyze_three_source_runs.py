@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Analyze the seeded Kuma plaquette/dimer/rank-split continuations.
+"""Plot complete and partial Kuma three-source pinning continuations.
 
-Finite-h points diagnose branch following.  Only h=0 points enter the common-
-Hamiltonian energy comparison.  Because this sweep has one seeded replica,
-the reported lowest source is a variational hint rather than a resolved phase
-decision; chi lookahead supplies the numerical-resolution floor.
+Finite-h energies belong to different Hamiltonians and are shown only as
+continuation diagnostics.  Only h=0 points enter source-energy comparisons.
+One seeded replica cannot by itself establish a phase decision.
 """
 
 from __future__ import annotations
@@ -47,6 +46,8 @@ ATTRS = {
     "rank-split": "rank_split",
 }
 REPLICA_RE = re.compile(r"replica_(\d+)")
+EXPECTED_DS = tuple(range(5, 12))
+EXPECTED_FIELDS = (0.08, 0.04, 0.02, 0.01, 0.0)
 
 
 @dataclass(frozen=True)
@@ -67,6 +68,7 @@ class Stage:
     middle_fraction: float
     clock_z6: float
     texture: str
+    hours_budget: float = math.nan
 
 
 @dataclass(frozen=True)
@@ -128,6 +130,7 @@ def discover(root: Path) -> list[Stage]:
                 G0=obs.G0, G1=obs.G1, G2=obs.G2, delta=obs.delta,
                 middle_fraction=obs.middle_fraction, clock_z6=obs.clock_z6,
                 texture=obs.texture,
+                hours_budget=float(hp.get("hours", "nan")),
             ))
         except (KeyError, OSError, TypeError, ValueError) as exc:
             failures.append(f"{path}: {exc}")
@@ -169,10 +172,14 @@ def compare_zero_field(rows: list[Stage], absolute_floor: float) -> list[ZeroFie
         resolution = max([absolute_floor] + chi_shifts)
         ratio = gap / resolution
         endpoint = best[lowest].texture
-        if ratio < 3.0:
+        textures = {point.texture for point in best.values()}
+        if len(textures) == 1:
+            assessment = (f"SAME ENDPOINT TEXTURE ({endpoint}); source-energy gaps "
+                          "do not compare distinct phases")
+        elif ratio < 3.0:
             assessment = "UNRESOLVED: lowest two sources within 3x numerical resolution"
         else:
-            assessment = "VARIATIONAL HINT ONLY: one seeded replica"
+            assessment = "SOURCE MINIMUM ONLY: distinct textures, one seeded replica"
 
         p = best["plaquette"]
         d = best["dimer-plaquette"]
@@ -203,6 +210,8 @@ def compare_zero_field(rows: list[Stage], absolute_floor: float) -> list[ZeroFie
 
 
 def write_csv(rows: list, output: Path) -> None:
+    if not rows:
+        return
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=list(asdict(rows[0])))
@@ -210,34 +219,151 @@ def write_csv(rows: list, output: Path) -> None:
         writer.writerows(asdict(row) for row in rows)
 
 
-def plot_hysteresis(rows: list[Stage], output: Path) -> None:
+def plot_continuation(rows: list[Stage], output: Path) -> None:
     dimensions = sorted({r.D for r in rows})
-    fig, axes = plt.subplots(2, 4, figsize=(13.0, 6.3), sharex=True, sharey=True)
-    for ax, D in zip(axes.flat, dimensions):
+    quantities = (
+        ("energy_per_site", "E/site"),
+        ("delta", "NN splitting Delta"),
+        ("middle_fraction", "middle fraction q"),
+        ("clock_z6", "clock K6"),
+    )
+    fig, axes = plt.subplots(len(dimensions), 4,
+                             figsize=(14.0, max(3.0, 2.0 * len(dimensions))),
+                             squeeze=False)
+    for row_index, D in enumerate(dimensions):
         for branch in BRANCHES:
-            subset = [r for r in rows if r.D == D and r.branch == branch]
-            subset.sort(key=lambda r: r.field, reverse=True)
-            if subset:
-                ax.plot([r.field for r in subset], [r.middle_fraction for r in subset],
-                        color=COLORS[branch], marker=MARKERS[branch], ms=3.5,
-                        lw=1.0, label=LABELS[branch])
-        ax.set_title(f"D={D}")
-        ax.set_ylim(-0.05, 1.05)
-        ax.invert_xaxis()
-        ax.grid(alpha=0.2)
-    for ax in axes.flat[len(dimensions):]:
-        ax.set_visible(False)
-    for ax in axes[:, 0]:
-        ax.set_ylabel("middle fraction q")
-    for ax in axes[-1, :]:
-        if ax.get_visible():
-            ax.set_xlabel("pinning field h")
-    axes.flat[0].legend(fontsize=8)
-    fig.suptitle("Three-source pinning-field continuation")
+            subset = sorted((r for r in rows if r.D == D and r.branch == branch),
+                            key=lambda r: r.field, reverse=True)
+            if not subset:
+                continue
+            for column, (attribute, _) in enumerate(quantities):
+                axes[row_index, column].plot(
+                    [r.field for r in subset],
+                    [getattr(r, attribute) for r in subset],
+                    color=COLORS[branch], marker=MARKERS[branch], ms=3.3,
+                    lw=0.9, label=LABELS[branch])
+        axes[row_index, 0].set_ylabel(f"D={D}")
+        for ax in axes[row_index]:
+            ax.invert_xaxis()
+            ax.grid(alpha=0.2)
+            if row_index == len(dimensions) - 1:
+                ax.set_xlabel("pinning field h")
+    for ax, (_, title) in zip(axes[0], quantities):
+        ax.set_title(title)
+    axes[0, 0].legend(fontsize=7)
+    fig.suptitle("Available continuation points; finite-h energies are not phase comparisons")
     fig.tight_layout()
     output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, bbox_inches="tight")
     plt.close(fig)
+
+
+def plot_nn_groups(rows: list[Stage], output: Path) -> None:
+    dimensions = sorted({r.D for r in rows})
+    fig, axes = plt.subplots(2, 4, figsize=(13.0, 6.5), squeeze=False)
+    line_styles = ("-", "--", ":")
+    for ax, D in zip(axes.flat, dimensions):
+        for branch in BRANCHES:
+            subset = sorted((r for r in rows if r.D == D and r.branch == branch),
+                            key=lambda r: r.field, reverse=True)
+            for group, style in enumerate(line_styles):
+                if subset:
+                    ax.plot([r.field for r in subset],
+                            [getattr(r, f"G{group}") for r in subset],
+                            color=COLORS[branch], linestyle=style,
+                            marker=MARKERS[branch], ms=2.4, lw=0.9,
+                            label=f"{branch} G{group}" if D == dimensions[0] else None)
+        ax.set_title(f"D={D}")
+        ax.set_xlabel("pinning field h")
+        ax.set_ylabel("NN correlation")
+        ax.invert_xaxis()
+        ax.grid(alpha=0.2)
+    for ax in axes.flat[len(dimensions):]:
+        ax.set_visible(False)
+    fig.legend(*axes.flat[0].get_legend_handles_labels(),
+               loc="lower center", ncol=3, fontsize=7)
+    fig.suptitle("Geometrically labelled NN groups; lower is stronger AF")
+    fig.tight_layout(rect=(0, 0.07, 1, 0.97))
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_fixed_h_vs_inverse_D(rows: list[Stage], output: Path) -> None:
+    fields = sorted({r.field for r in rows}, reverse=True)
+    quantities = (
+        ("energy_per_site", "E/site"),
+        ("delta", "NN splitting Delta"),
+        ("middle_fraction", "middle fraction q"),
+        ("clock_z6", "clock K6"),
+    )
+    fig, axes = plt.subplots(len(fields), 4,
+                             figsize=(14.0, max(3.0, 2.15 * len(fields))),
+                             squeeze=False)
+    for row_index, field in enumerate(fields):
+        for branch in BRANCHES:
+            subset = sorted((r for r in rows if r.field == field and r.branch == branch),
+                            key=lambda r: 1.0 / r.D)
+            if not subset:
+                continue
+            for column, (attribute, _) in enumerate(quantities):
+                axes[row_index, column].plot(
+                    [1.0 / r.D for r in subset],
+                    [getattr(r, attribute) for r in subset],
+                    color=COLORS[branch], marker=MARKERS[branch], ms=3.3,
+                    lw=0.9, label=LABELS[branch])
+        axes[row_index, 0].set_ylabel(f"h={field:g}")
+        for ax in axes[row_index]:
+            ax.grid(alpha=0.2)
+            if row_index == len(fields) - 1:
+                ax.set_xlabel("1/D")
+    for ax, (_, title) in zip(axes[0], quantities):
+        ax.set_title(title)
+    axes[0, 0].legend(fontsize=7)
+    fig.suptitle("Fixed-h trends; only h=0 energy curves share the same Hamiltonian")
+    fig.tight_layout()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, bbox_inches="tight")
+    plt.close(fig)
+
+
+def write_stage_status(root: Path, rows: list[Stage], output: Path) -> dict[str, int]:
+    observed = {(r.J2, r.D, r.branch, r.replica, r.field): r for r in rows}
+    status_rows: list[dict[str, object]] = []
+    counts: dict[str, int] = {}
+    for D in EXPECTED_DS:
+        for branch in BRANCHES:
+            for field in EXPECTED_FIELDS:
+                key = (0.3, D, branch, 1, field)
+                point = observed.get(key)
+                stage_dir = (root / "J2_0.30" / f"D_{D}" / "orientation_unknown" /
+                             branch / "replica_1" / f"h_{str(field).replace('.', 'p')}")
+                # Discover the actual orientation from the copied output tree.
+                paths = list((root / "J2_0.30" / f"D_{D}").glob(
+                    f"orientation_*/{branch}/replica_1/h_{str(field).replace('.', 'p')}"))
+                if paths:
+                    stage_dir = paths[0]
+                checkpoints = list(stage_dir.glob("sweep_D*_chi*_best.pt"))
+                if point is not None and checkpoints:
+                    status = "observation+checkpoint"
+                elif point is not None:
+                    status = "observation_only"
+                elif checkpoints:
+                    status = "checkpoint_only"
+                else:
+                    status = "not_yet_observed"
+                counts[status] = counts.get(status, 0) + 1
+                status_rows.append(dict(J2=0.3, D=D, branch=branch, replica=1,
+                                        field=field, status=status,
+                                        chi=point.chi if point else "",
+                                        hours_budget=point.hours_budget if point else "",
+                                        stage_directory=str(stage_dir)))
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=list(status_rows[0]))
+        writer.writeheader()
+        writer.writerows(status_rows)
+    return counts
 
 
 def plot_zero_field(comparisons: list[ZeroFieldComparison], output: Path) -> None:
@@ -278,21 +404,30 @@ def main() -> int:
     if not args.input.is_dir():
         raise FileNotFoundError(args.input)
     rows = select_highest_chi(discover(args.input))
+    counts = write_stage_status(args.input, rows, args.output_dir / "stage_status.csv")
     if not rows:
-        raise RuntimeError("no three-source observations found")
+        print(f"No readable stage observations yet; status: {counts}")
+        print(f"Wrote {args.output_dir / 'stage_status.csv'}")
+        return 0
     comparisons = compare_zero_field(rows, args.absolute_floor)
-    if not comparisons:
-        raise RuntimeError("all three sources have not reached h=0 for any D")
 
     write_csv(rows, args.output_dir / "three_source_hysteresis.csv")
-    write_csv(comparisons, args.output_dir / "three_source_zero_field.csv")
-    plot_hysteresis(rows, args.output_dir / "three_source_hysteresis.pdf")
-    plot_zero_field(comparisons, args.output_dir / "three_source_zero_field.pdf")
+    write_csv([r for r in rows if abs(r.field) <= 1.0e-14],
+              args.output_dir / "available_h0_endpoints.csv")
+    plot_continuation(rows, args.output_dir / "continuation_vs_h.pdf")
+    plot_nn_groups(rows, args.output_dir / "nn_groups_vs_h.pdf")
+    plot_fixed_h_vs_inverse_D(rows, args.output_dir / "fixed_h_vs_inverse_D.pdf")
+    if comparisons:
+        write_csv(comparisons, args.output_dir / "three_source_zero_field.csv")
+        plot_zero_field(comparisons, args.output_dir / "three_source_zero_field.pdf")
 
+    print(f"Readable stage observations: {len(rows)} / 105 expected; status: {counts}")
     print("D  lowest source       endpoint texture       gap/resolution  assessment")
     for comp in comparisons:
         print(f"{comp.D:2d} {comp.lowest_source:19s} {comp.lowest_endpoint_texture:22s} "
               f"{comp.gap_over_resolution:8.2f}  {comp.assessment}")
+    if not comparisons:
+        print("No D has all three h=0 endpoints yet; finite-h plots and CSV are available.")
     print(f"\nWrote {args.output_dir}")
     return 0
 

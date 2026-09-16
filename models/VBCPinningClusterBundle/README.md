@@ -92,20 +92,34 @@ rank order is read from the bundled seed correlations and held fixed throughout
 separate `Results_VBC_three` tree, so they cannot collide with the standard
 Kuma sweep.
 
+Each field stage receives 26 optimization hours explicitly (130 h total inside
+the 168 h allocation). An intentional override uses `THREE_STAGE_HOURS`; an
+unrelated inherited `STAGE_HOURS` cannot shorten this sweep at submission.
+
 ```bash
 bash submit_vbc_three.sh
 ```
 
-After copying `Results_VBC_three` back to the repository, generate the full
-`D=5,...,11` continuation and zero-field plots with:
+Copy the whole `Results_VBC_three` tree back to
+`models/VBCPinningClusterBundle/Results_VBC_three` on the local machine,
+including unfinished stage folders. The analysis is local-only and can be
+rerun while cluster jobs are still running:
 
 ```bash
 python visual_elements/figs/VBCDiscriminator/analyze_three_source_runs.py \
   --input models/VBCPinningClusterBundle/Results_VBC_three
 ```
 
-This writes both CSV tables and PDFs under
-`visual_elements/figs/VBCDiscriminator/three_source_comparison`.
+Do not use `analyze_branch_runs.py` for this tree: that script is for the
+separate two-source/two-replica `Results_VBC_branches` experiment.
+
+This writes `stage_status.csv`, all readable stage data and available `h=0`
+endpoints, energy/order parameters versus `h`, labelled NN correlations versus
+`h`, and fixed-`h` trends versus
+`1/D` under `visual_elements/figs/VBCDiscriminator/three_source_comparison`.
+When all three branches for at least one `D` reach `h=0`, it additionally
+writes a common-Hamiltonian energy comparison and `h=0` plots. Finite-`h`
+energies from different sources are *not* phase-energy comparisons.
 
 ## Results
 
