@@ -24,6 +24,35 @@ G1 = {AF, BC, DE}
 G2 = {AB, CD, EF}
 ```
 
+## Replica-1 supervisor figures
+
+To redraw the two requested summary PDFs for every currently available
+cluster/J2 combination (partial continuations are included), run from the
+repository root:
+
+```bash
+python visual_elements/figs/VBCDiscriminator/plot_pinning_supervisor.py
+```
+
+Outputs are under `visual_elements/figs/VBCDiscriminator/replica1_supervisor/`
+as `Kuma/J2_0p30/` and `Izar/J2_0p29/` etc., **exactly two PDFs per J2**.
+The first is a three-column pinning-field figure with one row per available
+`D`, shared axes, and sorted NN correlations. The second has one row per
+`h=0.08,0.04,0.02,0.01,0`, shared `1/D` limits and one shared vertical range
+per observable column. Izar's unrun rank-split column is left blank.
+
+For sorted correlations `C1 <= C2 <= C3` (more negative is stronger), the
+signed texture coordinate in the second figure is explicitly
+
+```text
+omega1 = C2-C1, omega2 = C3-C2,
+eta = (omega1-omega2)/(omega1+omega2).
+```
+
+Thus ideal dimer-plaquette is `eta=+1`, ideal plaquette is `eta=-1`, and
+`eta` is undefined if all three correlations coincide. Only the `h=0`
+energies compare the same Hamiltonian across pinning sources.
+
 ## Decisive calculation
 
 `main_C3.py` now accepts a trace-free NN pinning source.  The plaquette and

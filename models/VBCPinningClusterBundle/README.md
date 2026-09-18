@@ -121,6 +121,23 @@ When all three branches for at least one `D` reach `h=0`, it additionally
 writes a common-Hamiltonian energy comparison and `h=0` plots. Finite-`h`
 energies from different sources are *not* phase-energy comparisons.
 
+For supervisor-facing replica-1 figures with **separate** blue plaquette, red
+dimer, and green rank-split sources, run locally:
+
+```bash
+python visual_elements/figs/VBCDiscriminator/plot_pinning_replica1.py
+```
+
+It reads both `Results_VBC_three` (Kuma) and `Results_VBC_branches` (Izar),
+filters to replica 1, and writes separate PDFs/CSV per cluster, source and J2
+under `visual_elements/figs/VBCDiscriminator/replica1_separate_pins`. At every
+point the three NN correlations are sorted strongest-to-weakest; the CSV also
+records the original G0/G1/G2 group index of each rank. Solid/circle,
+dashed/square and dotted/triangle always mean strongest, middle and weakest.
+The `rank_gaps_vs_h.pdf` panels expose near-overlapping curves without changing
+their plotted correlation values; `sorted_nn_each_rank_vs_h.pdf` additionally
+shows each rank on its own panel and vertical scale.
+
 ## Results
 
 Both clusters write the same tree under `Results_VBC_branches`. After copying
