@@ -41,6 +41,39 @@ The first is a three-column pinning-field figure with one row per available
 `h=0.08,0.04,0.02,0.01,0`, shared `1/D` limits and one shared vertical range
 per observable column. Izar's unrun rank-split column is left blank.
 
+The same command also exports publication data to
+`data/processed/VBCPinningSupervisorCSV/<cluster>/<J2>/<pinning-source>/`.
+Every available `(pinning source, J2)` has exactly two tables:
+`energy.csv` with columns `D,h,E`, and `nn_correlations.csv` with columns
+`D,h,NNcorrStrongest,NNcorrMiddle,NNcorrWeakest`. Rows are ordered first by
+increasing `D`, then by decreasing `h`. Use `--csv-output-dir PATH` to choose
+a different processed-data root.
+
+This plotting entry point uses strict input validation. If any discovered
+observation is only partly copied, lacks `hyperparams.yaml`, is unreadable, or
+cannot be parsed, it aborts before producing any new plots or CSV files and
+reports every offending path. It never warns and continues with that point
+silently omitted. Job directories that have not produced an observation file
+yet are simply not completed observations.
+
+### Positive-field quadratic extrapolation
+
+To fit the three sorted correlations independently using only `h>0`, exclude
+the rank-split source, and extrapolate their splitting to zero field, run:
+
+```bash
+python visual_elements/figs/VBCDiscriminator/fit_pinned_correlations.py
+```
+
+The requested `D=7,8,9` figures are written to
+`quadratic_pinning_extrapolation/`. The multi-page fit PDF exposes every fit,
+including residual quality, curvature on the sampled interval, the
+extrapolated intercept, and the unused measured `h=0` point. Fit coefficients
+and extrapolated splittings are exported to
+`data/processed/VBCPinningQuadraticExtrapolation/`. See
+`QUADRATIC_EXTRAPOLATION_FINDINGS.md` for the present-data assessment and the
+minimal proposed follow-up jobs.
+
 For sorted correlations `C1 <= C2 <= C3` (more negative is stronger), the
 signed texture coordinate in the second figure is explicitly
 

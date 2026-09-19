@@ -1,0 +1,217 @@
+
+===== identity and login message =====
+2026-09-19T11:09:50+02:00
+lyra6.lyra.cluster
+uid=324506(chye) gid=10519(ctmc-unit) groups=10519(ctmc-unit),20034(sb-unit),20149(iphys-unit),25000(epfl-unit),65971(hpc-masters),66541(hpc-cluster-users),67317(hpc-cluster-gpu)
+HOME=/home/chye
+SCRATCH=UNSET
+WORK=UNSET
+SHELL=/bin/bash
+
+===== Slurm version and user associations =====
+slurm 26.05.4
+lyra|master|chye||disable|disable
+
+===== Lyra QOS =====
+normal|1000|3-00:00:00|||
+build|10000|04:00:00|cpu=16,gres/gpu=0,node=1|1|1
+debug|10000|01:00:00|gres/gpu=2|1|5
+long|100|7-00:00:00|||
+
+===== partitions and node resources =====
+PARTITION|AVAIL|TIMELIMIT|NODES|CPUS|MEMORY|GRES|AVAIL_FEATURES
+b200|up|infinite|6|96|1547358|gpu:nvidia_b200:8(S:0-1)|nvidia_b200
+b200|up|infinite|2|96|1547358|gpu:nvidia_b200:8(S:0-3)|nvidia_b200
+rtx6000|up|infinite|14|128|773051+|gpu:nvidia_rtx_pro_6000_blackwell_server_edition:8(S:0-1,4-5)|nvidia_rtx_pro_6000_blackwell_server_edition
+PartitionName=b200
+   AllowGroups=ALL AllowAccounts=ALL AllowQos=ALL
+   AllocNodes=ALL Default=NO QoS=part_b200
+   DefaultTime=00:05:00 DisableRootJobs=NO Exclusive=NO GraceTime=0 Hidden=NO
+   MaxNodes=UNLIMITED MaxTime=UNLIMITED MinNodes=0 LLN=NO MaxCPUsPerNode=UNLIMITED MaxCPUsPerSocket=UNLIMITED
+   NodeSets=b200
+   Nodes=lb[001-008]
+   PriorityJobFactor=1 PriorityTier=1 RootOnly=NO ReqResv=NO OverSubscribe=NO
+   OverTimeLimit=NONE PreemptMode=OFF
+   State=UP TotalCPUs=768 TotalNodes=8 SelectTypeParameters=NONE
+   JobDefaults=(null)
+   DefMemPerCPU=15900 MaxMemPerCPU=15900
+   TRES=cpu=768,mem=12378864M,node=8,billing=583424,gres/gpu=64,gres/gpu:nvidia_b200=64
+   TRESBillingWeights=GRES/gpu:nvidia_b200=9116
+   ResumeTimeout=GLOBAL SuspendTimeout=GLOBAL SuspendTime=GLOBAL PowerDownOnIdle=NO
+
+PartitionName=rtx6000
+   AllowGroups=ALL AllowAccounts=ALL AllowQos=ALL
+   AllocNodes=ALL Default=NO QoS=part_rtx6000
+   DefaultTime=00:05:00 DisableRootJobs=NO Exclusive=NO GraceTime=0 Hidden=NO
+   MaxNodes=UNLIMITED MaxTime=UNLIMITED MinNodes=0 LLN=NO MaxCPUsPerNode=UNLIMITED MaxCPUsPerSocket=UNLIMITED
+   NodeSets=rtx6000
+   Nodes=lr[001-014]
+   PriorityJobFactor=1 PriorityTier=1 RootOnly=NO ReqResv=NO OverSubscribe=NO
+   OverTimeLimit=NONE PreemptMode=OFF
+   State=UP TotalCPUs=1792 TotalNodes=14 SelectTypeParameters=NONE
+   JobDefaults=(null)
+   DefMemPerCPU=5900 MaxMemPerCPU=5900
+   TRES=cpu=1792,mem=10822754M,node=14,billing=357280,gres/gpu=112,gres/gpu:nvidia_rtx_pro_6000_blackwell_server_edition=112
+   TRESBillingWeights=GRES/gpu:nvidia_rtx_pro_6000_blackwell_server_edition=3190
+   ResumeTimeout=GLOBAL SuspendTimeout=GLOBAL SuspendTime=GLOBAL PowerDownOnIdle=NO
+
+
+===== frontend module candidates =====
+module is a function
+module () 
+{ 
+    if [ -z "${LMOD_SH_DBG_ON+x}" ]; then
+        case "$-" in 
+            *v*x*)
+                __lmod_sh_dbg='vx'
+            ;;
+            *v*)
+                __lmod_sh_dbg='v'
+            ;;
+            *x*)
+                __lmod_sh_dbg='x'
+            ;;
+        esac;
+    fi;
+    if [ -n "${__lmod_sh_dbg:-}" ]; then
+        set +$__lmod_sh_dbg;
+        echo "Shell debugging temporarily silenced: export LMOD_SH_DBG_ON=1 for Lmod's output" 1>&2;
+    fi;
+    eval "$($LMOD_CMD shell "$@")" && eval "$(${LMOD_SETTARG_CMD:-:} -s sh)";
+    __lmod_my_status=$?;
+    if [ -n "${__lmod_sh_dbg:-}" ]; then
+        echo "Shell debugging restarted" 1>&2;
+        set -$__lmod_sh_dbg;
+    fi;
+    unset __lmod_sh_dbg;
+    return $__lmod_my_status
+}
+gcc/
+gcc/14.3.0
+nvhpc/
+nvhpc/25.11-mpi
+
+--- module spider gcc ---
+
+--------------------------------------------------------------------------------------------------------------------
+  gcc: gcc/14.3.0
+--------------------------------------------------------------------------------------------------------------------
+
+     Other possible modules matches:
+        gcc-runtime
+
+    This module can be loaded directly: module load gcc/14.3.0
+
+    Help:
+      The GNU Compiler Collection includes front ends for C, C++, Objective-C,
+      Fortran, Ada, and Go, as well as libraries for these languages.
+
+--------------------------------------------------------------------------------------------------------------------
+  To find other possible module matches execute:
+
+      $ module -r spider '.*gcc.*'
+
+
+ 
+
+
+--- module spider cuda ---
+
+--------------------------------------------------------------------------------------------------------------------
+  cuda: cuda/12.9.1
+--------------------------------------------------------------------------------------------------------------------
+
+    You will need to load all module(s) on any one of the lines below before the "cuda/12.9.1" module is available to load.
+
+      gcc/14.3.0
+ 
+    Help:
+      CUDA is a parallel computing platform and programming model invented by
+      NVIDIA. It enables dramatic increases in computing performance by
+      harnessing the power of the graphics processing unit (GPU). Note: This
+      package does not currently install the drivers necessary to run CUDA.
+      These will need to be installed manually. See:
+      https://docs.nvidia.com/cuda/ for details.
+
+
+ 
+
+
+--- module spider nvhpc ---
+
+--------------------------------------------------------------------------------------------------------------------
+  nvhpc: nvhpc/25.11-mpi
+--------------------------------------------------------------------------------------------------------------------
+
+    This module can be loaded directly: module load nvhpc/25.11-mpi
+
+    Help:
+      The NVIDIA HPC SDK is a comprehensive suite of compilers, libraries and
+      tools essential to maximizing developer productivity and the performance
+      and portability of HPC applications. The NVIDIA HPC SDK C, C++, and
+      Fortran compilers support GPU acceleration of HPC modeling and
+      simulation applications with standard C++ and Fortran, OpenACC
+      directives, and CUDA. GPU-accelerated math libraries maximize
+      performance on common HPC algorithms, and optimized communications
+      libraries enable standards-based multi-GPU and scalable systems
+      programming. Performance profiling and debugging tools simplify porting
+      and optimization of HPC applications.
+
+
+ 
+
+
+--- module spider python ---
+
+--------------------------------------------------------------------------------------------------------------------
+  python: python/3.12.12
+--------------------------------------------------------------------------------------------------------------------
+
+     Other possible modules matches:
+        py-biopython, py-gitpython, py-meson-python, py-python-dateutil, python-venv
+
+    You will need to load all module(s) on any one of the lines below before the "python/3.12.12" module is available to load.
+
+      gcc/14.3.0
+ 
+    Help:
+      The Python programming language.
+
+--------------------------------------------------------------------------------------------------------------------
+  To find other possible module matches execute:
+
+      $ module -r spider '.*python.*'
+
+
+ 
+
+
+--- module spider py-virtualenv ---
+
+--------------------------------------------------------------------------------------------------------------------
+  py-virtualenv:
+--------------------------------------------------------------------------------------------------------------------
+     Versions:
+        py-virtualenv/20.35.3
+
+--------------------------------------------------------------------------------------------------------------------
+  For detailed information about a specific "py-virtualenv" package (including how to load the modules) use the module's full name.
+  Note that names that have a trailing (E) are extensions provided by other modules.
+  For example:
+
+     $ module spider py-virtualenv/20.35.3
+--------------------------------------------------------------------------------------------------------------------
+
+ 
+
+
+===== B200 debug-node probe =====
+srun: error: [ESTIMATION] The estimated cost of this job is CHF 0.00
+srun: error: Unable to allocate resources: Invalid qos specification
+
+===== RTX6000 debug-node probe =====
+srun: error: [ESTIMATION] The estimated cost of this job is CHF 0.00
+srun: error: Unable to allocate resources: Invalid qos specification
+
+===== report =====
+Saved report: /home/chye/lyra_probe_20260919_110950.txt

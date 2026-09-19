@@ -10,6 +10,7 @@ pinning sources as variational energies.
 from __future__ import annotations
 
 import argparse
+import csv
 import math
 from collections import defaultdict
 from pathlib import Path
@@ -23,10 +24,13 @@ from matplotlib.lines import Line2D
 from analyze_three_source_runs import (
     BRANCHES, COLORS, EXPECTED_FIELDS, discover, select_highest_chi,
 )
-from plot_pinning_replica1 import DEFAULT_BUNDLE, HERE, RankedStage, rank_stage
+from plot_pinning_replica1 import (
+    DEFAULT_BUNDLE, HERE, REPO, RankedStage, rank_stage,
+)
 
 
 DEFAULT_OUTPUT = HERE / "replica1_supervisor"
+DEFAULT_CSV_OUTPUT = REPO.parent / "data" / "processed" / "VBCPinningSupervisorCSV"
 PIN_TITLES = {
     "dimer-plaquette": "Dimer-plaquette pin",
     "plaquette": "Plaquette pin",
@@ -71,6 +75,39 @@ def save(fig: plt.Figure, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
+
+
+def write_source_csvs(rows: list[RankedStage], folder: Path) -> int:
+    """Write two compact tables for every available pinning source."""
+    written = 0
+    for branch in PIN_ORDER:
+        subset = sorted((row for row in rows if row.branch == branch),
+                        key=lambda row: (row.D, -row.h))
+        if not subset:
+            continue
+        branch_folder = folder / branch
+        branch_folder.mkdir(parents=True, exist_ok=True)
+        with (branch_folder / "energy.csv").open(
+                "w", encoding="utf-8", newline="") as stream:
+            writer = csv.DictWriter(stream, fieldnames=("D", "h", "E"))
+            writer.writeheader()
+            writer.writerows({"D": row.D, "h": row.h,
+                              "E": row.energy_per_site} for row in subset)
+        with (branch_folder / "nn_correlations.csv").open(
+                "w", encoding="utf-8", newline="") as stream:
+            fields = ("D", "h", "NNcorrStrongest", "NNcorrMiddle",
+                      "NNcorrWeakest")
+            writer = csv.DictWriter(stream, fieldnames=fields)
+            writer.writeheader()
+            writer.writerows({
+                "D": row.D,
+                "h": row.h,
+                "NNcorrStrongest": row.rank1,
+                "NNcorrMiddle": row.rank2,
+                "NNcorrWeakest": row.rank3,
+            } for row in subset)
+        written += 2
+    return written
 
 
 def plot_nn_vs_h(rows: list[RankedStage], cluster: str, J2: float,
@@ -223,18 +260,26 @@ def main() -> int:
     parser.add_argument("--izar", type=Path,
                         default=DEFAULT_BUNDLE / "Results_VBC_branches")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--csv-output-dir", type=Path, default=DEFAULT_CSV_OUTPUT,
+        help="processed-data root; writes cluster/J2/pinning-source/*.csv",
+    )
     args = parser.parse_args()
 
-    total = 0
+    # Validate both input trees before writing anything.  In particular, a
+    # half-copied observation is a fatal error, never a point to skip.
+    validated: list[tuple[str, list]] = []
     for cluster, root in (("Kuma", args.kuma), ("Izar", args.izar)):
         if not root.is_dir():
-            print(f"{cluster}: missing {root}; skipping")
-            continue
-        stages = [stage for stage in select_highest_chi(discover(root))
+            raise FileNotFoundError(f"{cluster} input directory is missing: {root}")
+        stages = [stage for stage in select_highest_chi(discover(root, strict=True))
                   if stage.replica == 1]
         if not stages:
-            print(f"{cluster}: no readable replica-1 observations yet")
-            continue
+            raise RuntimeError(f"{cluster}: no readable replica-1 observations in {root}")
+        validated.append((cluster, stages))
+
+    total = 0
+    for cluster, stages in validated:
         by_J2: dict[float, list[RankedStage]] = defaultdict(list)
         for stage in stages:
             by_J2[stage.J2].append(rank_stage(stage, cluster))
@@ -243,8 +288,11 @@ def main() -> int:
             plot_nn_vs_h(rows, cluster, J2, folder / "01_sorted_nn_vs_h.pdf")
             plot_observables_vs_inverse_D(
                 rows, cluster, J2, folder / "02_energy_delta_omega_vs_inverse_D.pdf")
+            csv_folder = (args.csv_output_dir / cluster
+                          / f"J2_{J2:.2f}".replace(".", "p"))
+            csv_count = write_source_csvs(rows, csv_folder)
             print(f"{cluster:4s} J2={J2:.2f}: {len(rows)} replica-1 stages; "
-                  f"two figures in {folder}")
+                  f"two figures in {folder}; {csv_count} CSV files in {csv_folder}")
             total += len(rows)
     print(f"Total plotted replica-1 stages: {total}")
     return 0

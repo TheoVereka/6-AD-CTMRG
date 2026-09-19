@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+import csv
 import math
 from dataclasses import replace
 from pathlib import Path
@@ -11,9 +12,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from analyze_branch_runs import StageRow, compare_zero_field
 from analyze_existing_twoc3 import GROUP_KEYS, parse_observation
-from analyze_three_source_runs import Stage
+from analyze_three_source_runs import Stage, discover as discover_three_source
 from plot_pinning_replica1 import rank_stage
-from plot_pinning_supervisor import omega_order
+from plot_pinning_supervisor import omega_order, write_source_csvs
+from fit_pinned_correlations import fit_one_rank
 
 
 def write_observation(path: Path, groups: tuple[float, float, float], energy: float) -> None:
@@ -35,6 +37,13 @@ def stage(branch: str, replica: int, texture: str, middle: float,
 
 
 class VBCDiscriminatorTest(unittest.TestCase):
+    def test_strict_discovery_refuses_to_skip_malformed_observation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "D_8_chi_160_energy_magnetization_correlation.txt"
+            path.write_text("incomplete download", encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "refusing to use an incomplete dataset"):
+                discover_three_source(Path(tmp), strict=True)
+
     def test_ranked_correlations_keep_geometry(self) -> None:
         row = Stage(
             path="synthetic", branch="rank-split", replica=1,
@@ -82,6 +91,55 @@ class VBCDiscriminatorTest(unittest.TestCase):
         self.assertAlmostEqual(omega_order(replace(ranked, rank2=-0.25)), 0.0)
         self.assertTrue(math.isnan(omega_order(replace(
             ranked, rank1=-0.2, rank2=-0.2, rank3=-0.2))))
+
+    def test_supervisor_csv_schema_and_sorted_correlations(self) -> None:
+        row = Stage(
+            path="synthetic", branch="rank-split", replica=1,
+            field=0.04, J2=0.30, D=9, chi=180,
+            energy_per_site=-0.42, chi_energy_shift=0.0,
+            G0=-0.20, G1=-0.40, G2=-0.30,
+            delta=0.20, middle_fraction=0.50, clock_z6=0.0,
+            texture="three-distinct/mixed",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(write_source_csvs([rank_stage(row, "Kuma")], root), 2)
+            with (root / "rank-split" / "energy.csv").open(
+                    encoding="utf-8", newline="") as stream:
+                energy = list(csv.DictReader(stream))
+            with (root / "rank-split" / "nn_correlations.csv").open(
+                    encoding="utf-8", newline="") as stream:
+                correlations = list(csv.DictReader(stream))
+        self.assertEqual(list(energy[0]), ["D", "h", "E"])
+        self.assertEqual(
+            list(correlations[0]),
+            ["D", "h", "NNcorrStrongest", "NNcorrMiddle", "NNcorrWeakest"],
+        )
+        self.assertEqual(
+            tuple(float(correlations[0][key]) for key in
+                  ("NNcorrStrongest", "NNcorrMiddle", "NNcorrWeakest")),
+            (-0.40, -0.30, -0.20),
+        )
+
+    def test_quadratic_fit_excludes_measured_zero_field(self) -> None:
+        source = Stage(
+            path="synthetic", branch="plaquette", replica=1,
+            field=0.08, J2=0.30, D=8, chi=160,
+            energy_per_site=-0.42, chi_energy_shift=0.0,
+            G0=-0.40, G1=-0.30, G2=-0.20,
+            delta=0.20, middle_fraction=0.50, clock_z6=0.0,
+            texture="three-distinct/mixed",
+        )
+        base = rank_stage(source, "Kuma")
+        rows = [replace(base, h=h, rank1=-0.4 + 2.0 * h - 3.0 * h * h)
+                for h in (0.08, 0.04, 0.02, 0.01)]
+        rows.append(replace(base, h=0.0, rank1=-9.0))
+        fit = fit_one_rank(rows, "strongest", "rank1")
+        self.assertAlmostEqual(fit.C0, -0.4)
+        self.assertAlmostEqual(fit.c1, 2.0)
+        self.assertAlmostEqual(fit.c2, -3.0)
+        self.assertEqual(fit.n_positive_fields, 4)
+        self.assertAlmostEqual(fit.observed_h0, -9.0)
 
     def test_resolved_energy_competition(self) -> None:
         rows = [

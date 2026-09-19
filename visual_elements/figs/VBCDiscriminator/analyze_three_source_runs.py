@@ -98,7 +98,14 @@ class ZeroFieldComparison:
     assessment: str
 
 
-def discover(root: Path) -> list[Stage]:
+def discover(root: Path, *, strict: bool = False) -> list[Stage]:
+    """Read available observations.
+
+    In strict mode every discovered observation must have readable metadata
+    and parse successfully; otherwise the whole call fails instead of
+    returning a silently incomplete dataset. Directories for jobs that have
+    not produced an observation yet are not observations and are ignored.
+    """
     rows: list[Stage] = []
     failures: list[str] = []
     for path in root.rglob("D_*_chi_*_energy_magnetization_correlation.txt"):
@@ -106,6 +113,8 @@ def discover(root: Path) -> list[Stage]:
             continue
         hp_path = path.parent / "hyperparams.yaml"
         if not hp_path.is_file():
+            if strict:
+                failures.append(f"{path}: missing {hp_path.name}")
             continue
         try:
             hp = read_scalar_hyperparams(hp_path)
@@ -134,6 +143,12 @@ def discover(root: Path) -> list[Stage]:
             ))
         except (KeyError, OSError, TypeError, ValueError) as exc:
             failures.append(f"{path}: {exc}")
+    if failures and strict:
+        details = "\n".join(f"  {failure}" for failure in failures)
+        raise RuntimeError(
+            f"refusing to use an incomplete dataset: {len(failures)} "
+            f"discovered observation(s) failed validation:\n{details}"
+        )
     if failures:
         print(f"WARNING: skipped {len(failures)} malformed files")
         for failure in failures[:10]:
