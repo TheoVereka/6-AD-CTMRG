@@ -1,138 +1,99 @@
 # twoC3 VBC discriminator
 
-The old `Delta = rank3-rank1` is only the magnitude of the three-group NN
-bond order.  It cannot distinguish these two textures:
-
-| texture | sorted AF correlations | middle fraction | normalized Z6 clock |
-|---|---|---:|---:|
-| plaquette VBC | `r1 = r2 < r3` | 0 | +1 |
-| dimer-plaquette VBC | `r1 < r2 = r3` | 1 | -1 |
-
-Here a more negative correlation is a stronger AF bond and
+For sorted NN correlations `C1 <= C2 <= C3` (more negative means the
+stronger AF bond), the ordinary splitting
 
 ```text
-middle_fraction = (r2-r1)/(r3-r1)
-clock_z6 = (27/2) product_i(Gi-mean(G)) / (r3-r1)^3 .
+Delta = C3-C1
 ```
 
-`analyze_existing_twoc3.py` applies both diagnostics to existing observations.
-It keeps the geometrical groups instead of throwing them away by rank:
+measures the VBC amplitude but does not distinguish plaquette from
+dimer-plaquette texture. The signed coordinate used here is
 
 ```text
-G0 = {AD, CF, EB}
-G1 = {AF, BC, DE}
-G2 = {AB, CD, EF}
+omega1 = C2-C1
+omega2 = C3-C2
+eta = (omega1-omega2)/(omega1+omega2)
 ```
 
-## Replica-1 supervisor figures
+Thus ideal dimer-plaquette has `eta=+1`, ideal plaquette has `eta=-1`, and
+eta is undefined when all three correlations coincide.
 
-To redraw the two requested summary PDFs for every currently available
-cluster/J2 combination (partial continuations are included), run from the
-repository root:
+## Authoritative raw archive
 
-```bash
-python visual_elements/figs/VBCDiscriminator/plot_pinning_supervisor.py
-```
-
-Outputs are under `visual_elements/figs/VBCDiscriminator/replica1_supervisor/`
-as `Kuma/J2_0p30/` and `Izar/J2_0p29/` etc., **exactly two PDFs per J2**.
-The first is a three-column pinning-field figure with one row per available
-`D`, shared axes, and sorted NN correlations. The second has one row per
-`h=0.08,0.04,0.02,0.01,0`, shared `1/D` limits and one shared vertical range
-per observable column. Izar's unrun rank-split column is left blank.
-
-The same command also exports publication data to
-`data/processed/VBCPinningSupervisorCSV/<cluster>/<J2>/<pinning-source>/`.
-Every available `(pinning source, J2)` has exactly two tables:
-`energy.csv` with columns `D,h,E`, and `nn_correlations.csv` with columns
-`D,h,NNcorrStrongest,NNcorrMiddle,NNcorrWeakest`. Rows are ordered first by
-increasing `D`, then by decreasing `h`. Use `--csv-output-dir PATH` to choose
-a different processed-data root.
-
-This plotting entry point uses strict input validation. If any discovered
-observation is only partly copied, lacks `hyperparams.yaml`, is unreadable, or
-cannot be parsed, it aborts before producing any new plots or CSV files and
-reports every offending path. It never warns and continues with that point
-silently omitted. Job directories that have not produced an observation file
-yet are simply not completed observations.
-
-### Positive-field quadratic extrapolation
-
-To fit the three sorted correlations independently using only `h>0`, exclude
-the rank-split source, and extrapolate their splitting to zero field, run:
-
-```bash
-python visual_elements/figs/VBCDiscriminator/fit_pinned_correlations.py
-```
-
-The requested `D=7,8,9` figures are written to
-`quadratic_pinning_extrapolation/`. The multi-page fit PDF exposes every fit,
-including residual quality, curvature on the sampled interval, the
-extrapolated intercept, and the unused measured `h=0` point. Fit coefficients
-and extrapolated splittings are exported to
-`data/processed/VBCPinningQuadraticExtrapolation/`. See
-`QUADRATIC_EXTRAPOLATION_FINDINGS.md` for the present-data assessment and the
-minimal proposed follow-up jobs.
-
-For sorted correlations `C1 <= C2 <= C3` (more negative is stronger), the
-signed texture coordinate in the second figure is explicitly
+All replica-1 raw observations, logs, hyperparameters, and tensors live under
 
 ```text
-omega1 = C2-C1, omega2 = C3-C2,
-eta = (omega1-omega2)/(omega1+omega2).
+D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCs
+  Results_Izar_replica1\...
+  Results_Kuma_replica1\...
 ```
 
-Thus ideal dimer-plaquette is `eta=+1`, ideal plaquette is `eta=-1`, and
-`eta` is undefined if all three correlations coincide. Only the `h=0`
-energies compare the same Hamiltonian across pinning sources.
+`sync_distin_vbcs.py` non-destructively imports replica-1 files from the old
+and new model bundles. It never deletes archive files, and an older legacy
+file cannot overwrite a newer file copied directly from a cluster.
 
-## Decisive calculation
+Future `Results_Izar_replica1` downloads should be merged directly into the
+archive directory of the same name.
 
-`main_C3.py` now accepts a trace-free NN pinning source.  The plaquette and
-dimer-plaquette jobs use exactly the same twoC3 degrees of freedom and CTMRG;
-only the temporary source is different.  Each job follows
-`h = 0.08, 0.04, 0.02, 0.01, 0` by checkpoint continuation.  Thus the final
-states are competing minima of the same unbiased Hamiltonian.
+## One-command postprocessing
 
-On the cluster, copy the four files in `models/0907core` together and run:
+From the repository root, run:
 
-```bash
-cd /your/scratch/copy/of/0907core
-bash submit_vbc_branches.sh
+```powershell
+python visual_elements\figs\VBCDiscriminator\plot_pinning_supervisor.py
 ```
 
-The default pilot submits 16 H100 jobs: `J2={0.30,0.32}`,
-`D={8,10}`, two branches, and two replicas.  A publication sweep is:
+This command performs the complete update:
 
-```bash
-J2_VALUES_TEXT="0.28 0.30 0.32 0.34" \
-D_VALUES_TEXT="8 9 10 11" \
-bash submit_vbc_branches.sh
+1. synchronize any newer local replica-1 raw files into `distinVBCs`;
+2. strictly parse every completed observation in both archive trees;
+3. regenerate the two supervisor PDFs for every cluster/J2;
+4. update per-pin processed CSVs in
+   `data/processed/VBCPinningSupervisorCSV`;
+5. refit all dynamically eligible positive-field continuations;
+6. regenerate `quadratic_pinning_extrapolation` and update
+   `data/processed/VBCPinningQuadraticExtrapolation`.
+
+Available fields are discovered from the data, including both the legacy
+`h=0` endpoints and new `h=0.005` endpoints. J2 tags use at least two and at
+most three decimal places: for example `J2_0p30`, `J2_0p265`, and
+`J2_0p275`. The default supervisor command plots and fits D6 through D10;
+D5 and D11 are excluded. This can be overridden with `--dimensions`.
+
+An unfinished job directory without an observation is harmless. A discovered
+observation missing its `hyperparams.yaml`, or one that cannot be parsed,
+aborts before new outputs are written; it is never silently skipped.
+
+## Quadratic continuation fit
+
+The three sorted correlations are fitted independently using only `h>0`:
+
+```text
+C(h) = C0 + c1 h + c2 h^2 .
 ```
 
-To reuse the already optimized `0713summary` twoC3 tensors in replica 1,
-first copy that tree to scratch and set `SEED_ROOT`:
+The extrapolated splitting is
 
-```bash
-SEED_ROOT=/scratch/you/0713summary bash submit_vbc_branches.sh
+```text
+Delta0 = Cweakest(0)-Cstrongest(0).
 ```
 
-The initial `h=0.08` source is intentionally large enough to move either old
-texture into the requested sector; later stages continue from the previous
-field. Replica 2 remains an independent deterministic random start. Leaving
-`SEED_ROOT` unset makes both replicas deterministic random starts.
+The linear-response diagnostic compares the two fitted contributions at the
+reference field `h_ref=0.02`, not the dimensionful coefficients in isolation:
 
-After copying `Results_VBC_branches` back, run:
-
-```bash
-python visual_elements/figs/VBCDiscriminator/analyze_branch_runs.py \
-  --input models/0907core/Results_VBC_branches
+```text
+R(h_ref) = |c2 h_ref^2| / |c1 h_ref| = |c2/c1| h_ref .
 ```
 
-The automatic label is deliberately conservative. If both textures survive
-to `h=0`, it reports a lower-energy phase only when both replicas exist and
-`abs(Edimer-Eplaquette) > 3 epsilon`, where `epsilon` is the maximum of the
-chi-lookahead energy shift, within-branch replica spread, and an absolute
-per-site floor. If every continuation instead collapses reproducibly to the
-same texture, that common texture is reported as selected. All inconsistent
-or sub-resolution outcomes are reported as unresolved.
+The quadratic correction is classified as subleading when `R(0.02) < 1`.
+
+Every cluster/J2/D/physical-pin group with at least four distinct positive
+fields is fitted. This is a data-driven eligibility condition, not a hardcoded
+J2 or D skip. Partial groups are listed in
+`omitted_incomplete_fits.csv`, including exactly which fields exist, and join
+the fit automatically after enough SCP data arrives.
+
+`rank-split` is displayed by the supervisor when available but is excluded
+from the two physical-branch quadratic extrapolation. Measured h=0 points are
+shown as diagnostics and are not included in the fit.

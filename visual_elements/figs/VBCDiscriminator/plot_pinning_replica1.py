@@ -23,6 +23,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from analyze_three_source_runs import COLORS, LABELS, Stage, discover, select_highest_chi
+from sync_distin_vbcs import DEFAULT_ARCHIVE
 
 
 HERE = Path(__file__).resolve().parent
@@ -40,6 +41,12 @@ OBSERVABLES = (
     ("middle_fraction", "middle fraction q"),
     ("clock_z6", "clock K6"),
 )
+
+
+def j2_tag(value: float) -> str:
+    whole, fraction = f"{value:.3f}".split(".")
+    fraction = fraction.rstrip("0").ljust(2, "0")
+    return f"J2_{whole}p{fraction}"
 
 
 @dataclass(frozen=True)
@@ -284,7 +291,7 @@ def write_rows(rows: list[RankedStage], path: Path) -> None:
 def plot_one_source(rows: list[RankedStage], folder: Path,
                     cluster: str, branch: str, J2: float) -> None:
     color = COLORS[branch]
-    title = f"{cluster} replica 1, J2={J2:.2f}, {LABELS[branch]}"
+    title = f"{cluster} replica 1, J2={J2:g}, {LABELS[branch]}"
     write_rows(rows, folder / "sorted_nn_data.csv")
     plot_rank_vs_h(rows, folder / "sorted_nn_vs_h.pdf", title, color)
     plot_each_rank_vs_h(rows, folder / "sorted_nn_each_rank_vs_h.pdf",
@@ -299,9 +306,9 @@ def plot_one_source(rows: list[RankedStage], folder: Path,
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--kuma", type=Path,
-                        default=DEFAULT_BUNDLE / "Results_VBC_three")
+                        default=DEFAULT_ARCHIVE / "Results_Kuma_replica1")
     parser.add_argument("--izar", type=Path,
-                        default=DEFAULT_BUNDLE / "Results_VBC_branches")
+                        default=DEFAULT_ARCHIVE / "Results_Izar_replica1")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args()
 
@@ -319,11 +326,10 @@ def main() -> int:
         for row in ranked:
             by_source[row.branch, row.J2].append(row)
         for (branch, J2), subset in sorted(by_source.items()):
-            j2_tag = f"J2_{J2:.2f}".replace(".", "p")
-            folder = args.output_dir / cluster / branch / j2_tag
+            folder = args.output_dir / cluster / branch / j2_tag(J2)
             plot_one_source(subset, folder, cluster, branch, J2)
             complete = sum(r.h == 0.0 for r in subset)
-            print(f"{cluster:4s} {branch:18s} J2={J2:.2f}: "
+            print(f"{cluster:4s} {branch:18s} J2={J2:g}: "
                   f"{len(subset)} stages, {complete} h=0; wrote {folder}")
             total += len(subset)
     print(f"Total plotted replica-1 stages: {total}")

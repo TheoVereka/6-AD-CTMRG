@@ -21,10 +21,9 @@ included automatically.
 
 ## Current numerical result
 
-There are 22 independent `(cluster,J2,D,pin)` extrapolations and 66
-individual correlation fits. The worst individual `R^2` is `0.986544`; the
-largest RMSE is about `2.3e-3`. Thus a quadratic describes the four sampled
-points well in the residual sense.
+With the default D6--D10 filter, there are currently 26 independent
+`(cluster,J2,D,pin)` extrapolations and 78 individual correlation fits. The
+worst individual `R^2` is `0.850017`; the largest RMSE is about `2.43e-3`.
 
 At `J2=0.30`, Kuma and Izar agree well and should remain separate cross-checks:
 
@@ -48,17 +47,30 @@ The Izar trends are:
 | 0.32 | 0.306588 | 0.283280 | 0.267072 | 0.278426 |
 
 The fit-only one-sigma errors on individual `Delta0` values are roughly
-`0.0024--0.0072`, but they use only one residual degree of freedom and do not
+`0.00235--0.00751`, but they use only one residual degree of freedom and do not
 include CTMRG, optimization, rank-switching, or fit-window systematics.
 
 ## Linear-response check
 
-Only 1 of 66 correlations satisfies the literal coefficient test
-`abs(c2) < abs(c1)`, and no `(cluster,J2,D,pin)` combination passes it for all
-three correlations. Because `c1` and `c2` multiply different powers of `h`, a
-more direct measure on the sampled interval is
-`abs(c2*h_max/c1)`. Its maximum is `0.557`: the quadratic contribution is not
-dominant at `h=0.08`, but it is not negligible.
+The coefficients must not be compared in isolation because they multiply
+different powers of the field. The dimensionless diagnostic is evaluated at
+the reference field `h_ref=0.02`:
+
+```text
+R(h_ref) = abs(c2*h_ref^2) / abs(c1*h_ref)
+         = abs(c2/c1) * h_ref .
+```
+
+The quadratic correction is subleading at that scale when `R(0.02) < 1`.
+All 26 current extrapolations pass this test for all three correlations; the
+largest group-level ratio is `R(0.02)=0.2721`. At the largest field used in
+the legacy fits, the maximum ratio is instead `1.0883`, so the high-field end
+is not uniformly within the same linear-response regime.
+The processed tables retain both this reference-field ratio and the analogous
+ratio at the largest fitted field. Results are regenerated from the current
+archive and should be read from
+`data/processed/VBCPinningQuadraticExtrapolation`, rather than from a stale
+hard-coded count in this note.
 
 Dropping `h=0.08` and refitting the remaining three points shifts an
 individual extrapolated `C0` by as much as `0.0138`. The conservative
@@ -67,20 +79,12 @@ strongest-plus-weakest bound on the corresponding splitting shift reaches
 between the two pinned branches and is more important than the nominal fit
 error.
 
-## Minimal next calculations
+## Current continuation campaign
 
-1. No new `D=8` or `D=9` J2 grid is needed in `0.29--0.32`; it already exists.
-2. To turn `D=7` into a J2 trend, first run both physical pins at `J2=0.29`
-   and `0.32`. Run `J2=0.31` only if the two endpoints plus the existing
-   `0.30` point are non-smooth.
-3. If the literal `abs(c2)<abs(c1)` rule is mandatory, the present grid fails
-   it and `h=0.005` is justified broadly. For a minimal diagnostic, add only
-   the single `h=0.005` continuation stage for both pins at `D=8`,
-   `J2=0.29` and `0.32`, where the ordering of the two extrapolated splittings
-   reverses. This tests the most consequential feature with four short stages.
-4. If that changes `Delta0` by more than the current fit-only error bars, add
-   `h=0.005` for the remaining `D=8,9` points. Otherwise the existing D=9
-   trend is already smooth enough for the present decision.
+The Izar campaign adds `h=0.005` after `0.08,0.04,0.02,0.01` for both
+physical pins. D9 uses seven-day jobs at the selected seven J2 values. D8,
+D7, and D6 use three-day jobs in the requested eleven-value priority order.
+The automatic analysis excludes D5 and D11 by default.
 
 The finite extrapolated splitting supports robust VBC bond order under both
 pinning continuations. Splitting magnitude alone does **not** determine which

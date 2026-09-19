@@ -26,6 +26,7 @@ from matplotlib.lines import Line2D
 
 from analyze_three_source_runs import COLORS, discover, select_highest_chi
 from plot_pinning_replica1 import DEFAULT_BUNDLE, HERE, REPO, RankedStage, rank_stage
+from sync_distin_vbcs import DEFAULT_ARCHIVE
 
 
 DEFAULT_OUTPUT = HERE / "quadratic_pinning_extrapolation"
@@ -45,6 +46,7 @@ CLUSTER_STYLE = {
     "Izar": ("o", "-"),
     "Kuma": ("X", "--"),
 }
+LINEAR_RESPONSE_REFERENCE_H = 0.02
 
 
 @dataclass(frozen=True)
@@ -63,7 +65,9 @@ class RankFit:
     c2: float
     quadratic_over_linear_coefficient: float
     quadratic_over_linear_at_hmax: float
-    quadratic_coefficient_smaller: bool
+    linear_response_reference_h: float
+    quadratic_over_linear_at_reference_h: float
+    quadratic_correction_smaller_at_reference_h: bool
     r_squared: float
     rmse: float
     max_abs_residual: float
@@ -89,10 +93,23 @@ class ExtrapolatedSet:
     max_abs_residual: float
     max_quadratic_over_linear_coefficient: float
     max_quadratic_over_linear_at_hmax: float
-    all_quadratic_coefficients_smaller: bool
+    linear_response_reference_h: float
+    max_quadratic_over_linear_at_reference_h: float
+    all_quadratic_corrections_smaller_at_reference_h: bool
     max_C0_window_shift: float
     Delta0_window_shift_bound: float
     positive_fields: str
+
+
+@dataclass(frozen=True)
+class FitOmission:
+    cluster: str
+    J2: float
+    D: int
+    branch: str
+    n_positive_fields: int
+    positive_fields: str
+    reason: str
 
 
 def _finite_ratio(numerator: float, denominator: float) -> float:
@@ -131,6 +148,7 @@ def fit_one_rank(rows: list[RankedStage], rank_name: str,
                    if zero_rows else math.nan)
     coefficient_ratio = _finite_ratio(c2, c1)
     range_ratio = coefficient_ratio * float(max(fields))
+    reference_ratio = coefficient_ratio * LINEAR_RESPONSE_REFERENCE_H
     first = rows[0]
     return RankFit(
         cluster=first.cluster, J2=first.J2, D=first.D, branch=first.branch,
@@ -140,7 +158,9 @@ def fit_one_rank(rows: list[RankedStage], rank_name: str,
         c1=c1, c2=c2,
         quadratic_over_linear_coefficient=coefficient_ratio,
         quadratic_over_linear_at_hmax=range_ratio,
-        quadratic_coefficient_smaller=abs(c2) < abs(c1),
+        linear_response_reference_h=LINEAR_RESPONSE_REFERENCE_H,
+        quadratic_over_linear_at_reference_h=reference_ratio,
+        quadratic_correction_smaller_at_reference_h=reference_ratio < 1.0,
         r_squared=r_squared,
         rmse=float(math.sqrt(ss_res / len(fields))),
         max_abs_residual=float(np.max(np.abs(residuals))),
@@ -174,8 +194,11 @@ def fit_group(rows: list[RankedStage]) -> tuple[list[RankFit], ExtrapolatedSet]:
             fit.quadratic_over_linear_coefficient for fit in fits),
         max_quadratic_over_linear_at_hmax=max(
             fit.quadratic_over_linear_at_hmax for fit in fits),
-        all_quadratic_coefficients_smaller=all(
-            fit.quadratic_coefficient_smaller for fit in fits),
+        linear_response_reference_h=LINEAR_RESPONSE_REFERENCE_H,
+        max_quadratic_over_linear_at_reference_h=max(
+            fit.quadratic_over_linear_at_reference_h for fit in fits),
+        all_quadratic_corrections_smaller_at_reference_h=all(
+            fit.quadratic_correction_smaller_at_reference_h for fit in fits),
         max_C0_window_shift=max(fit.C0_window_shift for fit in fits),
         Delta0_window_shift_bound=(strongest.C0_window_shift
                                    + weakest.C0_window_shift),
@@ -184,12 +207,14 @@ def fit_group(rows: list[RankedStage]) -> tuple[list[RankFit], ExtrapolatedSet]:
     return fits, summary
 
 
-def write_dataclasses(rows: list, path: Path) -> None:
-    if not rows:
+def write_dataclasses(rows: list, path: Path, row_type=None) -> None:
+    if not rows and row_type is None:
         raise ValueError(f"refusing to write empty table: {path}")
+    fieldnames = (list(asdict(rows[0])) if rows
+                  else list(row_type.__dataclass_fields__))
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as stream:
-        writer = csv.DictWriter(stream, fieldnames=list(asdict(rows[0])))
+        writer = csv.DictWriter(stream, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(asdict(row) for row in rows)
 
@@ -248,8 +273,8 @@ def plot_fit_pages(groups: dict[tuple, list[RankedStage]],
                 ax.text(
                     0.03, 0.04,
                     f"min $R^2$={min(f.r_squared for f in summary_fits):.5f}\n"
-                    f"max $|c_2h_{{max}}/c_1|$="
-                    f"{max(f.quadratic_over_linear_at_hmax for f in summary_fits):.3f}\n"
+                    f"max $|c_2h/c_1|$ at $h={LINEAR_RESPONSE_REFERENCE_H:g}$="
+                    f"{max(f.quadratic_over_linear_at_reference_h for f in summary_fits):.3f}\n"
                     f"max $C_0$ window shift="
                     f"{max(f.C0_window_shift for f in summary_fits):.4f}",
                     transform=ax.transAxes, fontsize=8.5, va="bottom",
@@ -269,7 +294,7 @@ def plot_fit_pages(groups: dict[tuple, list[RankedStage]],
             fig.legend(handles=rank_handles + extra_handles, loc="lower center",
                        ncol=5, frameon=False, fontsize=8.5)
             fig.suptitle(
-                f"{cluster} replica 1: $J_2/J_1={J2:.2f}$, $D={D}$; "
+                f"{cluster} replica 1: $J_2/J_1={J2:g}$, $D={D}$; "
                 r"$C(h)=C_0+c_1h+c_2h^2$ from $h>0$ only",
                 fontsize=13,
             )
@@ -330,7 +355,8 @@ def plot_splitting(summaries: list[ExtrapolatedSet], path: Path,
 
 
 def load_groups(roots: tuple[tuple[str, Path], ...],
-                dimensions: tuple[int, ...]) -> dict[tuple, list[RankedStage]]:
+                dimensions: tuple[int, ...] | None = None
+                ) -> dict[tuple, list[RankedStage]]:
     groups: dict[tuple, list[RankedStage]] = defaultdict(list)
     for cluster, root in roots:
         if not root.is_dir():
@@ -338,7 +364,8 @@ def load_groups(roots: tuple[tuple[str, Path], ...],
         stages = [stage for stage in select_highest_chi(discover(root, strict=True))
                   if stage.replica == 1]
         for stage in stages:
-            if stage.branch in BRANCHES and stage.D in dimensions:
+            if (stage.branch in BRANCHES
+                    and (dimensions is None or stage.D in dimensions)):
                 ranked = rank_stage(stage, cluster)
                 groups[(cluster, stage.J2, stage.D, stage.branch)].append(ranked)
     if not groups:
@@ -346,43 +373,86 @@ def load_groups(roots: tuple[tuple[str, Path], ...],
     return groups
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--kuma", type=Path,
-                        default=DEFAULT_BUNDLE / "Results_VBC_three")
-    parser.add_argument("--izar", type=Path,
-                        default=DEFAULT_BUNDLE / "Results_VBC_branches")
-    parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
-    parser.add_argument("--csv-output-dir", type=Path, default=DEFAULT_CSV_OUTPUT)
-    parser.add_argument("--dimensions", type=int, nargs="+", default=(7, 8, 9))
-    args = parser.parse_args()
-    dimensions = tuple(sorted(set(args.dimensions)))
-
-    # Strictly validate all discovered observations before creating outputs.
-    groups = load_groups((("Kuma", args.kuma), ("Izar", args.izar)), dimensions)
+def run_analysis(roots: tuple[tuple[str, Path], ...], output_dir: Path,
+                 csv_output_dir: Path,
+                 dimensions: tuple[int, ...] | None = None
+                 ) -> tuple[list[ExtrapolatedSet], list[FitOmission]]:
+    """Fit every dynamically eligible group and report incomplete groups."""
+    groups = load_groups(roots, dimensions)
     rank_fits: list[RankFit] = []
     summaries: list[ExtrapolatedSet] = []
+    omissions: list[FitOmission] = []
     fit_lookup: dict[tuple, list[RankFit]] = {}
+    eligible_groups: dict[tuple, list[RankedStage]] = {}
     for key, rows in sorted(groups.items()):
+        fields = sorted({row.h for row in rows if row.h > 0}, reverse=True)
+        if len(fields) < 4:
+            omissions.append(FitOmission(
+                cluster=key[0], J2=key[1], D=key[2], branch=key[3],
+                n_positive_fields=len(fields),
+                positive_fields=";".join(f"{field:g}" for field in fields),
+                reason="quadratic covariance fit requires at least four distinct h>0 points",
+            ))
+            continue
         fits, summary = fit_group(rows)
         rank_fits.extend(fits)
         summaries.append(summary)
         fit_lookup[key] = fits
+        eligible_groups[key] = rows
 
-    plot_fit_pages(groups, fit_lookup, args.output_dir / "01_correlation_fits.pdf")
-    plot_splitting(summaries, args.output_dir / "02_extrapolated_splitting_vs_J2.pdf",
-                   dimensions)
-    write_dataclasses(rank_fits, args.csv_output_dir / "quadratic_fit_coefficients.csv")
-    write_dataclasses(summaries,
-                      args.csv_output_dir / "extrapolated_correlations_and_splitting.csv")
+    write_dataclasses(omissions, csv_output_dir / "omitted_incomplete_fits.csv",
+                      FitOmission)
+    if not summaries:
+        raise RuntimeError(
+            "no group has the four distinct positive fields required for a "
+            "quadratic covariance fit; see omitted_incomplete_fits.csv"
+        )
+    fitted_dimensions = tuple(sorted({row.D for row in summaries}))
+    plot_fit_pages(eligible_groups, fit_lookup,
+                   output_dir / "01_correlation_fits.pdf")
+    plot_splitting(summaries,
+                   output_dir / "02_extrapolated_splitting_vs_J2.pdf",
+                   fitted_dimensions)
+    write_dataclasses(rank_fits,
+                      csv_output_dir / "quadratic_fit_coefficients.csv")
+    write_dataclasses(
+        summaries,
+        csv_output_dir / "extrapolated_correlations_and_splitting.csv",
+    )
+    return summaries, omissions
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--kuma", type=Path,
+                        default=DEFAULT_ARCHIVE / "Results_Kuma_replica1")
+    parser.add_argument("--izar", type=Path,
+                        default=DEFAULT_ARCHIVE / "Results_Izar_replica1")
+    parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--csv-output-dir", type=Path, default=DEFAULT_CSV_OUTPUT)
+    parser.add_argument(
+        "--dimensions", type=int, nargs="+", default=(6, 7, 8, 9, 10),
+        help="D filter; default excludes D5 and D11",
+    )
+    args = parser.parse_args()
+    dimensions = (tuple(sorted(set(args.dimensions)))
+                  if args.dimensions is not None else None)
+
+    # Strictly validate all discovered observations before creating outputs.
+    summaries, omissions = run_analysis(
+        (("Kuma", args.kuma), ("Izar", args.izar)),
+        args.output_dir, args.csv_output_dir, dimensions,
+    )
 
     print(f"Fitted {len(summaries)} cluster/J2/D/pin combinations "
-          f"({len(rank_fits)} individual correlation fits).")
+          f"({3 * len(summaries)} individual correlation fits).")
     print(f"Figures: {args.output_dir}")
     print(f"Tables:  {args.csv_output_dir}")
+    print(f"Dynamically omitted incomplete groups: {len(omissions)}")
     print(f"Worst R^2: {min(row.min_r_squared for row in summaries):.6f}")
-    print("Combinations passing |c2| < |c1| for all three correlations: "
-          f"{sum(row.all_quadratic_coefficients_smaller for row in summaries)}"
+    print(f"Combinations passing |c2*h^2| < |c1*h| at h="
+          f"{LINEAR_RESPONSE_REFERENCE_H:g} for all three correlations: "
+          f"{sum(row.all_quadratic_corrections_smaller_at_reference_h for row in summaries)}"
           f"/{len(summaries)}")
     return 0
 

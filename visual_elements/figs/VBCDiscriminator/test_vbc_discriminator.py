@@ -138,6 +138,9 @@ class VBCDiscriminatorTest(unittest.TestCase):
         self.assertAlmostEqual(fit.C0, -0.4)
         self.assertAlmostEqual(fit.c1, 2.0)
         self.assertAlmostEqual(fit.c2, -3.0)
+        self.assertAlmostEqual(fit.linear_response_reference_h, 0.02)
+        self.assertAlmostEqual(fit.quadratic_over_linear_at_reference_h, 0.03)
+        self.assertTrue(fit.quadratic_correction_smaller_at_reference_h)
         self.assertEqual(fit.n_positive_fields, 4)
         self.assertAlmostEqual(fit.observed_h0, -9.0)
 
