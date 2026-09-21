@@ -2,3 +2,5 @@
 /Results*/
 /job-*.out
 /job-*.error
+/smallh-*.out
+/smallh-*.error

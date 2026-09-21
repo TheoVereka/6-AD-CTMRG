@@ -604,13 +604,13 @@ N_SITES = 6
 
 # ── Tensor initialisation & padding ──────────────────────────────────────────
 
-INIT_NOISE = 1e-2
+INIT_NOISE = 1e-3
 # !!! NOTE: Only used as Mean-Field-Init's random noise!!!
 # should be at least 2e-4 otherwise the initial state is too 
 # close to the exact Néel product state and the optimizer gets 
 # stuck in a local minimum.
 
-PAD_NOISE = 1e-2
+PAD_NOISE = 1e-3
 #   Gaussian noise amplitude added to the ZERO-PADDED new indices when
 #   enlarging tensors from D → D+1.  Non-zero noise breaks the symmetry of
 #   subspace of the smaller-D manifold.  Keep comparable to INIT_NOISE.
@@ -2445,6 +2445,9 @@ def main():
         ctm_e_conv_threshold   = CTM_E_CONV_THRESHOLD,
         # (ctm_e_proxy_interval removed — always 1)
         env_identity_init      = ENV_IDENTITY_INIT,
+        ctm_init_random_noise  = _core.CTM_INIT_RANDOM_NOISE,
+        ctm_restart_random_noise_scales = list(
+            _core.CTM_RESTART_RANDOM_NOISE_SCALES),
 
         # ── tensor init & padding ──────────────────────────────────────────
         init_noise                 = INIT_NOISE,

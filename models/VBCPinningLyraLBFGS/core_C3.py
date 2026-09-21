@@ -45,6 +45,16 @@ TENSORDTYPE: torch.dtype = torch.float64 # tensor dtype (real or complex)
 # run all CTMRG + energy computations on GPU.
 DEVICE: torch.device = torch.device('cpu')
 
+# Random perturbations used only to break degeneracy in CTMRG boundary
+# initialization/restarts.  Randomized-SVD projection vectors are separate.
+CTM_INIT_RANDOM_NOISE: float = 1e-3
+CTM_RESTART_RANDOM_NOISE_SCALES: tuple[float, ...] = (
+    CTM_INIT_RANDOM_NOISE,
+    CTM_INIT_RANDOM_NOISE,
+    CTM_INIT_RANDOM_NOISE,
+    CTM_INIT_RANDOM_NOISE,
+)
+
 
 
 
@@ -1915,7 +1925,9 @@ def trunc_rhoC3(matC: torch.Tensor, chi: int, D_squared: int):
 
 
 
-def initialize_envCTs_C3(A, B, C, D, E, F, chi, D_squared, identity_init=False):
+def initialize_envCTs_C3(A, B, C, D, E, F, chi, D_squared,
+                         identity_init=False,
+                         identity_noise=CTM_INIT_RANDOM_NOISE):
     """Initialize the C3 CTM with only ``C21CD, T1F, T2A``.
 
     ``T1F`` represents the orbit ``{T1F,T2B,T3D}``, while ``T2A`` represents
@@ -1926,7 +1938,10 @@ def initialize_envCTs_C3(A, B, C, D, E, F, chi, D_squared, identity_init=False):
         raise ValueError(f"D_squared={D_squared} is not a perfect square")
 
     if identity_init:
-        noise = 1e-2
+        # Small symmetry-breaking noise for the otherwise exactly degenerate
+        # all-ones boundary.  Keep this at or below the production small-h
+        # continuation ceiling.  This is unrelated to rSVD random vectors.
+        noise = identity_noise
         C21CD = torch.ones((chi, chi), dtype=A.dtype, device=A.device)
         T1F = torch.ones((chi, chi, D_squared), dtype=A.dtype, device=A.device)
         T2A = torch.ones((chi, chi, D_squared), dtype=A.dtype, device=A.device)
@@ -2152,7 +2167,11 @@ def CTMRG_from_init_to_stop(A, B, C, D, E, F,
     One loop iteration performs the complete ``1->2->3->1`` cycle.
     """
     _ZERO_COLLAPSE_THR = 1e-20
-    _NOISE_SCALES = (0.0, 0.1, 1.0, 10.0)
+    # Each retry redraws one all-ones-boundary perturbation.  There is no
+    # second additive perturbation, so the total initialization-noise
+    # coefficient itself never exceeds the small-h production ceiling.
+    # rSVD randomness is deliberately not governed by this schedule.
+    _NOISE_SCALES = CTM_RESTART_RANDOM_NOISE_SCALES
 
     for restart, noise_scale in enumerate(_NOISE_SCALES):
         use_identity = identity_init if restart == 0 else True
@@ -2161,12 +2180,8 @@ def CTMRG_from_init_to_stop(A, B, C, D, E, F,
             if D_bond >= 7 and not use_identity:
                 use_identity = True
             nowC21CD, nowT1F, nowT2A = initialize_envCTs_C3(
-                A, B, C, D, E, F, chi, D_squared, identity_init=use_identity)
-            if noise_scale > 0.0:
-                for tensor in (nowC21CD, nowT1F, nowT2A):
-                    scale = torch.linalg.norm(tensor).clamp(min=1.0).item()
-                    tensor.add_(noise_scale * scale * torch.randn_like(tensor))
-                    tensor.copy_(normalize_tensor(tensor))
+                A, B, C, D, E, F, chi, D_squared,
+                identity_init=use_identity, identity_noise=noise_scale)
 
         nowC21EB = nowT1D = nowT2C = None
         nowC21AF = nowT1B = nowT2E = None
