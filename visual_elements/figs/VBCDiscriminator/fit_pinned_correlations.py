@@ -25,6 +25,10 @@ from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.lines import Line2D
 
 from analyze_three_source_runs import COLORS, discover, select_highest_chi
+from analyze_existing_twoc3 import (
+    DEFAULT_INPUT as DEFAULT_ORIGINAL_INPUT,
+    discover as discover_original,
+)
 from plot_pinning_replica1 import DEFAULT_BUNDLE, HERE, REPO, RankedStage, rank_stage
 from sync_distin_vbcs import DEFAULT_ARCHIVE
 
@@ -88,6 +92,15 @@ class ExtrapolatedSet:
     C0_weakest: float
     Delta0: float
     Delta0_fit_stderr: float
+    E0: float
+    E0_fit_stderr: float
+    energy_c1: float
+    energy_c2: float
+    energy_r_squared: float
+    energy_rmse: float
+    energy_max_abs_residual: float
+    E0_without_largest_h: float
+    E0_window_shift: float
     min_r_squared: float
     max_rmse: float
     max_abs_residual: float
@@ -110,6 +123,19 @@ class FitOmission:
     n_positive_fields: int
     positive_fields: str
     reason: str
+
+
+@dataclass(frozen=True)
+class EnergyFit:
+    E0: float
+    E0_stderr: float
+    c1: float
+    c2: float
+    r_squared: float
+    rmse: float
+    max_abs_residual: float
+    E0_without_largest_h: float
+    E0_window_shift: float
 
 
 def _finite_ratio(numerator: float, denominator: float) -> float:
@@ -172,6 +198,41 @@ def fit_one_rank(rows: list[RankedStage], rank_name: str,
     )
 
 
+def fit_energy(rows: list[RankedStage]) -> EnergyFit:
+    """Fit E(h)=E0+c1*h+c2*h^2 using the same positive fields as C(h)."""
+    positive = sorted((row for row in rows if row.h > 0), key=lambda row: row.h)
+    fields = np.asarray([row.h for row in positive], dtype=float)
+    values = np.asarray([row.energy_per_site for row in positive], dtype=float)
+    if len(set(fields)) < 4:
+        key = (rows[0].cluster, rows[0].J2, rows[0].D, rows[0].branch)
+        raise RuntimeError(
+            f"{key}: energy quadratic covariance fit requires at least four "
+            f"distinct h>0 points, found {sorted(set(fields))}"
+        )
+
+    coefficients, covariance = np.polyfit(fields, values, 2, cov=True)
+    c2, c1, E0 = (float(value) for value in coefficients)
+    residuals = values - np.polyval(coefficients, fields)
+    ss_res = float(np.sum(residuals ** 2))
+    ss_tot = float(np.sum((values - np.mean(values)) ** 2))
+    r_squared = 1.0 - ss_res / ss_tot if ss_tot > 0 else math.nan
+    without_largest = fields < max(fields)
+    E0_restricted = float(np.polyfit(
+        fields[without_largest], values[without_largest], 2,
+    )[2]) if np.count_nonzero(without_largest) >= 3 else math.nan
+    return EnergyFit(
+        E0=E0,
+        E0_stderr=float(math.sqrt(max(float(covariance[2, 2]), 0.0))),
+        c1=c1,
+        c2=c2,
+        r_squared=r_squared,
+        rmse=float(math.sqrt(ss_res / len(fields))),
+        max_abs_residual=float(np.max(np.abs(residuals))),
+        E0_without_largest_h=E0_restricted,
+        E0_window_shift=abs(E0 - E0_restricted),
+    )
+
+
 def fit_group(rows: list[RankedStage]) -> tuple[list[RankFit], ExtrapolatedSet]:
     fits = [fit_one_rank(rows, name, attribute)
             for name, attribute, _, _ in RANKS]
@@ -180,6 +241,7 @@ def fit_group(rows: list[RankedStage]) -> tuple[list[RankFit], ExtrapolatedSet]:
                                   for name in ("strongest", "middle", "weakest"))
     delta = weakest.C0 - strongest.C0
     delta_stderr = math.hypot(strongest.C0_stderr, weakest.C0_stderr)
+    energy = fit_energy(rows)
     fields = sorted({row.h for row in rows if row.h > 0}, reverse=True)
     summary = ExtrapolatedSet(
         cluster=rows[0].cluster, J2=rows[0].J2, D=rows[0].D,
@@ -187,6 +249,12 @@ def fit_group(rows: list[RankedStage]) -> tuple[list[RankFit], ExtrapolatedSet]:
         C0_strongest=strongest.C0, C0_middle=middle.C0,
         C0_weakest=weakest.C0, Delta0=delta,
         Delta0_fit_stderr=delta_stderr,
+        E0=energy.E0, E0_fit_stderr=energy.E0_stderr,
+        energy_c1=energy.c1, energy_c2=energy.c2,
+        energy_r_squared=energy.r_squared, energy_rmse=energy.rmse,
+        energy_max_abs_residual=energy.max_abs_residual,
+        E0_without_largest_h=energy.E0_without_largest_h,
+        E0_window_shift=energy.E0_window_shift,
         min_r_squared=min(fit.r_squared for fit in fits),
         max_rmse=max(fit.rmse for fit in fits),
         max_abs_residual=max(fit.max_abs_residual for fit in fits),
@@ -303,11 +371,35 @@ def plot_fit_pages(groups: dict[tuple, list[RankedStage]],
             plt.close(fig)
 
 
-def plot_splitting(summaries: list[ExtrapolatedSet], path: Path,
-                   dimensions: tuple[int, ...]) -> None:
-    fig, axes = plt.subplots(1, len(dimensions), figsize=(5.0 * len(dimensions), 4.8),
-                             squeeze=False, sharey=True)
-    for ax, D in zip(axes[0], dimensions):
+def load_original_energies(input_dir: Path,
+                           dimensions: tuple[int, ...]) -> dict[tuple[float, int], float]:
+    """Read the original, unbiased 0713summary twoC3 observations."""
+    if not input_dir.is_dir():
+        raise FileNotFoundError(f"original 0713summary directory is missing: {input_dir}")
+    selected = {}
+    for row in discover_original(input_dir, "2tensor_twoC3", False):
+        if row.D not in dimensions:
+            continue
+        key = (row.J2, row.D)
+        if key not in selected or row.chi > selected[key].chi:
+            selected[key] = row
+    if not selected:
+        raise RuntimeError(f"no original twoC3 energies found in {input_dir}")
+    return {key: row.energy_per_site for key, row in selected.items()}
+
+
+def plot_extrapolated(summaries: list[ExtrapolatedSet], path: Path,
+                      dimensions: tuple[int, ...],
+                      original_energies: dict[tuple[float, int], float]) -> None:
+    fig, axes = plt.subplots(
+        3, len(dimensions), figsize=(5.0 * len(dimensions), 12.0),
+        squeeze=False, sharex="col", sharey="row",
+    )
+    all_fit_j2 = sorted({row.J2 for row in summaries})
+    j2_min, j2_max = min(all_fit_j2), max(all_fit_j2)
+    energy_differences: list[tuple[float, float]] = []
+    for column, D in enumerate(dimensions):
+        split_ax, energy_ax, difference_ax = axes[:, column]
         panel = [row for row in summaries if row.D == D]
         for cluster in ("Izar", "Kuma"):
             marker, line = CLUSTER_STYLE[cluster]
@@ -318,7 +410,7 @@ def plot_splitting(summaries: list[ExtrapolatedSet], path: Path,
                                 key=lambda row: row.J2)
                 if not subset:
                     continue
-                ax.errorbar(
+                split_ax.errorbar(
                     [row.J2 + offset for row in subset],
                     [row.Delta0 for row in subset],
                     yerr=[row.Delta0_fit_stderr for row in subset],
@@ -327,28 +419,100 @@ def plot_splitting(summaries: list[ExtrapolatedSet], path: Path,
                     capsize=2.5,
                     label=f"{BRANCH_LABELS[branch]} ({cluster})",
                 )
-        ax.set_title(f"$D={D}$")
-        ax.set_xlabel("$J_2/J_1$")
-        ax.grid(alpha=0.22)
+
+        original = sorted(
+            (J2, energy) for (J2, original_D), energy in original_energies.items()
+            if original_D == D and j2_min <= J2 <= j2_max
+        )
+        if original:
+            energy_ax.plot(
+                [item[0] for item in original], [item[1] for item in original],
+                color="black", marker="o", markersize=4.5, linewidth=1.35,
+                label="original 0713summary twoC3 energy", zorder=1,
+            )
+        for cluster in ("Izar", "Kuma"):
+            marker, line = CLUSTER_STYLE[cluster]
+            offset = -0.00025 if cluster == "Kuma" else 0.00025
+            for branch in BRANCHES:
+                subset = sorted((row for row in panel
+                                 if row.cluster == cluster and row.branch == branch),
+                                key=lambda row: row.J2)
+                if not subset:
+                    continue
+                energy_ax.errorbar(
+                    [row.J2 + offset for row in subset],
+                    [row.E0 for row in subset],
+                    yerr=[row.E0_fit_stderr for row in subset],
+                    color=COLORS[branch], marker=marker, linestyle=line,
+                    linewidth=1.35, markersize=7, markerfacecolor="white",
+                    elinewidth=1.35, capsize=4.0, capthick=1.35, zorder=2,
+                    label=f"{BRANCH_LABELS[branch]} ({cluster})",
+                )
+                difference_rows = [
+                    (row, original_energies.get((row.J2, D))) for row in subset
+                ]
+                difference_rows = [
+                    (row, original_energy)
+                    for row, original_energy in difference_rows
+                    if original_energy is not None
+                ]
+                if difference_rows:
+                    differences = [row.E0 - original_energy
+                                   for row, original_energy in difference_rows]
+                    errors = [row.E0_fit_stderr
+                              for row, _ in difference_rows]
+                    energy_differences.extend(zip(differences, errors))
+                    difference_ax.errorbar(
+                        [row.J2 + offset for row, _ in difference_rows],
+                        differences, yerr=errors,
+                        color=COLORS[branch], marker=marker, linestyle=line,
+                        linewidth=1.35, markersize=7, markerfacecolor="white",
+                        elinewidth=1.35, capsize=4.0, capthick=1.35,
+                        label=f"{BRANCH_LABELS[branch]} ({cluster})",
+                    )
+
+        split_ax.set_title(f"$D={D}$")
+        split_ax.grid(alpha=0.22)
+        energy_ax.grid(alpha=0.22)
+        difference_ax.set_xlabel("$J_2/J_1$")
+        difference_ax.grid(alpha=0.22)
+        difference_ax.axhline(0.0, color="black", linewidth=0.8, zorder=0)
+        difference_ax.tick_params(axis="x", labelrotation=45, labelsize=8)
         if panel:
-            ax.set_xticks(sorted({row.J2 for row in panel}))
+            ticks = sorted({row.J2 for row in panel}
+                           | {J2 for J2, _ in original})
+            energy_ax.set_xticks(ticks)
         else:
-            ax.text(0.5, 0.5, "No data", transform=ax.transAxes,
-                    ha="center", va="center")
+            split_ax.text(0.5, 0.5, "No fitted pinning data",
+                          transform=split_ax.transAxes,
+                          ha="center", va="center")
+            energy_ax.text(0.5, 0.5, "No fitted pinning data",
+                           transform=energy_ax.transAxes,
+                           ha="center", va="center")
+            difference_ax.text(0.5, 0.5, "No fitted pinning data",
+                               transform=difference_ax.transAxes,
+                               ha="center", va="center")
     axes[0, 0].set_ylabel(
         r"extrapolated splitting $\Delta_0=C_{\rm weakest}(0)-C_{\rm strongest}(0)$"
     )
+    axes[1, 0].set_ylabel(r"energy/site at $h\to0$, $E_0$")
+    axes[2, 0].set_ylabel(
+        r"$E_{h\mathrm{-extrapolation}}-E_{\mathrm{original}}$"
+    )
+    if energy_differences:
+        upper = max(value + error for value, error in energy_differences)
+        axes[2, 0].set_ylim(0.0, max(1.0e-6, 1.08 * upper))
     handles, labels = [], []
-    for ax in axes[0]:
+    for ax in axes.flat:
         for handle, label in zip(*ax.get_legend_handles_labels()):
             if label not in labels:
                 handles.append(handle)
                 labels.append(label)
-    fig.legend(handles, labels, loc="lower center", ncol=2, frameon=False,
+    fig.legend(handles, labels, loc="lower center", ncol=3, frameon=False,
                fontsize=9)
-    fig.suptitle("Quadratic $h>0$ extrapolation; rank-split source excluded",
+    fig.suptitle("Quadratic $h>0$ extrapolation; original twoC3 energy in black",
                  fontsize=14)
-    fig.tight_layout(rect=(0, 0.14, 1, 0.93))
+    fig.tight_layout(rect=(0, 0.075, 1, 0.965))
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
@@ -375,7 +539,8 @@ def load_groups(roots: tuple[tuple[str, Path], ...],
 
 def run_analysis(roots: tuple[tuple[str, Path], ...], output_dir: Path,
                  csv_output_dir: Path,
-                 dimensions: tuple[int, ...] | None = None
+                 dimensions: tuple[int, ...] | None = None,
+                 original_input: Path = DEFAULT_ORIGINAL_INPUT,
                  ) -> tuple[list[ExtrapolatedSet], list[FitOmission]]:
     """Fit every dynamically eligible group and report incomplete groups."""
     groups = load_groups(roots, dimensions)
@@ -408,11 +573,15 @@ def run_analysis(roots: tuple[tuple[str, Path], ...], output_dir: Path,
             "quadratic covariance fit; see omitted_incomplete_fits.csv"
         )
     fitted_dimensions = tuple(sorted({row.D for row in summaries}))
+    original_energies = load_original_energies(original_input, fitted_dimensions)
     plot_fit_pages(eligible_groups, fit_lookup,
                    output_dir / "01_correlation_fits.pdf")
-    plot_splitting(summaries,
-                   output_dir / "02_extrapolated_splitting_vs_J2.pdf",
-                   fitted_dimensions)
+    new_summary_path = output_dir / "02_extrapolated_vs_J2.pdf"
+    plot_extrapolated(summaries, new_summary_path, fitted_dimensions,
+                      original_energies)
+    legacy_summary_path = output_dir / "02_extrapolated_splitting_vs_J2.pdf"
+    if legacy_summary_path.is_file():
+        legacy_summary_path.unlink()
     write_dataclasses(rank_fits,
                       csv_output_dir / "quadratic_fit_coefficients.csv")
     write_dataclasses(
@@ -430,6 +599,9 @@ def main() -> int:
                         default=DEFAULT_ARCHIVE / "Results_Izar_replica1")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--csv-output-dir", type=Path, default=DEFAULT_CSV_OUTPUT)
+    parser.add_argument("--original-input", type=Path,
+                        default=DEFAULT_ORIGINAL_INPUT,
+                        help="0713summary root for the unbiased twoC3 energy curve")
     parser.add_argument(
         "--dimensions", type=int, nargs="+", default=(6, 7, 8, 9, 10),
         help="D filter; default excludes D5 and D11",
@@ -441,7 +613,7 @@ def main() -> int:
     # Strictly validate all discovered observations before creating outputs.
     summaries, omissions = run_analysis(
         (("Kuma", args.kuma), ("Izar", args.izar)),
-        args.output_dir, args.csv_output_dir, dimensions,
+        args.output_dir, args.csv_output_dir, dimensions, args.original_input,
     )
 
     print(f"Fitted {len(summaries)} cluster/J2/D/pin combinations "

@@ -73,6 +73,23 @@ The three sorted correlations are fitted independently using only `h>0`:
 C(h) = C0 + c1 h + c2 h^2 .
 ```
 
+The pinned energy is fitted over the same positive fields:
+
+```text
+E(h) = E0 + e1 h + e2 h^2 .
+```
+
+`02_extrapolated_vs_J2.pdf` has one column per D. Its first row shows the
+extrapolated correlation splitting. Its second row compares the original,
+unbiased `0713summary/2tensor_twoC3` energy (black, without an error bar) with
+the plaquette-pin (blue) and dimer-plaquette-pin (red) extrapolated `E0`
+values. The third row shows `E0-E_original` with a common y scale whose lower
+bound is zero. Both colored energy rows carry the same quadratic-regression
+intercept standard errors from the `h>0` points; these error bars do not
+include CTMRG or finite-chi systematics.
+The energy coefficients, fit diagnostics, `E0`, and `E0_fit_stderr` are also
+written to `extrapolated_correlations_and_splitting.csv`.
+
 The extrapolated splitting is
 
 ```text

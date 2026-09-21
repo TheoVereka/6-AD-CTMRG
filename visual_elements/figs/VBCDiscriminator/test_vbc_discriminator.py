@@ -15,7 +15,7 @@ from analyze_existing_twoc3 import GROUP_KEYS, parse_observation
 from analyze_three_source_runs import Stage, discover as discover_three_source
 from plot_pinning_replica1 import rank_stage
 from plot_pinning_supervisor import omega_order, write_source_csvs
-from fit_pinned_correlations import fit_one_rank
+from fit_pinned_correlations import fit_energy, fit_one_rank
 
 
 def write_observation(path: Path, groups: tuple[float, float, float], energy: float) -> None:
@@ -143,6 +143,25 @@ class VBCDiscriminatorTest(unittest.TestCase):
         self.assertTrue(fit.quadratic_correction_smaller_at_reference_h)
         self.assertEqual(fit.n_positive_fields, 4)
         self.assertAlmostEqual(fit.observed_h0, -9.0)
+
+    def test_energy_quadratic_extrapolation(self) -> None:
+        source = Stage(
+            path="synthetic", branch="plaquette", replica=1,
+            field=0.08, J2=0.30, D=8, chi=160,
+            energy_per_site=-0.42, chi_energy_shift=0.0,
+            G0=-0.40, G1=-0.30, G2=-0.20,
+            delta=0.20, middle_fraction=0.50, clock_z6=0.0,
+            texture="three-distinct/mixed",
+        )
+        base = rank_stage(source, "Kuma")
+        rows = [replace(base, h=h,
+                        energy_per_site=-0.42 + 0.1 * h - 0.25 * h * h)
+                for h in (0.08, 0.04, 0.02, 0.01)]
+        fit = fit_energy(rows)
+        self.assertAlmostEqual(fit.E0, -0.42)
+        self.assertAlmostEqual(fit.c1, 0.1)
+        self.assertAlmostEqual(fit.c2, -0.25)
+        self.assertTrue(math.isfinite(fit.E0_stderr))
 
     def test_resolved_energy_competition(self) -> None:
         rows = [

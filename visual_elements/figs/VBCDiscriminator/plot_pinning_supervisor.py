@@ -284,6 +284,8 @@ def main() -> int:
                         default=DEFAULT_QUADRATIC_OUTPUT)
     parser.add_argument("--quadratic-csv-output-dir", type=Path,
                         default=DEFAULT_QUADRATIC_CSV_OUTPUT)
+    parser.add_argument("--quadratic-original-input", type=Path, default=None,
+                        help="optional 0713summary root for the original twoC3 energy curve")
     parser.add_argument("--dimensions", type=int, nargs="+",
                         default=(6, 7, 8, 9, 10),
                         help="D values to plot; default excludes D5 and D11")
@@ -336,10 +338,13 @@ def main() -> int:
         quadratic_dimensions = (tuple(sorted(set(args.quadratic_dimensions)))
                                 if args.quadratic_dimensions is not None
                                 else dimensions)
+        quadratic_kwargs = {}
+        if args.quadratic_original_input is not None:
+            quadratic_kwargs["original_input"] = args.quadratic_original_input
         summaries, omissions = run_analysis(
             (("Kuma", kuma_root), ("Izar", izar_root)),
             args.quadratic_output_dir, args.quadratic_csv_output_dir,
-            quadratic_dimensions,
+            quadratic_dimensions, **quadratic_kwargs,
         )
         print(f"Quadratic extrapolation updated: {len(summaries)} fitted groups, "
               f"{len(omissions)} dynamically incomplete groups reported")
