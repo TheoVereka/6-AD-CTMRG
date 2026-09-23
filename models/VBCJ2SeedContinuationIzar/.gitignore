@@ -1,0 +1,5 @@
+Results_Izar_J2_sequences/
+slurm_logs/
+*.out
+*.error
+

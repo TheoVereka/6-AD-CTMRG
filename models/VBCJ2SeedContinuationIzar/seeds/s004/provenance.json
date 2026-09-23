@@ -1,0 +1,38 @@
+{
+  "D": 8,
+  "G0": -0.24914865990995003,
+  "G1": -0.249070925384,
+  "G2": -0.4764076250642,
+  "directions": [
+    {
+      "J2": [
+        "0.29",
+        "0.28",
+        "0.275",
+        "0.27",
+        "0.265",
+        "0.26"
+      ],
+      "direction": "left"
+    },
+    {
+      "J2": [
+        "0.31",
+        "0.32"
+      ],
+      "direction": "right"
+    }
+  ],
+  "eta": "0.99931612866678",
+  "orientation": 2,
+  "run_chi": 104,
+  "seed_J2": "0.3",
+  "seed_id": "s004",
+  "seed_relative_path": "seeds/s004/tensor_best.pt",
+  "selected_texture": "dimer-plaquette",
+  "sha256": "a3d49e2783d6caa84297206c5bf280876d163a8fda54c61734c1d0164a4ff698",
+  "source": "original_2c3",
+  "source_observation": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p3\\2tensor_twoC3\\D_8\\energy_magnetization_correlation.txt",
+  "source_seed_branch": "original",
+  "source_tensor": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\distinVBCsH0TensorCandidates\\selection_20260923_170530\\tensors\\J2_0p3\\D_8\\dimer-plaquette\\032__original_2c3__original__chi_104\\tensor_best.pt"
+}

@@ -1,0 +1,101 @@
+# D=9  chi=108  timestamp=2026-09-23 06:21:55
+
+energy           = -2.513987632319e+00
+energy_per_site  = -4.189979387198e-01
+
+# ── Bond correlations <Si·Sj>  (36 values) ──────────────────────
+# env1
+corr_env1_EB = -2.292157689382e-01
+corr_env1_AD = -2.292157689382e-01
+corr_env1_CF = -2.292157689382e-01
+corr_env1_FA = -4.900057745164e-01
+corr_env1_DE = -4.900057745164e-01
+corr_env1_BC = -4.900057745164e-01
+corr_env1_AE = +8.899745042521e-02
+corr_env1_EC = +8.899745042521e-02
+corr_env1_CA = +8.899745042521e-02
+corr_env1_DB = +8.895071405759e-02
+corr_env1_BF = +8.895071405759e-02
+corr_env1_FD = +8.895071405759e-02
+
+# env2
+corr_env2_CB = -4.898836011606e-01
+corr_env2_AF = -4.898836011606e-01
+corr_env2_ED = -4.898836011606e-01
+corr_env2_DC = -2.294244607413e-01
+corr_env2_BA = -2.294244607413e-01
+corr_env2_FE = -2.294244607413e-01
+corr_env2_CA = +8.902959603734e-02
+corr_env2_AE = +8.902959603734e-02
+corr_env2_EC = +8.902959603734e-02
+corr_env2_BF = +8.901734710143e-02
+corr_env2_FD = +8.901734710143e-02
+corr_env2_DB = +8.901734710143e-02
+
+# env3
+corr_env3_EF = -2.294404050360e-01
+corr_env3_AB = -2.294404050360e-01
+corr_env3_CD = -2.294404050360e-01
+corr_env3_BE = -2.292568845670e-01
+corr_env3_FC = -2.292568845670e-01
+corr_env3_DA = -2.292568845670e-01
+corr_env3_EC = -1.040794435293e-02
+corr_env3_CA = -1.040794435293e-02
+corr_env3_AE = -1.040794435293e-02
+corr_env3_FD = -1.038240557144e-02
+corr_env3_DB = -1.038240557144e-02
+corr_env3_BF = -1.038240557144e-02
+
+# ── Site magnetizations <Sx> <Sy> <Sz>  (54 values) ──────────────
+# <Sy> via iSy_op=(S+-S-)/2=i·Sy_phys:
+#   Real iPEPS:    Sy = Re(Tr(rho·iSy_op)) = 0.0 exactly
+#   Complex iPEPS: Sy = Im(Tr(rho·iSy_op)) = physical <Sy>
+# env1
+mag_env1_A  Sx=-7.928564764895e-03  Sy=+6.938893903907e-18  Sz=+4.351018747771e-03
+mag_env1_B  Sx=+7.931257866239e-03  Sy=+4.336808689942e-18  Sz=-4.353750624393e-03
+mag_env1_C  Sx=-7.928564764895e-03  Sy=+6.938893903907e-18  Sz=+4.351018747771e-03
+mag_env1_D  Sx=+7.931257866239e-03  Sy=+4.336808689942e-18  Sz=-4.353750624393e-03
+mag_env1_E  Sx=-7.928564764895e-03  Sy=+6.938893903907e-18  Sz=+4.351018747771e-03
+mag_env1_F  Sx=+7.931257866239e-03  Sy=+4.336808689942e-18  Sz=-4.353750624393e-03
+
+# env2
+mag_env2_A  Sx=-7.914231472014e-03  Sy=+1.734723475977e-18  Sz=+4.345957211624e-03
+mag_env2_B  Sx=+7.905383155731e-03  Sy=+8.673617379884e-19  Sz=-4.348622301112e-03
+mag_env2_C  Sx=-7.914231472014e-03  Sy=+1.734723475977e-18  Sz=+4.345957211624e-03
+mag_env2_D  Sx=+7.905383155731e-03  Sy=+8.673617379884e-19  Sz=-4.348622301112e-03
+mag_env2_E  Sx=-7.914231472014e-03  Sy=+1.734723475977e-18  Sz=+4.345957211624e-03
+mag_env2_F  Sx=+7.905383155731e-03  Sy=+8.673617379884e-19  Sz=-4.348622301112e-03
+
+# env3
+mag_env3_A  Sx=-7.949677550674e-03  Sy=+8.673617379884e-19  Sz=+4.382016192273e-03
+mag_env3_B  Sx=+7.915430588282e-03  Sy=+1.040834085586e-17  Sz=-4.354482063838e-03
+mag_env3_C  Sx=-7.949677550674e-03  Sy=+8.673617379884e-19  Sz=+4.382016192273e-03
+mag_env3_D  Sx=+7.915430588282e-03  Sy=+1.040834085586e-17  Sz=-4.354482063838e-03
+mag_env3_E  Sx=-7.949677550674e-03  Sy=+8.673617379884e-19  Sz=+4.382016192273e-03
+mag_env3_F  Sx=+7.915430588282e-03  Sy=+1.040834085586e-17  Sz=-4.354482063838e-03
+
+# ── Local magnetization |m|=sqrt(Sx²+Sy²+Sz²)  (18 values: 6 sites × 3 envs) ──────────────
+# env1
+localmag_env1_A  |m|=+9.043976082155e-03
+localmag_env1_B  |m|=+9.047651399130e-03
+localmag_env1_C  |m|=+9.043976082155e-03
+localmag_env1_D  |m|=+9.047651399130e-03
+localmag_env1_E  |m|=+9.043976082155e-03
+localmag_env1_F  |m|=+9.047651399130e-03
+
+# env2
+localmag_env2_A  |m|=+9.028975793404e-03
+localmag_env2_B  |m|=+9.022505126441e-03
+localmag_env2_C  |m|=+9.028975793404e-03
+localmag_env2_D  |m|=+9.022505126441e-03
+localmag_env2_E  |m|=+9.028975793404e-03
+localmag_env2_F  |m|=+9.022505126441e-03
+
+# env3
+localmag_env3_A  |m|=+9.077413677311e-03
+localmag_env3_B  |m|=+9.034132799677e-03
+localmag_env3_C  |m|=+9.077413677311e-03
+localmag_env3_D  |m|=+9.034132799677e-03
+localmag_env3_E  |m|=+9.077413677311e-03
+localmag_env3_F  |m|=+9.034132799677e-03
+

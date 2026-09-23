@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+#SBATCH --qos=long
+#SBATCH --partition=gpu
+#SBATCH --gres=gpu:1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=40G
+#SBATCH --time=167:59:50
+#SBATCH --exclude=i39
+#SBATCH --output=slurm_logs/%x-%N-%j.out
+#SBATCH --error=slurm_logs/%x-%N-%j.error
+
+set -euo pipefail
+module load gcc/11.3.0
+module load cuda/11.8.0
+source /home/chye/venvs/6adctmrg_Izar/bin/activate
+
+BUNDLE_DIR="${BUNDLE_DIR:-${SLURM_SUBMIT_DIR:-${PWD}}}"
+BUNDLE_DIR="$(cd -- "${BUNDLE_DIR}" && pwd)"
+export BUNDLE_DIR
+bash "${BUNDLE_DIR}/run_one_j2_stage_izar.sh"

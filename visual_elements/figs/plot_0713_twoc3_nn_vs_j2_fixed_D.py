@@ -16,7 +16,7 @@ from plot_0713_twoc3_nn_delta import J2_VALUES, RANK_COLORS, RANK_LABELS, read_r
 
 
 HERE = Path(__file__).resolve().parent
-D_VALUES = (8, 9, 10, 11)
+D_VALUES = (5, 6, 7, 8, 9, 10, 11)
 
 
 def plot_fixed_D(data: dict, D: int, output: Path) -> None:

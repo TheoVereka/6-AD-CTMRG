@@ -1,0 +1,38 @@
+{
+  "D": 8,
+  "G0": -0.20468534174414998,
+  "G1": -0.3919701576341,
+  "G2": -0.39596813715109996,
+  "directions": [
+    {
+      "J2": [
+        "0.275",
+        "0.27",
+        "0.265",
+        "0.26"
+      ],
+      "direction": "left"
+    },
+    {
+      "J2": [
+        "0.29",
+        "0.30",
+        "0.31",
+        "0.32"
+      ],
+      "direction": "right"
+    }
+  ],
+  "eta": "-0.958198232010418",
+  "orientation": 0,
+  "run_chi": 104,
+  "seed_J2": "0.28",
+  "seed_id": "s003",
+  "seed_relative_path": "seeds/s003/tensor_best.pt",
+  "selected_texture": "plaquette",
+  "sha256": "eae7833e12b3af18e28781b54c139a8c19b7b6515c3a47f058c0f003f264a931",
+  "source": "izar_replica1_small_h",
+  "source_observation": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\distinVBCsSmallH\\Results_Izar_replica1\\J2_0.28\\D_8\\orientation_0\\plaquette\\replica_1\\h_0\\D_8_chi_104_energy_magnetization_correlation.txt",
+  "source_seed_branch": "plaquette",
+  "source_tensor": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\distinVBCsH0TensorCandidates\\selection_20260923_170530\\tensors\\J2_0p28\\D_8\\plaquette\\006__izar_replica1_small_h__plaquette__replica_1__orientation_0__chi_104\\tensor_best.pt"
+}

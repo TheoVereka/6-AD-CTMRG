@@ -1,0 +1,60 @@
+{
+  "ansatz": "2tensor_twoC3",
+  "run_timestamp": "20260714_121954",
+  "output_dir": "/scratch/izar/chye/0713core/2tensor_twoC3__J2_0p28_20260714_121954",
+  "random_seed_fix": false,
+  "random_seed": null,
+  "use_double": true,
+  "use_real_tensors": true,
+  "tensordtype": "torch.float64",
+  "device": "cuda",
+  "hours": 99999,
+  "D_bond_list": [
+    7
+  ],
+  "d_budgets_seconds": {
+    "7": 359996400.0
+  },
+  "schedules": {
+    "7": [
+      91,
+      105
+    ]
+  },
+  "J1": 1.0,
+  "J2": 0.28,
+  "d_phys": 2,
+  "n_sites": 6,
+  "optimizer": "lbfgs",
+  "use_adam_warmup_then_lbfgs": true,
+  "adam_flat_patience": 20,
+  "lbfgs_lr": 1.0,
+  "lbfgs_max_iter": 15,
+  "lbfgs_history": 150,
+  "opt_tol_grad": 0.0,
+  "opt_tol_change": 2e-08,
+  "opt_conv_threshold": 3e-08,
+  "adam_lr": 0.007,
+  "adam_betas": [
+    0.85,
+    0.96
+  ],
+  "adam_eps": 1e-08,
+  "adam_weight_decay": 0.0,
+  "adam_grad_clip": null,
+  "rsvd_mode": "augmented",
+  "rsvd_neumann_terms": 2,
+  "rsvd_power_iters": null,
+  "ctm_max_steps": 130,
+  "ctm_conv_thr": 1e-07,
+  "ctm_conv_mode": "both",
+  "ctm_e_conv_threshold": 2e-08,
+  "env_identity_init": true,
+  "init_noise": 0.01,
+  "pad_noise": 0.01,
+  "rand_init_new_d": false,
+  "rand_init_new_chi": false,
+  "mean_field_init": true,
+  "save_every": 1,
+  "n_physical_cores": 25
+}

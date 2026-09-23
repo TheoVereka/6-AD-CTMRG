@@ -1,0 +1,34 @@
+{
+  "D": 9,
+  "G0": -0.2292363267526,
+  "G1": -0.48994468783850004,
+  "G2": -0.22943243288865,
+  "directions": [
+    {
+      "J2": [
+        "0.32",
+        "0.31",
+        "0.30",
+        "0.29",
+        "0.28",
+        "0.275",
+        "0.27",
+        "0.265",
+        "0.26"
+      ],
+      "direction": "left"
+    }
+  ],
+  "eta": "0.998495589974689",
+  "orientation": 1,
+  "run_chi": 108,
+  "seed_J2": "0.33",
+  "seed_id": "s006",
+  "seed_relative_path": "seeds/s006/tensor_best.pt",
+  "selected_texture": "dimer-plaquette",
+  "sha256": "12f73962f4fb4e9f871b541731f79959e8fd05563d18830d508bd4f68b00f649",
+  "source": "izar_replica1_small_h",
+  "source_observation": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\distinVBCsSmallH\\Results_Izar_replica1\\J2_0.33\\D_9\\orientation_1\\dimer-plaquette\\replica_1\\h_0\\D_9_chi_108_energy_magnetization_correlation.txt",
+  "source_seed_branch": "dimer-plaquette",
+  "source_tensor": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\distinVBCsH0TensorCandidates\\selection_20260923_170530\\tensors\\J2_0p33\\D_9\\dimer-plaquette\\072__izar_replica1_small_h__dimer-plaquette__replica_1__orientation_1__chi_108\\tensor_best.pt"
+}
