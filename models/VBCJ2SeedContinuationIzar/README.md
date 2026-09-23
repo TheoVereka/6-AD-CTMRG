@@ -67,3 +67,23 @@ does not release its `afterok` successors; the independent insurance chain is
 unaffected. A later clean resubmission resumes a partial stage from
 `latest.pt` and immediately exits stages that already have both best tensor
 and observation.
+
+## Snapshot and plot completed individual J2 stages
+
+There is no need to wait for an entire directional chain. From the repository
+root on Windows, this one command uploads the packer, snapshots only stage
+directories containing the terminal `sweep_results.json`, downloads them,
+merges them with earlier snapshots, and regenerates the fixed-D figures:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\models\VBCJ2SeedContinuationIzar\download_completed_j2_and_plot.ps1
+```
+
+The accumulated raw results go to
+`data/distinVBCsJ2Continuation/Results_Izar_J2_sequences` outside this code
+repository. The figures and their source CSVs go to
+`visual_elements/figs/VBCDiscriminator/j2_seed_continuations`. Each
+`2C3_NN_ranks_vs_J2_Dx.pdf` has shared-y dimer-plaquette-seed and
+plaquette-seed panels. Left and right continuations use the same rank markers
+and meet at the actual selected seed observation; insurance replicas differ
+only by line style/opacity.
