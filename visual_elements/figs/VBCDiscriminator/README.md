@@ -114,3 +114,28 @@ the fit automatically after enough SCP data arrives.
 `rank-split` is displayed by the supervisor when available but is excluded
 from the two physical-branch quadratic extrapolation. Measured h=0 points are
 shown as diagnostics and are not included in the fit.
+
+## Isolated `h <= 0.005` analysis
+
+`plot_small_h_pinning.py` is deliberately separate from the replica-1
+supervisor. It reads only
+`data/distinVBCsSmallH/Results_Izar_replica1`, applies a second numerical
+`h <= 0.005` filter internally, and fits the four positive fields
+`0.005, 0.003, 0.002, 0.001`. A measured `h=0` point is plotted but never
+enters the quadratic fit. The linear-response diagnostic uses
+`h_ref=min(0.02,h_max)=0.005` for this window.
+
+Run it from the repository root with:
+
+```powershell
+python .\visual_elements\figs\VBCDiscriminator\plot_small_h_pinning.py `
+  --input "D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsSmallH\Results_Izar_replica1"
+```
+
+It does not synchronize or modify the normal replica-1 archive. New figure
+outputs are written under `small_h_pinning_extrapolation`: a multipage fit
+PDF, one fit PNG per `(J2,D)`, and the three-row extrapolation summary in both
+PDF and PNG. New processed tables are written to
+`data/processed/VBCPinningSmallHQuadraticExtrapolation`. Groups lacking all
+four positive small fields are reported dynamically in
+`omitted_incomplete_fits.csv` and are not fitted.

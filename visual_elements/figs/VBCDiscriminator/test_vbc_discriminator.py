@@ -144,6 +144,16 @@ class VBCDiscriminatorTest(unittest.TestCase):
         self.assertEqual(fit.n_positive_fields, 4)
         self.assertAlmostEqual(fit.observed_h0, -9.0)
 
+        small_rows = [
+            replace(base, h=h, rank1=-0.4 + 2.0 * h - 3.0 * h * h)
+            for h in (0.005, 0.003, 0.002, 0.001)
+        ]
+        small_fit = fit_one_rank(small_rows, "strongest", "rank1")
+        self.assertAlmostEqual(small_fit.linear_response_reference_h, 0.005)
+        self.assertAlmostEqual(
+            small_fit.quadratic_over_linear_at_reference_h, 0.0075,
+        )
+
     def test_energy_quadratic_extrapolation(self) -> None:
         source = Stage(
             path="synthetic", branch="plaquette", replica=1,

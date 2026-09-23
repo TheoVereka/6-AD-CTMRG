@@ -174,7 +174,8 @@ def fit_one_rank(rows: list[RankedStage], rank_name: str,
                    if zero_rows else math.nan)
     coefficient_ratio = _finite_ratio(c2, c1)
     range_ratio = coefficient_ratio * float(max(fields))
-    reference_ratio = coefficient_ratio * LINEAR_RESPONSE_REFERENCE_H
+    reference_h = min(LINEAR_RESPONSE_REFERENCE_H, float(max(fields)))
+    reference_ratio = coefficient_ratio * reference_h
     first = rows[0]
     return RankFit(
         cluster=first.cluster, J2=first.J2, D=first.D, branch=first.branch,
@@ -184,7 +185,7 @@ def fit_one_rank(rows: list[RankedStage], rank_name: str,
         c1=c1, c2=c2,
         quadratic_over_linear_coefficient=coefficient_ratio,
         quadratic_over_linear_at_hmax=range_ratio,
-        linear_response_reference_h=LINEAR_RESPONSE_REFERENCE_H,
+        linear_response_reference_h=reference_h,
         quadratic_over_linear_at_reference_h=reference_ratio,
         quadratic_correction_smaller_at_reference_h=reference_ratio < 1.0,
         r_squared=r_squared,
@@ -262,7 +263,7 @@ def fit_group(rows: list[RankedStage]) -> tuple[list[RankFit], ExtrapolatedSet]:
             fit.quadratic_over_linear_coefficient for fit in fits),
         max_quadratic_over_linear_at_hmax=max(
             fit.quadratic_over_linear_at_hmax for fit in fits),
-        linear_response_reference_h=LINEAR_RESPONSE_REFERENCE_H,
+        linear_response_reference_h=strongest.linear_response_reference_h,
         max_quadratic_over_linear_at_reference_h=max(
             fit.quadratic_over_linear_at_reference_h for fit in fits),
         all_quadratic_corrections_smaller_at_reference_h=all(
@@ -288,8 +289,12 @@ def write_dataclasses(rows: list, path: Path, row_type=None) -> None:
 
 
 def plot_fit_pages(groups: dict[tuple, list[RankedStage]],
-                   fit_lookup: dict[tuple, list[RankFit]], path: Path) -> None:
+                   fit_lookup: dict[tuple, list[RankFit]], path: Path,
+                   png_dir: Path | None = None,
+                   h_max: float | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    if png_dir is not None:
+        png_dir.mkdir(parents=True, exist_ok=True)
     page_keys = sorted({(key[0], key[1], key[2]) for key in groups})
     with PdfPages(path) as pdf:
         for cluster, J2, D in page_keys:
@@ -300,6 +305,9 @@ def plot_fit_pages(groups: dict[tuple, list[RankedStage]],
                           for _, attribute, _, _ in RANKS]
             lo, hi = min(all_values), max(all_values)
             pad = max(0.015, 0.05 * (hi - lo))
+            max_field = max(row.h for rows in page_groups.values()
+                            for row in rows)
+            h_pad = max(1.0e-4, 0.05 * max_field)
             fig, axes = plt.subplots(1, 2, figsize=(12.4, 5.3), sharex=True,
                                      sharey=True)
             for ax, branch in zip(axes, BRANCHES):
@@ -334,14 +342,15 @@ def plot_fit_pages(groups: dict[tuple, list[RankedStage]],
                                 linestyle="none")
                 ax.set_title(BRANCH_LABELS[branch], color=COLORS[branch])
                 ax.set_xlabel("pinning field $h$")
-                ax.set_xlim(-0.004, 0.084)
+                ax.set_xlim(-h_pad, max_field + h_pad)
                 ax.set_ylim(lo - pad, hi + pad)
                 ax.grid(alpha=0.22)
                 summary_fits = list(fits.values())
                 ax.text(
                     0.03, 0.04,
                     f"min $R^2$={min(f.r_squared for f in summary_fits):.5f}\n"
-                    f"max $|c_2h/c_1|$ at $h={LINEAR_RESPONSE_REFERENCE_H:g}$="
+                    f"max $|c_2h/c_1|$ at "
+                    f"$h={summary_fits[0].linear_response_reference_h:g}$="
                     f"{max(f.quadratic_over_linear_at_reference_h for f in summary_fits):.3f}\n"
                     f"max $C_0$ window shift="
                     f"{max(f.C0_window_shift for f in summary_fits):.4f}",
@@ -363,11 +372,18 @@ def plot_fit_pages(groups: dict[tuple, list[RankedStage]],
                        ncol=5, frameon=False, fontsize=8.5)
             fig.suptitle(
                 f"{cluster} replica 1: $J_2/J_1={J2:g}$, $D={D}$; "
-                r"$C(h)=C_0+c_1h+c_2h^2$ from $h>0$ only",
+                r"$C(h)=C_0+c_1h+c_2h^2$ from $h>0$ only"
+                + (fr", $h\leq {h_max:g}$" if h_max is not None else ""),
                 fontsize=13,
             )
             fig.tight_layout(rect=(0, 0.11, 1, 0.94))
             pdf.savefig(fig)
+            if png_dir is not None:
+                j2_label = f"{J2:.3f}".rstrip("0").rstrip(".").replace(".", "p")
+                fig.savefig(
+                    png_dir / f"{cluster}_J2_{j2_label}_D_{D}.png",
+                    dpi=220, bbox_inches="tight",
+                )
             plt.close(fig)
 
 
@@ -390,7 +406,9 @@ def load_original_energies(input_dir: Path,
 
 def plot_extrapolated(summaries: list[ExtrapolatedSet], path: Path,
                       dimensions: tuple[int, ...],
-                      original_energies: dict[tuple[float, int], float]) -> None:
+                      original_energies: dict[tuple[float, int], float],
+                      png_path: Path | None = None,
+                      h_max: float | None = None) -> None:
     fig, axes = plt.subplots(
         3, len(dimensions), figsize=(5.0 * len(dimensions), 12.0),
         squeeze=False, sharex="col", sharey="row",
@@ -510,16 +528,24 @@ def plot_extrapolated(summaries: list[ExtrapolatedSet], path: Path,
                 labels.append(label)
     fig.legend(handles, labels, loc="lower center", ncol=3, frameon=False,
                fontsize=9)
-    fig.suptitle("Quadratic $h>0$ extrapolation; original twoC3 energy in black",
-                 fontsize=14)
+    window = (fr", $h\leq {h_max:g}$ only" if h_max is not None else "")
+    fig.suptitle(
+        "Quadratic $h>0$ extrapolation" + window
+        + "; original twoC3 energy in black",
+        fontsize=14,
+    )
     fig.tight_layout(rect=(0, 0.075, 1, 0.965))
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, bbox_inches="tight")
+    if png_path is not None:
+        png_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(png_path, dpi=220, bbox_inches="tight")
     plt.close(fig)
 
 
 def load_groups(roots: tuple[tuple[str, Path], ...],
-                dimensions: tuple[int, ...] | None = None
+                dimensions: tuple[int, ...] | None = None,
+                h_max: float | None = None,
                 ) -> dict[tuple, list[RankedStage]]:
     groups: dict[tuple, list[RankedStage]] = defaultdict(list)
     for cluster, root in roots:
@@ -529,7 +555,8 @@ def load_groups(roots: tuple[tuple[str, Path], ...],
                   if stage.replica == 1]
         for stage in stages:
             if (stage.branch in BRANCHES
-                    and (dimensions is None or stage.D in dimensions)):
+                    and (dimensions is None or stage.D in dimensions)
+                    and (h_max is None or stage.field <= h_max + 1.0e-12)):
                 ranked = rank_stage(stage, cluster)
                 groups[(cluster, stage.J2, stage.D, stage.branch)].append(ranked)
     if not groups:
@@ -541,9 +568,11 @@ def run_analysis(roots: tuple[tuple[str, Path], ...], output_dir: Path,
                  csv_output_dir: Path,
                  dimensions: tuple[int, ...] | None = None,
                  original_input: Path = DEFAULT_ORIGINAL_INPUT,
+                 h_max: float | None = None,
+                 write_png: bool = False,
                  ) -> tuple[list[ExtrapolatedSet], list[FitOmission]]:
     """Fit every dynamically eligible group and report incomplete groups."""
-    groups = load_groups(roots, dimensions)
+    groups = load_groups(roots, dimensions, h_max)
     rank_fits: list[RankFit] = []
     summaries: list[ExtrapolatedSet] = []
     omissions: list[FitOmission] = []
@@ -574,11 +603,18 @@ def run_analysis(roots: tuple[tuple[str, Path], ...], output_dir: Path,
         )
     fitted_dimensions = tuple(sorted({row.D for row in summaries}))
     original_energies = load_original_energies(original_input, fitted_dimensions)
-    plot_fit_pages(eligible_groups, fit_lookup,
-                   output_dir / "01_correlation_fits.pdf")
+    plot_fit_pages(
+        eligible_groups, fit_lookup,
+        output_dir / "01_correlation_fits.pdf",
+        output_dir / "01_correlation_fits_png" if write_png else None,
+        h_max,
+    )
     new_summary_path = output_dir / "02_extrapolated_vs_J2.pdf"
-    plot_extrapolated(summaries, new_summary_path, fitted_dimensions,
-                      original_energies)
+    plot_extrapolated(
+        summaries, new_summary_path, fitted_dimensions, original_energies,
+        new_summary_path.with_suffix(".png") if write_png else None,
+        h_max,
+    )
     legacy_summary_path = output_dir / "02_extrapolated_splitting_vs_J2.pdf"
     if legacy_summary_path.is_file():
         legacy_summary_path.unlink()
@@ -602,6 +638,10 @@ def main() -> int:
     parser.add_argument("--original-input", type=Path,
                         default=DEFAULT_ORIGINAL_INPUT,
                         help="0713summary root for the unbiased twoC3 energy curve")
+    parser.add_argument("--h-max", type=float, default=None,
+                        help="include only observations with h <= this value")
+    parser.add_argument("--png", action="store_true",
+                        help="also write per-fit-page and summary PNG files")
     parser.add_argument(
         "--dimensions", type=int, nargs="+", default=(6, 7, 8, 9, 10),
         help="D filter; default excludes D5 and D11",
@@ -614,6 +654,7 @@ def main() -> int:
     summaries, omissions = run_analysis(
         (("Kuma", args.kuma), ("Izar", args.izar)),
         args.output_dir, args.csv_output_dir, dimensions, args.original_input,
+        args.h_max, args.png,
     )
 
     print(f"Fitted {len(summaries)} cluster/J2/D/pin combinations "
@@ -622,8 +663,11 @@ def main() -> int:
     print(f"Tables:  {args.csv_output_dir}")
     print(f"Dynamically omitted incomplete groups: {len(omissions)}")
     print(f"Worst R^2: {min(row.min_r_squared for row in summaries):.6f}")
+    reference_fields = sorted({row.linear_response_reference_h
+                               for row in summaries})
+    reference_label = ",".join(f"{field:g}" for field in reference_fields)
     print(f"Combinations passing |c2*h^2| < |c1*h| at h="
-          f"{LINEAR_RESPONSE_REFERENCE_H:g} for all three correlations: "
+          f"{reference_label} for all three correlations: "
           f"{sum(row.all_quadratic_corrections_smaller_at_reference_h for row in summaries)}"
           f"/{len(summaries)}")
     return 0
