@@ -87,3 +87,70 @@ repository. The figures and their source CSVs go to
 plaquette-seed panels. Left and right continuations use the same rank markers
 and meet at the actual selected seed observation; insurance replicas differ
 only by line style/opacity.
+
+The same command also updates one two-panel extrapolation PDF per eligible J2.
+The left panel uses the dimer-plaquette seed and the right panel the plaquette
+seed. Panel eligibility is independent: a panel is fitted once that seed has
+D=7,8,9, while the other panel remains explicitly blank if it is incomplete.
+A J2 is skipped only while neither seed has all three D values. Each populated
+panel averages available insurance replicas at each D, then linearly
+extrapolates the three sorted NN ranks to `1/D=0`. These extrapolations produce
+PDF only: no Delta construction and no PNG/CSV side products.
+
+## Supplemental D9 starts on the three-day normal QoS
+
+Three additional h=0 seeds are bundled independently of the original six:
+
+| seed | seed J2 | texture | eta | abs(dE) | relative Delta difference |
+|---|---:|---|---:|---:|---:|
+| s101 | 0.28 | dimer-plaquette | +0.8975 | 1.09e-5 | 18.49% |
+| s102 | 0.30 | dimer-plaquette | +0.7577 | 8.30e-6 | 8.68% |
+| s103 | 0.31 | plaquette | -0.9335 | 2.25e-5 | 7.00% |
+
+The s101 Delta mismatch is deliberately accepted despite slightly exceeding
+the former 15% cutoff because it is the purest available non-J2=0.33 D9
+dimer seed.  The J2=0.31 plaquette seed is used instead of the even purer
+J2=0.33 original tensor because the fixed grid ends at 0.32 and the latter
+cannot have the requested right branch. Its source directory says orientation
+2 because that was the original dimer pin; the final h=0 correlations identify
+the plaquette tensor itself as orientation 0, which is what the new run uses.
+
+Regenerate and validate the self-contained supplemental seeds locally:
+
+```powershell
+python .\models\VBCJ2SeedContinuationIzar\prepare_d9_supplemental_seeds.py
+```
+
+Upload the supplemental files into the existing remote bundle:
+
+```powershell
+$b = ".\models\VBCJ2SeedContinuationIzar"
+scp -r "$b\d9_supplemental_seeds" `
+  "$b\d9_supplemental_seed_manifest.csv" `
+  "$b\d9_supplemental_submission_plan.tsv" `
+  "$b\submit_d9_supplemental_sequences.sh" `
+  "$b\run_one_j2_stage_izar.sh" `
+  "$b\izar_3days_sequence.run" `
+  "$b\pack_completed_j2_stages.sh" `
+  chye@izar.hpc.epfl.ch:~/VBCJ2SeedContinuationIzar/
+```
+
+On Izar, verify and submit:
+
+```bash
+cd ~/VBCJ2SeedContinuationIzar
+bash submit_d9_supplemental_sequences.sh --dry-run
+bash submit_d9_supplemental_sequences.sh
+squeue -u "$USER" -o '%.18i %.18j %.2t %.10M %.20R' | grep -E 'vjd10[123]'
+```
+
+The dry-run must report 48 three-day stage jobs: 12 chain heads and 36
+afterok dependents. All points use D9/chi108, the external normal QoS with
+71:59:50 walltime, and the unchanged 43.2-hour internal D/5 limit. Existing
+vjc jobs are allowed to coexist; only duplicate vjd jobs are refused.
+
+Supplemental results share `Results_Izar_J2_sequences`, so the existing
+snapshot command downloads them automatically. Fixed-D plots distinguish
+each D9 start with a separate marker and labelled seed line. Inverse-D plots
+do not average different starting basins: each available D9 seed produces a
+separate linear-fit possibility.

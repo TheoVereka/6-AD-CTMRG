@@ -50,6 +50,7 @@ TEXTURE_TITLES = {
     "plaquette": "Plaquette seed",
 }
 INSURANCE_STYLES = {1: ("-", 1.0), 2: ("--", 0.72)}
+SEED_MARKERS = ("o", "s", "^", "D", "P", "X")
 
 
 @dataclass(frozen=True)
@@ -98,17 +99,31 @@ def read_seeds(manifest: Path) -> dict[str, Seed]:
     if not manifest.is_file():
         raise FileNotFoundError(f"seed manifest is missing: {manifest}")
     seeds: dict[str, Seed] = {}
-    with manifest.open(encoding="utf-8-sig", newline="") as stream:
-        for row in csv.DictReader(stream):
-            seed_id = row["seed_id"]
-            observation = manifest.parent / "seeds" / seed_id / "observation.txt"
-            if not observation.is_file():
-                raise FileNotFoundError(f"seed observation is missing: {observation}")
-            seeds[seed_id] = Seed(
-                seed_id=seed_id, J2=float(row["seed_J2"]), D=int(row["D"]),
-                chi=int(row["run_chi"]), texture=row["selected_texture"],
-                observation=observation,
-            )
+    manifests = [manifest]
+    supplemental = manifest.with_name("d9_supplemental_seed_manifest.csv")
+    if manifest.name != supplemental.name and supplemental.is_file():
+        manifests.append(supplemental)
+    for source_manifest in manifests:
+        with source_manifest.open(encoding="utf-8-sig", newline="") as stream:
+            for row in csv.DictReader(stream):
+                seed_id = row["seed_id"]
+                if seed_id in seeds:
+                    raise ValueError(f"duplicate seed id across manifests: {seed_id}")
+                relative_tensor = row.get("seed_relative_path", "").strip()
+                if not relative_tensor:
+                    raise ValueError(
+                        f"{source_manifest}: {seed_id} lacks seed_relative_path"
+                    )
+                observation = (source_manifest.parent / relative_tensor).parent / "observation.txt"
+                if not observation.is_file():
+                    raise FileNotFoundError(
+                        f"seed observation is missing: {observation}"
+                    )
+                seeds[seed_id] = Seed(
+                    seed_id=seed_id, J2=float(row["seed_J2"]), D=int(row["D"]),
+                    chi=int(row["run_chi"]), texture=row["selected_texture"],
+                    observation=observation,
+                )
     if not seeds:
         raise RuntimeError(f"empty seed manifest: {manifest}")
     return seeds
@@ -209,51 +224,54 @@ def plot_D(D: int, points: list[Point], seeds: dict[str, Seed], output: Path) ->
     by_texture = {texture: [seed for seed in seeds_D if seed.texture == texture]
                   for texture in TEXTURE_ORDER}
     for texture, selected in by_texture.items():
-        if len(selected) != 1:
+        if not selected:
             raise ValueError(
-                f"D={D}: expected exactly one {texture} seed, found {len(selected)}"
+                f"D={D}: expected at least one {texture} seed"
             )
     plotted_rows = list(points)
-    plotted_rows.extend(seed_point(selected[0]) for selected in by_texture.values())
+    plotted_rows.extend(seed_point(seed) for selected in by_texture.values()
+                        for seed in selected)
     y_limits = limits(plotted_rows)
 
     fig, axes = plt.subplots(1, 2, figsize=(13.2, 5.2), sharex=True, sharey=True,
                              constrained_layout=True)
     for ax, texture in zip(axes, TEXTURE_ORDER):
-        seed = by_texture[texture][0]
-        seed_row = seed_point(seed)
-        subset = [row for row in points if row.seed_id == seed.seed_id]
-        for direction in ("left", "right"):
-            for insurance in (1, 2):
-                branch = [row for row in subset
-                          if row.direction == direction and row.insurance == insurance]
-                if not branch:
-                    continue
-                branch = sorted(branch, key=lambda row: row.J2)
-                series = sorted([seed_row, *branch], key=lambda row: row.J2)
-                linestyle, alpha = INSURANCE_STYLES[insurance]
-                for rank, color in enumerate(RANK_COLORS):
-                    ax.errorbar(
-                        [row.J2 for row in series],
-                        [row.ranks[rank][0] for row in series],
-                        yerr=[row.ranks[rank][1] for row in series],
-                        fmt="o", linestyle=linestyle, color=color,
-                        markersize=3.8, linewidth=1.1, elinewidth=0.8,
-                        capsize=2, alpha=alpha, zorder=3,
-                    )
-        # Mark the seed once on top of all insurance/directional copies.
-        for rank, color in enumerate(RANK_COLORS):
-            ax.errorbar(
-                [seed_row.J2], [seed_row.ranks[rank][0]],
-                yerr=[seed_row.ranks[rank][1]], fmt="o",
-                color=color, markeredgecolor="black", markeredgewidth=0.8,
-                markersize=6.2, elinewidth=0.9, capsize=2, zorder=6,
-            )
-        ax.axvline(seed.J2, color="0.45", linestyle=":", linewidth=1.0,
-                   zorder=0)
-        ax.text(seed.J2, 0.02, rf"seed $J_2={seed.J2:g}$",
-                rotation=90, ha="right", va="bottom", fontsize=8,
-                transform=ax.get_xaxis_transform(), color="0.35")
+        selected_seeds = sorted(by_texture[texture], key=lambda item: (item.J2, item.seed_id))
+        for seed_index, seed in enumerate(selected_seeds):
+            marker = SEED_MARKERS[seed_index % len(SEED_MARKERS)]
+            seed_row = seed_point(seed)
+            subset = [row for row in points if row.seed_id == seed.seed_id]
+            for direction in ("left", "right"):
+                for insurance in (1, 2):
+                    branch = [row for row in subset
+                              if row.direction == direction and row.insurance == insurance]
+                    if not branch:
+                        continue
+                    branch = sorted(branch, key=lambda row: row.J2)
+                    series = sorted([seed_row, *branch], key=lambda row: row.J2)
+                    linestyle, alpha = INSURANCE_STYLES[insurance]
+                    for rank, color in enumerate(RANK_COLORS):
+                        ax.errorbar(
+                            [row.J2 for row in series],
+                            [row.ranks[rank][0] for row in series],
+                            yerr=[row.ranks[rank][1] for row in series],
+                            fmt=marker, linestyle=linestyle, color=color,
+                            markersize=3.8, linewidth=1.1, elinewidth=0.8,
+                            capsize=2, alpha=alpha, zorder=3,
+                        )
+            # Mark every distinct seed once on top of its continuation copies.
+            for rank, color in enumerate(RANK_COLORS):
+                ax.errorbar(
+                    [seed_row.J2], [seed_row.ranks[rank][0]],
+                    yerr=[seed_row.ranks[rank][1]], fmt=marker,
+                    color=color, markeredgecolor="black", markeredgewidth=0.8,
+                    markersize=6.2, elinewidth=0.9, capsize=2, zorder=6,
+                )
+            ax.axvline(seed.J2, color="0.45", linestyle=":", linewidth=0.8,
+                       alpha=0.75, zorder=0)
+            ax.text(seed.J2, 0.02, rf"{seed.seed_id} seed $J_2={seed.J2:g}$",
+                    rotation=90, ha="right", va="bottom", fontsize=7.2,
+                    transform=ax.get_xaxis_transform(), color="0.35")
         ax.set_title(rf"{TEXTURE_TITLES[texture]}, $D={D}$", fontsize=12)
         ax.set_xlabel(r"$J_2$", fontsize=12)
         ax.set_ylim(*y_limits)

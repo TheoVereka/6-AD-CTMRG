@@ -1,0 +1,7 @@
+seed_id	D	chi	seed_J2	texture	orientation	direction	j2_sequence	stage_hours	launcher
+s101	9	108	0.28	dimer-plaquette	2	left	0.275:0.27:0.265:0.26	43.2	izar_3days_sequence.run
+s101	9	108	0.28	dimer-plaquette	2	right	0.29:0.30:0.31:0.32	43.2	izar_3days_sequence.run
+s102	9	108	0.3	dimer-plaquette	0	left	0.29:0.28:0.275:0.27:0.265:0.26	43.2	izar_3days_sequence.run
+s102	9	108	0.3	dimer-plaquette	0	right	0.31:0.32	43.2	izar_3days_sequence.run
+s103	9	108	0.31	plaquette	0	left	0.30:0.29:0.28:0.275:0.27:0.265:0.26	43.2	izar_3days_sequence.run
+s103	9	108	0.31	plaquette	0	right	0.32	43.2	izar_3days_sequence.run

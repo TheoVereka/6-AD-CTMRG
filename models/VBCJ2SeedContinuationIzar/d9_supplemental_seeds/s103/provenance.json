@@ -1,0 +1,20 @@
+{
+  "D": 9,
+  "energy_difference": "2.25326912000057e-05",
+  "eta": "-0.933531949998867",
+  "orientation": 0,
+  "relative_delta_difference": "0.0699917381630432",
+  "run_chi": 108,
+  "seed_J2": "0.31",
+  "seed_id": "s103",
+  "seed_relative_path": "d9_supplemental_seeds/s103/tensor_best.pt",
+  "selected_texture": "plaquette",
+  "selection_exception": null,
+  "sha256": "1e7218bde89b0967d2803fa2315752fcadf425b44a57614131125cdf038d58e0",
+  "source": "izar_replica1",
+  "source_hyperparams": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\distinVBCs\\Results_Izar_replica1\\J2_0.31\\D_9\\orientation_2\\dimer-plaquette\\replica_1\\h_0p0\\hyperparams.yaml",
+  "source_observation": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\distinVBCs\\Results_Izar_replica1\\J2_0.31\\D_9\\orientation_2\\dimer-plaquette\\replica_1\\h_0p0\\D_9_chi_108_energy_magnetization_correlation.txt",
+  "source_orientation": 2,
+  "source_seed_branch": "dimer-plaquette",
+  "source_tensor": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\distinVBCs\\Results_Izar_replica1\\J2_0.31\\D_9\\orientation_2\\dimer-plaquette\\replica_1\\h_0p0\\sweep_D9_chi108_best.pt"
+}

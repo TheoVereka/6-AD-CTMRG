@@ -19,6 +19,9 @@ $packer = Join-Path $bundleDir "pack_completed_j2_stages.sh"
 $plotter = Join-Path $repoRoot (
     "visual_elements\figs\VBCDiscriminator\plot_j2_seed_continuations.py"
 )
+$extrapolator = Join-Path $repoRoot (
+    "visual_elements\figs\VBCDiscriminator\plot_vbc_seed_inverse_D_extrapolations.py"
+)
 $manifest = Join-Path $bundleDir "selected_seed_manifest.csv"
 $inputRoot = Join-Path $LocalRoot "Results_Izar_J2_sequences"
 $plotRoot = Join-Path $repoRoot (
@@ -48,5 +51,9 @@ if ($LASTEXITCODE -ne 0) { throw "archive extraction failed ($LASTEXITCODE)" }
 Write-Host "Plotting all completed stages accumulated locally..."
 & $Python $plotter --input $inputRoot --manifest $manifest --output-dir $plotRoot
 if ($LASTEXITCODE -ne 0) { throw "plotting failed ($LASTEXITCODE)" }
+
+Write-Host "Updating two-panel VBC-seed D=7,8,9 extrapolations..."
+& $Python $extrapolator --input $inputRoot --manifest $manifest --output-dir $plotRoot
+if ($LASTEXITCODE -ne 0) { throw "extrapolation plotting failed ($LASTEXITCODE)" }
 
 Write-Host "Plots: $plotRoot"

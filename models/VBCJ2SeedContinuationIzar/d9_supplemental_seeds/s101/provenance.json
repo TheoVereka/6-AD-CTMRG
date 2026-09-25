@@ -1,0 +1,20 @@
+{
+  "D": 9,
+  "energy_difference": "1.08590537999942e-05",
+  "eta": "0.897513541175202",
+  "orientation": 2,
+  "relative_delta_difference": "0.184897687086731",
+  "run_chi": 108,
+  "seed_J2": "0.28",
+  "seed_id": "s101",
+  "seed_relative_path": "d9_supplemental_seeds/s101/tensor_best.pt",
+  "selected_texture": "dimer-plaquette",
+  "selection_exception": "relative Delta difference is 18.49%, intentionally accepted as the purest non-J2=0.33 D9 dimer seed",
+  "sha256": "73faf711ecc15d906c4a4789dcfc1251c96257ba057abd7e7e68df3443606cce",
+  "source": "izar_replica1_small_h",
+  "source_hyperparams": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\distinVBCsSmallH\\Results_Izar_replica1\\J2_0.28\\D_9\\orientation_2\\dimer-plaquette\\replica_1\\h_0\\hyperparams.yaml",
+  "source_observation": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\distinVBCsSmallH\\Results_Izar_replica1\\J2_0.28\\D_9\\orientation_2\\dimer-plaquette\\replica_1\\h_0\\D_9_chi_108_energy_magnetization_correlation.txt",
+  "source_orientation": 2,
+  "source_seed_branch": "dimer-plaquette",
+  "source_tensor": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\distinVBCsSmallH\\Results_Izar_replica1\\J2_0.28\\D_9\\orientation_2\\dimer-plaquette\\replica_1\\h_0\\sweep_D9_chi108_best.pt"
+}

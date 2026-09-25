@@ -52,7 +52,8 @@ if [[ ! -s "${STAGE_LIST}" ]]; then
     exit 3
 fi
 
-for METADATA in selected_seed_manifest.csv submission_plan.tsv; do
+for METADATA in selected_seed_manifest.csv submission_plan.tsv \
+        d9_supplemental_seed_manifest.csv d9_supplemental_submission_plan.tsv; do
     [[ -s "${METADATA}" ]] && printf '%s\0' "${METADATA}" >> "${FILE_LIST}"
 done
 sort -zu "${STAGE_LIST}" -o "${STAGE_LIST}"
@@ -63,4 +64,3 @@ STAGE_COUNT="$(tr -cd '\0' < "${STAGE_LIST}" | wc -c)"
 FILE_COUNT="$(tr -cd '\0' < "${FILE_LIST}" | wc -c)"
 echo "Packed ${STAGE_COUNT} individually completed J2 stages / ${FILE_COUNT} files"
 du -h "${ARCHIVE}"
-
