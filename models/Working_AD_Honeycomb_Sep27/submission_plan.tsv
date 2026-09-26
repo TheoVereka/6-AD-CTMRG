@@ -1,0 +1,17 @@
+alias	candidate_id	D	chi	seed_J2	texture	orientation	insurance	direction	j2_sequence	stage_hours
+a01	c01	10	120	0.29	plaquette	2	1	left	0.28:0.275:0.27:0.265:0.26	48
+a01	c01	10	120	0.29	plaquette	2	1	right	0.30:0.31:0.32	48
+a01	c01	10	120	0.29	plaquette	2	2	left	0.28:0.275:0.27:0.265:0.26	48
+a01	c01	10	120	0.29	plaquette	2	2	right	0.30:0.31:0.32	48
+a02	c04	10	120	0.30	dimer-plaquette	0	1	left	0.29:0.28:0.275:0.27:0.265:0.26	48
+a02	c04	10	120	0.30	dimer-plaquette	0	1	right	0.31:0.32	48
+a02	c04	10	120	0.30	dimer-plaquette	0	2	left	0.29:0.28:0.275:0.27:0.265:0.26	48
+a02	c04	10	120	0.30	dimer-plaquette	0	2	right	0.31:0.32	48
+a03	c07	11	140	0.30	plaquette	1	1	left	0.29:0.28:0.275:0.27:0.265:0.26	52.8
+a03	c07	11	140	0.30	plaquette	1	1	right	0.31:0.32	52.8
+a03	c07	11	140	0.30	plaquette	1	2	left	0.29:0.28:0.275:0.27:0.265:0.26	52.8
+a03	c07	11	140	0.30	plaquette	1	2	right	0.31:0.32	52.8
+a04	c09	11	140	0.30	dimer-plaquette	1	1	left	0.29:0.28:0.275:0.27:0.265:0.26	52.8
+a04	c09	11	140	0.30	dimer-plaquette	1	1	right	0.31:0.32	52.8
+a04	c09	11	140	0.30	dimer-plaquette	1	2	left	0.29:0.28:0.275:0.27:0.265:0.26	52.8
+a04	c09	11	140	0.30	dimer-plaquette	1	2	right	0.31:0.32	52.8

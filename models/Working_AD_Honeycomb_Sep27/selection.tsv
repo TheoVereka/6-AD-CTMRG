@@ -1,0 +1,5 @@
+alias	candidate_id	run_texture	note
+a01	c01	plaquette	D10 best plaquette
+a02	c04	dimer-plaquette	D10 best genuine dimer
+a03	c07	plaquette	D11 best plaquette
+a04	c09	dimer-plaquette	D11 best genuine dimer

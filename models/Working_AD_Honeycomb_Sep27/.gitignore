@@ -1,0 +1,5 @@
+Results_Sep27/
+slurm_logs/*.out
+slurm_logs/*.err
+__pycache__/
+*.tar.gz

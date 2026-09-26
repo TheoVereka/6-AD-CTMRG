@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+#SBATCH --job-name=D10seq
+#SBATCH --qos=long
+#SBATCH --partition=h100
+#SBATCH --gres=gpu:1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=90G
+#SBATCH --time=167:59:50
+#SBATCH --output=slurm_logs/%j.out
+#SBATCH --error=slurm_logs/%j.err
+
+set -euo pipefail
+
+module load nvhpc/24.7-mpi
+module load cuda/12.5.1
+source /home/pghosh/venvs/6adctmrg_Kuma/bin/activate
+
+BUNDLE_DIR="${BUNDLE_DIR:-${SLURM_SUBMIT_DIR:-${PWD}}}"
+BUNDLE_DIR="$(cd -- "${BUNDLE_DIR}" && pwd)"
+export BUNDLE_DIR
+
+bash "${BUNDLE_DIR}/run_one_stage.sh"
