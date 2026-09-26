@@ -154,3 +154,20 @@ snapshot command downloads them automatically. Fixed-D plots distinguish
 each D9 start with a separate marker and labelled seed line. Inverse-D plots
 do not average different starting basins: each available D9 seed produces a
 separate linear-fit possibility.
+
+## Connected NN correlations
+
+The same Windows download-and-plot command also generates a connected copy of
+every VJC NN-correlation figure. For a bond `xy` in environment `e`, the value
+is computed directly from the observation file as
+
+```text
+connected_corr(e,xy) = corr(e,xy) - dot(mag(e,x), mag(e,y))
+```
+
+Thus all three Sx/Sy/Sz components are included. Outputs use the
+`connected_NN` filename marker and mirror both fixed-D continuation plots and
+the per-J2 two-panel inverse-D fits. Raw connected-correlation points have no
+error bars, while regression shading and extrapolated-intercept uncertainty
+remain visible. Connected extrapolations, like the ordinary ones, write PDF
+only.

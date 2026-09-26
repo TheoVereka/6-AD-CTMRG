@@ -73,6 +73,7 @@ class Point:
     direction: str
     insurance: int
     ranks: tuple[tuple[float, float], ...]
+    connected_ranks: tuple[tuple[float, float], ...]
     observation: str
     is_seed: bool = False
 
@@ -81,15 +82,27 @@ def parse_j2_tag(text: str) -> float:
     return float(text.replace("p", "."))
 
 
-def ranked_nn(path: Path) -> tuple[tuple[float, float], ...]:
+def ranked_nn(path: Path, *, connected: bool = False) -> tuple[tuple[float, float], ...]:
     observation = parse_observable(path)
     groups: list[tuple[float, float]] = []
     for group in NN_GROUPS:
-        values = [observation["corr"].get(key) for key in group]
+        values = []
+        for key in group:
+            value = observation["corr"].get(key)
+            if value is not None and connected:
+                env, bond = key
+                left = observation["mag"].get((env, bond[0]))
+                right = observation["mag"].get((env, bond[1]))
+                if left is None or right is None:
+                    value = None
+                else:
+                    value = float(value - np.dot(left, right))
+            values.append(value)
         if any(value is None for value in values):
             missing = [str(key) for key, value in zip(group, values)
                        if value is None]
-            raise ValueError(f"{path}: missing NN correlations {missing}")
+            observable = "connected NN correlations/magnetizations" if connected else "NN correlations"
+            raise ValueError(f"{path}: missing {observable} {missing}")
         samples = [float(value) for value in values]
         groups.append((float(np.mean(samples)), rms(samples)))
     return tuple(sorted(groups, key=lambda item: item[0]))
@@ -194,6 +207,7 @@ def discover(root: Path, seeds: dict[str, Seed]) -> tuple[list[Point], int]:
             seed_id=seed_id, seed_texture=texture, D=seed.D, chi=chi_obs,
             J2=stage_j2, direction=direction,
             insurance=int(insurance_match.group(1)), ranks=ranked_nn(observation),
+            connected_ranks=ranked_nn(observation, connected=True),
             observation=str(observation.resolve()),
         ))
     return sorted(points, key=lambda row: (
@@ -207,19 +221,27 @@ def seed_point(seed: Seed) -> Point:
         seed_id=seed.seed_id, seed_texture=seed.texture,
         D=seed.D, chi=seed.chi, J2=seed.J2,
         direction="seed", insurance=0, ranks=ranked_nn(seed.observation),
+        connected_ranks=ranked_nn(seed.observation, connected=True),
         observation=str(seed.observation.resolve()), is_seed=True,
     )
 
 
-def limits(rows: list[Point]) -> tuple[float, float]:
-    lows = [mean - error for row in rows for mean, error in row.ranks]
-    highs = [mean + error for row in rows for mean, error in row.ranks]
+def point_ranks(row: Point, connected: bool) -> tuple[tuple[float, float], ...]:
+    return row.connected_ranks if connected else row.ranks
+
+
+def limits(rows: list[Point], *, connected: bool) -> tuple[float, float]:
+    lows = [mean if connected else mean - error
+            for row in rows for mean, error in point_ranks(row, connected)]
+    highs = [mean if connected else mean + error
+             for row in rows for mean, error in point_ranks(row, connected)]
     low, high = min(lows), max(highs)
     pad = max(0.005, 0.07 * (high - low))
     return low - pad, high + pad
 
 
-def plot_D(D: int, points: list[Point], seeds: dict[str, Seed], output: Path) -> int:
+def plot_D(D: int, points: list[Point], seeds: dict[str, Seed], output: Path,
+           *, connected: bool = False) -> int:
     seeds_D = [seed for seed in seeds.values() if seed.D == D]
     by_texture = {texture: [seed for seed in seeds_D if seed.texture == texture]
                   for texture in TEXTURE_ORDER}
@@ -231,7 +253,7 @@ def plot_D(D: int, points: list[Point], seeds: dict[str, Seed], output: Path) ->
     plotted_rows = list(points)
     plotted_rows.extend(seed_point(seed) for selected in by_texture.values()
                         for seed in selected)
-    y_limits = limits(plotted_rows)
+    y_limits = limits(plotted_rows, connected=connected)
 
     fig, axes = plt.subplots(1, 2, figsize=(13.2, 5.2), sharex=True, sharey=True,
                              constrained_layout=True)
@@ -251,19 +273,22 @@ def plot_D(D: int, points: list[Point], seeds: dict[str, Seed], output: Path) ->
                     series = sorted([seed_row, *branch], key=lambda row: row.J2)
                     linestyle, alpha = INSURANCE_STYLES[insurance]
                     for rank, color in enumerate(RANK_COLORS):
+                        ranks = [point_ranks(row, connected) for row in series]
                         ax.errorbar(
                             [row.J2 for row in series],
-                            [row.ranks[rank][0] for row in series],
-                            yerr=[row.ranks[rank][1] for row in series],
+                            [values[rank][0] for values in ranks],
+                            yerr=None if connected else
+                            [values[rank][1] for values in ranks],
                             fmt=marker, linestyle=linestyle, color=color,
                             markersize=3.8, linewidth=1.1, elinewidth=0.8,
                             capsize=2, alpha=alpha, zorder=3,
                         )
             # Mark every distinct seed once on top of its continuation copies.
+            seed_ranks = point_ranks(seed_row, connected)
             for rank, color in enumerate(RANK_COLORS):
                 ax.errorbar(
-                    [seed_row.J2], [seed_row.ranks[rank][0]],
-                    yerr=[seed_row.ranks[rank][1]], fmt=marker,
+                    [seed_row.J2], [seed_ranks[rank][0]],
+                    yerr=None if connected else [seed_ranks[rank][1]], fmt=marker,
                     color=color, markeredgecolor="black", markeredgewidth=0.8,
                     markersize=6.2, elinewidth=0.9, capsize=2, zorder=6,
                 )
@@ -277,7 +302,10 @@ def plot_D(D: int, points: list[Point], seeds: dict[str, Seed], output: Path) ->
         ax.set_ylim(*y_limits)
         ax.grid(alpha=0.2)
         ax.tick_params(axis="both", labelsize=9)
-    axes[0].set_ylabel("NN correlation", fontsize=12)
+    axes[0].set_ylabel(
+        "connected NN correlation" if connected else "NN correlation",
+        fontsize=12,
+    )
 
     all_x = sorted({row.J2 for row in plotted_rows})
     for ax in axes:
@@ -297,6 +325,10 @@ def plot_D(D: int, points: list[Point], seeds: dict[str, Seed], output: Path) ->
     output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output)
     plt.close(fig)
+
+    if connected:
+        print(f"D={D}: plotted {len(points)} completed stages -> {output}")
+        return len(points)
 
     csv_path = output.with_suffix(".csv")
     fields = ("seed_id", "seed_texture", "D", "chi", "J2", "direction",
@@ -340,6 +372,10 @@ def main() -> int:
         rows = [row for row in points if row.D == D]
         output = args.output_dir / f"2C3_NN_ranks_vs_J2_D{D}.pdf"
         total += plot_D(D, rows, seeds, output)
+        connected_output = (
+            args.output_dir / f"2C3_connected_NN_ranks_vs_J2_D{D}.pdf"
+        )
+        plot_D(D, rows, seeds, connected_output, connected=True)
     print(f"Total completed stages plotted: {total}")
     print(f"Partial stage directories ignored (no sweep_results.json): {partial_count}")
     return 0
