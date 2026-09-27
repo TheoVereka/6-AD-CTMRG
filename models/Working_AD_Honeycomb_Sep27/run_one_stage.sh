@@ -85,7 +85,6 @@ run_attempt() {
         --vbc-branch "${TEXTURE}" \
         --vbc-orientation "${ORIENTATION}" \
         --vbc-field 0 \
-        --noise 0.001 \
         --gpu \
         --ngpu 1 \
         --fix-seed \

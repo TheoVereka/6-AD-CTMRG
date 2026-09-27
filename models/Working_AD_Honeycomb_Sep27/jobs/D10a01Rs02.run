@@ -1,0 +1,36 @@
+#!/bin/bash
+#SBATCH --job-name=D10a01Rs02
+#SBATCH --qos=long
+#SBATCH --partition=h100
+#SBATCH --gres=gpu:1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=90G
+#SBATCH --time=167:59:50
+#SBATCH --output=output_%x_%j.log
+
+set -euo pipefail
+
+module load nvhpc/24.7-mpi
+module load cuda/12.5.1
+source /home/pghosh/venvs/6adctmrg_Kuma/bin/activate
+
+BUNDLE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+export BUNDLE_DIR
+export ALIAS=a01
+export D=10
+export CHI=120
+export SEED_J2=0.29
+export TARGET_J2=0.31
+export TEXTURE=plaquette
+export ORIENTATION=2
+export DIRECTION=right
+export STAGE_INDEX=2
+export STAGE_HOURS=48
+export ETA_THRESHOLD=0.35
+export IMMUTABLE_SEED_CKPT="${BUNDLE_DIR}/seeds/a01/tensor_best.pt"
+export PREVIOUS_CKPT="${BUNDLE_DIR}/Results_Sep27/a01/right/J2_0p30/resume_for_next.pt"
+export OUTPUT_DIR="${BUNDLE_DIR}/Results_Sep27/a01/right/J2_0p31"
+
+bash "${BUNDLE_DIR}/run_one_stage.sh"
+echo "END OF JOB"

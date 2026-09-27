@@ -17,20 +17,25 @@ The physical grid is:
 
 `0.26, 0.265, 0.27, 0.275, 0.28, 0.29, 0.30, 0.31, 0.32`.
 
-The external launcher exactly follows `0730core/singleFileSbatchTwoC3.run`:
-Kuma `long` QoS, `h100` partition, one GPU, 16 CPU cores, 90 GB host RAM and
-`167:59:50` wall time.  Each Python stage stops internally after D/5 days:
+Every one of the 24 J2 stages has its own standalone file under `jobs/`. Each
+file directly follows `0730core/singleFileSbatchTwoC3.run`: Kuma `long` QoS,
+`h100` partition, one GPU, 16 CPU cores, 90 GB host RAM and `167:59:50` wall
+time are written in its `#SBATCH` header. Each Python stage stops internally
+after D/5 days:
 48 h for the lower-D class and 52.8 h for the higher-D class.  The environment
 is `/home/pghosh/venvs/6adctmrg_Kuma` with `nvhpc/24.7-mpi` and CUDA 12.5.1.
+No account is hard-coded. The submit command is intentionally minimal, like
+the established Kuma launchers: `sbatch --chdir=... job.run` for a chain head,
+and the same command plus `--dependency=afterok:...` for later stages. No
+resources, job variables, or job names are sent through CLI overrides.
 
-`selection.tsv` records the four selected seeds. Candidate IDs and numerical
-diagnostics are in `candidate_catalog.tsv`. The launcher automatically runs
-`prepare_selection.py`, enforcing one seed per D/family and both numerical
-tolerances before it submits anything.
+The selected seeds and all 24 run files are already materialised inside the
+archive. The six chains are written explicitly in `submit_6_sequences.sh`.
+Cluster launch performs no plan generation and no seed copying.
 
 Cluster-visible Slurm names all start with `D10`, including the higher-D
-class.  Result directories contain only aliases `a01` to `a03`, and log
-filenames use only the Slurm job ID.  The real mapping is retained in
+class. Result directories contain only aliases `a01` to `a03`; Slurm logs use
+the masked D10 job name. The real mapping is retained in
 `private_manifest.tsv` for decoding after download.
 
 ## Give the extracted folder to another user
@@ -50,9 +55,8 @@ cd /scratch/pghosh/Working_AD_Honeycomb_Sep27
 bash submit_6_sequences.sh
 ```
 
-That single command validates/materialises the seeds and submits exactly
-`6 chain heads + 18 afterok jobs = 24 jobs`. An optional non-submitting check
-is `bash submit_6_sequences.sh --dry-run`.
+That single command submits exactly
+`6 chain heads + 18 afterok jobs = 24 jobs`.
 Inspect the live dependency graph with:
 
 ```bash
