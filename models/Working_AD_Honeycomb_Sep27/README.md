@@ -1,10 +1,17 @@
 # Sep-27 h=0 J2 adiabatic continuation (Kuma)
 
 This directory is a self-contained pure-LBFGS two-C3 bundle.  It launches the
-best plaquette and genuine dimer seed at each of the two D classes.  Every seed
-has two directions and two independent insurance copies, hence 16 dependency
-chains.  Every J2 point is its own Slurm job; later points use `afterok` and
-resume the preceding point.
+best D10 plaquette, best D10 genuine dimer and best D11 plaquette seed. The D11
+dimer branch is excluded. Every seed has two directions and no replica or
+insurance duplicate, hence 6 dependency chains. Every J2 point is its own
+Slurm job; later points use `afterok` and resume the guarded predecessor.
+
+After each optimization, `eta_guard.py` evaluates the raw-NN texture coordinate
+and requires `|eta| >= 0.35`. A mixed result is retained for analysis but its
+tensor is not propagated: `resume_for_next.pt` is copied from the preceding
+stage. If the first target in a direction is mixed (there is no earlier
+J2-stage result), it is recomputed once with a different RNG seed. If that
+retry is also mixed, the immutable starting seed is propagated.
 
 The physical grid is:
 
@@ -22,7 +29,7 @@ diagnostics are in `candidate_catalog.tsv`. The launcher automatically runs
 tolerances before it submits anything.
 
 Cluster-visible Slurm names all start with `D10`, including the higher-D
-class.  Result directories contain only aliases `a01` to `a04`, and log
+class.  Result directories contain only aliases `a01` to `a03`, and log
 filenames use only the Slurm job ID.  The real mapping is retained in
 `private_manifest.tsv` for decoding after download.
 
@@ -40,12 +47,12 @@ Then on Kuma:
 
 ```bash
 cd /scratch/pghosh/Working_AD_Honeycomb_Sep27
-bash submit_16_sequences.sh
+bash submit_6_sequences.sh
 ```
 
 That single command validates/materialises the seeds and submits exactly
-`16 chain heads + 48 afterok jobs = 64 jobs`. An optional non-submitting check
-is `bash submit_16_sequences.sh --dry-run`.
+`6 chain heads + 18 afterok jobs = 24 jobs`. An optional non-submitting check
+is `bash submit_6_sequences.sh --dry-run`.
 Inspect the live dependency graph with:
 
 ```bash

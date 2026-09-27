@@ -14,7 +14,7 @@ HERE = Path(__file__).resolve().parent
 GRID = ("0.26", "0.265", "0.27", "0.275", "0.28", "0.29", "0.30", "0.31", "0.32")
 CHI = {10: 120, 11: 140}
 EXPECTED = {(10, "plaquette"): 1, (10, "dimer-plaquette"): 1,
-            (11, "plaquette"): 1, (11, "dimer-plaquette"): 1}
+            (11, "plaquette"): 1}
 
 
 def read_tsv(path: Path) -> list[dict[str, str]]:
@@ -47,13 +47,13 @@ def main() -> int:
     catalog_rows = read_tsv(HERE / "candidate_catalog.tsv")
     catalog = {row["candidate_id"]: row for row in catalog_rows}
     selections = read_tsv(HERE / "selection.tsv")
-    if len(selections) != 4:
-        raise ValueError(f"selection.tsv must contain exactly 4 seeds, got {len(selections)}")
+    if len(selections) != 3:
+        raise ValueError(f"selection.tsv must contain exactly 3 seeds, got {len(selections)}")
     aliases = [row["alias"] for row in selections]
-    if aliases != [f"a{i:02d}" for i in range(1, 5)]:
-        raise ValueError("aliases must remain a01..a04 so cluster-visible paths hide D")
-    if len({row["candidate_id"] for row in selections}) != 4:
-        raise ValueError("the four selected candidates must be distinct")
+    if aliases != [f"a{i:02d}" for i in range(1, 4)]:
+        raise ValueError("aliases must remain a01..a03 so cluster-visible paths hide D")
+    if len({row["candidate_id"] for row in selections}) != 3:
+        raise ValueError("the three selected candidates must be distinct")
 
     counts: dict[tuple[int, str], int] = {}
     manifests: list[dict[str, object]] = []
@@ -112,26 +112,24 @@ def main() -> int:
             encoding="utf-8",
         )
 
-        for insurance in (1, 2):
-            for direction, sequence in j2_sequences(row["J2"]):
-                plans.append({
-                    "alias": alias,
-                    "candidate_id": candidate_id,
-                    "D": D,
-                    "chi": CHI[D],
-                    "seed_J2": row["J2"],
-                    "texture": texture,
-                    "orientation": row["orientation"],
-                    "insurance": insurance,
-                    "direction": direction,
-                    "j2_sequence": ":".join(sequence),
-                    "stage_hours": f"{24 * D / 5:g}",
-                })
+        for direction, sequence in j2_sequences(row["J2"]):
+            plans.append({
+                "alias": alias,
+                "candidate_id": candidate_id,
+                "D": D,
+                "chi": CHI[D],
+                "seed_J2": row["J2"],
+                "texture": texture,
+                "orientation": row["orientation"],
+                "direction": direction,
+                "j2_sequence": ":".join(sequence),
+                "stage_hours": f"{24 * D / 5:g}",
+            })
 
     if counts != EXPECTED:
         raise ValueError(f"selection family counts are {counts}; expected {EXPECTED}")
-    if len(plans) != 16:
-        raise AssertionError(f"expected 16 insurance-direction chains, got {len(plans)}")
+    if len(plans) != 6:
+        raise AssertionError(f"expected 6 directional chains, got {len(plans)}")
 
     with (HERE / "private_manifest.tsv").open("w", encoding="utf-8", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=list(manifests[0]), delimiter="\t", lineterminator="\n")
@@ -143,7 +141,7 @@ def main() -> int:
         writer.writerows(plans)
 
     jobs = sum(len(str(plan["j2_sequence"]).split(":")) for plan in plans)
-    print(f"Prepared 4 seeds, 16 chain heads, {jobs - 16} dependencies, {jobs} stage jobs total")
+    print(f"Prepared 3 seeds, 6 chain heads, {jobs - 6} dependencies, {jobs} stage jobs total")
     print("D/chi mapping is recorded only in private_manifest.tsv and submission_plan.tsv")
     return 0
 
