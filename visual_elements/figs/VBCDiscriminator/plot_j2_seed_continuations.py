@@ -8,6 +8,7 @@ import csv
 import json
 import math
 import re
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,6 +38,7 @@ DEFAULT_INPUT = DATA / "distinVBCsJ2Continuation" / "Results_Izar_J2_sequences"
 DEFAULT_MANIFEST = (REPO / "models" / "VBCJ2SeedContinuationIzar"
                     / "selected_seed_manifest.csv")
 DEFAULT_OUTPUT = HERE / "j2_seed_continuations"
+SEP27_OUTPUT = HERE / "sep27_j2_seed_continuations"
 RUN_RE = re.compile(
     r"^(s\d+)_J2_([0-9]+p[0-9]+)_D_(\d+)_(plaquette|dimer-plaquette)$"
 )
@@ -49,7 +51,7 @@ TEXTURE_TITLES = {
     "dimer-plaquette": "Dimer-plaquette seed",
     "plaquette": "Plaquette seed",
 }
-INSURANCE_STYLES = {1: ("-", 1.0), 2: ("--", 0.72)}
+INSURANCE_STYLES = {0: ("-", 1.0), 1: ("-", 1.0), 2: ("--", 0.72)}
 SEED_MARKERS = ("o", "s", "^", "D", "P", "X")
 
 
@@ -73,7 +75,6 @@ class Point:
     direction: str
     insurance: int
     ranks: tuple[tuple[float, float], ...]
-    connected_ranks: tuple[tuple[float, float], ...]
     observation: str
     is_seed: bool = False
 
@@ -82,27 +83,18 @@ def parse_j2_tag(text: str) -> float:
     return float(text.replace("p", "."))
 
 
-def ranked_nn(path: Path, *, connected: bool = False) -> tuple[tuple[float, float], ...]:
+def ranked_nn(path: Path) -> tuple[tuple[float, float], ...]:
     observation = parse_observable(path)
     groups: list[tuple[float, float]] = []
     for group in NN_GROUPS:
         values = []
         for key in group:
             value = observation["corr"].get(key)
-            if value is not None and connected:
-                env, bond = key
-                left = observation["mag"].get((env, bond[0]))
-                right = observation["mag"].get((env, bond[1]))
-                if left is None or right is None:
-                    value = None
-                else:
-                    value = float(value - np.dot(left, right))
             values.append(value)
         if any(value is None for value in values):
             missing = [str(key) for key, value in zip(group, values)
                        if value is None]
-            observable = "connected NN correlations/magnetizations" if connected else "NN correlations"
-            raise ValueError(f"{path}: missing {observable} {missing}")
+            raise ValueError(f"{path}: missing NN correlations {missing}")
         samples = [float(value) for value in values]
         groups.append((float(np.mean(samples)), rms(samples)))
     return tuple(sorted(groups, key=lambda item: item[0]))
@@ -142,6 +134,36 @@ def read_seeds(manifest: Path) -> dict[str, Seed]:
     return seeds
 
 
+def read_sep27_seeds(manifest: Path) -> dict[str, Seed]:
+    """Read the masked a01/a02/a03 manifest shipped with the Kuma bundle."""
+    if not manifest.is_file():
+        raise FileNotFoundError(f"seed manifest is missing: {manifest}")
+    seeds: dict[str, Seed] = {}
+    with manifest.open(encoding="utf-8-sig", newline="") as stream:
+        for row in csv.DictReader(stream, delimiter="\t"):
+            seed_id = row["alias"]
+            observation = manifest.parent / "seeds" / seed_id / "observation.txt"
+            if not observation.is_file():
+                candidate_id = row.get("candidate_id", "").strip()
+                observation = (manifest.parent / "candidate_pool" / candidate_id
+                               / "observation.txt")
+            if not observation.is_file():
+                raise FileNotFoundError(
+                    f"seed observation is missing for {seed_id}: {observation}"
+                )
+            seeds[seed_id] = Seed(
+                seed_id=seed_id,
+                J2=float(row["seed_J2"]),
+                D=int(row["D"]),
+                chi=int(row["chi"]),
+                texture=row.get("actual_texture", row["run_texture"]),
+                observation=observation,
+            )
+    if not seeds:
+        raise RuntimeError(f"empty seed manifest: {manifest}")
+    return seeds
+
+
 def _read_field(path: Path) -> float:
     text = path.read_text(encoding="utf-8", errors="replace")
     try:
@@ -156,7 +178,7 @@ def _read_field(path: Path) -> float:
     return float(match.group(1))
 
 
-def discover(root: Path, seeds: dict[str, Seed]) -> tuple[list[Point], int]:
+def discover_legacy(root: Path, seeds: dict[str, Seed]) -> tuple[list[Point], int]:
     if not root.is_dir():
         raise FileNotFoundError(f"downloaded result root is missing: {root}")
     points: list[Point] = []
@@ -207,7 +229,6 @@ def discover(root: Path, seeds: dict[str, Seed]) -> tuple[list[Point], int]:
             seed_id=seed_id, seed_texture=texture, D=seed.D, chi=chi_obs,
             J2=stage_j2, direction=direction,
             insurance=int(insurance_match.group(1)), ranks=ranked_nn(observation),
-            connected_ranks=ranked_nn(observation, connected=True),
             observation=str(observation.resolve()),
         ))
     return sorted(points, key=lambda row: (
@@ -216,55 +237,128 @@ def discover(root: Path, seeds: dict[str, Seed]) -> tuple[list[Point], int]:
     )), partial_count
 
 
+def discover_sep27(root: Path, seeds: dict[str, Seed]) -> tuple[list[Point], int]:
+    """Discover completed stages in Results_Sep27/aXX/{left,right}/J2_* ."""
+    if (root / "Results_Sep27").is_dir():
+        root = root / "Results_Sep27"
+    if not root.is_dir():
+        raise FileNotFoundError(f"downloaded result root is missing: {root}")
+
+    points: list[Point] = []
+    all_stage_dirs = {
+        path for path in root.rglob("J2_*")
+        if path.is_dir() and STAGE_RE.fullmatch(path.name)
+    }
+    complete_dirs: set[Path] = set()
+    for stage in all_stage_dirs:
+        base_observations = [
+            path for path in stage.glob(
+                "D_*_chi_*_energy_magnetization_correlation.txt"
+            )
+            if OBS_RE.fullmatch(path.name)
+        ]
+        if len(base_observations) == 1 and (stage / "sweep_results.json").is_file():
+            complete_dirs.add(stage)
+    partial_count = len(all_stage_dirs - complete_dirs)
+
+    for stage in sorted(complete_dirs):
+        stage_match = STAGE_RE.fullmatch(stage.name)
+        direction = stage.parent.name
+        seed_id = stage.parent.parent.name
+        if stage_match is None or direction not in {"left", "right"}:
+            raise ValueError(f"unrecognized completed-stage path: {stage}")
+        if seed_id not in seeds:
+            raise ValueError(f"{stage}: alias {seed_id} absent from manifest")
+        seed = seeds[seed_id]
+        stage_j2 = parse_j2_tag(stage_match.group(1))
+        if not any(math.isclose(stage_j2, value, abs_tol=1e-12)
+                   for value in J2_GRID):
+            raise ValueError(f"{stage}: J2 is outside the continuation grid")
+        if ((direction == "left" and not stage_j2 < seed.J2)
+                or (direction == "right" and not stage_j2 > seed.J2)):
+            raise ValueError(f"{stage}: J2 is on the wrong side of its seed")
+
+        observations = [
+            path for path in stage.glob(
+                "D_*_chi_*_energy_magnetization_correlation.txt"
+            )
+            if OBS_RE.fullmatch(path.name)
+        ]
+        observation = observations[0]
+        D_obs, chi_obs = map(int, OBS_RE.fullmatch(observation.name).groups())
+        if D_obs != seed.D or chi_obs != seed.chi:
+            raise ValueError(f"{observation}: D/chi disagrees with manifest")
+        hyperparams = stage / "hyperparams.yaml"
+        if not hyperparams.is_file() or not math.isclose(
+                _read_field(hyperparams), 0.0, abs_tol=1e-14):
+            raise ValueError(f"{stage}: not a verified h=0 stage")
+        points.append(Point(
+            seed_id=seed_id,
+            seed_texture=seed.texture,
+            D=seed.D,
+            chi=chi_obs,
+            J2=stage_j2,
+            direction=direction,
+            insurance=0,
+            ranks=ranked_nn(observation),
+            observation=str(observation.resolve()),
+        ))
+    return sorted(points, key=lambda row: (
+        row.D, row.seed_texture, row.seed_id, row.direction, row.J2,
+    )), partial_count
+
+
 def seed_point(seed: Seed) -> Point:
     return Point(
         seed_id=seed.seed_id, seed_texture=seed.texture,
         D=seed.D, chi=seed.chi, J2=seed.J2,
         direction="seed", insurance=0, ranks=ranked_nn(seed.observation),
-        connected_ranks=ranked_nn(seed.observation, connected=True),
         observation=str(seed.observation.resolve()), is_seed=True,
     )
 
 
-def point_ranks(row: Point, connected: bool) -> tuple[tuple[float, float], ...]:
-    return row.connected_ranks if connected else row.ranks
+def point_ranks(row: Point) -> tuple[tuple[float, float], ...]:
+    return row.ranks
 
 
-def limits(rows: list[Point], *, connected: bool) -> tuple[float, float]:
-    lows = [mean if connected else mean - error
-            for row in rows for mean, error in point_ranks(row, connected)]
-    highs = [mean if connected else mean + error
-             for row in rows for mean, error in point_ranks(row, connected)]
+def limits(rows: list[Point]) -> tuple[float, float]:
+    lows = [mean - error for row in rows for mean, error in point_ranks(row)]
+    highs = [mean + error for row in rows for mean, error in point_ranks(row)]
     low, high = min(lows), max(highs)
     pad = max(0.005, 0.07 * (high - low))
     return low - pad, high + pad
 
 
-def plot_D(D: int, points: list[Point], seeds: dict[str, Seed], output: Path,
-           *, connected: bool = False) -> int:
+def plot_D(D: int, points: list[Point], seeds: dict[str, Seed], output: Path) -> int:
     seeds_D = [seed for seed in seeds.values() if seed.D == D]
     by_texture = {texture: [seed for seed in seeds_D if seed.texture == texture]
                   for texture in TEXTURE_ORDER}
-    for texture, selected in by_texture.items():
-        if not selected:
-            raise ValueError(
-                f"D={D}: expected at least one {texture} seed"
-            )
     plotted_rows = list(points)
     plotted_rows.extend(seed_point(seed) for selected in by_texture.values()
                         for seed in selected)
-    y_limits = limits(plotted_rows, connected=connected)
+    y_limits = limits(plotted_rows)
 
     fig, axes = plt.subplots(1, 2, figsize=(13.2, 5.2), sharex=True, sharey=True,
                              constrained_layout=True)
     for ax, texture in zip(axes, TEXTURE_ORDER):
         selected_seeds = sorted(by_texture[texture], key=lambda item: (item.J2, item.seed_id))
+        if not selected_seeds:
+            ax.set_title(rf"{TEXTURE_TITLES[texture]}, $D={D}$", fontsize=12)
+            ax.set_xlabel(r"$J_2$", fontsize=12)
+            ax.text(0.5, 0.5, "No seed selected", ha="center", va="center",
+                    color="0.45", transform=ax.transAxes)
+            ax.set_ylim(*y_limits)
+            ax.grid(alpha=0.2)
+            continue
         for seed_index, seed in enumerate(selected_seeds):
             marker = SEED_MARKERS[seed_index % len(SEED_MARKERS)]
             seed_row = seed_point(seed)
             subset = [row for row in points if row.seed_id == seed.seed_id]
             for direction in ("left", "right"):
-                for insurance in (1, 2):
+                insurance_values = sorted({
+                    row.insurance for row in subset if row.direction == direction
+                })
+                for insurance in insurance_values:
                     branch = [row for row in subset
                               if row.direction == direction and row.insurance == insurance]
                     if not branch:
@@ -273,22 +367,21 @@ def plot_D(D: int, points: list[Point], seeds: dict[str, Seed], output: Path,
                     series = sorted([seed_row, *branch], key=lambda row: row.J2)
                     linestyle, alpha = INSURANCE_STYLES[insurance]
                     for rank, color in enumerate(RANK_COLORS):
-                        ranks = [point_ranks(row, connected) for row in series]
+                        ranks = [point_ranks(row) for row in series]
                         ax.errorbar(
                             [row.J2 for row in series],
                             [values[rank][0] for values in ranks],
-                            yerr=None if connected else
-                            [values[rank][1] for values in ranks],
+                            yerr=[values[rank][1] for values in ranks],
                             fmt=marker, linestyle=linestyle, color=color,
                             markersize=3.8, linewidth=1.1, elinewidth=0.8,
                             capsize=2, alpha=alpha, zorder=3,
                         )
             # Mark every distinct seed once on top of its continuation copies.
-            seed_ranks = point_ranks(seed_row, connected)
+            seed_ranks = point_ranks(seed_row)
             for rank, color in enumerate(RANK_COLORS):
                 ax.errorbar(
                     [seed_row.J2], [seed_ranks[rank][0]],
-                    yerr=None if connected else [seed_ranks[rank][1]], fmt=marker,
+                    yerr=[seed_ranks[rank][1]], fmt=marker,
                     color=color, markeredgecolor="black", markeredgewidth=0.8,
                     markersize=6.2, elinewidth=0.9, capsize=2, zorder=6,
                 )
@@ -302,10 +395,7 @@ def plot_D(D: int, points: list[Point], seeds: dict[str, Seed], output: Path,
         ax.set_ylim(*y_limits)
         ax.grid(alpha=0.2)
         ax.tick_params(axis="both", labelsize=9)
-    axes[0].set_ylabel(
-        "connected NN correlation" if connected else "NN correlation",
-        fontsize=12,
-    )
+    axes[0].set_ylabel("NN correlation", fontsize=12)
 
     all_x = sorted({row.J2 for row in plotted_rows})
     for ax in axes:
@@ -315,20 +405,19 @@ def plot_D(D: int, points: list[Point], seeds: dict[str, Seed], output: Path,
     rank_handles = [Line2D([], [], color=color, marker="o", linewidth=1.1,
                            markersize=4.2, label=label)
                     for color, label in zip(RANK_COLORS, RANK_LABELS)]
+    insurance_values = sorted({row.insurance for row in points if row.insurance > 0})
     insurance_handles = [
-        Line2D([], [], color="0.25", marker="o", linestyle=style,
-               alpha=alpha, markersize=3.8, label=f"insurance {insurance}")
-        for insurance, (style, alpha) in INSURANCE_STYLES.items()
+        Line2D([], [], color="0.25", marker="o",
+               linestyle=INSURANCE_STYLES[insurance][0],
+               alpha=INSURANCE_STYLES[insurance][1], markersize=3.8,
+               label=f"insurance {insurance}")
+        for insurance in insurance_values
     ]
     fig.legend(handles=[*rank_handles, *insurance_handles],
                loc="outside upper center", ncol=3, frameon=False, fontsize=9)
     output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output)
     plt.close(fig)
-
-    if connected:
-        print(f"D={D}: plotted {len(points)} completed stages -> {output}")
-        return len(points)
 
     csv_path = output.with_suffix(".csv")
     fields = ("seed_id", "seed_texture", "D", "chi", "J2", "direction",
@@ -358,26 +447,49 @@ def plot_D(D: int, points: list[Point], seeds: dict[str, Seed], output: Path,
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
-    parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
-    parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--manifest", type=Path, default=None)
+    parser.add_argument("--output-dir", type=Path, default=None)
     args = parser.parse_args()
 
-    seeds = read_seeds(args.manifest)
-    points, partial_count = discover(args.input, seeds)
+    sep27_manifest_candidates = (
+        args.input / "private_manifest.tsv",
+        args.input.parent / "private_manifest.tsv",
+    )
+    inferred_sep27_manifest = next(
+        (path for path in sep27_manifest_candidates if path.is_file()), None
+    )
+    manifest = args.manifest or inferred_sep27_manifest or DEFAULT_MANIFEST
+    sep27_layout = manifest.suffix.lower() == ".tsv"
+    if sep27_layout:
+        seeds = read_sep27_seeds(manifest)
+        points, partial_count = discover_sep27(args.input, seeds)
+        output_dir = args.output_dir or SEP27_OUTPUT
+    else:
+        seeds = read_seeds(manifest)
+        points, partial_count = discover_legacy(args.input, seeds)
+        output_dir = args.output_dir or DEFAULT_OUTPUT
     if not points:
         raise RuntimeError(f"no individually completed J2 stages found in {args.input}")
     dimensions = sorted({point.D for point in points})
     total = 0
     for D in dimensions:
         rows = [row for row in points if row.D == D]
-        output = args.output_dir / f"2C3_NN_ranks_vs_J2_D{D}.pdf"
+        output = output_dir / f"2C3_NN_ranks_vs_J2_D{D}.pdf"
         total += plot_D(D, rows, seeds, output)
-        connected_output = (
-            args.output_dir / f"2C3_connected_NN_ranks_vs_J2_D{D}.pdf"
-        )
-        plot_D(D, rows, seeds, connected_output, connected=True)
     print(f"Total completed stages plotted: {total}")
-    print(f"Partial stage directories ignored (no sweep_results.json): {partial_count}")
+    print(f"Partial stage directories ignored (incomplete sweep/observation): {partial_count}")
+    if sep27_layout:
+        fit_script = HERE / "plot_vbc_seed_inverse_D_extrapolations.py"
+        fit_command = [
+            sys.executable,
+            str(fit_script),
+            "--sep27-input",
+            str(args.input),
+            "--sep27-manifest",
+            str(manifest),
+        ]
+        print("Updating combined D=7--11 inverse-D fits...")
+        subprocess.run(fit_command, check=True)
     return 0
 
 

@@ -16,6 +16,7 @@ from matplotlib.lines import Line2D
 import numpy as np
 
 from plot_j2_seed_continuations import (
+    DATA,
     DEFAULT_INPUT,
     DEFAULT_MANIFEST,
     DEFAULT_OUTPUT,
@@ -27,14 +28,17 @@ from plot_j2_seed_continuations import (
     Seed,
     TEXTURE_ORDER,
     TEXTURE_TITLES,
-    discover,
+    discover_legacy,
+    discover_sep27,
     point_ranks,
     read_seeds,
+    read_sep27_seeds,
     seed_point,
 )
 
 
-DEFAULT_DS = (7, 8, 9)
+DEFAULT_DS = (7, 8, 9, 10, 11)
+DEFAULT_SEP27_INPUT = DATA / "external" / "Working_AD_Honeycomb_Sep27"
 SHADING_ALPHA = 0.025
 
 
@@ -47,17 +51,16 @@ def j2_tag(value: float) -> str:
 VARIANT_LINESTYLES = ("--", "-.", ":", (0, (5, 1, 1, 1)))
 
 
-def aggregate_seed_replicas(rows: list[Point], D: int, seed_id: str,
-                            *, connected: bool) -> dict:
+def aggregate_seed_replicas(rows: list[Point], D: int, seed_id: str) -> dict:
     replicas = [row for row in rows if row.D == D and row.seed_id == seed_id]
     if not replicas:
         raise ValueError(f"missing D={D}, seed={seed_id}")
     rank_values = np.asarray(
-        [[rank[0] for rank in point_ranks(row, connected)] for row in replicas],
+        [[rank[0] for rank in point_ranks(row)] for row in replicas],
         dtype=float,
     )
     rank_errors = np.asarray(
-        [[rank[1] for rank in point_ranks(row, connected)] for row in replicas],
+        [[rank[1] for rank in point_ranks(row)] for row in replicas],
         dtype=float,
     )
     means = np.mean(rank_values, axis=0)
@@ -76,15 +79,14 @@ def aggregate_seed_replicas(rows: list[Point], D: int, seed_id: str,
     }
 
 
-def build_variants(rows: list[Point], dimensions: tuple[int, ...],
-                   *, connected: bool) -> list[list[dict]]:
+def build_variants(rows: list[Point], dimensions: tuple[int, ...]) -> list[list[dict]]:
     options = []
     for D in dimensions:
         seed_ids = sorted({row.seed_id for row in rows if row.D == D})
         if not seed_ids:
             raise ValueError(f"missing D={D}")
         options.append([
-            aggregate_seed_replicas(rows, D, seed_id, connected=connected)
+            aggregate_seed_replicas(rows, D, seed_id)
             for seed_id in seed_ids
         ])
     return [list(choice) for choice in itertools.product(*options)]
@@ -116,7 +118,7 @@ def variant_label(rows: list[dict], seeds: dict[str, Seed]) -> str:
 
 
 def plot_panel(ax: plt.Axes, variants: list[list[dict]], texture: str,
-               seeds: dict[str, Seed], *, connected: bool) -> list[dict]:
+               seeds: dict[str, Seed]) -> list[dict]:
     x = np.asarray([row["inverse_D"] for row in variants[0]], dtype=float)
     x_fit = np.linspace(0.0, max(x) * 1.04, 300)
     summaries = []
@@ -138,7 +140,7 @@ def plot_panel(ax: plt.Axes, variants: list[list[dict]], texture: str,
                             color=color, alpha=SHADING_ALPHA, linewidth=0)
             ax.plot(x_fit, y_fit, linestyle=linestyle, color=color,
                     linewidth=1.25, alpha=0.9)
-            ax.errorbar(x, y, yerr=None if connected else yerr,
+            ax.errorbar(x, y, yerr=yerr,
                         fmt=marker, color=color,
                         markersize=5.0, elinewidth=0.9, capsize=2.5, zorder=4)
             ax.errorbar([0.0], [fit["intercept"]],
@@ -173,7 +175,7 @@ def plot_panel(ax: plt.Axes, variants: list[list[dict]], texture: str,
 
 def make_figure(J2: float, by_texture: dict[str, list[list[dict]] | None],
                 missing_by_texture: dict[str, list[int]], seeds: dict[str, Seed],
-                output: Path, *, connected: bool = False) -> None:
+                output: Path) -> None:
     fig, axes = plt.subplots(1, 2, figsize=(13.2, 5.3), sharex=True, sharey=True,
                              constrained_layout=True)
     summaries = {}
@@ -184,13 +186,8 @@ def make_figure(J2: float, by_texture: dict[str, list[list[dict]] | None],
             ax.set_xlabel(r"$1/D$", fontsize=12)
             ax.grid(alpha=0.2)
             continue
-        summaries[texture] = plot_panel(
-            ax, rows, texture, seeds, connected=connected
-        )
-    axes[0].set_ylabel(
-        "connected NN correlation" if connected else "NN correlation",
-        fontsize=12,
-    )
+        summaries[texture] = plot_panel(ax, rows, texture, seeds)
+    axes[0].set_ylabel("NN correlation", fontsize=12)
     handles = [Line2D([], [], color=color, marker="o", linestyle="--",
                       markersize=5, linewidth=1.25, label=label)
                for color, label in zip(RANK_COLORS, RANK_LABELS)]
@@ -222,6 +219,14 @@ def main() -> int:
     parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--sep27-input", type=Path, default=DEFAULT_SEP27_INPUT,
+        help="Optional Kuma Sep27 bundle/result root to merge as D=10/11 data",
+    )
+    parser.add_argument(
+        "--sep27-manifest", type=Path, default=None,
+        help="Default: <sep27-input>/private_manifest.tsv",
+    )
     parser.add_argument("--Ds", type=int, nargs="+", default=DEFAULT_DS)
     parser.add_argument("--J2", type=float, nargs="*", default=J2_GRID,
                         help="J2 values to consider; default: full continuation grid")
@@ -229,12 +234,29 @@ def main() -> int:
 
     dimensions = tuple(args.Ds)
     seeds = read_seeds(args.manifest)
-    points, _ = discover(args.input, seeds)
+    points, _ = discover_legacy(args.input, seeds)
+    if args.sep27_input.is_dir():
+        sep27_manifest = (args.sep27_manifest
+                          or args.sep27_input / "private_manifest.tsv")
+        sep27_seeds = read_sep27_seeds(sep27_manifest)
+        overlap = sorted(set(seeds) & set(sep27_seeds))
+        if overlap:
+            raise ValueError(f"duplicate seed ids across inputs: {overlap}")
+        sep27_points, sep27_partial = discover_sep27(
+            args.sep27_input, sep27_seeds
+        )
+        seeds.update(sep27_seeds)
+        points.extend(sep27_points)
+        print(
+            f"Merged Sep27 data: {len(sep27_points)} completed stages; "
+            f"{sep27_partial} partial stages ignored"
+        )
+    else:
+        print(f"Sep27 input absent; using legacy data only: {args.sep27_input}")
     all_rows = [*points, *(seed_point(seed) for seed in seeds.values())]
     generated = 0
     for J2 in args.J2:
         by_texture: dict[str, list[list[dict]] | None] = {}
-        connected_by_texture: dict[str, list[list[dict]] | None] = {}
         missing_by_texture: dict[str, list[int]] = {}
         for texture in TEXTURE_ORDER:
             selected = [row for row in all_rows
@@ -244,16 +266,11 @@ def main() -> int:
             present = {row.D for row in selected}
             absent = [D for D in dimensions if D not in present]
             missing_by_texture[texture] = absent
-            if absent:
+            present_dimensions = tuple(D for D in dimensions if D in present)
+            if len(present_dimensions) < 3:
                 by_texture[texture] = None
-                connected_by_texture[texture] = None
                 continue
-            by_texture[texture] = build_variants(
-                selected, dimensions, connected=False
-            )
-            connected_by_texture[texture] = build_variants(
-                selected, dimensions, connected=True
-            )
+            by_texture[texture] = build_variants(selected, present_dimensions)
         if all(rows is None for rows in by_texture.values()):
             missing = [
                 f"{texture}: D={','.join(map(str, missing_by_texture[texture]))}"
@@ -266,17 +283,10 @@ def main() -> int:
             f"2C3_VBC_NN_ranks_vs_inverse_D_J2_{j2_tag(J2)}.pdf"
         )
         make_figure(J2, by_texture, missing_by_texture, seeds, output)
-        connected_output = args.output_dir / (
-            f"2C3_VBC_connected_NN_ranks_vs_inverse_D_J2_{j2_tag(J2)}.pdf"
-        )
-        make_figure(
-            J2, connected_by_texture, missing_by_texture, seeds,
-            connected_output, connected=True,
-        )
         generated += 1
     if generated == 0:
-        raise RuntimeError("no J2 value has D=7,8,9 for either seed texture")
-    print(f"Generated {generated} two-panel PDF(s); no PNG/CSV files were written")
+        raise RuntimeError("no J2 value has at least three D values for either seed texture")
+    print(f"Generated {generated} two-panel NN PDF(s); no PNG/CSV files were written")
     return 0
 
 
