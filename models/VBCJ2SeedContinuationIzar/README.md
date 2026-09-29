@@ -73,7 +73,8 @@ and observation.
 There is no need to wait for an entire directional chain. From the repository
 root on Windows, this one command uploads the packer, snapshots only stage
 directories containing the terminal `sweep_results.json`, downloads them,
-merges them with earlier snapshots, and regenerates the fixed-D figures:
+merges them with earlier snapshots, reads the current local Sep27 D=10/11
+results, and regenerates both the fixed-D figures and combined D=7--11 fits:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\models\VBCJ2SeedContinuationIzar\download_completed_j2_and_plot.ps1
@@ -88,14 +89,16 @@ plaquette-seed panels. Left and right continuations use the same rank markers
 and meet at the actual selected seed observation; insurance replicas differ
 only by line style/opacity.
 
-The same command also updates one two-panel extrapolation PDF per eligible J2.
-The left panel uses the dimer-plaquette seed and the right panel the plaquette
-seed. Panel eligibility is independent: a panel is fitted once that seed has
-D=7,8,9, while the other panel remains explicitly blank if it is incomplete.
-A J2 is skipped only while neither seed has all three D values. Each populated
-panel averages available insurance replicas at each D, then linearly
-extrapolates the three sorted NN ranks to `1/D=0`. These extrapolations produce
-PDF only: no Delta construction and no PNG/CSV side products.
+The same command also updates one two-panel extrapolation PDF per eligible J2,
+using D=7,8,9 plus every currently completed Sep27 D=10/11 point. The left
+panel uses the dimer-plaquette seed and the right panel the plaquette seed.
+Panel eligibility is independent: a panel is fitted once at least three D
+values are available, while the other panel remains explicitly blank if it is
+incomplete. Each populated panel averages available insurance replicas at each
+D, then linearly extrapolates the three sorted NN ranks to `1/D=0`. Completed
+D=10/11 points join independently, so an unfinished Sep27 stage never blocks a
+fit. These extrapolations produce PDF only: no Delta construction and no
+PNG/CSV side products.
 
 ## Supplemental D9 starts on the three-day normal QoS
 
