@@ -400,12 +400,12 @@ OPT_TOL_GRAD = 0.0 #1e-8
 #   the sub-iteration loop exits early if  ||∇loss||_∞ < OPT_TOL_GRAD.
 #   This is an inner stopping rule inside a single optimizer.step() call.
 
-OPT_TOL_CHANGE = 2e-8
+OPT_TOL_CHANGE = 6e-8
 #   L-BFGS inner convergence criterion on consecutive loss change:
 #   sub-iteration exits if  |L_{k+1} – L_k| < OPT_TOL_CHANGE.
 #   Set tighter than OPT_TOL_GRAD to catch near-flat regions.
 
-OPT_CONV_THRESHOLD = 3e-8
+OPT_CONV_THRESHOLD = 9e-8
 # Outer-loop early-stop: disabled (= 0).
 # The outer delta |loss(k) - loss(k-1)| compares two L-BFGS final values that
 # used DIFFERENT CTMRG environments, so even near a true minimum the delta is
@@ -530,7 +530,7 @@ ENV_IDENTITY_INIT = True
 
 
 
-CTM_MAX_STEPS = 70
+CTM_MAX_STEPS = 50
 #   Hard cap on CTMRG iterations per environment convergence call.
 #   With the singular-value convergence criterion and CTM_CONV_THR=1e-7,
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor

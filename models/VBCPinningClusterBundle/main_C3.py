@@ -400,12 +400,12 @@ OPT_TOL_GRAD = 0.0 #1e-8
 #   the sub-iteration loop exits early if  ||∇loss||_∞ < OPT_TOL_GRAD.
 #   This is an inner stopping rule inside a single optimizer.step() call.
 
-OPT_TOL_CHANGE = 2e-8
+OPT_TOL_CHANGE = 6e-8
 #   L-BFGS inner convergence criterion on consecutive loss change:
 #   sub-iteration exits if  |L_{k+1} – L_k| < OPT_TOL_CHANGE.
 #   Set tighter than OPT_TOL_GRAD to catch near-flat regions.
 
-OPT_CONV_THRESHOLD = 3e-8
+OPT_CONV_THRESHOLD = 9e-8
 # Outer-loop early-stop: disabled (= 0).
 # The outer delta |loss(k) - loss(k-1)| compares two L-BFGS final values that
 # used DIFFERENT CTMRG environments, so even near a true minimum the delta is
@@ -437,7 +437,7 @@ OPTIMIZER = 'lbfgs'
 
 # ── Adam hyperparameters (used only when OPTIMIZER='adam') ────────────────────
 
-ADAM_LR = 7e-3
+ADAM_LR = 1e-2
 #   Base Adam learning rate.  Per-ansatz effective LR is derived below
 #   from the coupling factor: how many site tensors are controlled by one
 #   parameter block.  See optimize_at_chi for the per-ansatz divisors.
@@ -497,7 +497,7 @@ USE_ADAM_WARMUP_THEN_LBFGS = True
 #   False → use OPTIMIZER ('lbfgs' or 'adam') for the full optimization.
 #   Overrideable at runtime: --adam-warmup-lbfgs CLI flag.
 
-ADAM_FLAT_PATIENCE = 20
+ADAM_FLAT_PATIENCE = 10
 #   Flat-landscape escape: if the Adam loss window of this many steps has
 #   max(window) - min(window) < 2e-3 (hardcoded spread threshold), switch to
 #   L-BFGS.  Switch is suppressed if EITHER:
@@ -530,7 +530,7 @@ ENV_IDENTITY_INIT = True
 
 
 
-CTM_MAX_STEPS = 70
+CTM_MAX_STEPS = 50
 #   Hard cap on CTMRG iterations per environment convergence call.
 #   With the singular-value convergence criterion and CTM_CONV_THR=1e-7,
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
@@ -604,7 +604,7 @@ N_SITES = 6
 
 # ── Tensor initialisation & padding ──────────────────────────────────────────
 
-INIT_NOISE = 1e-2
+INIT_NOISE = 1e-3
 # !!! NOTE: Only used as Mean-Field-Init's random noise!!!
 # should be at least 2e-4 otherwise the initial state is too 
 # close to the exact Néel product state and the optimizer gets 

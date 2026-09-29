@@ -1,0 +1,4 @@
+Results_LastIzar/
+slurm_logs/
+*.tar.gz
+*.zip

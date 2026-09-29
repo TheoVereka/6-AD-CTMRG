@@ -61,14 +61,14 @@ Write-Host "Merging the snapshot into $LocalRoot..."
 & tar -xzf $archive -C $LocalRoot
 if ($LASTEXITCODE -ne 0) { throw "archive extraction failed ($LASTEXITCODE)" }
 
-Write-Host "Plotting accumulated Izar D=7,8,9 stages..."
+Write-Host "Plotting original D=5,6 plus accumulated Izar D=7,8,9 stages..."
 & $Python $plotter --input $inputRoot --manifest $manifest --output-dir $plotRoot
 if ($LASTEXITCODE -ne 0) { throw "plotting failed ($LASTEXITCODE)" }
 
-Write-Host "Plotting current Sep27 D=10,11 stages and updating combined D=7--11 fits..."
+Write-Host "Plotting current Sep27 D=10,11 stages and updating combined D=5--11 fits..."
 & $Python $plotter --input $Sep27Root --output-dir $sep27PlotRoot
 if ($LASTEXITCODE -ne 0) { throw "Sep27/combined plotting failed ($LASTEXITCODE)" }
 
-Write-Host "Fixed-D D=7--9 plots: $plotRoot"
+Write-Host "Fixed-D D=5--9 plots: $plotRoot"
 Write-Host "Fixed-D D=10--11 plots: $sep27PlotRoot"
-Write-Host "Combined inverse-D fits: $plotRoot"
+Write-Host "Combined inverse-D D=5--11 fits: $plotRoot"

@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+#SBATCH --qos=long
+#SBATCH --partition=gpu
+#SBATCH --gres=gpu:1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=40G
+#SBATCH --time=167:59:50
+#SBATCH --exclude=i39
+#SBATCH --job-name=L1a6300
+#SBATCH --output=slurm_logs/%x-%N-%j.out
+#SBATCH --error=slurm_logs/%x-%N-%j.error
+
+set -euo pipefail
+module load gcc/11.3.0
+module load cuda/11.8.0
+source /home/chye/venvs/6adctmrg_Izar/bin/activate
+
+export TASK_FAMILY="task1_D6_adiabatic"
+export STAGE_KIND="adiabatic"
+export MAIN_KIND="lbfgs"
+export D="6"
+export CHI="72"
+export CTM_STEPS="130"
+export J2="0.30"
+export STAGE_HOURS="9"
+export VBC_FIELD="0"
+export MEAN_FIELD_START="0"
+export SEED_NUMBER="1100004"
+export OUTPUT_REL="Results_LastIzar/task1_D6_adiabatic/J2_0p30"
+export INPUT_REL="Results_LastIzar/task1_D6_adiabatic/J2_0p29/sweep_D6_chi72_best.pt"
+
+BUNDLE_DIR="${BUNDLE_DIR:-${SLURM_SUBMIT_DIR:-${PWD}}}"
+export BUNDLE_DIR
+bash "${BUNDLE_DIR}/run_stage.sh"
+
