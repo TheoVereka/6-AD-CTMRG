@@ -854,9 +854,14 @@ def main() -> int:
             f"dimer={counts['dimer-plaquette']}, "
             f"plaquette={counts['plaquette']}, mixed={counts['mixed']} -> {audit_path}"
         )
-    if not points:
-        raise RuntimeError(f"no individually completed J2 stages found in {args.input}")
-    dimensions = sorted({point.D for point in points})
+    # A high-D branch can legitimately still be queued/running when a snapshot is
+    # plotted.  Keep its seed-only panel instead of silently omitting that D; the
+    # missing texture is then shown by the existing empty-panel annotation.
+    if not points and not seeds:
+        raise RuntimeError(f"no seeds or individually completed J2 stages found in {args.input}")
+    dimensions = sorted(
+        {point.D for point in points} | {seed.D for seed in seeds.values()}
+    )
     total = 0
     for D in dimensions:
         rows = [row for row in points if row.D == D]
@@ -882,7 +887,7 @@ def main() -> int:
             "--last-izar-input",
             str(args.last_izar_input),
         ]
-        print("Updating combined D=7--11 inverse-D fits...")
+        print("Updating combined D=5--11 inverse-D fits...")
         subprocess.run(fit_command, check=True)
     return 0
 

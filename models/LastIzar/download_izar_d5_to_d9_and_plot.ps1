@@ -20,9 +20,6 @@ $plotRoot = Join-Path $repoRoot (
 $sep27Root = [IO.Path]::GetFullPath(
     (Join-Path $repoRoot "..\data\external\Working_AD_Honeycomb_Sep27")
 )
-$sep27PlotRoot = Join-Path $repoRoot (
-    "visual_elements\figs\VBCDiscriminator\sep27_j2_seed_continuations"
-)
 $plotter = Join-Path $repoRoot (
     "visual_elements\figs\VBCDiscriminator\plot_j2_seed_continuations.py"
 )
@@ -89,7 +86,7 @@ Write-Host "[3/7] Diagnosing D=5,6 jobs and afterok failures..."
 & $Python $diagnoser --snapshot $lastLocal --output-dir $plotRoot
 if ($LASTEXITCODE -ne 0) { throw "LastIzar diagnosis failed ($LASTEXITCODE)" }
 
-Write-Host "[4/7] Plotting fixed-D normal and connected NN correlations (D=5--9)..."
+Write-Host "[4/7] Plotting Izar fixed-D normal and connected NN correlations (D=5--9)..."
 $fixedDArgs = @(
     $plotter, "--input", $d79Input, "--manifest", $manifest,
     "--last-izar-input", (Join-Path $lastLocal "Results_LastIzar"),
@@ -98,17 +95,17 @@ $fixedDArgs = @(
 & $Python @fixedDArgs
 if ($LASTEXITCODE -ne 0) { throw "D5--9 plotting failed ($LASTEXITCODE)" }
 
-Write-Host "[5/7] Plotting Sep27 D=10,11 and refreshing all inverse-D figures..."
+Write-Host "[5/7] Merging local Sep27/Kuma D=10,11 and refreshing all D=5--11 figures..."
 if (Test-Path -LiteralPath (Join-Path $sep27Root "private_manifest.tsv")) {
     $sep27Args = @(
         $plotter, "--input", $sep27Root,
         "--last-izar-input", (Join-Path $lastLocal "Results_LastIzar"),
-        "--output-dir", $sep27PlotRoot
+        "--output-dir", $plotRoot
     )
     & $Python @sep27Args
     if ($LASTEXITCODE -ne 0) { throw "D10--11/inverse-D plotting failed ($LASTEXITCODE)" }
 } else {
-    Write-Warning "Sep27 data absent; skipping D=10,11 and combined inverse-D refresh"
+    throw "Sep27/Kuma data missing at $sep27Root; cannot produce D=10,11 plots"
 }
 
 Write-Host "[6/7] Plot inventory:"
@@ -121,7 +118,23 @@ Write-Host "  fixed-D connected: $($connected.Count)"
 Write-Host "  inverse-D normal: $($inverse.Count)"
 Write-Host "  inverse-D connected: $($inverseConnected.Count)"
 
+$missingFixedD = @()
+foreach ($D in 5..11) {
+    foreach ($name in @(
+        "2C3_NN_ranks_vs_J2_D${D}.pdf",
+        "2C3_connected_NN_ranks_vs_J2_D${D}.pdf"
+    )) {
+        if (-not (Test-Path -LiteralPath (Join-Path $plotRoot $name))) {
+            $missingFixedD += $name
+        }
+    }
+}
+if ($missingFixedD.Count -gt 0) {
+    throw "Missing fixed-D plots: $($missingFixedD -join ', ')"
+}
+Write-Host "  verified fixed-D coverage: D=5--11 (normal + connected)"
+
 Write-Host "[7/7] Complete."
-Write-Host "Plots/diagnostics: $plotRoot"
+Write-Host "All D=5--11 plots/diagnostics: $plotRoot"
 Write-Host "D=7--9 raw snapshot: $dataRoot"
 Write-Host "D=5--6 raw snapshot/logs: $lastLocal"
