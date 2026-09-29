@@ -18,6 +18,7 @@ import numpy as np
 from plot_j2_seed_continuations import (
     DATA,
     DEFAULT_INPUT,
+    DEFAULT_LAST_IZAR_INPUT,
     DEFAULT_MANIFEST,
     DEFAULT_ORIGINAL_ROOT,
     DEFAULT_OUTPUT,
@@ -30,6 +31,7 @@ from plot_j2_seed_continuations import (
     TEXTURE_ORDER,
     TEXTURE_TITLES,
     discover_legacy,
+    discover_last_izar,
     discover_original_d5_d6,
     discover_sep27,
     point_ranks,
@@ -112,7 +114,10 @@ def linear_fit(x: np.ndarray, y: np.ndarray) -> dict:
 
 
 def variant_label(rows: list[dict], seeds: dict[str, Seed]) -> str:
-    changing = [row for row in rows if row["D"] == 9]
+    # Historically only D=9 had multiple seeds.  LastIzar introduces distinct
+    # D=5/6 Adam, pure-LBFGS, and adiabatic series, so those choices must also
+    # appear in the label or several fit variants become indistinguishable.
+    changing = [row for row in rows if row["D"] in {5, 6, 9}]
     if not changing:
         changing = [rows[-1]]
     return ", ".join(
@@ -243,6 +248,10 @@ def main() -> int:
         help="Default: <sep27-input>/private_manifest.tsv",
     )
     parser.add_argument("--original-root", type=Path, default=DEFAULT_ORIGINAL_ROOT)
+    parser.add_argument(
+        "--last-izar-input", type=Path, default=DEFAULT_LAST_IZAR_INPUT,
+        help="Optional LastIzar root (or its Results_LastIzar directory)",
+    )
     parser.add_argument("--Ds", type=int, nargs="+", default=DEFAULT_DS)
     parser.add_argument("--J2", type=float, nargs="*", default=J2_GRID,
                         help="J2 values to consider; default: full continuation grid")
@@ -259,6 +268,19 @@ def main() -> int:
         raise ValueError(f"duplicate original/continuation seed ids: {overlap}")
     seeds.update(original_seeds)
     points.extend(original_points)
+    last_seeds, last_points, last_partial = discover_last_izar(
+        args.last_izar_input, args.original_root
+    )
+    overlap = sorted(set(seeds) & set(last_seeds))
+    if overlap:
+        raise ValueError(f"duplicate LastIzar seed ids: {overlap}")
+    seeds.update(last_seeds)
+    points.extend(last_points)
+    if args.last_izar_input.is_dir():
+        print(
+            f"Merged LastIzar data: {len(last_points)} continuation points, "
+            f"{len(last_seeds)} series; {last_partial} incomplete h=0 stages ignored"
+        )
     original_counts = {
         texture: sum(row["texture"] == texture for row in original_audit)
         for texture in ("dimer-plaquette", "plaquette", "mixed")

@@ -1964,7 +1964,7 @@ def optimize_at_chi(
                     if _spread < 2e-3:
                         # First-diffs: d[0]=window[-1]-window[-2], ...
                         # Use deque negative indexing — no list copy.
-                        _N  = 17
+                        _N  = 7
                         _d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
                                for j in range(1, _N)]      # _N-1 values
                         # (A) same-sign check (strict < or strict >)

@@ -1,0 +1,1523 @@
+job_name,run_file,task,stage,D,J2,h,optimizer,result_status,slurm_job_id,slurm_state,queue_reason,exit_code,reason,error_log,stdout_log,error_excerpt,stdout_excerpt
+L1a6270,t1_d6_j270.run,task1_D6_adiabatic,adiabatic,6,0.27,0,lbfgs,complete,3198086,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L1a6270-i11-3198086.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L1a6270-i11-3198086.out,,"│    nnn <S·S> (18): min=+0.062951 max=+0.134582 mean=+0.088720 se=7.66e-03
+│    <Sx>      (18): min=-0.053898 max=+0.053898 mean=-0.000000 se=1.27e-02
+│    <Sy>      (18): min=+0.000000 max=+0.000000 mean=+0.000000 se=3.05e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.001999 max=+0.001994 mean=-0.000002 se=4.70e-04
+│    |m| mean±se/env:
+│      ACE  A:0.053935±2.00e-07 | C:0.053935±2.00e-07 | E:0.053935±2.00e-07
+│      BDF  B:0.053934±3.42e-07 | D:0.053934±3.42e-07 | F:0.053934±3.42e-07
+│  [chi-converged] ΔE=-1.17e-05 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5854795423  E/site=-0.4309132570  wall=0.52h
+[chi-series-complete] D=6 converged at chi=72
+D=6 complete in 0.52 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+6     72      11       -2.5854795423   -0.4309132570
+Best E/site = -0.4309132570  (D=6, chi=72)
+Total wall time: 0.52 h (1865 s)
+Finished: 2026-09-29 11:22:16
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task1_D6_adiabatic/J2_0p27/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task1_D6_adiabatic/J2_0p27/sweep_*.pdf
+COMPLETED: task1_D6_adiabatic, J2=0.27, /home/chye/LastIzar/Results_LastIzar/task1_D6_adiabatic/J2_0p27/sweep_D6_chi72_best.pt"
+L1a6275,t1_d6_j275.run,task1_D6_adiabatic,adiabatic,6,0.275,0,lbfgs,complete,3198087,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L1a6275-i32-3198087.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L1a6275-i32-3198087.out,,"│    nnn <S·S> (18): min=+0.058408 max=+0.136333 mean=+0.086340 se=8.35e-03
+│    <Sx>      (18): min=-0.045811 max=+0.045806 mean=-0.000002 se=1.08e-02
+│    <Sy>      (18): min=+0.000000 max=+0.000000 mean=+0.000000 se=6.25e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.003028 max=+0.003039 mean=+0.000006 se=7.15e-04
+│    |m| mean±se/env:
+│      ACE  A:0.045910±1.58e-07 | C:0.045910±1.58e-07 | E:0.045910±1.58e-07
+│      BDF  B:0.045906±1.93e-07 | D:0.045906±1.93e-07 | F:0.045906±1.93e-07
+│  [chi-converged] ΔE=-1.73e-06 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5775964353  E/site=-0.4295994059  wall=0.20h
+[chi-series-complete] D=6 converged at chi=72
+D=6 complete in 0.20 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+6     72       4       -2.5775964353   -0.4295994059
+Best E/site = -0.4295994059  (D=6, chi=72)
+Total wall time: 0.20 h (733 s)
+Finished: 2026-09-29 11:34:36
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task1_D6_adiabatic/J2_0p275/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task1_D6_adiabatic/J2_0p275/sweep_*.pdf
+COMPLETED: task1_D6_adiabatic, J2=0.275, /home/chye/LastIzar/Results_LastIzar/task1_D6_adiabatic/J2_0p275/sweep_D6_chi72_best.pt"
+L1a6280,t1_d6_j280.run,task1_D6_adiabatic,adiabatic,6,0.28,0,lbfgs,complete,3198088,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L1a6280-i32-3198088.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L1a6280-i32-3198088.out,,"│    nnn <S·S> (18): min=+0.053381 max=+0.138276 mean=+0.083833 se=9.09e-03
+│    <Sx>      (18): min=-0.035302 max=+0.035303 mean=+0.000001 se=8.32e-03
+│    <Sy>      (18): min=+0.000000 max=+0.000000 mean=+0.000000 se=0.00e+00  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.004693 max=+0.004689 mean=-0.000002 se=1.11e-03
+│    |m| mean±se/env:
+│      ACE  A:0.035612±3.16e-07 | C:0.035612±3.16e-07 | E:0.035612±3.16e-07
+│      BDF  B:0.035612±1.89e-07 | D:0.035612±1.89e-07 | F:0.035612±1.89e-07
+│  [chi-converged] ΔE=-6.44e-06 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5699618488  E/site=-0.4283269748  wall=0.25h
+[chi-series-complete] D=6 converged at chi=72
+D=6 complete in 0.25 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+6     72       6       -2.5699618488   -0.4283269748
+Best E/site = -0.4283269748  (D=6, chi=72)
+Total wall time: 0.25 h (908 s)
+Finished: 2026-09-29 11:49:49
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task1_D6_adiabatic/J2_0p28/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task1_D6_adiabatic/J2_0p28/sweep_*.pdf
+COMPLETED: task1_D6_adiabatic, J2=0.28, /home/chye/LastIzar/Results_LastIzar/task1_D6_adiabatic/J2_0p28/sweep_D6_chi72_best.pt"
+L1a6290,t1_d6_j290.run,task1_D6_adiabatic,adiabatic,6,0.29,0,lbfgs,complete,3198089,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L1a6290-i32-3198089.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L1a6290-i32-3198089.out,,"│    nnn <S·S> (18): min=+0.016539 max=+0.106717 mean=+0.076438 se=9.98e-03
+│    <Sx>      (18): min=-0.000969 max=+0.000968 mean=-0.000000 se=2.28e-04
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=-0.000000 se=4.51e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.000509 max=+0.000509 mean=-0.000000 se=1.20e-04
+│    |m| mean±se/env:
+│      ACE  A:0.001094±2.32e-07 | C:0.001094±2.32e-07 | E:0.001094±2.32e-07
+│      BDF  B:0.001094±1.51e-07 | D:0.001094±1.51e-07 | F:0.001094±1.51e-07
+│  [chi-converged] ΔE=8.46e-07 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5568281124  E/site=-0.4261380187  wall=0.96h
+[chi-series-complete] D=6 converged at chi=72
+D=6 complete in 0.96 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+6     72      27       -2.5568281124   -0.4261380187
+Best E/site = -0.4261380187  (D=6, chi=72)
+Total wall time: 0.96 h (3450 s)
+Finished: 2026-09-29 12:47:24
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task1_D6_adiabatic/J2_0p29/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task1_D6_adiabatic/J2_0p29/sweep_*.pdf
+COMPLETED: task1_D6_adiabatic, J2=0.29, /home/chye/LastIzar/Results_LastIzar/task1_D6_adiabatic/J2_0p29/sweep_D6_chi72_best.pt"
+L1a6300,t1_d6_j300.run,task1_D6_adiabatic,adiabatic,6,0.30,0,lbfgs,complete,3198090,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L1a6300-i01-3198090.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L1a6300-i01-3198090.out,,"│    nnn <S·S> (18): min=+0.009293 max=+0.104022 mean=+0.072183 se=1.05e-02
+│    <Sx>      (18): min=-0.000878 max=+0.000877 mean=-0.000000 se=2.07e-04
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=+0.000000 se=3.25e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.000450 max=+0.000450 mean=+0.000000 se=1.06e-04
+│    |m| mean±se/env:
+│      ACE  A:0.000986±3.03e-07 | C:0.000986±3.03e-07 | E:0.000986±3.03e-07
+│      BDF  B:0.000985±2.12e-07 | D:0.000985±2.12e-07 | F:0.000985±2.12e-07
+│  [chi-converged] ΔE=1.36e-06 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5434552518  E/site=-0.4239092086  wall=0.16h
+[chi-series-complete] D=6 converged at chi=72
+D=6 complete in 0.16 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+6     72       6       -2.5434552518   -0.4239092086
+Best E/site = -0.4239092086  (D=6, chi=72)
+Total wall time: 0.16 h (585 s)
+Finished: 2026-09-29 12:57:23
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task1_D6_adiabatic/J2_0p30/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task1_D6_adiabatic/J2_0p30/sweep_*.pdf
+COMPLETED: task1_D6_adiabatic, J2=0.30, /home/chye/LastIzar/Results_LastIzar/task1_D6_adiabatic/J2_0p30/sweep_D6_chi72_best.pt"
+L1a6310,t1_d6_j310.run,task1_D6_adiabatic,adiabatic,6,0.31,0,lbfgs,complete,3198091,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L1a6310-i31-3198091.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L1a6310-i31-3198091.out,,"│    nnn <S·S> (18): min=+0.002305 max=+0.101575 mean=+0.067997 se=1.09e-02
+│    <Sx>      (18): min=-0.000542 max=+0.000540 mean=-0.000001 se=1.27e-04
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=+0.000000 se=2.45e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.000397 max=+0.000396 mean=-0.000000 se=9.34e-05
+│    |m| mean±se/env:
+│      ACE  A:0.000671±2.28e-07 | C:0.000671±2.28e-07 | E:0.000671±2.28e-07
+│      BDF  B:0.000670±1.27e-07 | D:0.000670±1.27e-07 | F:0.000670±1.27e-07
+│  [chi-converged] ΔE=1.09e-06 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5308423787  E/site=-0.4218070631  wall=0.23h
+[chi-series-complete] D=6 converged at chi=72
+D=6 complete in 0.23 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+6     72      10       -2.5308423787   -0.4218070631
+Best E/site = -0.4218070631  (D=6, chi=72)
+Total wall time: 0.23 h (824 s)
+Finished: 2026-09-29 13:11:24
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task1_D6_adiabatic/J2_0p31/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task1_D6_adiabatic/J2_0p31/sweep_*.pdf
+COMPLETED: task1_D6_adiabatic, J2=0.31, /home/chye/LastIzar/Results_LastIzar/task1_D6_adiabatic/J2_0p31/sweep_D6_chi72_best.pt"
+L1a6320,t1_d6_j320.run,task1_D6_adiabatic,adiabatic,6,0.32,0,lbfgs,complete,3198092,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L1a6320-i31-3198092.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L1a6320-i31-3198092.out,,"│    nnn <S·S> (18): min=-0.004395 max=+0.098858 mean=+0.063899 se=1.14e-02
+│    <Sx>      (18): min=-0.000433 max=+0.000433 mean=-0.000001 se=1.02e-04
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=+0.000000 se=5.36e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.000395 max=+0.000396 mean=+0.000000 se=9.31e-05
+│    |m| mean±se/env:
+│      ACE  A:0.000586±2.41e-07 | C:0.000586±2.41e-07 | E:0.000586±2.41e-07
+│      BDF  B:0.000585±4.71e-08 | D:0.000585±4.71e-08 | F:0.000585±4.71e-08
+│  [chi-converged] ΔE=-2.85e-07 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5189746324  E/site=-0.4198291054  wall=0.15h
+[chi-series-complete] D=6 converged at chi=72
+D=6 complete in 0.15 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+6     72       6       -2.5189746324   -0.4198291054
+Best E/site = -0.4198291054  (D=6, chi=72)
+Total wall time: 0.15 h (535 s)
+Finished: 2026-09-29 13:20:45
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task1_D6_adiabatic/J2_0p32/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task1_D6_adiabatic/J2_0p32/sweep_*.pdf
+COMPLETED: task1_D6_adiabatic, J2=0.32, /home/chye/LastIzar/Results_LastIzar/task1_D6_adiabatic/J2_0p32/sweep_D6_chi72_best.pt"
+L2a6270z,t2_d6_j270_h0.run,task2_D6_adam_pin,pin_h0,6,0.27,0,lbfgs,no_output,3198106,PENDING,(DependencyNeverSatisfied),,afterok blocked by L2a6270p: FAILED; IndexError: deque index out of range,,,,
+L2a6270p,t2_d6_j270_h005.run,task2_D6_adam_pin,pin_h005,6,0.27,0.005,adam-lbfgs,partial,3198105,FAILED,,1:0,IndexError: deque index out of range,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L2a6270p-i04-3198105.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L2a6270p-i04-3198105.out,"Traceback (most recent call last):
+File ""/home/chye/LastIzar/main_C3.py"", line 3029, in <module>
+main()
+File ""/home/chye/LastIzar/main_C3.py"", line 2715, in main
+best_params_tuple, best_loss, global_step, _cached_rhos, _switched_to_lbfgs = optimize_at_chi(
+File ""/home/chye/LastIzar/main_C3.py"", line 1968, in optimize_at_chi
+_d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
+File ""/home/chye/LastIzar/main_C3.py"", line 1968, in <listcomp>
+_d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
+IndexError: deque index out of range","step   111  ctm= 10  loss=-2.5697637579  Δ=-4.721e-04  901/86400s
+step   112  ctm= 10  loss=-2.5702129868  Δ=-4.492e-04  911/86400s
+step   113  ctm= 10  loss=-2.5706412764  Δ=-4.283e-04  920/86400s
+step   114  ctm=  9  loss=-2.5710504610  Δ=-4.092e-04  928/86400s
+step   115  ctm=  9  loss=-2.5714420872  Δ=-3.916e-04  937/86400s
+step   116  ctm=  9  loss=-2.5718178050  Δ=-3.757e-04  945/86400s
+step   117  ctm=  9  loss=-2.5721787441  Δ=-3.609e-04  954/86400s
+step   118  ctm=  9  loss=-2.5725257583  Δ=-3.470e-04  962/86400s
+step   119  ctm=  9  loss=-2.5728597148  Δ=-3.340e-04  970/86400s
+step   120  ctm=  9  loss=-2.5731812086  Δ=-3.215e-04  979/86400s
+step   121  ctm=  9  loss=-2.5734906930  Δ=-3.095e-04  987/86400s
+step   122  ctm=  9  loss=-2.5737885323  Δ=-2.978e-04  996/86400s
+step   123  ctm=  9  loss=-2.5740750713  Δ=-2.865e-04  1004/86400s
+step   124  ctm=  9  loss=-2.5743506344  Δ=-2.756e-04  1011/86400s
+step   125  ctm=  9  loss=-2.5746155411  Δ=-2.649e-04  1019/86400s
+step   126  ctm=  9  loss=-2.5748701605  Δ=-2.546e-04  1027/86400s
+step   127  ctm=  9  loss=-2.5751149533  Δ=-2.448e-04  1035/86400s
+step   128  ctm=  9  loss=-2.5753504246  Δ=-2.355e-04  1043/86400s
+step   129  ctm=  9  loss=-2.5755771279  Δ=-2.267e-04  1051/86400s
+step   130  ctm=  9  loss=-2.5757956487  Δ=-2.185e-04  1058/86400s
+step   131  ctm=  9  loss=-2.5760065845  Δ=-2.109e-04  1066/86400s
+step   132  ctm=  9  loss=-2.5762105426  Δ=-2.040e-04  1074/86400s
+step   133  ctm=  9  loss=-2.5764080872  Δ=-1.975e-04  1082/86400s
+step   134  ctm=  9  loss=-2.5765999255  Δ=-1.918e-04  1090/86400s"
+L2a6275z,t2_d6_j275_h0.run,task2_D6_adam_pin,pin_h0,6,0.275,0,lbfgs,no_output,3198104,PENDING,(DependencyNeverSatisfied),,afterok blocked by L2a6275p: FAILED; IndexError: deque index out of range,,,,
+L2a6275p,t2_d6_j275_h005.run,task2_D6_adam_pin,pin_h005,6,0.275,0.005,adam-lbfgs,partial,3198103,FAILED,,1:0,IndexError: deque index out of range,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L2a6275p-i04-3198103.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L2a6275p-i04-3198103.out,"Traceback (most recent call last):
+File ""/home/chye/LastIzar/main_C3.py"", line 3029, in <module>
+main()
+File ""/home/chye/LastIzar/main_C3.py"", line 2715, in main
+best_params_tuple, best_loss, global_step, _cached_rhos, _switched_to_lbfgs = optimize_at_chi(
+File ""/home/chye/LastIzar/main_C3.py"", line 1968, in optimize_at_chi
+_d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
+File ""/home/chye/LastIzar/main_C3.py"", line 1968, in <listcomp>
+_d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
+IndexError: deque index out of range","step   123  ctm=  9  loss=-2.5643997020  Δ=-3.671e-04  982/86400s
+step   124  ctm=  9  loss=-2.5647633860  Δ=-3.637e-04  990/86400s
+step   125  ctm=  9  loss=-2.5651227782  Δ=-3.594e-04  998/86400s
+step   126  ctm=  9  loss=-2.5654771694  Δ=-3.544e-04  1006/86400s
+step   127  ctm=  9  loss=-2.5658257060  Δ=-3.485e-04  1013/86400s
+step   128  ctm=  9  loss=-2.5661675447  Δ=-3.418e-04  1021/86400s
+step   129  ctm= 10  loss=-2.5665020021  Δ=-3.345e-04  1030/86400s
+step   130  ctm= 10  loss=-2.5668284910  Δ=-3.265e-04  1039/86400s
+step   131  ctm= 10  loss=-2.5671465513  Δ=-3.181e-04  1048/86400s
+step   132  ctm= 10  loss=-2.5674557952  Δ=-3.092e-04  1057/86400s
+step   133  ctm= 10  loss=-2.5677559073  Δ=-3.001e-04  1066/86400s
+step   134  ctm= 10  loss=-2.5680466305  Δ=-2.907e-04  1075/86400s
+step   135  ctm= 10  loss=-2.5683277494  Δ=-2.811e-04  1084/86400s
+step   136  ctm= 10  loss=-2.5685990840  Δ=-2.713e-04  1092/86400s
+step   137  ctm= 10  loss=-2.5688605282  Δ=-2.614e-04  1101/86400s
+step   138  ctm=  9  loss=-2.5691120319  Δ=-2.515e-04  1109/86400s
+step   139  ctm=  9  loss=-2.5693537165  Δ=-2.417e-04  1117/86400s
+step   140  ctm=  9  loss=-2.5695857142  Δ=-2.320e-04  1125/86400s
+step   141  ctm=  9  loss=-2.5698083175  Δ=-2.226e-04  1133/86400s
+step   142  ctm=  9  loss=-2.5700219063  Δ=-2.136e-04  1140/86400s
+step   143  ctm=  9  loss=-2.5702268944  Δ=-2.050e-04  1147/86400s
+step   144  ctm=  9  loss=-2.5704237216  Δ=-1.968e-04  1155/86400s
+step   145  ctm=  9  loss=-2.5706128326  Δ=-1.891e-04  1162/86400s
+step   146  ctm=  9  loss=-2.5707946470  Δ=-1.818e-04  1169/86400s"
+L2a6280z,t2_d6_j280_h0.run,task2_D6_adam_pin,pin_h0,6,0.28,0,lbfgs,no_output,3198102,PENDING,(DependencyNeverSatisfied),,afterok blocked by L2a6280p: FAILED; IndexError: deque index out of range,,,,
+L2a6280p,t2_d6_j280_h005.run,task2_D6_adam_pin,pin_h005,6,0.28,0.005,adam-lbfgs,partial,3198101,FAILED,,1:0,IndexError: deque index out of range,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L2a6280p-i03-3198101.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L2a6280p-i03-3198101.out,"Traceback (most recent call last):
+File ""/home/chye/LastIzar/main_C3.py"", line 3029, in <module>
+main()
+File ""/home/chye/LastIzar/main_C3.py"", line 2715, in main
+best_params_tuple, best_loss, global_step, _cached_rhos, _switched_to_lbfgs = optimize_at_chi(
+File ""/home/chye/LastIzar/main_C3.py"", line 1968, in optimize_at_chi
+_d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
+File ""/home/chye/LastIzar/main_C3.py"", line 1968, in <listcomp>
+_d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
+IndexError: deque index out of range","step   111  ctm=  8  loss=-2.5526312086  Δ=-5.003e-04  865/86400s
+step   112  ctm=  9  loss=-2.5531067628  Δ=-4.756e-04  873/86400s
+step   113  ctm=  9  loss=-2.5535573967  Δ=-4.506e-04  880/86400s
+step   114  ctm=  9  loss=-2.5539840806  Δ=-4.267e-04  888/86400s
+step   115  ctm=  9  loss=-2.5543884446  Δ=-4.044e-04  896/86400s
+step   116  ctm=  9  loss=-2.5547724887  Δ=-3.840e-04  904/86400s
+step   117  ctm=  9  loss=-2.5551379914  Δ=-3.655e-04  912/86400s
+step   118  ctm=  9  loss=-2.5554862137  Δ=-3.482e-04  920/86400s
+step   119  ctm=  9  loss=-2.5558180368  Δ=-3.318e-04  927/86400s
+step   120  ctm=  9  loss=-2.5561342814  Δ=-3.162e-04  935/86400s
+step   121  ctm=  9  loss=-2.5564359655  Δ=-3.017e-04  943/86400s
+step   122  ctm=  9  loss=-2.5567243252  Δ=-2.884e-04  951/86400s
+step   123  ctm=  9  loss=-2.5570006590  Δ=-2.763e-04  959/86400s
+step   124  ctm=  9  loss=-2.5572662353  Δ=-2.656e-04  967/86400s
+step   125  ctm=  9  loss=-2.5575222115  Δ=-2.560e-04  974/86400s
+step   126  ctm=  9  loss=-2.5577694934  Δ=-2.473e-04  982/86400s
+step   127  ctm=  9  loss=-2.5580086753  Δ=-2.392e-04  989/86400s
+step   128  ctm=  9  loss=-2.5582399803  Δ=-2.313e-04  997/86400s
+step   129  ctm=  9  loss=-2.5584637773  Δ=-2.238e-04  1004/86400s
+step   130  ctm=  9  loss=-2.5586803482  Δ=-2.166e-04  1011/86400s
+step   131  ctm=  9  loss=-2.5588900530  Δ=-2.097e-04  1018/86400s
+step   132  ctm=  9  loss=-2.5590932976  Δ=-2.032e-04  1026/86400s
+step   133  ctm=  9  loss=-2.5592904764  Δ=-1.972e-04  1033/86400s
+step   134  ctm=  9  loss=-2.5594819229  Δ=-1.914e-04  1040/86400s"
+L2a6290z,t2_d6_j290_h0.run,task2_D6_adam_pin,pin_h0,6,0.29,0,lbfgs,complete,3198100,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L2a6290z-i03-3198100.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L2a6290z-i03-3198100.out,,"│    nnn <S·S> (18): min=+0.089038 max=+0.150612 mean=+0.115640 se=6.05e-03
+│    <Sx>      (18): min=-0.010808 max=+0.001335 mean=-0.004736 se=1.43e-03
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=-0.000000 se=1.18e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.182306 max=+0.182155 mean=-0.000075 se=4.30e-02
+│    |m| mean±se/env:
+│      ACE  A:0.182476±1.54e-10 | C:0.182476±1.54e-10 | E:0.182476±1.54e-10
+│      BDF  B:0.182311±8.40e-10 | D:0.182311±8.40e-10 | F:0.182311±8.40e-10
+│  [chi-converged] ΔE=-3.17e-09 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.4420631349  E/site=-0.4070105225  wall=0.05h
+[chi-series-complete] D=6 converged at chi=72
+D=6 complete in 0.05 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+6     72       3       -2.4420631349   -0.4070105225
+Best E/site = -0.4070105225  (D=6, chi=72)
+Total wall time: 0.05 h (178 s)
+Finished: 2026-09-29 11:17:05
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task2_D6_adam_pin/J2_0p29/h_0/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task2_D6_adam_pin/J2_0p29/h_0/sweep_*.pdf
+COMPLETED: task2_D6_adam_pin, J2=0.29, /home/chye/LastIzar/Results_LastIzar/task2_D6_adam_pin/J2_0p29/h_0/sweep_D6_chi72_best.pt"
+L2a6290p,t2_d6_j290_h005.run,task2_D6_adam_pin,pin_h005,6,0.29,0.005,adam-lbfgs,complete,3198099,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L2a6290p-i03-3198099.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L2a6290p-i03-3198099.out,,"│    nnn <S·S> (18): min=+0.089038 max=+0.150612 mean=+0.115640 se=6.05e-03
+│    <Sx>      (18): min=-0.010808 max=+0.001335 mean=-0.004736 se=1.43e-03
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=+0.000000 se=1.91e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.182306 max=+0.182155 mean=-0.000075 se=4.30e-02
+│    |m| mean±se/env:
+│      ACE  A:0.182476±4.28e-10 | C:0.182476±4.28e-10 | E:0.182476±4.28e-10
+│      BDF  B:0.182311±3.70e-09 | D:0.182311±3.70e-09 | F:0.182311±3.70e-09
+│  [chi-converged] ΔE=-2.88e-08 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.4474941790  E/site=-0.4079156965  wall=0.38h
+[chi-series-complete] D=6 converged at chi=72
+D=6 complete in 0.38 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+6     72      10       -2.4474941790   -0.4079156965
+Best E/site = -0.4079156965  (D=6, chi=72)
+Total wall time: 0.38 h (1370 s)
+Finished: 2026-09-29 11:14:02
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task2_D6_adam_pin/J2_0p29/h_0p005/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task2_D6_adam_pin/J2_0p29/h_0p005/sweep_*.pdf
+COMPLETED: task2_D6_adam_pin, J2=0.29, /home/chye/LastIzar/Results_LastIzar/task2_D6_adam_pin/J2_0p29/h_0p005/sweep_D6_chi72_best.pt"
+L2a6300z,t2_d6_j300_h0.run,task2_D6_adam_pin,pin_h0,6,0.30,0,lbfgs,no_output,3198098,PENDING,(DependencyNeverSatisfied),,afterok blocked by L2a6300p: FAILED; IndexError: deque index out of range,,,,
+L2a6300p,t2_d6_j300_h005.run,task2_D6_adam_pin,pin_h005,6,0.30,0.005,adam-lbfgs,partial,3198097,FAILED,,1:0,IndexError: deque index out of range,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L2a6300p-i02-3198097.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L2a6300p-i02-3198097.out,"Traceback (most recent call last):
+File ""/home/chye/LastIzar/main_C3.py"", line 3029, in <module>
+main()
+File ""/home/chye/LastIzar/main_C3.py"", line 2715, in main
+best_params_tuple, best_loss, global_step, _cached_rhos, _switched_to_lbfgs = optimize_at_chi(
+File ""/home/chye/LastIzar/main_C3.py"", line 1968, in optimize_at_chi
+_d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
+File ""/home/chye/LastIzar/main_C3.py"", line 1968, in <listcomp>
+_d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
+IndexError: deque index out of range","step    15  ctm=  7  loss=-1.0903371720  Δ=-4.242e-02  97/86400s
+step    16  ctm=  8  loss=-1.1450067337  Δ=-5.467e-02  106/86400s
+step    17  ctm=  9  loss=-1.2179211254  Δ=-7.291e-02  115/86400s
+step    18  ctm= 10  loss=-1.3196367279  Δ=-1.017e-01  124/86400s
+step    19  ctm= 12  loss=-1.4207681010  Δ=-1.011e-01  136/86400s
+step    20  ctm= 13  loss=-1.5049935349  Δ=-8.423e-02  148/86400s
+step    21  ctm= 13  loss=-1.5185863579  Δ=-1.359e-02  161/86400s
+step    22  ctm= 13  loss=-1.5296653811  Δ=-1.108e-02  174/86400s
+step    23  ctm= 13  loss=-1.5421505404  Δ=-1.249e-02  187/86400s
+step    24  ctm= 14  loss=-1.5536857911  Δ=-1.154e-02  202/86400s
+step    25  ctm= 14  loss=-1.5654651687  Δ=-1.178e-02  217/86400s
+step    26  ctm= 13  loss=-1.5758732255  Δ=-1.041e-02  230/86400s
+step    27  ctm= 13  loss=-1.5824510094  Δ=-6.578e-03  245/86400s
+step    28  ctm= 13  loss=-1.5863619032  Δ=-3.911e-03  259/86400s
+step    29  ctm= 12  loss=-1.5883415425  Δ=-1.980e-03  273/86400s
+step    30  ctm= 11  loss=-1.5891198122  Δ=-7.783e-04  285/86400s
+step    31  ctm= 12  loss=-1.5892177810  Δ=-9.797e-05  298/86400s
+step    32  ctm= 12  loss=-1.5889978483  Δ=+2.199e-04  311/86400s
+step    33  ctm= 12  loss=-1.5887044322  Δ=+2.934e-04  325/86400s
+step    34  ctm= 12  loss=-1.5884966735  Δ=+2.078e-04  338/86400s
+step    35  ctm= 12  loss=-1.5884746542  Δ=+2.202e-05  351/86400s
+step    36  ctm= 12  loss=-1.5886974174  Δ=-2.228e-04  365/86400s
+step    37  ctm= 12  loss=-1.5891963981  Δ=-4.990e-04  379/86400s
+step    38  ctm= 12  loss=-1.5899843907  Δ=-7.880e-04  392/86400s"
+L2a6310z,t2_d6_j310_h0.run,task2_D6_adam_pin,pin_h0,6,0.31,0,lbfgs,complete,3198096,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L2a6310z-i02-3198096.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L2a6310z-i02-3198096.out,,"│    nnn <S·S> (18): min=+0.002312 max=+0.101664 mean=+0.067992 se=1.09e-02
+│    <Sx>      (18): min=-0.000367 max=+0.000366 mean=-0.000000 se=8.62e-05
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=-0.000000 se=2.49e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.000372 max=+0.000372 mean=-0.000000 se=8.76e-05
+│    |m| mean±se/env:
+│      ACE  A:0.000522±2.36e-07 | C:0.000522±2.36e-07 | E:0.000522±2.36e-07
+│      BDF  B:0.000521±1.74e-07 | D:0.000521±1.74e-07 | F:0.000521±1.74e-07
+│  [chi-converged] ΔE=-1.31e-07 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5308453127  E/site=-0.4218075521  wall=0.59h
+[chi-series-complete] D=6 converged at chi=72
+D=6 complete in 0.59 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+6     72      20       -2.5308453127   -0.4218075521
+Best E/site = -0.4218075521  (D=6, chi=72)
+Total wall time: 0.59 h (2117 s)
+Finished: 2026-09-29 11:49:50
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task2_D6_adam_pin/J2_0p31/h_0/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task2_D6_adam_pin/J2_0p31/h_0/sweep_*.pdf
+COMPLETED: task2_D6_adam_pin, J2=0.31, /home/chye/LastIzar/Results_LastIzar/task2_D6_adam_pin/J2_0p31/h_0/sweep_D6_chi72_best.pt"
+L2a6310p,t2_d6_j310_h005.run,task2_D6_adam_pin,pin_h005,6,0.31,0.005,adam-lbfgs,complete,3198095,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L2a6310p-i02-3198095.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L2a6310p-i02-3198095.out,,"│    nnn <S·S> (18): min=+0.191055 max=+0.218285 mean=+0.203708 se=2.22e-03
+│    <Sx>      (18): min=-0.319803 max=+0.397868 mean=+0.039033 se=8.46e-02
+│    <Sy>      (18): min=+0.000000 max=+0.000000 mean=+0.000000 se=3.27e-18  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.288035 max=+0.187970 mean=-0.050032 se=5.61e-02
+│    |m| mean±se/env:
+│      ACE  A:0.430393±2.58e-09 | C:0.430393±2.58e-09 | E:0.430393±2.58e-09
+│      BDF  B:0.440036±9.14e-10 | D:0.440036±9.14e-10 | F:0.440036±9.14e-10
+│  [chi-converged] ΔE=-2.22e-08 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-1.3582387834  E/site=-0.2263731306  wall=0.39h
+[chi-series-complete] D=6 converged at chi=72
+D=6 complete in 0.39 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+6     72       8       -1.3582387834   -0.2263731306
+Best E/site = -0.2263731306  (D=6, chi=72)
+Total wall time: 0.39 h (1399 s)
+Finished: 2026-09-29 11:14:28
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task2_D6_adam_pin/J2_0p31/h_0p005/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task2_D6_adam_pin/J2_0p31/h_0p005/sweep_*.pdf
+COMPLETED: task2_D6_adam_pin, J2=0.31, /home/chye/LastIzar/Results_LastIzar/task2_D6_adam_pin/J2_0p31/h_0p005/sweep_D6_chi72_best.pt"
+L2a6320z,t2_d6_j320_h0.run,task2_D6_adam_pin,pin_h0,6,0.32,0,lbfgs,no_output,3198094,PENDING,(DependencyNeverSatisfied),,afterok blocked by L2a6320p: FAILED; IndexError: deque index out of range,,,,
+L2a6320p,t2_d6_j320_h005.run,task2_D6_adam_pin,pin_h005,6,0.32,0.005,adam-lbfgs,partial,3198093,FAILED,,1:0,IndexError: deque index out of range,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L2a6320p-i31-3198093.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L2a6320p-i31-3198093.out,"Traceback (most recent call last):
+File ""/home/chye/LastIzar/main_C3.py"", line 3029, in <module>
+main()
+File ""/home/chye/LastIzar/main_C3.py"", line 2715, in main
+best_params_tuple, best_loss, global_step, _cached_rhos, _switched_to_lbfgs = optimize_at_chi(
+File ""/home/chye/LastIzar/main_C3.py"", line 1968, in optimize_at_chi
+_d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
+File ""/home/chye/LastIzar/main_C3.py"", line 1968, in <listcomp>
+_d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
+IndexError: deque index out of range","step   188  ctm=  9  loss=-2.5018774118  Δ=-2.779e-04  1398/86400s
+step   189  ctm=  9  loss=-2.5021488901  Δ=-2.715e-04  1405/86400s
+step   190  ctm=  9  loss=-2.5024145387  Δ=-2.656e-04  1413/86400s
+step   191  ctm=  9  loss=-2.5026742347  Δ=-2.597e-04  1420/86400s
+step   192  ctm=  9  loss=-2.5029290855  Δ=-2.549e-04  1427/86400s
+step   193  ctm=  9  loss=-2.5031796290  Δ=-2.505e-04  1434/86400s
+step   194  ctm=  9  loss=-2.5034265768  Δ=-2.469e-04  1442/86400s
+step   195  ctm=  9  loss=-2.5036707098  Δ=-2.441e-04  1449/86400s
+step   196  ctm=  9  loss=-2.5039120690  Δ=-2.414e-04  1456/86400s
+step   197  ctm=  9  loss=-2.5041529899  Δ=-2.409e-04  1463/86400s
+step   198  ctm=  9  loss=-2.5043927792  Δ=-2.398e-04  1471/86400s
+step   199  ctm=  9  loss=-2.5046325350  Δ=-2.398e-04  1478/86400s
+step   200  ctm=  9  loss=-2.5048728938  Δ=-2.404e-04  1485/86400s
+step   201  ctm=  9  loss=-2.5051150802  Δ=-2.422e-04  1492/86400s
+step   202  ctm=  9  loss=-2.5053574014  Δ=-2.423e-04  1500/86400s
+step   203  ctm=  9  loss=-2.5056007914  Δ=-2.434e-04  1507/86400s
+step   204  ctm=  9  loss=-2.5058447917  Δ=-2.440e-04  1514/86400s
+step   205  ctm=  9  loss=-2.5060885366  Δ=-2.437e-04  1521/86400s
+step   206  ctm=  9  loss=-2.5063311537  Δ=-2.426e-04  1528/86400s
+step   207  ctm=  9  loss=-2.5065715695  Δ=-2.404e-04  1536/86400s
+step   208  ctm=  9  loss=-2.5068077389  Δ=-2.362e-04  1543/86400s
+step   209  ctm=  8  loss=-2.5070311440  Δ=-2.234e-04  1550/86400s
+step   210  ctm=  8  loss=-2.5071980188  Δ=-1.669e-04  1557/86400s
+step   211  ctm=  9  loss=-2.5071939319  Δ=+4.087e-06  1564/86400s"
+L3l6270z,t3_d6_j270_h0.run,task3_D6_lbfgs_pin,pin_h0,6,0.27,0,lbfgs,complete,3198120,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6270z-i33-3198120.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6270z-i33-3198120.out,,"│    nnn <S·S> (18): min=+0.063316 max=+0.134591 mean=+0.088709 se=7.66e-03
+│    <Sx>      (18): min=-0.026576 max=+0.026575 mean=-0.000001 se=6.26e-03
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=-0.000000 se=5.10e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.047407 max=+0.047411 mean=+0.000001 se=1.12e-02
+│    |m| mean±se/env:
+│      ACE  A:0.054350±4.01e-07 | C:0.054350±4.01e-07 | E:0.054350±4.01e-07
+│      BDF  B:0.054348±1.34e-07 | D:0.054348±1.34e-07 | F:0.054348±1.34e-07
+│  [chi-converged] ΔE=-1.44e-06 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5854756795  E/site=-0.4309126132  wall=0.42h
+[chi-series-complete] D=6 converged at chi=72
+D=6 complete in 0.42 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+6     72      11       -2.5854756795   -0.4309126132
+Best E/site = -0.4309126132  (D=6, chi=72)
+Total wall time: 0.42 h (1513 s)
+Finished: 2026-09-29 12:03:34
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p27/h_0/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p27/h_0/sweep_*.pdf
+COMPLETED: task3_D6_lbfgs_pin, J2=0.27, /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p27/h_0/sweep_D6_chi72_best.pt"
+L3l6270p,t3_d6_j270_h005.run,task3_D6_lbfgs_pin,pin_h005,6,0.27,0.005,lbfgs,complete,3198119,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6270p-i12-3198119.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6270p-i12-3198119.out,,"│    nnn <S·S> (18): min=+0.052633 max=+0.148217 mean=+0.084926 se=1.05e-02
+│    <Sx>      (18): min=-0.006554 max=+0.006553 mean=-0.000001 se=1.54e-03
+│    <Sy>      (18): min=+0.000000 max=+0.000000 mean=+0.000000 se=5.74e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.012405 max=+0.012406 mean=+0.000000 se=2.92e-03
+│    |m| mean±se/env:
+│      ACE  A:0.014029±7.38e-08 | C:0.014029±7.38e-08 | E:0.014029±7.38e-08
+│      BDF  B:0.014030±1.18e-08 | D:0.014030±1.18e-08 | F:0.014030±1.18e-08
+│  [chi-converged] ΔE=1.68e-07 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5919029308  E/site=-0.4319838218  wall=0.78h
+[chi-series-complete] D=6 converged at chi=72
+D=6 complete in 0.78 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+6     72      24       -2.5919029308   -0.4319838218
+Best E/site = -0.4319838218  (D=6, chi=72)
+Total wall time: 0.78 h (2823 s)
+Finished: 2026-09-29 11:38:11
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p27/h_0p005/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p27/h_0p005/sweep_*.pdf
+COMPLETED: task3_D6_lbfgs_pin, J2=0.27, /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p27/h_0p005/sweep_D6_chi72_best.pt"
+L3l6275z,t3_d6_j275_h0.run,task3_D6_lbfgs_pin,pin_h0,6,0.275,0,lbfgs,complete,3198118,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6275z-i32-3198118.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6275z-i32-3198118.out,,"│    nnn <S·S> (18): min=+0.112949 max=+0.141527 mean=+0.129496 se=2.81e-03
+│    <Sx>      (18): min=-0.036944 max=+0.046851 mean=+0.004953 se=9.88e-03
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=+0.000000 se=5.62e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.241413 max=+0.240306 mean=-0.000553 se=5.68e-02
+│    |m| mean±se/env:
+│      ACE  A:0.244830±8.39e-10 | C:0.244830±8.39e-10 | E:0.244830±8.39e-10
+│      BDF  B:0.244223±6.23e-10 | D:0.244223±6.23e-10 | F:0.244223±6.23e-10
+│  [chi-converged] ΔE=-4.72e-07 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.4530120642  E/site=-0.4088353440  wall=0.33h
+[chi-series-complete] D=6 converged at chi=72
+D=6 complete in 0.33 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+6     72       5       -2.4530120642   -0.4088353440
+Best E/site = -0.4088353440  (D=6, chi=72)
+Total wall time: 0.33 h (1174 s)
+Finished: 2026-09-29 11:28:45
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p275/h_0/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p275/h_0/sweep_*.pdf
+COMPLETED: task3_D6_lbfgs_pin, J2=0.275, /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p275/h_0/sweep_D6_chi72_best.pt"
+L3l6275p,t3_d6_j275_h005.run,task3_D6_lbfgs_pin,pin_h005,6,0.275,0.005,lbfgs,complete,3198117,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6275p-i11-3198117.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6275p-i11-3198117.out,,"│    nnn <S·S> (18): min=+0.112864 max=+0.141588 mean=+0.129498 se=2.83e-03
+│    <Sx>      (18): min=-0.038748 max=+0.048404 mean=+0.004828 se=1.03e-02
+│    <Sy>      (18): min=+0.000000 max=+0.000000 mean=+0.000000 se=0.00e+00  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.241319 max=+0.240160 mean=-0.000580 se=5.67e-02
+│    |m| mean±se/env:
+│      ACE  A:0.244989±2.38e-10 | C:0.244989±2.38e-10 | E:0.244989±2.38e-10
+│      BDF  B:0.244410±4.94e-10 | D:0.244410±4.94e-10 | F:0.244410±4.94e-10
+│  [chi-converged] ΔE=-4.10e-06 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.4545540262  E/site=-0.4090923377  wall=0.29h
+[chi-series-complete] D=6 converged at chi=72
+D=6 complete in 0.29 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+6     72       4       -2.4545540262   -0.4090923377
+Best E/site = -0.4090923377  (D=6, chi=72)
+Total wall time: 0.29 h (1055 s)
+Finished: 2026-09-29 11:08:47
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p275/h_0p005/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p275/h_0p005/sweep_*.pdf
+COMPLETED: task3_D6_lbfgs_pin, J2=0.275, /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p275/h_0p005/sweep_D6_chi72_best.pt"
+L3l6280z,t3_d6_j280_h0.run,task3_D6_lbfgs_pin,pin_h0,6,0.28,0,lbfgs,complete,3198116,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6280z-i10-3198116.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6280z-i10-3198116.out,,"│    nnn <S·S> (18): min=+0.124215 max=+0.150749 mean=+0.136718 se=2.47e-03
+│    <Sx>      (18): min=-0.080024 max=+0.069764 mean=-0.005130 se=1.77e-02
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=-0.000000 se=6.10e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.251616 max=+0.256246 mean=+0.002315 se=5.99e-02
+│    |m| mean±se/env:
+│      ACE  A:0.265573±3.14e-10 | C:0.265573±3.14e-10 | E:0.265573±3.14e-10
+│      BDF  B:0.264035±1.41e-10 | D:0.264035±1.41e-10 | F:0.264035±1.41e-10
+│  [chi-converged] ΔE=1.71e-09 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.4355554308  E/site=-0.4059259051  wall=0.07h
+[chi-series-complete] D=6 converged at chi=72
+D=6 complete in 0.07 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+6     72       3       -2.4355554308   -0.4059259051
+Best E/site = -0.4059259051  (D=6, chi=72)
+Total wall time: 0.07 h (270 s)
+Finished: 2026-09-29 11:10:44
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p28/h_0/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p28/h_0/sweep_*.pdf
+COMPLETED: task3_D6_lbfgs_pin, J2=0.28, /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p28/h_0/sweep_D6_chi72_best.pt"
+L3l6280p,t3_d6_j280_h005.run,task3_D6_lbfgs_pin,pin_h005,6,0.28,0.005,lbfgs,complete,3198115,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6280p-i10-3198115.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6280p-i10-3198115.out,,"│    nnn <S·S> (18): min=+0.124215 max=+0.150749 mean=+0.136718 se=2.47e-03
+│    <Sx>      (18): min=-0.080024 max=+0.069764 mean=-0.005130 se=1.77e-02
+│    <Sy>      (18): min=+0.000000 max=+0.000000 mean=+0.000000 se=0.00e+00  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.251616 max=+0.256246 mean=+0.002315 se=5.99e-02
+│    |m| mean±se/env:
+│      ACE  A:0.265573±1.66e-10 | C:0.265573±1.66e-10 | E:0.265573±1.66e-10
+│      BDF  B:0.264035±2.14e-09 | D:0.264035±2.14e-09 | F:0.264035±2.14e-09
+│  [chi-converged] ΔE=-1.46e-08 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.4355251302  E/site=-0.4059208550  wall=0.25h
+[chi-series-complete] D=6 converged at chi=72
+D=6 complete in 0.25 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+6     72       4       -2.4355251302   -0.4059208550
+Best E/site = -0.4059208550  (D=6, chi=72)
+Total wall time: 0.25 h (895 s)
+Finished: 2026-09-29 11:06:07
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p28/h_0p005/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p28/h_0p005/sweep_*.pdf
+COMPLETED: task3_D6_lbfgs_pin, J2=0.28, /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p28/h_0p005/sweep_D6_chi72_best.pt"
+L3l6290z,t3_d6_j290_h0.run,task3_D6_lbfgs_pin,pin_h0,6,0.29,0,lbfgs,complete,3198114,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6290z-i34-3198114.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6290z-i34-3198114.out,,"│    nnn <S·S> (18): min=+0.016493 max=+0.106579 mean=+0.076422 se=9.99e-03
+│    <Sx>      (18): min=-0.000141 max=+0.000140 mean=-0.000000 se=3.30e-05
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=+0.000000 se=7.71e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.000001 max=+0.000001 mean=+0.000000 se=1.90e-07
+│    |m| mean±se/env:
+│      ACE  A:0.000140±2.45e-07 | C:0.000140±2.45e-07 | E:0.000140±2.45e-07
+│      BDF  B:0.000140±1.18e-07 | D:0.000140±1.18e-07 | F:0.000140±1.18e-07
+│  [chi-converged] ΔE=1.12e-07 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5568392188  E/site=-0.4261398698  wall=0.58h
+[chi-series-complete] D=6 converged at chi=72
+D=6 complete in 0.58 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+6     72      16       -2.5568392188   -0.4261398698
+Best E/site = -0.4261398698  (D=6, chi=72)
+Total wall time: 0.58 h (2077 s)
+Finished: 2026-09-29 12:18:52
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p29/h_0/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p29/h_0/sweep_*.pdf
+COMPLETED: task3_D6_lbfgs_pin, J2=0.29, /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p29/h_0/sweep_D6_chi72_best.pt"
+L3l6290p,t3_d6_j290_h005.run,task3_D6_lbfgs_pin,pin_h005,6,0.29,0.005,lbfgs,complete,3198113,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6290p-i10-3198113.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6290p-i10-3198113.out,,"│    nnn <S·S> (18): min=+0.027905 max=+0.146313 mean=+0.074541 se=1.21e-02
+│    <Sx>      (18): min=-0.002986 max=+0.002983 mean=-0.000001 se=7.03e-04
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=-0.000000 se=1.04e-18  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.002726 max=+0.002727 mean=+0.000001 se=6.43e-04
+│    |m| mean±se/env:
+│      ACE  A:0.004043±4.50e-07 | C:0.004043±4.50e-07 | E:0.004043±4.50e-07
+│      BDF  B:0.004041±1.69e-07 | D:0.004041±1.69e-07 | F:0.004041±1.69e-07
+│  [chi-converged] ΔE=-2.95e-08 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5635533568  E/site=-0.4272588928  wall=0.88h
+[chi-series-complete] D=6 converged at chi=72
+D=6 complete in 0.88 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+6     72      25       -2.5635533568   -0.4272588928
+Best E/site = -0.4272588928  (D=6, chi=72)
+Total wall time: 0.88 h (3159 s)
+Finished: 2026-09-29 11:43:50
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p29/h_0p005/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p29/h_0p005/sweep_*.pdf
+COMPLETED: task3_D6_lbfgs_pin, J2=0.29, /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p29/h_0p005/sweep_D6_chi72_best.pt"
+L3l6300z,t3_d6_j300_h0.run,task3_D6_lbfgs_pin,pin_h0,6,0.30,0,lbfgs,complete,3198112,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6300z-i32-3198112.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6300z-i32-3198112.out,,"│    nnn <S·S> (18): min=+0.009252 max=+0.103740 mean=+0.072173 se=1.05e-02
+│    <Sx>      (18): min=-0.000048 max=+0.000048 mean=+0.000000 se=1.13e-05
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=+0.000000 se=6.53e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.000056 max=+0.000056 mean=+0.000000 se=1.32e-05
+│    |m| mean±se/env:
+│      ACE  A:0.000074±5.56e-08 | C:0.000074±5.56e-08 | E:0.000074±5.56e-08
+│      BDF  B:0.000074±3.05e-08 | D:0.000074±3.05e-08 | F:0.000074±3.05e-08
+│  [chi-converged] ΔE=-8.50e-07 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5434634093  E/site=-0.4239105682  wall=0.46h
+[chi-series-complete] D=6 converged at chi=72
+D=6 complete in 0.46 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+6     72      13       -2.5434634093   -0.4239105682
+Best E/site = -0.4239105682  (D=6, chi=72)
+Total wall time: 0.46 h (1639 s)
+Finished: 2026-09-29 12:01:34
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p30/h_0/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p30/h_0/sweep_*.pdf
+COMPLETED: task3_D6_lbfgs_pin, J2=0.30, /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p30/h_0/sweep_D6_chi72_best.pt"
+L3l6300p,t3_d6_j300_h005.run,task3_D6_lbfgs_pin,pin_h005,6,0.30,0.005,lbfgs,complete,3198111,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6300p-i09-3198111.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6300p-i09-3198111.out,,"│    nnn <S·S> (18): min=+0.020436 max=+0.145778 mean=+0.070239 se=1.28e-02
+│    <Sx>      (18): min=-0.002066 max=+0.002067 mean=+0.000000 se=4.87e-04
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=-0.000000 se=5.07e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.003124 max=+0.003122 mean=-0.000001 se=7.36e-04
+│    |m| mean±se/env:
+│      ACE  A:0.003744±9.37e-08 | C:0.003744±9.37e-08 | E:0.003744±9.37e-08
+│      BDF  B:0.003745±4.15e-08 | D:0.003745±4.15e-08 | F:0.003745±4.15e-08
+│  [chi-converged] ΔE=-5.89e-07 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5505159559  E/site=-0.4250859926  wall=0.72h
+[chi-series-complete] D=6 converged at chi=72
+D=6 complete in 0.72 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+6     72      21       -2.5505159559   -0.4250859926
+Best E/site = -0.4250859926  (D=6, chi=72)
+Total wall time: 0.72 h (2582 s)
+Finished: 2026-09-29 11:34:09
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p30/h_0p005/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p30/h_0p005/sweep_*.pdf
+COMPLETED: task3_D6_lbfgs_pin, J2=0.30, /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p30/h_0p005/sweep_D6_chi72_best.pt"
+L3l6310z,t3_d6_j310_h0.run,task3_D6_lbfgs_pin,pin_h0,6,0.31,0,lbfgs,complete,3198110,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6310z-i35-3198110.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6310z-i35-3198110.out,,"│    nnn <S·S> (18): min=+0.002261 max=+0.101044 mean=+0.067974 se=1.10e-02
+│    <Sx>      (18): min=-0.000146 max=+0.000148 mean=+0.000001 se=3.45e-05
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=+0.000000 se=1.38e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.001073 max=+0.001073 mean=+0.000000 se=2.53e-04
+│    |m| mean±se/env:
+│      ACE  A:0.001083±1.49e-07 | C:0.001083±1.49e-07 | E:0.001083±1.49e-07
+│      BDF  B:0.001082±2.18e-07 | D:0.001082±2.18e-07 | F:0.001082±2.18e-07
+│  [chi-converged] ΔE=1.33e-07 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5308495034  E/site=-0.4218082506  wall=0.34h
+[chi-series-complete] D=6 converged at chi=72
+D=6 complete in 0.34 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+6     72      10       -2.5308495034   -0.4218082506
+Best E/site = -0.4218082506  (D=6, chi=72)
+Total wall time: 0.34 h (1233 s)
+Finished: 2026-09-29 12:04:52
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p31/h_0/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p31/h_0/sweep_*.pdf
+COMPLETED: task3_D6_lbfgs_pin, J2=0.31, /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p31/h_0/sweep_D6_chi72_best.pt"
+L3l6310p,t3_d6_j310_h005.run,task3_D6_lbfgs_pin,pin_h005,6,0.31,0.005,lbfgs,complete,3198109,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6310p-i08-3198109.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6310p-i08-3198109.out,,"│    nnn <S·S> (18): min=+0.010186 max=+0.143787 mean=+0.065736 se=1.34e-02
+│    <Sx>      (18): min=-0.002599 max=+0.002599 mean=+0.000000 se=6.12e-04
+│    <Sy>      (18): min=+0.000000 max=+0.000000 mean=+0.000000 se=2.77e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.001144 max=+0.001145 mean=+0.000000 se=2.70e-04
+│    |m| mean±se/env:
+│      ACE  A:0.002839±3.41e-07 | C:0.002839±3.41e-07 | E:0.002839±3.41e-07
+│      BDF  B:0.002839±2.08e-07 | D:0.002839±2.08e-07 | F:0.002839±2.08e-07
+│  [chi-converged] ΔE=-1.51e-06 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5382530764  E/site=-0.4230421794  wall=0.88h
+[chi-series-complete] D=6 converged at chi=72
+D=6 complete in 0.88 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+6     72      19       -2.5382530764   -0.4230421794
+Best E/site = -0.4230421794  (D=6, chi=72)
+Total wall time: 0.88 h (3179 s)
+Finished: 2026-09-29 11:44:10
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p31/h_0p005/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p31/h_0p005/sweep_*.pdf
+COMPLETED: task3_D6_lbfgs_pin, J2=0.31, /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p31/h_0p005/sweep_D6_chi72_best.pt"
+L3l6320z,t3_d6_j320_h0.run,task3_D6_lbfgs_pin,pin_h0,6,0.32,0,lbfgs,complete,3198108,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6320z-i08-3198108.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6320z-i08-3198108.out,,"│    nnn <S·S> (18): min=+0.104035 max=+0.135019 mean=+0.124345 se=3.37e-03
+│    <Sx>      (18): min=+0.004062 max=+0.010656 mean=+0.007359 se=7.77e-04
+│    <Sy>      (18): min=+0.000000 max=+0.000000 mean=+0.000000 se=9.17e-20  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.225067 max=+0.225353 mean=+0.000143 se=5.31e-02
+│    |m| mean±se/env:
+│      ACE  A:0.225605±3.60e-10 | C:0.225605±3.60e-10 | E:0.225605±3.60e-10
+│      BDF  B:0.225104±1.32e-10 | D:0.225104±1.32e-10 | F:0.225104±1.32e-10
+│  [chi-converged] ΔE=-4.65e-09 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.3526127289  E/site=-0.3921021215  wall=0.04h
+[chi-series-complete] D=6 converged at chi=72
+D=6 complete in 0.04 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+6     72       3       -2.3526127289   -0.3921021215
+Best E/site = -0.3921021215  (D=6, chi=72)
+Total wall time: 0.04 h (134 s)
+Finished: 2026-09-29 11:07:48
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p32/h_0/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p32/h_0/sweep_*.pdf
+COMPLETED: task3_D6_lbfgs_pin, J2=0.32, /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p32/h_0/sweep_D6_chi72_best.pt"
+L3l6320p,t3_d6_j320_h005.run,task3_D6_lbfgs_pin,pin_h005,6,0.32,0.005,lbfgs,complete,3198107,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6320p-i08-3198107.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L3l6320p-i08-3198107.out,,"│    nnn <S·S> (18): min=+0.104035 max=+0.135019 mean=+0.124345 se=3.37e-03
+│    <Sx>      (18): min=+0.004062 max=+0.010656 mean=+0.007359 se=7.77e-04
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=-0.000000 se=7.02e-20  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.225067 max=+0.225353 mean=+0.000143 se=5.31e-02
+│    |m| mean±se/env:
+│      ACE  A:0.225605±3.39e-10 | C:0.225605±3.39e-10 | E:0.225605±3.39e-10
+│      BDF  B:0.225104±1.61e-09 | D:0.225104±1.61e-09 | F:0.225104±1.61e-09
+│  [chi-converged] ΔE=-3.64e-09 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.3485196920  E/site=-0.3914199487  wall=0.24h
+[chi-series-complete] D=6 converged at chi=72
+D=6 complete in 0.24 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+6     72       6       -2.3485196920   -0.3914199487
+Best E/site = -0.3914199487  (D=6, chi=72)
+Total wall time: 0.24 h (857 s)
+Finished: 2026-09-29 11:05:28
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p32/h_0p005/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p32/h_0p005/sweep_*.pdf
+COMPLETED: task3_D6_lbfgs_pin, J2=0.32, /home/chye/LastIzar/Results_LastIzar/task3_D6_lbfgs_pin/J2_0p32/h_0p005/sweep_D6_chi72_best.pt"
+L4a5260z,t4_d5_j260_h0.run,task4_D5_adam_pin,pin_h0,5,0.26,0,lbfgs,no_output,3198122,PENDING,(DependencyNeverSatisfied),,afterok blocked by L4a5260p: FAILED; IndexError: deque index out of range,,,,
+L4a5260p,t4_d5_j260_h005.run,task4_D5_adam_pin,pin_h005,5,0.26,0.005,adam-lbfgs,partial,3198121,FAILED,,1:0,IndexError: deque index out of range,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L4a5260p-i14-3198121.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L4a5260p-i14-3198121.out,"Traceback (most recent call last):
+File ""/home/chye/LastIzar/main_C3.py"", line 3029, in <module>
+main()
+File ""/home/chye/LastIzar/main_C3.py"", line 2715, in main
+best_params_tuple, best_loss, global_step, _cached_rhos, _switched_to_lbfgs = optimize_at_chi(
+File ""/home/chye/LastIzar/main_C3.py"", line 1968, in optimize_at_chi
+_d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
+File ""/home/chye/LastIzar/main_C3.py"", line 1968, in <listcomp>
+_d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
+IndexError: deque index out of range","step   172  ctm=  9  loss=-2.5868927512  Δ=-2.787e-04  266/64800s
+step   173  ctm=  9  loss=-2.5871696883  Δ=-2.769e-04  268/64800s
+step   174  ctm=  9  loss=-2.5874450691  Δ=-2.754e-04  270/64800s
+step   175  ctm=  9  loss=-2.5877187742  Δ=-2.737e-04  272/64800s
+step   176  ctm=  9  loss=-2.5879912108  Δ=-2.724e-04  273/64800s
+step   177  ctm=  9  loss=-2.5882620529  Δ=-2.708e-04  275/64800s
+step   178  ctm=  9  loss=-2.5885311760  Δ=-2.691e-04  277/64800s
+step   179  ctm=  9  loss=-2.5887984464  Δ=-2.673e-04  278/64800s
+step   180  ctm=  9  loss=-2.5890636981  Δ=-2.653e-04  280/64800s
+step   181  ctm=  9  loss=-2.5893267123  Δ=-2.630e-04  282/64800s
+step   182  ctm=  9  loss=-2.5895872200  Δ=-2.605e-04  284/64800s
+step   183  ctm=  9  loss=-2.5898449095  Δ=-2.577e-04  285/64800s
+step   184  ctm=  9  loss=-2.5900994349  Δ=-2.545e-04  287/64800s
+step   185  ctm=  9  loss=-2.5903504258  Δ=-2.510e-04  289/64800s
+step   186  ctm=  9  loss=-2.5905975738  Δ=-2.471e-04  291/64800s
+step   187  ctm=  9  loss=-2.5908403036  Δ=-2.427e-04  292/64800s
+step   188  ctm=  9  loss=-2.5910781970  Δ=-2.379e-04  294/64800s
+step   189  ctm=  9  loss=-2.5913108444  Δ=-2.326e-04  296/64800s
+step   190  ctm=  9  loss=-2.5915377649  Δ=-2.269e-04  297/64800s
+step   191  ctm=  9  loss=-2.5917584587  Δ=-2.207e-04  299/64800s
+step   192  ctm=  9  loss=-2.5919725241  Δ=-2.141e-04  301/64800s
+step   193  ctm=  9  loss=-2.5921796786  Δ=-2.072e-04  303/64800s
+step   194  ctm=  9  loss=-2.5923795228  Δ=-1.998e-04  304/64800s
+step   195  ctm=  9  loss=-2.5925718168  Δ=-1.923e-04  306/64800s"
+L4a5265z,t4_d5_j265_h0.run,task4_D5_adam_pin,pin_h0,5,0.265,0,lbfgs,complete,3198124,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L4a5265z-i14-3198124.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L4a5265z-i14-3198124.out,,"│    nnn <S·S> (18): min=+0.041322 max=+0.117319 mean=+0.090942 se=8.27e-03
+│    <Sx>      (18): min=-0.023222 max=+0.023224 mean=-0.000000 se=5.47e-03
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=+0.000000 se=3.85e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.006899 max=+0.006899 mean=-0.000001 se=1.63e-03
+│    |m| mean±se/env:
+│      ACE  A:0.024224±1.80e-06 | C:0.024224±1.80e-06 | E:0.024224±1.80e-06
+│      BDF  B:0.024225±6.87e-08 | D:0.024225±6.87e-08 | F:0.024225±6.87e-08
+│  [chi-converged] ΔE=-8.05e-06 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5902475235  E/site=-0.4317079206  wall=0.04h
+[chi-series-complete] D=5 converged at chi=50
+D=5 complete in 0.04 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+5     50       5       -2.5902475235   -0.4317079206
+Best E/site = -0.4317079206  (D=5, chi=50)
+Total wall time: 0.04 h (143 s)
+Finished: 2026-09-29 11:04:07
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task4_D5_adam_pin/J2_0p265/h_0/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task4_D5_adam_pin/J2_0p265/h_0/sweep_*.pdf
+COMPLETED: task4_D5_adam_pin, J2=0.265, /home/chye/LastIzar/Results_LastIzar/task4_D5_adam_pin/J2_0p265/h_0/sweep_D5_chi50_best.pt"
+L4a5265p,t4_d5_j265_h005.run,task4_D5_adam_pin,pin_h005,5,0.265,0.005,adam-lbfgs,complete,3198123,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L4a5265p-i14-3198123.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L4a5265p-i14-3198123.out,,"│    nnn <S·S> (18): min=+0.042295 max=+0.146273 mean=+0.088471 se=1.02e-02
+│    <Sx>      (18): min=-0.010631 max=+0.010632 mean=-0.000001 se=2.51e-03
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=-0.000000 se=3.27e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.002826 max=+0.002826 mean=-0.000000 se=6.66e-04
+│    |m| mean±se/env:
+│      ACE  A:0.010998±1.54e-06 | C:0.010998±1.54e-06 | E:0.010998±1.54e-06
+│      BDF  B:0.011000±2.11e-07 | D:0.011000±2.11e-07 | F:0.011000±2.11e-07
+│  [chi-converged] ΔE=-3.56e-06 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5957061118  E/site=-0.4326176853  wall=0.17h
+[chi-series-complete] D=5 converged at chi=50
+D=5 complete in 0.17 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+5     50      26       -2.5957061118   -0.4326176853
+Best E/site = -0.4326176853  (D=5, chi=50)
+Total wall time: 0.17 h (628 s)
+Finished: 2026-09-29 11:01:40
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task4_D5_adam_pin/J2_0p265/h_0p005/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task4_D5_adam_pin/J2_0p265/h_0p005/sweep_*.pdf
+COMPLETED: task4_D5_adam_pin, J2=0.265, /home/chye/LastIzar/Results_LastIzar/task4_D5_adam_pin/J2_0p265/h_0p005/sweep_D5_chi50_best.pt"
+L4a5270z,t4_d5_j270_h0.run,task4_D5_adam_pin,pin_h0,5,0.27,0,lbfgs,no_output,3198126,PENDING,(DependencyNeverSatisfied),,afterok blocked by L4a5270p: FAILED; IndexError: deque index out of range,,,,
+L4a5270p,t4_d5_j270_h005.run,task4_D5_adam_pin,pin_h005,5,0.27,0.005,adam-lbfgs,partial,3198125,FAILED,,1:0,IndexError: deque index out of range,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L4a5270p-i15-3198125.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L4a5270p-i15-3198125.out,"Traceback (most recent call last):
+File ""/home/chye/LastIzar/main_C3.py"", line 3029, in <module>
+main()
+File ""/home/chye/LastIzar/main_C3.py"", line 2715, in main
+best_params_tuple, best_loss, global_step, _cached_rhos, _switched_to_lbfgs = optimize_at_chi(
+File ""/home/chye/LastIzar/main_C3.py"", line 1968, in optimize_at_chi
+_d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
+File ""/home/chye/LastIzar/main_C3.py"", line 1968, in <listcomp>
+_d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
+IndexError: deque index out of range","step   291  ctm= 16  loss=-1.9898534510  Δ=-4.709e-04  737/64800s
+step   292  ctm= 16  loss=-1.9903069440  Δ=-4.535e-04  739/64800s
+step   293  ctm= 16  loss=-1.9907430513  Δ=-4.361e-04  742/64800s
+step   294  ctm= 16  loss=-1.9911619310  Δ=-4.189e-04  745/64800s
+step   295  ctm= 16  loss=-1.9915637968  Δ=-4.019e-04  748/64800s
+step   296  ctm= 16  loss=-1.9919489361  Δ=-3.851e-04  750/64800s
+step   297  ctm= 16  loss=-1.9923177254  Δ=-3.688e-04  753/64800s
+step   298  ctm= 16  loss=-1.9926705844  Δ=-3.529e-04  756/64800s
+step   299  ctm= 16  loss=-1.9930080099  Δ=-3.374e-04  758/64800s
+step   300  ctm= 15  loss=-1.9933305930  Δ=-3.226e-04  761/64800s
+step   301  ctm= 15  loss=-1.9936388682  Δ=-3.083e-04  764/64800s
+step   302  ctm= 15  loss=-1.9939335302  Δ=-2.947e-04  766/64800s
+step   303  ctm= 14  loss=-1.9942153354  Δ=-2.818e-04  769/64800s
+step   304  ctm= 14  loss=-1.9944849314  Δ=-2.696e-04  771/64800s
+step   305  ctm= 13  loss=-1.9947431671  Δ=-2.582e-04  773/64800s
+step   306  ctm= 13  loss=-1.9949907692  Δ=-2.476e-04  776/64800s
+step   307  ctm= 14  loss=-1.9952286692  Δ=-2.379e-04  778/64800s
+step   308  ctm= 14  loss=-1.9954576527  Δ=-2.290e-04  780/64800s
+step   309  ctm= 15  loss=-1.9956786152  Δ=-2.210e-04  783/64800s
+step   310  ctm= 15  loss=-1.9958923289  Δ=-2.137e-04  786/64800s
+step   311  ctm= 15  loss=-1.9960996641  Δ=-2.073e-04  788/64800s
+step   312  ctm= 15  loss=-1.9963014541  Δ=-2.018e-04  791/64800s
+step   313  ctm= 15  loss=-1.9964985088  Δ=-1.971e-04  794/64800s
+step   314  ctm= 15  loss=-1.9966916103  Δ=-1.931e-04  796/64800s"
+L4a5275z,t4_d5_j275_h0.run,task4_D5_adam_pin,pin_h0,5,0.275,0,lbfgs,no_output,3198128,PENDING,(DependencyNeverSatisfied),,afterok blocked by L4a5275p: FAILED; IndexError: deque index out of range,,,,
+L4a5275p,t4_d5_j275_h005.run,task4_D5_adam_pin,pin_h005,5,0.275,0.005,adam-lbfgs,partial,3198127,FAILED,,1:0,IndexError: deque index out of range,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L4a5275p-i15-3198127.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L4a5275p-i15-3198127.out,"Traceback (most recent call last):
+File ""/home/chye/LastIzar/main_C3.py"", line 3029, in <module>
+main()
+File ""/home/chye/LastIzar/main_C3.py"", line 2715, in main
+best_params_tuple, best_loss, global_step, _cached_rhos, _switched_to_lbfgs = optimize_at_chi(
+File ""/home/chye/LastIzar/main_C3.py"", line 1968, in optimize_at_chi
+_d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
+File ""/home/chye/LastIzar/main_C3.py"", line 1968, in <listcomp>
+_d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
+IndexError: deque index out of range","step   118  ctm=  7  loss=-2.5566223212  Δ=-6.470e-04  186/64800s
+step   119  ctm=  9  loss=-2.5572424007  Δ=-6.201e-04  188/64800s
+step   120  ctm=  9  loss=-2.5578333371  Δ=-5.909e-04  190/64800s
+step   121  ctm=  9  loss=-2.5583928874  Δ=-5.596e-04  192/64800s
+step   122  ctm=  9  loss=-2.5589192840  Δ=-5.264e-04  193/64800s
+step   123  ctm=  9  loss=-2.5594114163  Δ=-4.921e-04  195/64800s
+step   124  ctm=  9  loss=-2.5598694339  Δ=-4.580e-04  197/64800s
+step   125  ctm=  9  loss=-2.5602948680  Δ=-4.254e-04  198/64800s
+step   126  ctm=  9  loss=-2.5606906451  Δ=-3.958e-04  200/64800s
+step   127  ctm=  9  loss=-2.5610607315  Δ=-3.701e-04  202/64800s
+step   128  ctm=  9  loss=-2.5614094196  Δ=-3.487e-04  203/64800s
+step   129  ctm=  9  loss=-2.5617404879  Δ=-3.311e-04  205/64800s
+step   130  ctm=  9  loss=-2.5620565673  Δ=-3.161e-04  207/64800s
+step   131  ctm=  9  loss=-2.5623588948  Δ=-3.023e-04  208/64800s
+step   132  ctm=  9  loss=-2.5626473104  Δ=-2.884e-04  210/64800s
+step   133  ctm=  8  loss=-2.5629212255  Δ=-2.739e-04  212/64800s
+step   134  ctm=  7  loss=-2.5631795451  Δ=-2.583e-04  213/64800s
+step   135  ctm=  7  loss=-2.5634216977  Δ=-2.422e-04  214/64800s
+step   136  ctm=  8  loss=-2.5636482410  Δ=-2.265e-04  216/64800s
+step   137  ctm=  8  loss=-2.5638608054  Δ=-2.126e-04  217/64800s
+step   138  ctm=  8  loss=-2.5640611675  Δ=-2.004e-04  219/64800s
+step   139  ctm=  8  loss=-2.5642509269  Δ=-1.898e-04  221/64800s
+step   140  ctm=  8  loss=-2.5644310718  Δ=-1.801e-04  222/64800s
+step   141  ctm=  8  loss=-2.5646020765  Δ=-1.710e-04  224/64800s"
+L4a5280z,t4_d5_j280_h0.run,task4_D5_adam_pin,pin_h0,5,0.28,0,lbfgs,no_output,3198130,PENDING,(DependencyNeverSatisfied),,afterok blocked by L4a5280p: FAILED; IndexError: deque index out of range,,,,
+L4a5280p,t4_d5_j280_h005.run,task4_D5_adam_pin,pin_h005,5,0.28,0.005,adam-lbfgs,partial,3198129,FAILED,,1:0,IndexError: deque index out of range,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L4a5280p-i16-3198129.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L4a5280p-i16-3198129.out,"Traceback (most recent call last):
+File ""/home/chye/LastIzar/main_C3.py"", line 3029, in <module>
+main()
+File ""/home/chye/LastIzar/main_C3.py"", line 2715, in main
+best_params_tuple, best_loss, global_step, _cached_rhos, _switched_to_lbfgs = optimize_at_chi(
+File ""/home/chye/LastIzar/main_C3.py"", line 1968, in optimize_at_chi
+_d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
+File ""/home/chye/LastIzar/main_C3.py"", line 1968, in <listcomp>
+_d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
+IndexError: deque index out of range","step   180  ctm=  9  loss=-2.5544767674  Δ=-3.044e-04  289/64800s
+step   181  ctm=  9  loss=-2.5548369156  Δ=-3.601e-04  291/64800s
+step   182  ctm=  9  loss=-2.5551221662  Δ=-2.853e-04  293/64800s
+step   183  ctm=  9  loss=-2.5554356354  Δ=-3.135e-04  295/64800s
+step   184  ctm=  9  loss=-2.5557790976  Δ=-3.435e-04  296/64800s
+step   185  ctm=  9  loss=-2.5560624164  Δ=-2.833e-04  298/64800s
+step   186  ctm=  9  loss=-2.5563714759  Δ=-3.091e-04  300/64800s
+step   187  ctm=  9  loss=-2.5566919219  Δ=-3.204e-04  301/64800s
+step   188  ctm=  9  loss=-2.5569693016  Δ=-2.774e-04  303/64800s
+step   189  ctm=  9  loss=-2.5572617540  Δ=-2.925e-04  305/64800s
+step   190  ctm=  9  loss=-2.5575563591  Δ=-2.946e-04  306/64800s
+step   191  ctm=  9  loss=-2.5578230219  Δ=-2.667e-04  308/64800s
+step   192  ctm=  9  loss=-2.5580925917  Δ=-2.696e-04  309/64800s
+step   193  ctm=  9  loss=-2.5583597788  Δ=-2.672e-04  311/64800s
+step   194  ctm=  9  loss=-2.5586107393  Δ=-2.510e-04  313/64800s
+step   195  ctm=  9  loss=-2.5588580063  Δ=-2.473e-04  314/64800s
+step   196  ctm=  9  loss=-2.5590991558  Δ=-2.411e-04  316/64800s
+step   197  ctm=  9  loss=-2.5593306357  Δ=-2.315e-04  318/64800s
+step   198  ctm=  9  loss=-2.5595586501  Δ=-2.280e-04  319/64800s
+step   199  ctm=  8  loss=-2.5597796683  Δ=-2.210e-04  321/64800s
+step   200  ctm=  8  loss=-2.5599917540  Δ=-2.121e-04  322/64800s
+step   201  ctm=  8  loss=-2.5602012938  Δ=-2.095e-04  323/64800s
+step   202  ctm=  8  loss=-2.5604073482  Δ=-2.061e-04  325/64800s
+step   203  ctm=  8  loss=-2.5606048674  Δ=-1.975e-04  326/64800s"
+L4a5290z,t4_d5_j290_h0.run,task4_D5_adam_pin,pin_h0,5,0.29,0,lbfgs,no_output,3198132,PENDING,(DependencyNeverSatisfied),,afterok blocked by L4a5290p: FAILED; IndexError: deque index out of range,,,,
+L4a5290p,t4_d5_j290_h005.run,task4_D5_adam_pin,pin_h005,5,0.29,0.005,adam-lbfgs,partial,3198131,FAILED,,1:0,IndexError: deque index out of range,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L4a5290p-i16-3198131.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L4a5290p-i16-3198131.out,"Traceback (most recent call last):
+File ""/home/chye/LastIzar/main_C3.py"", line 3029, in <module>
+main()
+File ""/home/chye/LastIzar/main_C3.py"", line 2715, in main
+best_params_tuple, best_loss, global_step, _cached_rhos, _switched_to_lbfgs = optimize_at_chi(
+File ""/home/chye/LastIzar/main_C3.py"", line 1968, in optimize_at_chi
+_d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
+File ""/home/chye/LastIzar/main_C3.py"", line 1968, in <listcomp>
+_d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
+IndexError: deque index out of range","step   192  ctm=  8  loss=-2.5362407282  Δ=-4.258e-04  310/64800s
+step   193  ctm=  8  loss=-2.5366543674  Δ=-4.136e-04  312/64800s
+step   194  ctm=  8  loss=-2.5370587309  Δ=-4.044e-04  313/64800s
+step   195  ctm=  8  loss=-2.5374547801  Δ=-3.960e-04  315/64800s
+step   196  ctm=  8  loss=-2.5378334104  Δ=-3.786e-04  316/64800s
+step   197  ctm=  8  loss=-2.5381575992  Δ=-3.242e-04  318/64800s
+step   198  ctm=  8  loss=-2.5383672165  Δ=-2.096e-04  319/64800s
+step   199  ctm=  7  loss=-2.5387150080  Δ=-3.478e-04  321/64800s
+step   200  ctm=  8  loss=-2.5391998932  Δ=-4.849e-04  322/64800s
+step   201  ctm=  8  loss=-2.5394684191  Δ=-2.685e-04  324/64800s
+step   202  ctm=  7  loss=-2.5396982191  Δ=-2.298e-04  325/64800s
+step   203  ctm=  8  loss=-2.5400712515  Δ=-3.730e-04  327/64800s
+step   204  ctm=  8  loss=-2.5403203673  Δ=-2.491e-04  328/64800s
+step   205  ctm=  7  loss=-2.5405485146  Δ=-2.281e-04  330/64800s
+step   206  ctm=  7  loss=-2.5408517192  Δ=-3.032e-04  331/64800s
+step   207  ctm=  7  loss=-2.5410708666  Δ=-2.191e-04  333/64800s
+step   208  ctm=  7  loss=-2.5412898157  Δ=-2.189e-04  334/64800s
+step   209  ctm=  7  loss=-2.5415413708  Δ=-2.516e-04  335/64800s
+step   210  ctm=  7  loss=-2.5417441905  Δ=-2.028e-04  337/64800s
+step   211  ctm=  7  loss=-2.5419506103  Δ=-2.064e-04  338/64800s
+step   212  ctm=  7  loss=-2.5421688958  Δ=-2.183e-04  339/64800s
+step   213  ctm=  7  loss=-2.5423639261  Δ=-1.950e-04  341/64800s
+step   214  ctm=  7  loss=-2.5425578607  Δ=-1.939e-04  342/64800s
+step   215  ctm=  7  loss=-2.5427536013  Δ=-1.957e-04  343/64800s"
+L4a5300z,t4_d5_j300_h0.run,task4_D5_adam_pin,pin_h0,5,0.30,0,lbfgs,no_output,3198134,PENDING,(DependencyNeverSatisfied),,afterok blocked by L4a5300p: FAILED; IndexError: deque index out of range,,,,
+L4a5300p,t4_d5_j300_h005.run,task4_D5_adam_pin,pin_h005,5,0.30,0.005,adam-lbfgs,partial,3198133,FAILED,,1:0,IndexError: deque index out of range,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L4a5300p-i17-3198133.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L4a5300p-i17-3198133.out,"Traceback (most recent call last):
+File ""/home/chye/LastIzar/main_C3.py"", line 3029, in <module>
+main()
+File ""/home/chye/LastIzar/main_C3.py"", line 2715, in main
+best_params_tuple, best_loss, global_step, _cached_rhos, _switched_to_lbfgs = optimize_at_chi(
+File ""/home/chye/LastIzar/main_C3.py"", line 1968, in optimize_at_chi
+_d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
+File ""/home/chye/LastIzar/main_C3.py"", line 1968, in <listcomp>
+_d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
+IndexError: deque index out of range","step   274  ctm= 10  loss=-2.5156468180  Δ=-3.781e-04  459/64800s
+step   275  ctm= 10  loss=-2.5160148124  Δ=-3.680e-04  460/64800s
+step   276  ctm= 10  loss=-2.5163723131  Δ=-3.575e-04  462/64800s
+step   277  ctm= 10  loss=-2.5167186249  Δ=-3.463e-04  464/64800s
+step   278  ctm= 10  loss=-2.5170531562  Δ=-3.345e-04  466/64800s
+step   279  ctm= 10  loss=-2.5173756670  Δ=-3.225e-04  468/64800s
+step   280  ctm= 10  loss=-2.5176864331  Δ=-3.108e-04  470/64800s
+step   281  ctm= 10  loss=-2.5179862207  Δ=-2.998e-04  471/64800s
+step   282  ctm= 10  loss=-2.5182758591  Δ=-2.896e-04  473/64800s
+step   283  ctm= 10  loss=-2.5185561481  Δ=-2.803e-04  475/64800s
+step   284  ctm= 10  loss=-2.5188278510  Δ=-2.717e-04  477/64800s
+step   285  ctm= 10  loss=-2.5190916632  Δ=-2.638e-04  479/64800s
+step   286  ctm= 10  loss=-2.5193482245  Δ=-2.566e-04  481/64800s
+step   287  ctm= 10  loss=-2.5195981251  Δ=-2.499e-04  482/64800s
+step   288  ctm= 10  loss=-2.5198418311  Δ=-2.437e-04  484/64800s
+step   289  ctm= 10  loss=-2.5200797733  Δ=-2.379e-04  486/64800s
+step   290  ctm= 10  loss=-2.5203123452  Δ=-2.326e-04  488/64800s
+step   291  ctm= 10  loss=-2.5205400182  Δ=-2.277e-04  490/64800s
+step   292  ctm= 10  loss=-2.5207628986  Δ=-2.229e-04  491/64800s
+step   293  ctm= 10  loss=-2.5209813813  Δ=-2.185e-04  493/64800s
+step   294  ctm= 10  loss=-2.5211957532  Δ=-2.144e-04  495/64800s
+step   295  ctm= 10  loss=-2.5214062193  Δ=-2.105e-04  497/64800s
+step   296  ctm= 10  loss=-2.5216129979  Δ=-2.068e-04  499/64800s
+step   297  ctm= 10  loss=-2.5218161822  Δ=-2.032e-04  501/64800s"
+L4a5310z,t4_d5_j310_h0.run,task4_D5_adam_pin,pin_h0,5,0.31,0,lbfgs,no_output,3198136,PENDING,(DependencyNeverSatisfied),,afterok blocked by L4a5310p: FAILED; IndexError: deque index out of range,,,,
+L4a5310p,t4_d5_j310_h005.run,task4_D5_adam_pin,pin_h005,5,0.31,0.005,adam-lbfgs,partial,3198135,FAILED,,1:0,IndexError: deque index out of range,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L4a5310p-i17-3198135.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L4a5310p-i17-3198135.out,"Traceback (most recent call last):
+File ""/home/chye/LastIzar/main_C3.py"", line 3029, in <module>
+main()
+File ""/home/chye/LastIzar/main_C3.py"", line 2715, in main
+best_params_tuple, best_loss, global_step, _cached_rhos, _switched_to_lbfgs = optimize_at_chi(
+File ""/home/chye/LastIzar/main_C3.py"", line 1968, in optimize_at_chi
+_d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
+File ""/home/chye/LastIzar/main_C3.py"", line 1968, in <listcomp>
+_d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
+IndexError: deque index out of range","step    39  ctm= 12  loss=-1.6472857162  Δ=+9.885e-03  74/64800s
+step    40  ctm= 12  loss=-1.6385502582  Δ=+8.735e-03  77/64800s
+step    41  ctm= 12  loss=-1.6308737003  Δ=+7.677e-03  79/64800s
+step    42  ctm= 12  loss=-1.6241695948  Δ=+6.704e-03  81/64800s
+step    43  ctm= 12  loss=-1.6183455794  Δ=+5.824e-03  84/64800s
+step    44  ctm= 12  loss=-1.6133134448  Δ=+5.032e-03  86/64800s
+step    45  ctm= 12  loss=-1.6089908888  Δ=+4.323e-03  88/64800s
+step    46  ctm= 12  loss=-1.6053011235  Δ=+3.690e-03  91/64800s
+step    47  ctm= 12  loss=-1.6021735465  Δ=+3.128e-03  93/64800s
+step    48  ctm= 12  loss=-1.5995452285  Δ=+2.628e-03  96/64800s
+step    49  ctm= 12  loss=-1.5973588431  Δ=+2.186e-03  98/64800s
+step    50  ctm= 12  loss=-1.5955630593  Δ=+1.796e-03  100/64800s
+step    51  ctm= 12  loss=-1.5941124207  Δ=+1.451e-03  103/64800s
+step    52  ctm= 12  loss=-1.5929659235  Δ=+1.146e-03  105/64800s
+step    53  ctm= 12  loss=-1.5920887986  Δ=+8.771e-04  108/64800s
+step    54  ctm= 12  loss=-1.5914485137  Δ=+6.403e-04  110/64800s
+step    55  ctm= 12  loss=-1.5910181894  Δ=+4.303e-04  113/64800s
+step    56  ctm= 12  loss=-1.5907735310  Δ=+2.447e-04  115/64800s
+step    57  ctm= 12  loss=-1.5906916720  Δ=+8.186e-05  117/64800s
+step    58  ctm= 12  loss=-1.5907550709  Δ=-6.340e-05  120/64800s
+step    59  ctm= 12  loss=-1.5909471545  Δ=-1.921e-04  122/64800s
+step    60  ctm= 12  loss=-1.5912529758  Δ=-3.058e-04  125/64800s
+step    61  ctm= 12  loss=-1.5916588070  Δ=-4.058e-04  127/64800s
+step    62  ctm= 12  loss=-1.5921548720  Δ=-4.961e-04  129/64800s"
+L4a5320z,t4_d5_j320_h0.run,task4_D5_adam_pin,pin_h0,5,0.32,0,lbfgs,no_output,3198138,PENDING,(DependencyNeverSatisfied),,afterok blocked by L4a5320p: FAILED; IndexError: deque index out of range,,,,
+L4a5320p,t4_d5_j320_h005.run,task4_D5_adam_pin,pin_h005,5,0.32,0.005,adam-lbfgs,partial,3198137,FAILED,,1:0,IndexError: deque index out of range,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L4a5320p-i18-3198137.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L4a5320p-i18-3198137.out,"Traceback (most recent call last):
+File ""/home/chye/LastIzar/main_C3.py"", line 3029, in <module>
+main()
+File ""/home/chye/LastIzar/main_C3.py"", line 2715, in main
+best_params_tuple, best_loss, global_step, _cached_rhos, _switched_to_lbfgs = optimize_at_chi(
+File ""/home/chye/LastIzar/main_C3.py"", line 1968, in optimize_at_chi
+_d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
+File ""/home/chye/LastIzar/main_C3.py"", line 1968, in <listcomp>
+_d  = [_adam_loss_window[-j] - _adam_loss_window[-(j+1)]
+IndexError: deque index out of range","step   197  ctm=  8  loss=-2.4985399331  Δ=-2.374e-04  291/64800s
+step   198  ctm=  8  loss=-2.4987766558  Δ=-2.367e-04  292/64800s
+step   199  ctm=  8  loss=-2.4990127171  Δ=-2.361e-04  294/64800s
+step   200  ctm=  8  loss=-2.4992481407  Δ=-2.354e-04  295/64800s
+step   201  ctm=  8  loss=-2.4994829667  Δ=-2.348e-04  297/64800s
+step   202  ctm=  8  loss=-2.4997172529  Δ=-2.343e-04  298/64800s
+step   203  ctm=  8  loss=-2.4999510503  Δ=-2.338e-04  300/64800s
+step   204  ctm=  8  loss=-2.5001845533  Δ=-2.335e-04  301/64800s
+step   205  ctm=  8  loss=-2.5004178149  Δ=-2.333e-04  302/64800s
+step   206  ctm=  8  loss=-2.5006509575  Δ=-2.331e-04  304/64800s
+step   207  ctm=  8  loss=-2.5008840572  Δ=-2.331e-04  305/64800s
+step   208  ctm=  8  loss=-2.5011171243  Δ=-2.331e-04  307/64800s
+step   209  ctm=  8  loss=-2.5013500819  Δ=-2.330e-04  308/64800s
+step   210  ctm=  8  loss=-2.5015827782  Δ=-2.327e-04  310/64800s
+step   211  ctm=  8  loss=-2.5018149682  Δ=-2.322e-04  311/64800s
+step   212  ctm=  8  loss=-2.5020463147  Δ=-2.313e-04  312/64800s
+step   213  ctm=  8  loss=-2.5022764230  Δ=-2.301e-04  314/64800s
+step   214  ctm=  8  loss=-2.5025048596  Δ=-2.284e-04  315/64800s
+step   215  ctm=  8  loss=-2.5027311723  Δ=-2.263e-04  317/64800s
+step   216  ctm=  8  loss=-2.5029548878  Δ=-2.237e-04  318/64800s
+step   217  ctm=  8  loss=-2.5031753346  Δ=-2.204e-04  320/64800s
+step   218  ctm=  8  loss=-2.5033917430  Δ=-2.164e-04  321/64800s
+step   219  ctm=  8  loss=-2.5035992116  Δ=-2.075e-04  323/64800s
+step   220  ctm=  8  loss=-2.5037678761  Δ=-1.687e-04  324/64800s"
+L5l5260z,t5_d5_j260_h0.run,task5_D5_lbfgs_pin,pin_h0,5,0.26,0,lbfgs,complete,3198140,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5260z-i18-3198140.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5260z-i18-3198140.out,,"│    nnn <S·S> (18): min=+0.122235 max=+0.144909 mean=+0.134146 se=2.10e-03
+│    <Sx>      (18): min=-0.048161 max=+0.034637 mean=-0.006762 se=9.76e-03
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=-0.000000 se=6.10e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.247622 max=+0.250027 mean=+0.001202 se=5.86e-02
+│    |m| mean±se/env:
+│      ACE  A:0.252415±4.53e-10 | C:0.252415±4.53e-10 | E:0.252415±4.53e-10
+│      BDF  B:0.252262±1.94e-10 | D:0.252262±1.94e-10 | F:0.252262±1.94e-10
+│  [chi-converged] ΔE=-1.31e-08 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5011578428  E/site=-0.4168596405  wall=0.02h
+[chi-series-complete] D=5 converged at chi=50
+D=5 complete in 0.02 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+5     50       3       -2.5011578428   -0.4168596405
+Best E/site = -0.4168596405  (D=5, chi=50)
+Total wall time: 0.02 h (73 s)
+Finished: 2026-09-29 10:55:44
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p26/h_0/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p26/h_0/sweep_*.pdf
+COMPLETED: task5_D5_lbfgs_pin, J2=0.26, /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p26/h_0/sweep_D5_chi50_best.pt"
+L5l5260p,t5_d5_j260_h005.run,task5_D5_lbfgs_pin,pin_h005,5,0.26,0.005,lbfgs,complete,3198139,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5260p-i18-3198139.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5260p-i18-3198139.out,,"│    nnn <S·S> (18): min=+0.121814 max=+0.145223 mean=+0.134028 se=2.16e-03
+│    <Sx>      (18): min=-0.050242 max=+0.037970 mean=-0.006136 se=1.04e-02
+│    <Sy>      (18): min=+0.000000 max=+0.000000 mean=+0.000000 se=0.00e+00  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.246948 max=+0.249191 mean=+0.001121 se=5.85e-02
+│    |m| mean±se/env:
+│      ACE  A:0.252067±1.75e-10 | C:0.252067±1.75e-10 | E:0.252067±1.75e-10
+│      BDF  B:0.252007±4.95e-10 | D:0.252007±4.95e-10 | F:0.252007±4.95e-10
+│  [chi-converged] ΔE=-1.19e-09 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5030168671  E/site=-0.4171694778  wall=0.05h
+[chi-series-complete] D=5 converged at chi=50
+D=5 complete in 0.05 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+5     50       5       -2.5030168671   -0.4171694778
+Best E/site = -0.4171694778  (D=5, chi=50)
+Total wall time: 0.05 h (184 s)
+Finished: 2026-09-29 10:54:25
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p26/h_0p005/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p26/h_0p005/sweep_*.pdf
+COMPLETED: task5_D5_lbfgs_pin, J2=0.26, /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p26/h_0p005/sweep_D5_chi50_best.pt"
+L5l5265z,t5_d5_j265_h0.run,task5_D5_lbfgs_pin,pin_h0,5,0.265,0,lbfgs,complete,3198142,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5265z-i19-3198142.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5265z-i19-3198142.out,,"│    nnn <S·S> (18): min=+0.116858 max=+0.218008 mean=+0.157917 se=1.00e-02
+│    <Sx>      (18): min=-0.146992 max=+0.034821 mean=-0.056086 se=2.14e-02
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=-0.000000 se=1.93e-18  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.313238 max=+0.253734 mean=-0.029752 se=6.68e-02
+│    |m| mean±se/env:
+│      ACE  A:0.315168±8.33e-10 | C:0.315168±8.33e-10 | E:0.315168±8.33e-10
+│      BDF  B:0.293236±4.89e-09 | D:0.293236±4.89e-09 | F:0.293236±4.89e-09
+│  [chi-converged] ΔE=4.42e-08 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-1.4705194542  E/site=-0.2450865757  wall=0.01h
+[chi-series-complete] D=5 converged at chi=50
+D=5 complete in 0.01 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+5     50       3       -1.4705194542   -0.2450865757
+Best E/site = -0.2450865757  (D=5, chi=50)
+Total wall time: 0.01 h (53 s)
+Finished: 2026-09-29 10:56:52
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p265/h_0/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p265/h_0/sweep_*.pdf
+COMPLETED: task5_D5_lbfgs_pin, J2=0.265, /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p265/h_0/sweep_D5_chi50_best.pt"
+L5l5265p,t5_d5_j265_h005.run,task5_D5_lbfgs_pin,pin_h005,5,0.265,0.005,lbfgs,complete,3198141,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5265p-i19-3198141.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5265p-i19-3198141.out,,"│    nnn <S·S> (18): min=+0.117629 max=+0.219135 mean=+0.159279 se=9.97e-03
+│    <Sx>      (18): min=-0.162599 max=+0.053267 mean=-0.054666 se=2.54e-02
+│    <Sy>      (18): min=+0.000000 max=+0.000000 mean=+0.000000 se=0.00e+00  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.317605 max=+0.244588 mean=-0.036509 se=6.63e-02
+│    |m| mean±se/env:
+│      ACE  A:0.322041±9.43e-10 | C:0.322041±9.43e-10 | E:0.322041±9.43e-10
+│      BDF  B:0.293704±2.30e-08 | D:0.293704±2.30e-08 | F:0.293704±2.30e-08
+│  [chi-converged] ΔE=-4.42e-08 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-1.4568301081  E/site=-0.2428050180  wall=0.08h
+[chi-series-complete] D=5 converged at chi=50
+D=5 complete in 0.08 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+5     50       3       -1.4568301081   -0.2428050180
+Best E/site = -0.2428050180  (D=5, chi=50)
+Total wall time: 0.08 h (275 s)
+Finished: 2026-09-29 10:55:54
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p265/h_0p005/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p265/h_0p005/sweep_*.pdf
+COMPLETED: task5_D5_lbfgs_pin, J2=0.265, /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p265/h_0p005/sweep_D5_chi50_best.pt"
+L5l5270z,t5_d5_j270_h0.run,task5_D5_lbfgs_pin,pin_h0,5,0.27,0,lbfgs,complete,3198144,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5270z-i16-3198144.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5270z-i16-3198144.out,,"│    nnn <S·S> (18): min=+0.037675 max=+0.115593 mean=+0.089024 se=8.56e-03
+│    <Sx>      (18): min=-0.003888 max=+0.003888 mean=-0.000000 se=9.16e-04
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=+0.000000 se=5.77e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.021088 max=+0.021087 mean=+0.000000 se=4.97e-03
+│    |m| mean±se/env:
+│      ACE  A:0.021441±1.38e-06 | C:0.021441±1.38e-06 | E:0.021441±1.38e-06
+│      BDF  B:0.021442±1.07e-07 | D:0.021442±1.07e-07 | F:0.021442±1.07e-07
+│  [chi-converged] ΔE=-4.21e-06 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5821734769  E/site=-0.4303622462  wall=0.05h
+[chi-series-complete] D=5 converged at chi=50
+D=5 complete in 0.05 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+5     50       8       -2.5821734769   -0.4303622462
+Best E/site = -0.4303622462  (D=5, chi=50)
+Total wall time: 0.05 h (181 s)
+Finished: 2026-09-29 11:02:25
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p27/h_0/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p27/h_0/sweep_*.pdf
+COMPLETED: task5_D5_lbfgs_pin, J2=0.27, /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p27/h_0/sweep_D5_chi50_best.pt"
+L5l5270p,t5_d5_j270_h005.run,task5_D5_lbfgs_pin,pin_h005,5,0.27,0.005,lbfgs,complete,3198143,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5270p-i19-3198143.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5270p-i19-3198143.out,,"│    nnn <S·S> (18): min=+0.039196 max=+0.146518 mean=+0.086514 se=1.05e-02
+│    <Sx>      (18): min=-0.002050 max=+0.002051 mean=+0.000000 se=4.83e-04
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=+0.000000 se=1.65e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.009474 max=+0.009475 mean=+0.000001 se=2.23e-03
+│    |m| mean±se/env:
+│      ACE  A:0.009692±1.24e-06 | C:0.009692±1.24e-06 | E:0.009692±1.24e-06
+│      BDF  B:0.009693±3.03e-07 | D:0.009693±3.03e-07 | F:0.009693±3.03e-07
+│  [chi-converged] ΔE=-5.75e-08 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5878316189  E/site=-0.4313052698  wall=0.13h
+[chi-series-complete] D=5 converged at chi=50
+D=5 complete in 0.13 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+5     50      19       -2.5878316189   -0.4313052698
+Best E/site = -0.4313052698  (D=5, chi=50)
+Total wall time: 0.13 h (481 s)
+Finished: 2026-09-29 10:59:20
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p27/h_0p005/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p27/h_0p005/sweep_*.pdf
+COMPLETED: task5_D5_lbfgs_pin, J2=0.27, /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p27/h_0p005/sweep_D5_chi50_best.pt"
+L5l5275z,t5_d5_j275_h0.run,task5_D5_lbfgs_pin,pin_h0,5,0.275,0,lbfgs,complete,3198146,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5275z-i02-3198146.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5275z-i02-3198146.out,,"│    nnn <S·S> (18): min=+0.033748 max=+0.114198 mean=+0.087075 se=8.89e-03
+│    <Sx>      (18): min=-0.012740 max=+0.012740 mean=-0.000001 se=3.00e-03
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=+0.000000 se=2.64e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.005340 max=+0.005343 mean=+0.000001 se=1.26e-03
+│    |m| mean±se/env:
+│      ACE  A:0.013814±6.76e-07 | C:0.013814±6.76e-07 | E:0.013814±6.76e-07
+│      BDF  B:0.013814±2.01e-07 | D:0.013814±2.01e-07 | F:0.013814±2.01e-07
+│  [chi-converged] ΔE=-3.66e-06 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5742350282  E/site=-0.4290391714  wall=0.07h
+[chi-series-complete] D=5 converged at chi=50
+D=5 complete in 0.07 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+5     50       9       -2.5742350282   -0.4290391714
+Best E/site = -0.4290391714  (D=5, chi=50)
+Total wall time: 0.07 h (238 s)
+Finished: 2026-09-29 11:02:15
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p275/h_0/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p275/h_0/sweep_*.pdf
+COMPLETED: task5_D5_lbfgs_pin, J2=0.275, /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p275/h_0/sweep_D5_chi50_best.pt"
+L5l5275p,t5_d5_j275_h005.run,task5_D5_lbfgs_pin,pin_h005,5,0.275,0.005,lbfgs,complete,3198145,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5275p-i20-3198145.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5275p-i20-3198145.out,,"│    nnn <S·S> (18): min=+0.035804 max=+0.146803 mean=+0.084658 se=1.09e-02
+│    <Sx>      (18): min=-0.003944 max=+0.003946 mean=+0.000001 se=9.30e-04
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=-0.000000 se=3.67e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.001845 max=+0.001850 mean=+0.000002 se=4.35e-04
+│    |m| mean±se/env:
+│      ACE  A:0.004357±4.71e-07 | C:0.004357±4.71e-07 | E:0.004357±4.71e-07
+│      BDF  B:0.004354±1.10e-07 | D:0.004354±1.10e-07 | F:0.004354±1.10e-07
+│  [chi-converged] ΔE=-4.46e-06 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5800307635  E/site=-0.4300051273  wall=0.11h
+[chi-series-complete] D=5 converged at chi=50
+D=5 complete in 0.11 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+5     50      16       -2.5800307635   -0.4300051273
+Best E/site = -0.4300051273  (D=5, chi=50)
+Total wall time: 0.11 h (412 s)
+Finished: 2026-09-29 10:58:13
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p275/h_0p005/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p275/h_0p005/sweep_*.pdf
+COMPLETED: task5_D5_lbfgs_pin, J2=0.275, /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p275/h_0p005/sweep_D5_chi50_best.pt"
+L5l5280z,t5_d5_j280_h0.run,task5_D5_lbfgs_pin,pin_h0,5,0.28,0,lbfgs,complete,3198148,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5280z-i14-3198148.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5280z-i14-3198148.out,,"│    nnn <S·S> (18): min=+0.030336 max=+0.113430 mean=+0.085176 se=9.14e-03
+│    <Sx>      (18): min=-0.008137 max=+0.008138 mean=+0.000000 se=1.92e-03
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=+0.000000 se=7.78e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.008775 max=+0.008775 mean=-0.000000 se=2.07e-03
+│    |m| mean±se/env:
+│      ACE  A:0.011966±7.42e-07 | C:0.011966±7.42e-07 | E:0.011966±7.42e-07
+│      BDF  B:0.011967±2.53e-07 | D:0.011967±2.53e-07 | F:0.011967±2.53e-07
+│  [chi-converged] ΔE=-1.78e-06 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5664838035  E/site=-0.4277473006  wall=0.06h
+[chi-series-complete] D=5 converged at chi=50
+D=5 complete in 0.06 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+5     50       8       -2.5664838035   -0.4277473006
+Best E/site = -0.4277473006  (D=5, chi=50)
+Total wall time: 0.06 h (233 s)
+Finished: 2026-09-29 11:01:09
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p28/h_0/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p28/h_0/sweep_*.pdf
+COMPLETED: task5_D5_lbfgs_pin, J2=0.28, /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p28/h_0/sweep_D5_chi50_best.pt"
+L5l5280p,t5_d5_j280_h005.run,task5_D5_lbfgs_pin,pin_h005,5,0.28,0.005,lbfgs,complete,3198147,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5280p-i23-3198147.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5280p-i23-3198147.out,,"│    nnn <S·S> (18): min=+0.032725 max=+0.146453 mean=+0.082864 se=1.12e-02
+│    <Sx>      (18): min=-0.003549 max=+0.003551 mean=+0.000001 se=8.37e-04
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=+0.000000 se=3.98e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.004537 max=+0.004535 mean=-0.000001 se=1.07e-03
+│    |m| mean±se/env:
+│      ACE  A:0.005759±5.54e-08 | C:0.005759±5.54e-08 | E:0.005759±5.54e-08
+│      BDF  B:0.005759±5.58e-08 | D:0.005759±5.58e-08 | F:0.005759±5.58e-08
+│  [chi-converged] ΔE=-7.39e-07 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5724365954  E/site=-0.4287394326  wall=0.10h
+[chi-series-complete] D=5 converged at chi=50
+D=5 complete in 0.10 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+5     50      13       -2.5724365954   -0.4287394326
+Best E/site = -0.4287394326  (D=5, chi=50)
+Total wall time: 0.10 h (348 s)
+Finished: 2026-09-29 10:57:11
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p28/h_0p005/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p28/h_0p005/sweep_*.pdf
+COMPLETED: task5_D5_lbfgs_pin, J2=0.28, /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p28/h_0p005/sweep_D5_chi50_best.pt"
+L5l5290z,t5_d5_j290_h0.run,task5_D5_lbfgs_pin,pin_h0,5,0.29,0,lbfgs,complete,3198150,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5290z-i14-3198150.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5290z-i14-3198150.out,,"│    nnn <S·S> (18): min=+0.024040 max=+0.112609 mean=+0.081516 se=9.59e-03
+│    <Sx>      (18): min=-0.009375 max=+0.009376 mean=-0.000000 se=2.21e-03
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=+0.000000 se=4.57e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.009040 max=+0.009039 mean=+0.000000 se=2.13e-03
+│    |m| mean±se/env:
+│      ACE  A:0.013021±2.10e-06 | C:0.013021±2.10e-06 | E:0.013021±2.10e-06
+│      BDF  B:0.013022±4.24e-07 | D:0.013022±4.24e-07 | F:0.013022±4.24e-07
+│  [chi-converged] ΔE=-5.93e-07 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5514910796  E/site=-0.4252485133  wall=0.05h
+[chi-series-complete] D=5 converged at chi=50
+D=5 complete in 0.05 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+5     50       8       -2.5514910796   -0.4252485133
+Best E/site = -0.4252485133  (D=5, chi=50)
+Total wall time: 0.05 h (182 s)
+Finished: 2026-09-29 11:04:35
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p29/h_0/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p29/h_0/sweep_*.pdf
+COMPLETED: task5_D5_lbfgs_pin, J2=0.29, /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p29/h_0/sweep_D5_chi50_best.pt"
+L5l5290p,t5_d5_j290_h005.run,task5_D5_lbfgs_pin,pin_h005,5,0.29,0.005,lbfgs,complete,3198149,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5290p-i23-3198149.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5290p-i23-3198149.out,,"│    nnn <S·S> (18): min=+0.027712 max=+0.147664 mean=+0.078918 se=1.19e-02
+│    <Sx>      (18): min=-0.005004 max=+0.005007 mean=+0.000001 se=1.18e-03
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=+0.000000 se=8.78e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.004867 max=+0.004867 mean=+0.000000 se=1.15e-03
+│    |m| mean±se/env:
+│      ACE  A:0.006981±6.05e-07 | C:0.006981±6.05e-07 | E:0.006981±6.05e-07
+│      BDF  B:0.006980±4.71e-07 | D:0.006980±4.71e-07 | F:0.006980±4.71e-07
+│  [chi-converged] ΔE=4.96e-07 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5580597821  E/site=-0.4263432970  wall=0.17h
+[chi-series-complete] D=5 converged at chi=50
+D=5 complete in 0.17 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+5     50      26       -2.5580597821   -0.4263432970
+Best E/site = -0.4263432970  (D=5, chi=50)
+Total wall time: 0.17 h (605 s)
+Finished: 2026-09-29 11:01:28
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p29/h_0p005/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p29/h_0p005/sweep_*.pdf
+COMPLETED: task5_D5_lbfgs_pin, J2=0.29, /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p29/h_0p005/sweep_D5_chi50_best.pt"
+L5l5300z,t5_d5_j300_h0.run,task5_D5_lbfgs_pin,pin_h0,5,0.30,0,lbfgs,complete,3198152,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5300z-i16-3198152.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5300z-i16-3198152.out,,"│    nnn <S·S> (18): min=+0.017640 max=+0.111221 mean=+0.077853 se=1.01e-02
+│    <Sx>      (18): min=-0.009570 max=+0.009568 mean=-0.000000 se=2.26e-03
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=-0.000000 se=6.40e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.006106 max=+0.006109 mean=+0.000000 se=1.44e-03
+│    |m| mean±se/env:
+│      ACE  A:0.011351±1.31e-06 | C:0.011351±1.31e-06 | E:0.011351±1.31e-06
+│      BDF  B:0.011350±3.04e-07 | D:0.011350±3.04e-07 | F:0.011350±3.04e-07
+│  [chi-converged] ΔE=4.60e-07 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5371467098  E/site=-0.4228577850  wall=0.05h
+[chi-series-complete] D=5 converged at chi=50
+D=5 complete in 0.05 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+5     50       7       -2.5371467098   -0.4228577850
+Best E/site = -0.4228577850  (D=5, chi=50)
+Total wall time: 0.05 h (189 s)
+Finished: 2026-09-29 11:03:25
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p30/h_0/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p30/h_0/sweep_*.pdf
+COMPLETED: task5_D5_lbfgs_pin, J2=0.30, /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p30/h_0/sweep_D5_chi50_best.pt"
+L5l5300p,t5_d5_j300_h005.run,task5_D5_lbfgs_pin,pin_h005,5,0.30,0.005,lbfgs,complete,3198151,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5300p-i17-3198151.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5300p-i17-3198151.out,,"│    nnn <S·S> (18): min=+0.022294 max=+0.148217 mean=+0.075239 se=1.26e-02
+│    <Sx>      (18): min=-0.005272 max=+0.005272 mean=-0.000000 se=1.24e-03
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=-0.000000 se=6.29e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.003476 max=+0.003474 mean=-0.000001 se=8.19e-04
+│    |m| mean±se/env:
+│      ACE  A:0.006314±1.61e-07 | C:0.006314±1.61e-07 | E:0.006314±1.61e-07
+│      BDF  B:0.006314±3.05e-07 | D:0.006314±3.05e-07 | F:0.006314±3.05e-07
+│  [chi-converged] ΔE=2.55e-06 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5441904831  E/site=-0.4240317472  wall=0.11h
+[chi-series-complete] D=5 converged at chi=50
+D=5 complete in 0.11 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+5     50      19       -2.5441904831   -0.4240317472
+Best E/site = -0.4240317472  (D=5, chi=50)
+Total wall time: 0.11 h (399 s)
+Finished: 2026-09-29 11:00:11
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p30/h_0p005/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p30/h_0p005/sweep_*.pdf
+COMPLETED: task5_D5_lbfgs_pin, J2=0.30, /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p30/h_0p005/sweep_D5_chi50_best.pt"
+L5l5310z,t5_d5_j310_h0.run,task5_D5_lbfgs_pin,pin_h0,5,0.31,0,lbfgs,complete,3198154,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5310z-i15-3198154.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5310z-i15-3198154.out,,"│    nnn <S·S> (18): min=+0.011300 max=+0.107465 mean=+0.074265 se=1.05e-02
+│    <Sx>      (18): min=-0.000622 max=+0.000623 mean=+0.000000 se=1.47e-04
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=+0.000000 se=6.34e-20  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.005580 max=+0.005581 mean=+0.000001 se=1.32e-03
+│    |m| mean±se/env:
+│      ACE  A:0.005613±5.81e-07 | C:0.005613±5.81e-07 | E:0.005613±5.81e-07
+│      BDF  B:0.005616±5.20e-08 | D:0.005616±5.20e-08 | F:0.005616±5.20e-08
+│  [chi-converged] ΔE=-3.11e-06 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5234532347  E/site=-0.4205755391  wall=0.05h
+[chi-series-complete] D=5 converged at chi=50
+D=5 complete in 0.05 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+5     50       9       -2.5234532347   -0.4205755391
+Best E/site = -0.4205755391  (D=5, chi=50)
+Total wall time: 0.05 h (185 s)
+Finished: 2026-09-29 11:07:38
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p31/h_0/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p31/h_0/sweep_*.pdf
+COMPLETED: task5_D5_lbfgs_pin, J2=0.31, /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p31/h_0/sweep_D5_chi50_best.pt"
+L5l5310p,t5_d5_j310_h005.run,task5_D5_lbfgs_pin,pin_h005,5,0.31,0.005,lbfgs,complete,3198153,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5310p-i15-3198153.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5310p-i15-3198153.out,,"│    nnn <S·S> (18): min=+0.016689 max=+0.148672 mean=+0.071738 se=1.32e-02
+│    <Sx>      (18): min=-0.000282 max=+0.000278 mean=-0.000002 se=6.59e-05
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=-0.000000 se=1.03e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.003127 max=+0.003130 mean=+0.000001 se=7.37e-04
+│    |m| mean±se/env:
+│      ACE  A:0.003141±6.23e-07 | C:0.003141±6.23e-07 | E:0.003141±6.23e-07
+│      BDF  B:0.003140±1.22e-07 | D:0.003140±1.22e-07 | F:0.003140±1.22e-07
+│  [chi-converged] ΔE=-1.12e-06 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5307847567  E/site=-0.4217974594  wall=0.16h
+[chi-series-complete] D=5 converged at chi=50
+D=5 complete in 0.16 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+5     50      19       -2.5307847567   -0.4217974594
+Best E/site = -0.4217974594  (D=5, chi=50)
+Total wall time: 0.16 h (569 s)
+Finished: 2026-09-29 11:04:29
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p31/h_0p005/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p31/h_0p005/sweep_*.pdf
+COMPLETED: task5_D5_lbfgs_pin, J2=0.31, /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p31/h_0p005/sweep_D5_chi50_best.pt"
+L5l5320z,t5_d5_j320_h0.run,task5_D5_lbfgs_pin,pin_h0,5,0.32,0,lbfgs,complete,3198156,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5320z-i02-3198156.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5320z-i02-3198156.out,,"│    nnn <S·S> (18): min=+0.005988 max=+0.110190 mean=+0.070867 se=1.09e-02
+│    <Sx>      (18): min=-0.003813 max=+0.003814 mean=-0.000000 se=8.99e-04
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=+0.000000 se=3.37e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.008203 max=+0.008202 mean=+0.000000 se=1.93e-03
+│    |m| mean±se/env:
+│      ACE  A:0.009042±2.31e-06 | C:0.009042±2.31e-06 | E:0.009042±2.31e-06
+│      BDF  B:0.009043±1.11e-06 | D:0.009043±1.11e-06 | F:0.009043±1.11e-06
+│  [chi-converged] ΔE=-2.45e-06 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5103843423  E/site=-0.4183973904  wall=0.06h
+[chi-series-complete] D=5 converged at chi=50
+D=5 complete in 0.06 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+5     50       7       -2.5103843423   -0.4183973904
+Best E/site = -0.4183973904  (D=5, chi=50)
+Total wall time: 0.06 h (214 s)
+Finished: 2026-09-29 11:06:57
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p32/h_0/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p32/h_0/sweep_*.pdf
+COMPLETED: task5_D5_lbfgs_pin, J2=0.32, /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p32/h_0/sweep_D5_chi50_best.pt"
+L5l5320p,t5_d5_j320_h005.run,task5_D5_lbfgs_pin,pin_h005,5,0.32,0.005,lbfgs,complete,3198155,COMPLETED,,0:0,,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5320p-i18-3198155.error,D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\data\distinVBCsJ2Continuation\LastIzar\slurm_logs\L5l5320p-i18-3198155.out,,"│    nnn <S·S> (18): min=+0.012227 max=+0.149439 mean=+0.068174 se=1.39e-02
+│    <Sx>      (18): min=-0.002456 max=+0.002458 mean=+0.000000 se=5.79e-04
+│    <Sy>      (18): min=-0.000000 max=+0.000000 mean=+0.000000 se=4.83e-19  (=0 for real iPEPS)
+│    <Sz>      (18): min=-0.004932 max=+0.004930 mean=-0.000001 se=1.16e-03
+│    |m| mean±se/env:
+│      ACE  A:0.005508±1.26e-06 | C:0.005508±1.26e-06 | E:0.005508±1.26e-06
+│      BDF  B:0.005506±7.90e-07 | D:0.005506±7.90e-07 | F:0.005506±7.90e-07
+│  [chi-converged] ΔE=-4.34e-06 <= 3.00e-05 → skipping remaining chi levels, moving to next D
+└── E=-2.5183855505  E/site=-0.4197309251  wall=0.12h
+[chi-series-complete] D=5 converged at chi=50
+D=5 complete in 0.12 h
+============================================================================
+RESULTS SUMMARY
+============================================================================
+D    chi   steps             E_total          E/site
+──  ─────  ──────  ──────────────────  ──────────────
+5     50      20       -2.5183855505   -0.4197309251
+Best E/site = -0.4197309251  (D=5, chi=50)
+Total wall time: 0.12 h (450 s)
+Finished: 2026-09-29 11:03:19
+============================================================================
+Results JSON → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p32/h_0p005/sweep_results.json
+Plots → /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p32/h_0p005/sweep_*.pdf
+COMPLETED: task5_D5_lbfgs_pin, J2=0.32, /home/chye/LastIzar/Results_LastIzar/task5_D5_lbfgs_pin/J2_0p32/h_0p005/sweep_D5_chi50_best.pt"

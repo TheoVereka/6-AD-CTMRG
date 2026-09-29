@@ -35,6 +35,9 @@ from plot_0713_twoc3_nn_delta import (  # noqa: E402
 
 
 DEFAULT_INPUT = DATA / "distinVBCsJ2Continuation" / "Results_Izar_J2_sequences"
+DEFAULT_LAST_IZAR_INPUT = (
+    DATA / "distinVBCsJ2Continuation" / "LastIzar" / "Results_LastIzar"
+)
 DEFAULT_MANIFEST = (REPO / "models" / "VBCJ2SeedContinuationIzar"
                     / "selected_seed_manifest.csv")
 DEFAULT_OUTPUT = HERE / "j2_seed_continuations"
@@ -432,6 +435,139 @@ def write_original_texture_audit(rows: list[dict[str, object]], path: Path) -> N
         writer.writerows({field: row[field] for field in fields} for row in rows)
 
 
+def _last_izar_complete_observation(stage: Path, D: int) -> Path | None:
+    """Return a verified h=0 observation, or None for an incomplete stage."""
+    observations = [
+        path for path in stage.glob(
+            f"D_{D}_chi_*_energy_magnetization_correlation.txt"
+        )
+        if OBS_RE.fullmatch(path.name)
+    ]
+    if len(observations) != 1:
+        return None
+    observation = observations[0]
+    match = OBS_RE.fullmatch(observation.name)
+    assert match is not None
+    D_obs, chi = map(int, match.groups())
+    best = stage / f"sweep_D{D}_chi{chi}_best.pt"
+    hyperparams = stage / "hyperparams.yaml"
+    if D_obs != D or not best.is_file() or not hyperparams.is_file():
+        return None
+    if not math.isclose(_read_field(hyperparams), 0.0, abs_tol=1e-14):
+        raise ValueError(f"LastIzar stage is not h=0: {stage}")
+    return observation
+
+
+def _texture_sign(path: Path) -> str:
+    """Classify the nearer VBC endpoint; used only for the task-1 seed."""
+    values = ranked_nn(path)
+    strongest, middle, weakest = (item[0] for item in values)
+    delta = weakest - strongest
+    if delta <= 0.0:
+        raise ValueError(f"non-positive NN splitting in {path}")
+    eta = 2.0 * (middle - strongest) / delta - 1.0
+    return "dimer-plaquette" if eta >= 0.0 else "plaquette"
+
+
+def discover_last_izar(
+        root: Path,
+        original_root: Path = DEFAULT_ORIGINAL_ROOT,
+) -> tuple[dict[str, Seed], list[Point], int]:
+    """Read completed h=0 stages from the five LastIzar task families.
+
+    Task 1 is a genuine adiabatic continuation from the original D=6,
+    J2=0.265 tensor.  Tasks 2--5 are independent mean-field -> h=.005 -> h=0
+    constructions; each optimizer family is represented as its own J2 series.
+    Incomplete or failed h=0 stages are counted and ignored.
+    """
+    if (root / "Results_LastIzar").is_dir():
+        root = root / "Results_LastIzar"
+    if not root.is_dir():
+        return {}, [], 0
+
+    seeds: dict[str, Seed] = {}
+    points: list[Point] = []
+    partial_count = 0
+
+    # Task 1: immutable original seed followed to the right at h=0.
+    task1 = root / "task1_D6_adiabatic"
+    seed_observation = (
+        original_root / "J2_0p265" / "2tensor_twoC3" / "D_6"
+        / "energy_magnetization_correlation.txt"
+    )
+    if task1.is_dir():
+        if not seed_observation.is_file():
+            raise FileNotFoundError(f"LastIzar task-1 seed observation missing: {seed_observation}")
+        seed_id = "last_D6_adiabatic"
+        texture = _texture_sign(seed_observation)
+        seeds[seed_id] = Seed(
+            seed_id=seed_id, J2=0.265, D=6,
+            chi=_observation_chi(seed_observation), texture=texture,
+            observation=seed_observation,
+        )
+        for stage in sorted(path for path in task1.glob("J2_*") if path.is_dir()):
+            match = STAGE_RE.fullmatch(stage.name)
+            if match is None:
+                continue
+            observation = _last_izar_complete_observation(stage, 6)
+            if observation is None:
+                partial_count += 1
+                continue
+            points.append(Point(
+                seed_id=seed_id, seed_texture=texture, D=6,
+                chi=_observation_chi(observation),
+                J2=parse_j2_tag(match.group(1)), direction="right", insurance=0,
+                ranks=ranked_nn(observation),
+                connected_ranks=ranked_nn(observation, connected=True),
+                observation=str(observation.resolve()),
+            ))
+
+    # Tasks 2--5: independent plaquette preparations, grouped by optimizer.
+    task_specs = (
+        ("task2_D6_adam_pin", 6, "last_D6_adam"),
+        ("task3_D6_lbfgs_pin", 6, "last_D6_lbfgs"),
+        ("task4_D5_adam_pin", 5, "last_D5_adam"),
+        ("task5_D5_lbfgs_pin", 5, "last_D5_lbfgs"),
+    )
+    for task_name, D, seed_id in task_specs:
+        task = root / task_name
+        if not task.is_dir():
+            continue
+        completed: list[tuple[float, Path]] = []
+        for j2_dir in sorted(path for path in task.glob("J2_*") if path.is_dir()):
+            match = STAGE_RE.fullmatch(j2_dir.name)
+            if match is None:
+                continue
+            stage = j2_dir / "h_0"
+            observation = _last_izar_complete_observation(stage, D)
+            if observation is None:
+                partial_count += 1
+                continue
+            completed.append((parse_j2_tag(match.group(1)), observation))
+        if not completed:
+            continue
+        completed.sort(key=lambda item: item[0])
+        seed_j2, first_observation = completed[0]
+        seeds[seed_id] = Seed(
+            seed_id=seed_id, J2=seed_j2, D=D,
+            chi=_observation_chi(first_observation), texture="plaquette",
+            observation=first_observation,
+        )
+        for J2, observation in completed[1:]:
+            points.append(Point(
+                seed_id=seed_id, seed_texture="plaquette", D=D,
+                chi=_observation_chi(observation), J2=J2,
+                direction="right" if J2 > seed_j2 else "left", insurance=0,
+                ranks=ranked_nn(observation),
+                connected_ranks=ranked_nn(observation, connected=True),
+                observation=str(observation.resolve()),
+            ))
+
+    return seeds, sorted(points, key=lambda row: (
+        row.D, row.seed_texture, row.seed_id, row.J2,
+    )), partial_count
+
+
 def seed_point(seed: Seed) -> Point:
     return Point(
         seed_id=seed.seed_id, seed_texture=seed.texture,
@@ -586,6 +722,10 @@ def main() -> int:
     parser.add_argument("--manifest", type=Path, default=None)
     parser.add_argument("--output-dir", type=Path, default=None)
     parser.add_argument("--original-root", type=Path, default=DEFAULT_ORIGINAL_ROOT)
+    parser.add_argument(
+        "--last-izar-input", type=Path, default=DEFAULT_LAST_IZAR_INPUT,
+        help="Optional LastIzar root (or its Results_LastIzar directory)",
+    )
     args = parser.parse_args()
 
     sep27_manifest_candidates = (
@@ -613,6 +753,20 @@ def main() -> int:
             raise ValueError(f"duplicate original/continuation seed ids: {overlap}")
         seeds.update(original_seeds)
         points.extend(original_points)
+        last_seeds, last_points, last_partial = discover_last_izar(
+            args.last_izar_input, args.original_root
+        )
+        overlap = sorted(set(seeds) & set(last_seeds))
+        if overlap:
+            raise ValueError(f"duplicate LastIzar seed ids: {overlap}")
+        seeds.update(last_seeds)
+        points.extend(last_points)
+        partial_count += last_partial
+        if args.last_izar_input.is_dir():
+            print(
+                f"Merged LastIzar data: {len(last_points)} continuation points, "
+                f"{len(last_seeds)} series, {last_partial} incomplete h=0 stages ignored"
+            )
         audit_path = output_dir / "original_D5_D6_texture_audit.csv"
         write_original_texture_audit(original_audit, audit_path)
         counts = {
@@ -649,6 +803,8 @@ def main() -> int:
             str(manifest),
             "--original-root",
             str(args.original_root),
+            "--last-izar-input",
+            str(args.last_izar_input),
         ]
         print("Updating combined D=7--11 inverse-D fits...")
         subprocess.run(fit_command, check=True)

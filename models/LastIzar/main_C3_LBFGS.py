@@ -604,7 +604,7 @@ N_SITES = 6
 
 # ── Tensor initialisation & padding ──────────────────────────────────────────
 
-INIT_NOISE = 1e-2
+INIT_NOISE = 1e-3
 # !!! NOTE: Only used as Mean-Field-Init's random noise!!!
 # should be at least 2e-4 otherwise the initial state is too 
 # close to the exact Néel product state and the optimizer gets 
