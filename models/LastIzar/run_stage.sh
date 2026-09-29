@@ -21,7 +21,7 @@ BUNDLE_DIR="$(cd -- "${BUNDLE_DIR}" && pwd)"
 cd "${BUNDLE_DIR}"
 
 case "${D}:${CHI}:${CTM_STEPS}" in
-    5:50:70|6:72:130) ;;
+    5:50:50|6:72:50) ;;
     *)
         echo "Refusing unexpected numerical configuration D=${D}, chi=${CHI}, CTM_STEPS=${CTM_STEPS}" >&2
         exit 70

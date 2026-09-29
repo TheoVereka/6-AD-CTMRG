@@ -400,12 +400,12 @@ OPT_TOL_GRAD = 0.0 #1e-8
 #   the sub-iteration loop exits early if  ||∇loss||_∞ < OPT_TOL_GRAD.
 #   This is an inner stopping rule inside a single optimizer.step() call.
 
-OPT_TOL_CHANGE = 2e-8
+OPT_TOL_CHANGE = 6e-8
 #   L-BFGS inner convergence criterion on consecutive loss change:
 #   sub-iteration exits if  |L_{k+1} – L_k| < OPT_TOL_CHANGE.
 #   Set tighter than OPT_TOL_GRAD to catch near-flat regions.
 
-OPT_CONV_THRESHOLD = 3e-8
+OPT_CONV_THRESHOLD = 9e-8
 # Outer-loop early-stop: disabled (= 0).
 # The outer delta |loss(k) - loss(k-1)| compares two L-BFGS final values that
 # used DIFFERENT CTMRG environments, so even near a true minimum the delta is
@@ -530,7 +530,7 @@ ENV_IDENTITY_INIT = True
 
 
 
-CTM_MAX_STEPS = 70
+CTM_MAX_STEPS = 50
 #   Hard cap on CTMRG iterations per environment convergence call.
 #   With the singular-value convergence criterion and CTM_CONV_THR=1e-7,
 #   convergence occurs in 4–40 steps for typical tensors (single-tensor
@@ -604,13 +604,13 @@ N_SITES = 6
 
 # ── Tensor initialisation & padding ──────────────────────────────────────────
 
-INIT_NOISE = 1e-3
+INIT_NOISE = 1e-2
 # !!! NOTE: Only used as Mean-Field-Init's random noise!!!
 # should be at least 2e-4 otherwise the initial state is too 
 # close to the exact Néel product state and the optimizer gets 
 # stuck in a local minimum.
 
-PAD_NOISE = 1e-3
+PAD_NOISE = 1e-2
 #   Gaussian noise amplitude added to the ZERO-PADDED new indices when
 #   enlarging tensors from D → D+1.  Non-zero noise breaks the symmetry of
 #   subspace of the smaller-D manifold.  Keep comparable to INIT_NOISE.
@@ -2688,13 +2688,22 @@ def main():
                 
                 # ── Chi init: mean-field / random / warm-start ─────────────────
                 #print(cur_params)
-                _init_params = cur_params
-    
+                if (chi_idx == 0 and args.mean_field_init
+                        and not args.resume_folder and not resumeEqulCurrent):
+                    _init_params = _make_mean_field_params(
+                        ansatz_cfg, D_bond, d_PHYS, INIT_NOISE)
+                    print(f"  │  [mean-field] Néel product-state init for chi={chi}")
+                elif args.rand_init_new_chi and chi_idx > 0:
+                    print(f"  │  [rand-chi] random init for chi={chi} "
+                          f"(ignoring previous result)")
+                    _init_params = None
+                else:
+                    _init_params = cur_params
+
+                # Mean-field controls only the starting tensor.  This driver
+                # always starts optimization directly with pure L-BFGS.
                 _skip_adam = True
-                
-                if _skip_adam:
-                    print(f"  │  [warm-start] chi_idx={chi_idx}>0: "
-                          f"skipping Adam, starting directly with L-BFGS")
+                print("  │  [pure L-BFGS] Adam disabled")
 
                 try:
                     best_params_tuple, best_loss, global_step, _cached_rhos, _switched_to_lbfgs = optimize_at_chi(

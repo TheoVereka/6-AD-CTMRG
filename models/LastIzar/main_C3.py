@@ -610,7 +610,7 @@ INIT_NOISE = 1e-3
 # close to the exact Néel product state and the optimizer gets 
 # stuck in a local minimum.
 
-PAD_NOISE = 1e-3
+PAD_NOISE = 1e-2
 #   Gaussian noise amplitude added to the ZERO-PADDED new indices when
 #   enlarging tensors from D → D+1.  Non-zero noise breaks the symmetry of
 #   subspace of the smaller-D manifold.  Keep comparable to INIT_NOISE.

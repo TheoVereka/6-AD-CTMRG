@@ -6,14 +6,15 @@ and `submit_all.sh` only submits them and adds `afterok` dependencies.
 
 ## Numerical choices
 
-- D=5: chi=50, CTMRG maximum 70 steps.
-- D=6: chi=72, CTMRG maximum 130 steps.
+- D=5: chi=50; D=6: chi=72.
+- Every run passes `--ctm-max-steps 50`; no stage may use a larger value.
 - Pin: plaquette, orientation 0, h=0.005; the second stage restores h=0.
-- Tensor-padding and initialization noise passed to the Python program is
-  1e-3.  The bundled `core_C3.py` also caps CTMRG initialization/restart noise
-  at 1e-3.  Randomized SVD is unchanged.
+- Adam/L-BFGS learning rates, tolerances, history, and related optimizer
+  hyperparameters come from the two bundled main files; the launcher does not
+  override them.  Randomized SVD is unchanged.
 - `main_C3.py` is the normal Adam-warmup then L-BFGS implementation.
-- `main_C3_LBFGS.py` rejects Adam and runs pure L-BFGS.
+- `main_C3_LBFGS.py` rejects Adam and runs pure L-BFGS.  For its independent
+  h=0.005 jobs it still constructs the requested mean-field starting tensor.
 - D=6 adiabatic task starts from the bundled original 0713summary tensor at
   J2=0.265.  Every later J2 stage resumes the preceding stage's best tensor.
 - Every h=0 job has an `afterok` dependency on its own h=0.005 job.
