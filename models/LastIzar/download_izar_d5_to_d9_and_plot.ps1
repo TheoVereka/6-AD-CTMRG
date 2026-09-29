@@ -54,6 +54,34 @@ if ($LASTEXITCODE -ne 0) { throw "LastIzar remote snapshot failed ($LASTEXITCODE
 $lastArchive = Join-Path $lastLocal "LastIzar_results_snapshot.tar.gz"
 & scp "${Remote}:${LastRemoteDir}/LastIzar_results_snapshot.tar.gz" $lastArchive
 if ($LASTEXITCODE -ne 0) { throw "LastIzar download failed ($LASTEXITCODE)" }
+
+# h=.005 task2--task5 were explicitly retired.  Tar extraction does not
+# remove directories that are absent from a newer archive, so clear only
+# these exact obsolete local targets before unpacking the new snapshot.
+$lastResultRoot = [IO.Path]::GetFullPath(
+    (Join-Path $lastLocal "Results_LastIzar")
+)
+foreach ($obsolete in @(
+    "task2_D6_adam_pin", "task3_D6_lbfgs_pin",
+    "task4_D5_adam_pin", "task5_D5_lbfgs_pin"
+)) {
+    $target = [IO.Path]::GetFullPath((Join-Path $lastResultRoot $obsolete))
+    if (-not $target.StartsWith(
+        $lastResultRoot + [IO.Path]::DirectorySeparatorChar,
+        [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+        throw "Unsafe obsolete-result target: $target"
+    }
+    if (Test-Path -LiteralPath $target) {
+        Remove-Item -LiteralPath $target -Recurse -Force
+    }
+}
+$lastLogRoot = Join-Path $lastLocal "slurm_logs"
+if (Test-Path -LiteralPath $lastLogRoot) {
+    Get-ChildItem -LiteralPath $lastLogRoot -File |
+        Where-Object { $_.Name -match '^L[2345]' } |
+        Remove-Item -Force
+}
 & tar -xzf $lastArchive -C $lastLocal
 if ($LASTEXITCODE -ne 0) { throw "LastIzar extraction failed ($LASTEXITCODE)" }
 

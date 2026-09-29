@@ -1339,6 +1339,7 @@ def optimize_at_chi(
         ansatz_cfg: dict | None = None,
         skip_adam_warmup: bool = False,
         first_chi_of_D: bool = False,
+        initial_state_is_resumed: bool = False,
 ) -> tuple:
     """
     Outer L-BFGS loop at fixed (D_bond, chi) until budget_seconds elapsed
@@ -1403,6 +1404,7 @@ def optimize_at_chi(
                                             and not skip_adam_warmup)
                                   else OPTIMIZER)
     _adam_steps_taken: int = 0  # counts Adam outer steps (for early-switch)
+    _adam_phase_index: int = 0  # zero only for the first Adam optimizer
     _switched_to_lbfgs: bool   = False  # True after Adam→L-BFGS transition
     _final_lbfgs_run:  bool   = False  # True on the terminal LBFGS (early-switch)
     # Sliding window of the last ADAM_FLAT_PATIENCE Adam loss values.
@@ -1900,7 +1902,7 @@ def optimize_at_chi(
                 next LBFGS run's _lbfgs_warmed_up guard still fires correctly.
                 """
                 nonlocal _adam, _lbfgs, _effective_optimizer, _lbfgs_outer_steps
-                nonlocal _adam_steps_taken
+                nonlocal _adam_steps_taken, _adam_phase_index
                 print(f"    [cycle] L-BFGS→Adam switch at step {step} ({reason})")
                 _lbfgs = None  # clear ref; existing LBFGS object GC'd naturally
                 if params[0].device.type == 'cuda':
@@ -1916,6 +1918,7 @@ def optimize_at_chi(
                 # from the first Adam creation and persist across optimizer swaps.
                 # Do NOT re-register them.
                 _adam_steps_taken = 0
+                _adam_phase_index += 1
                 _effective_optimizer = 'adam'
                 # CRITICAL: reset _lbfgs_outer_steps to 0.  During the new Adam
                 # phase _lbfgs_warmed_up = _switched_to_lbfgs and _lbfgs_outer_steps >= 3.
@@ -1930,11 +1933,18 @@ def optimize_at_chi(
             # If Δloss > -1e-6 on any of the first 3 steps, the starting
             # point is already near the minimum — Adam's fixed-lr steps
             # will only kick it away.  Switch to the FINAL L-BFGS run.
-            # This can happen on any Adam phase (initial or after cycling back),
-            # not just the first one.  We do NOT gate on first_chi_of_D here:
-            # the "first 3 steps" condition is enough to detect near-optimality
-            # regardless of how this chi was initialised.
-            if _adam_steps_taken <= 3 and delta > -1e-7:
+            # Preserve this shortcut for resumed tensors and for every later
+            # Adam optimizer.  For a genuinely non-resumed run only, suppress
+            # it during the first ten steps of the *first* Adam optimizer.  In
+            # practice this removes the first-phase 3-step shortcut without
+            # disabling it after an LBFGS -> Adam cycle.
+            _block_initial_shortcut = (
+                not initial_state_is_resumed
+                and _adam_phase_index == 0
+                and _adam_steps_taken <= 10
+            )
+            if (not _block_initial_shortcut
+                    and _adam_steps_taken <= 3 and delta > -1e-7):
                 _do_switch_to_lbfgs(
                     f"Δ={delta:+.2e} > -1e-7 on Adam step {_adam_steps_taken} "
                     f"(near-optimal start → final LBFGS)",
@@ -2725,6 +2735,9 @@ def main():
                         ansatz_cfg=ansatz_cfg,
                         skip_adam_warmup=_skip_adam,
                         first_chi_of_D=(chi_idx == 0),
+                        initial_state_is_resumed=bool(
+                            args.resume or args.resume_folder
+                        ),
                     )
                 except _CollapseRestartD as _exc:
                     _chi_collapse = True

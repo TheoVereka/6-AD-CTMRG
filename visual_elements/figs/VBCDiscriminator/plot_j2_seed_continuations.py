@@ -53,10 +53,13 @@ OBS_RE = re.compile(r"^D_(\d+)_chi_(\d+)_energy_magnetization_correlation\.txt$"
 J2_GRID = (0.26, 0.265, 0.27, 0.275, 0.28, 0.29, 0.30, 0.31, 0.32)
 TEXTURE_ORDER = ("dimer-plaquette", "plaquette")
 TEXTURE_TITLES = {
-    "dimer-plaquette": "Dimer-plaquette seed",
-    "plaquette": "Plaquette seed",
+    "dimer-plaquette": "Dimer-plaquette sector",
+    "plaquette": "Plaquette sector",
 }
-INSURANCE_STYLES = {0: ("-", 1.0), 1: ("-", 1.0), 2: ("--", 0.72)}
+INSURANCE_STYLES = {
+    0: ("-", 1.0), 1: ("-", 1.0), 2: ("--", 0.78),
+    3: (":", 0.78), 4: ("-.", 0.78), 5: ((0, (5, 1, 1, 1)), 0.78),
+}
 SEED_MARKERS = ("o", "s", "^", "D", "P", "X")
 
 
@@ -68,6 +71,8 @@ class Seed:
     chi: int
     texture: str
     observation: Path
+    adiabatic: bool = True
+    connect: bool = True
 
 
 @dataclass(frozen=True)
@@ -406,6 +411,7 @@ def discover_original_d5_d6(
             chi=int(first["chi"]),
             texture=texture,
             observation=Path(str(first["observation"])),
+                adiabatic=False,
         )
         for record in records[1:]:
             points.append(Point(
@@ -473,13 +479,7 @@ def discover_last_izar(
         root: Path,
         original_root: Path = DEFAULT_ORIGINAL_ROOT,
 ) -> tuple[dict[str, Seed], list[Point], int]:
-    """Read completed h=0 stages from the five LastIzar task families.
-
-    Task 1 is a genuine adiabatic continuation from the original D=6,
-    J2=0.265 tensor.  Tasks 2--5 are independent mean-field -> h=.005 -> h=0
-    constructions; each optimizer family is represented as its own J2 series.
-    Incomplete or failed h=0 stages are counted and ignored.
-    """
+    """Read completed h=0 stages from the current LastIzar workload."""
     if (root / "Results_LastIzar").is_dir():
         root = root / "Results_LastIzar"
     if not root.is_dir():
@@ -489,7 +489,31 @@ def discover_last_izar(
     points: list[Point] = []
     partial_count = 0
 
-    # Task 1: immutable original seed followed to the right at h=0.
+    def add_chain_points(
+            chain_root: Path, seed: Seed, *, direction: str, insurance: int,
+    ) -> None:
+        nonlocal partial_count
+        if not chain_root.is_dir():
+            return
+        for stage in sorted(path for path in chain_root.glob("J2_*") if path.is_dir()):
+            match = STAGE_RE.fullmatch(stage.name)
+            if match is None:
+                continue
+            observation = _last_izar_complete_observation(stage, seed.D)
+            if observation is None:
+                partial_count += 1
+                continue
+            points.append(Point(
+                seed_id=seed.seed_id, seed_texture=seed.texture, D=seed.D,
+                chi=_observation_chi(observation),
+                J2=parse_j2_tag(match.group(1)), direction=direction,
+                insurance=insurance, ranks=ranked_nn(observation),
+                connected_ranks=ranked_nn(observation, connected=True),
+                observation=str(observation.resolve()),
+            ))
+
+    # Task 1: one existing chain plus four new random-seed insurances, all
+    # sharing the single genuine adiabatic seed at D=6, J2=.265.
     task1 = root / "task1_D6_adiabatic"
     seed_observation = (
         original_root / "J2_0p265" / "2tensor_twoC3" / "D_6"
@@ -498,41 +522,62 @@ def discover_last_izar(
     if task1.is_dir():
         if not seed_observation.is_file():
             raise FileNotFoundError(f"LastIzar task-1 seed observation missing: {seed_observation}")
-        seed_id = "last_D6_adiabatic"
+        seed_id = "last_D6_plaq_adiabatic"
         texture = _texture_sign(seed_observation)
-        seeds[seed_id] = Seed(
+        seed = Seed(
             seed_id=seed_id, J2=0.265, D=6,
             chi=_observation_chi(seed_observation), texture=texture,
             observation=seed_observation,
         )
-        for stage in sorted(path for path in task1.glob("J2_*") if path.is_dir()):
-            match = STAGE_RE.fullmatch(stage.name)
-            if match is None:
-                continue
-            observation = _last_izar_complete_observation(stage, 6)
-            if observation is None:
-                partial_count += 1
-                continue
-            points.append(Point(
-                seed_id=seed_id, seed_texture=texture, D=6,
-                chi=_observation_chi(observation),
-                J2=parse_j2_tag(match.group(1)), direction="right", insurance=0,
-                ranks=ranked_nn(observation),
-                connected_ranks=ranked_nn(observation, connected=True),
-                observation=str(observation.resolve()),
-            ))
+        seeds[seed_id] = seed
+        add_chain_points(task1, seed, direction="right", insurance=1)
+        for insurance in range(2, 6):
+            add_chain_points(
+                task1 / f"insurance_{insurance}", seed,
+                direction="right", insurance=insurance,
+            )
 
-    # Tasks 2--5: independent plaquette preparations, grouped by optimizer.
-    task_specs = (
-        ("task2_D6_adam_pin", 6, "last_D6_adam"),
-        ("task3_D6_lbfgs_pin", 6, "last_D6_lbfgs"),
-        ("task4_D5_adam_pin", 5, "last_D5_adam"),
-        ("task5_D5_lbfgs_pin", 5, "last_D5_lbfgs"),
+    # Two additional genuine adiabatic dimer chains.
+    chain_specs = (
+        ("task6_D5_dimer_adiabatic", 5, 0.29, "right",
+         "last_D5_dimer_adiabatic"),
+        ("task7_D6_dimer_adiabatic", 6, 0.275, "left",
+         "last_D6_dimer_adiabatic"),
     )
-    for task_name, D, seed_id in task_specs:
+    for task_name, D, seed_j2, direction, seed_id in chain_specs:
         task = root / task_name
         if not task.is_dir():
             continue
+        seed_tag = _j2_directory_tag(seed_j2)
+        seed_observation = (
+            original_root / f"J2_{seed_tag}" / "2tensor_twoC3" / f"D_{D}"
+            / "energy_magnetization_correlation.txt"
+        )
+        if not seed_observation.is_file():
+            raise FileNotFoundError(
+                f"LastIzar adiabatic seed observation missing: {seed_observation}"
+            )
+        texture = _texture_sign(seed_observation)
+        seed = Seed(
+            seed_id=seed_id, J2=seed_j2, D=D,
+            chi=_observation_chi(seed_observation), texture=texture,
+            observation=seed_observation,
+        )
+        seeds[seed_id] = seed
+        add_chain_points(task, seed, direction=direction, insurance=1)
+
+    # Every h=.01/.02/.03 preparation is an independent mean-field protocol,
+    # not an adiabatic seed.  Keep the protocol data but never annotate a fake
+    # seed or connect independent J2 values as a continuation.
+    pin_task_re = re.compile(
+        r"^task_pin_D([56])_h0p(01|02|03)_(adam|lbfgs)$"
+    )
+    for task in sorted(path for path in root.glob("task_pin_D*_h0p*_*" )
+                       if path.is_dir()):
+        task_match = pin_task_re.fullmatch(task.name)
+        if task_match is None:
+            continue
+        D = int(task_match.group(1))
         completed: list[tuple[float, Path]] = []
         for j2_dir in sorted(path for path in task.glob("J2_*") if path.is_dir()):
             match = STAGE_RE.fullmatch(j2_dir.name)
@@ -548,10 +593,11 @@ def discover_last_izar(
             continue
         completed.sort(key=lambda item: item[0])
         seed_j2, first_observation = completed[0]
+        seed_id = task.name
         seeds[seed_id] = Seed(
             seed_id=seed_id, J2=seed_j2, D=D,
             chi=_observation_chi(first_observation), texture="plaquette",
-            observation=first_observation,
+            observation=first_observation, adiabatic=False, connect=False,
         )
         for J2, observation in completed[1:]:
             points.append(Point(
@@ -609,7 +655,7 @@ def plot_D(D: int, points: list[Point], seeds: dict[str, Seed], output: Path,
         if not selected_seeds:
             ax.set_title(rf"{TEXTURE_TITLES[texture]}, $D={D}$", fontsize=12)
             ax.set_xlabel(r"$J_2$", fontsize=12)
-            ax.text(0.5, 0.5, "No seed selected", ha="center", va="center",
+            ax.text(0.5, 0.5, "No completed data", ha="center", va="center",
                     color="0.45", transform=ax.transAxes)
             ax.set_ylim(*y_limits)
             ax.grid(alpha=0.2)
@@ -618,43 +664,73 @@ def plot_D(D: int, points: list[Point], seeds: dict[str, Seed], output: Path,
             marker = SEED_MARKERS[seed_index % len(SEED_MARKERS)]
             seed_row = seed_point(seed)
             subset = [row for row in points if row.seed_id == seed.seed_id]
-            for direction in ("left", "right"):
-                insurance_values = sorted({
-                    row.insurance for row in subset if row.direction == direction
-                })
-                for insurance in insurance_values:
-                    branch = [row for row in subset
-                              if row.direction == direction and row.insurance == insurance]
-                    if not branch:
-                        continue
-                    branch = sorted(branch, key=lambda row: row.J2)
-                    series = sorted([seed_row, *branch], key=lambda row: row.J2)
-                    linestyle, alpha = INSURANCE_STYLES[insurance]
+            if seed.connect:
+                for direction in ("left", "right"):
+                    insurance_values = sorted({
+                        row.insurance for row in subset if row.direction == direction
+                    })
+                    for insurance in insurance_values:
+                        branch = [row for row in subset
+                                  if row.direction == direction
+                                  and row.insurance == insurance]
+                        if not branch:
+                            continue
+                        branch = sorted(branch, key=lambda row: row.J2)
+                        series = sorted([seed_row, *branch], key=lambda row: row.J2)
+                        linestyle, alpha = INSURANCE_STYLES[insurance]
+                        for rank, color in enumerate(RANK_COLORS):
+                            ranks = [point_ranks(row, connected) for row in series]
+                            ax.errorbar(
+                                [row.J2 for row in series],
+                                [values[rank][0] for values in ranks],
+                                yerr=None if connected else
+                                [values[rank][1] for values in ranks],
+                                fmt=marker, linestyle=linestyle, color=color,
+                                markersize=3.8, linewidth=1.1, elinewidth=0.8,
+                                capsize=2, alpha=alpha, zorder=3,
+                            )
+                if not subset and not seed.adiabatic:
+                    ranks = point_ranks(seed_row, connected)
                     for rank, color in enumerate(RANK_COLORS):
-                        ranks = [point_ranks(row, connected) for row in series]
                         ax.errorbar(
-                            [row.J2 for row in series],
-                            [values[rank][0] for values in ranks],
-                            yerr=None if connected else
-                            [values[rank][1] for values in ranks],
-                            fmt=marker, linestyle=linestyle, color=color,
-                            markersize=3.8, linewidth=1.1, elinewidth=0.8,
-                            capsize=2, alpha=alpha, zorder=3,
+                            [seed_row.J2], [ranks[rank][0]],
+                            yerr=None if connected else [ranks[rank][1]],
+                            fmt=marker, linestyle="none", color=color,
+                            markersize=3.8, elinewidth=0.8, capsize=2, zorder=3,
                         )
-            # Mark every distinct seed once on top of its continuation copies.
-            seed_ranks = point_ranks(seed_row, connected)
-            for rank, color in enumerate(RANK_COLORS):
-                ax.errorbar(
-                    [seed_row.J2], [seed_ranks[rank][0]],
-                    yerr=None if connected else [seed_ranks[rank][1]], fmt=marker,
-                    color=color, markeredgecolor="black", markeredgewidth=0.8,
-                    markersize=6.2, elinewidth=0.9, capsize=2, zorder=6,
-                )
-            ax.axvline(seed.J2, color="0.45", linestyle=":", linewidth=0.8,
-                       alpha=0.75, zorder=0)
-            ax.text(seed.J2, 0.02, rf"{seed.seed_id} seed $J_2={seed.J2:g}$",
+            else:
+                # Independent mean-field preparations: plot markers only.
+                series = sorted([seed_row, *subset], key=lambda row: row.J2)
+                for rank, color in enumerate(RANK_COLORS):
+                    ranks = [point_ranks(row, connected) for row in series]
+                    ax.errorbar(
+                        [row.J2 for row in series],
+                        [values[rank][0] for values in ranks],
+                        yerr=None if connected else
+                        [values[rank][1] for values in ranks],
+                        fmt=marker, linestyle="none", color=color,
+                        markersize=4.2, elinewidth=0.8, capsize=2, zorder=3,
+                    )
+
+            # Only a genuine adiabatic chain receives a marked/labeled seed.
+            if seed.adiabatic:
+                seed_ranks = point_ranks(seed_row, connected)
+                for rank, color in enumerate(RANK_COLORS):
+                    ax.errorbar(
+                        [seed_row.J2], [seed_ranks[rank][0]],
+                        yerr=None if connected else [seed_ranks[rank][1]],
+                        fmt=marker, color=color, markeredgecolor="black",
+                        markeredgewidth=0.8, markersize=6.2, elinewidth=0.9,
+                        capsize=2, zorder=6,
+                    )
+                ax.axvline(seed.J2, color="0.45", linestyle=":", linewidth=0.8,
+                           alpha=0.75, zorder=0)
+                ax.text(
+                    seed.J2, 0.02,
+                    rf"{seed.seed_id} adiabatic seed $J_2={seed.J2:g}$",
                     rotation=90, ha="right", va="bottom", fontsize=7.2,
-                    transform=ax.get_xaxis_transform(), color="0.35")
+                    transform=ax.get_xaxis_transform(), color="0.35",
+                )
         ax.set_title(rf"{TEXTURE_TITLES[texture]}, $D={D}$", fontsize=12)
         ax.set_xlabel(r"$J_2$", fontsize=12)
         ax.set_ylim(*y_limits)

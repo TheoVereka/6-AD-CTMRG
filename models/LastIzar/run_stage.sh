@@ -33,7 +33,7 @@ case "${MAIN_KIND}" in
     *) echo "Invalid MAIN_KIND=${MAIN_KIND}" >&2; exit 2 ;;
 esac
 case "${STAGE_KIND}" in
-    adiabatic|pin_h005|pin_h0) ;;
+    adiabatic|pin_h|pin_h0) ;;
     *) echo "Invalid STAGE_KIND=${STAGE_KIND}" >&2; exit 2 ;;
 esac
 [[ "${MEAN_FIELD_START}" == "0" || "${MEAN_FIELD_START}" == "1" ]] || {

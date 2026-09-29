@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Submit the 33 requested heads and their 38 afterok dependants (71 jobs total).
-# All numerical and Slurm settings live in static jobs/*.run files.
+# Submit only the replacement LastIzar workload. The already completed
+# insurance-1 D=6 plaquette chain is deliberately not resubmitted.
 set -euo pipefail
 
 BUNDLE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,7 +15,9 @@ elif [[ $# -ne 0 ]]; then
 fi
 
 for REQUIRED in main_C3.py main_C3_LBFGS.py core_C3.py run_stage.sh \
-        seeds/D6_J2_0p265_tensor_best.pt; do
+        seeds/D6_J2_0p265_tensor_best.pt \
+        seeds/D5_J2_0p29_tensor_best.pt \
+        seeds/D6_J2_0p275_tensor_best.pt; do
     [[ -s "${BUNDLE_DIR}/${REQUIRED}" ]] || {
         echo "Missing required bundle file: ${REQUIRED}" >&2
         exit 3
@@ -38,7 +40,8 @@ submit_one() {
         printf '%03d HEAD     %s\n' "${job_count}" "${run_name}"
     else
         dependency_count=$((dependency_count + 1))
-        printf '%03d AFTEROK  %-24s <- %s\n' "${job_count}" "${run_name}" "${dependency_id}"
+        printf '%03d AFTEROK  %-24s <- %s\n' \
+            "${job_count}" "${run_name}" "${dependency_id}"
     fi
     if [[ "${DRY_RUN}" == "1" ]]; then
         job_id="dry${job_count}"
@@ -69,36 +72,54 @@ submit_pair() {
     submit_one "${second}" "${head_id}"
 }
 
-# Task 1: one right-moving D=6 adiabatic chain seeded at J2=0.265.
-submit_chain \
-    t1_d6_j270 t1_d6_j275 t1_d6_j280 t1_d6_j290 \
-    t1_d6_j300 t1_d6_j310 t1_d6_j320
-
-# Task 2: D=6, Adam -> LBFGS at h=.005, then pure-LBFGS h=0.
-for code in 320 310 300 290 280 275 270; do
-    submit_pair "t2_d6_j${code}_h005" "t2_d6_j${code}_h0"
+# Four new D=6 plaquette chains. Together with the existing direct task1
+# chain these are insurances 1--5.
+for insurance in 2 3 4 5; do
+    submit_chain \
+        "p6i${insurance}_j027" "p6i${insurance}_j0275" \
+        "p6i${insurance}_j028" "p6i${insurance}_j029" \
+        "p6i${insurance}_j030" "p6i${insurance}_j031" \
+        "p6i${insurance}_j032"
 done
 
-# Task 3: D=6, pure LBFGS at both h=.005 and h=0.
-for code in 320 310 300 290 280 275 270; do
-    submit_pair "t3_d6_j${code}_h005" "t3_d6_j${code}_h0"
+# Dimer adiabatic chains.
+submit_chain d5_j030 d5_j031 d5_j032
+submit_chain d6_j027 d6_j0265 d6_j026
+
+submit_pin_dimension() {
+    local D="$1" field_code="$2" optimizer code
+    local -a codes
+    if [[ "${D}" == "6" ]]; then
+        codes=(032 031 030 029 028 0275 027)
+    else
+        codes=(026 0265 027 0275 028 029 030 031 032)
+    fi
+    for optimizer in a l; do
+        for code in "${codes[@]}"; do
+            submit_pair \
+                "p${D}${optimizer}${field_code}_j${code}_pin" \
+                "p${D}${optimizer}${field_code}_j${code}_h0"
+        done
+    done
+}
+
+# Requested launch order: h=.02, .03, .01; D=6 before D=5 for every field.
+for field_code in 02 03 01; do
+    submit_pin_dimension 6 "${field_code}"
+    submit_pin_dimension 5 "${field_code}"
 done
 
-# Task 4: D=5, Adam -> LBFGS at h=.005, then pure-LBFGS h=0.
-for code in 260 265 270 275 280 290 300 310 320; do
-    submit_pair "t4_d5_j${code}_h005" "t4_d5_j${code}_h0"
-done
-
-# Task 5: D=5, pure LBFGS at both h=.005 and h=0.
-for code in 260 265 270 275 280 290 300 310 320; do
-    submit_pair "t5_d5_j${code}_h005" "t5_d5_j${code}_h0"
-done
-
-[[ "${job_count}" == "71" ]] || { echo "Expected 71 jobs, got ${job_count}" >&2; exit 6; }
-[[ "${head_count}" == "33" ]] || { echo "Expected 33 heads, got ${head_count}" >&2; exit 6; }
-[[ "${dependency_count}" == "38" ]] || { echo "Expected 38 dependencies, got ${dependency_count}" >&2; exit 6; }
+[[ "${job_count}" == "226" ]] || {
+    echo "Expected 226 jobs, got ${job_count}" >&2; exit 6;
+}
+[[ "${head_count}" == "102" ]] || {
+    echo "Expected 102 heads, got ${head_count}" >&2; exit 6;
+}
+[[ "${dependency_count}" == "124" ]] || {
+    echo "Expected 124 dependencies, got ${dependency_count}" >&2; exit 6;
+}
 if [[ "${DRY_RUN}" == "1" ]]; then
-    echo "Dry run complete: 71 jobs = 33 heads + 38 afterok jobs; nothing submitted."
+    echo "Dry run complete: 226 jobs = 102 heads + 124 afterok jobs; nothing submitted."
 else
-    echo "Submitted 71 jobs = 33 heads + 38 afterok jobs."
+    echo "Submitted 226 jobs = 102 heads + 124 afterok jobs."
 fi

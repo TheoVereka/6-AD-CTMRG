@@ -1,50 +1,58 @@
-# LastIzar
+# LastIzar replacement workload
 
-Static Izar bundle for the final D=5 and D=6 plaquette-state tests.  No run
-files are generated on the cluster: `jobs/` already contains every Slurm job,
-and `submit_all.sh` only submits them and adds `afterok` dependencies.
+This directory is a static Izar bundle.  All 226 new `.run` files already
+exist under `jobs/`; the cluster does not generate or rewrite run files.
 
-## Numerical choices
+## Optimizer behavior
 
-- D=5: chi=50; D=6: chi=72.
-- Every run passes `--ctm-max-steps 50`; no stage may use a larger value.
-- Pin: plaquette, orientation 0, h=0.005; the second stage restores h=0.
-- Adam/L-BFGS learning rates, tolerances, history, and related optimizer
-  hyperparameters come from the two bundled main files; the launcher does not
-  override them.  Randomized SVD is unchanged.
-- `main_C3.py` is the normal Adam-warmup then L-BFGS implementation.
-- `main_C3_LBFGS.py` rejects Adam and runs pure L-BFGS.  For its independent
-  h=0.005 jobs it still constructs the requested mean-field starting tensor.
-- D=6 adiabatic task starts from the bundled original 0713summary tensor at
-  J2=0.265.  Every later J2 stage resumes the preceding stage's best tensor.
-- Every h=0 job has an `afterok` dependency on its own h=0.005 job.
+- `main_C3.py`: Adam warmup then L-BFGS.  On a non-resumed run, the
+  `near-optimal -> final L-BFGS` shortcut is suppressed during the first ten
+  steps of the first Adam optimizer only.  Resumed tensors and every later
+  Adam optimizer retain the shortcut.
+- `main_C3_LBFGS.py`: pure L-BFGS.
+- Mean-field tensor noise, padding noise, and CTMRG initialization/restart
+  noise are at most `1e-3`.  Randomized SVD is unchanged.
+- D=5 uses chi=50; D=6 uses chi=72; every job uses CTM max steps 50.
 
-## Izar resources
+## New jobs
 
-- 3-day jobs: qos `normal`, partition `gpu`, wall time `71:59:50`.
-- 7-day jobs: qos `long`, partition `gpu`, wall time `167:59:50`.
-- One GPU, one CPU, 40G RAM, and node `i39` excluded.
-- No Slurm account is forced; this is identical to the previously successful
-  Izar launch headers.
+- Four new D=6 plaquette adiabatic chains start from the immutable original
+  D=6, J2=.265 tensor and run `.27,.275,.28,.29,.30,.31,.32`.  They use four
+  distinct fixed seeds.  The existing direct task1 chain remains insurance 1;
+  the new chains are insurances 2--5.  QOS `long`, Slurm wall time 24 h.
+- D=5 dimer chain: original J2=.29 seed -> `.30,.31,.32`; QOS `long`, 12 h.
+- D=6 dimer chain: original J2=.275 seed -> `.27,.265,.26`; QOS `long`, 24 h.
+- Independent plaquette preparations use h=.02, .03, and .01.  For every h,
+  both Adam->L-BFGS and pure-LBFGS mean-field preparations are followed by a
+  pure-LBFGS h=0 `afterok` job.
+  - D=6 grid: `.32,.31,.30,.29,.28,.275,.27`; QOS `normal`, 36 h.
+  - D=5 grid: `.26,.265,.27,.275,.28,.29,.30,.31,.32`; QOS `long`, 24 h.
+- Submission order is h=.02, .03, .01, with all D=6 pairs before D=5 pairs
+  for each h.
 
-## Upload and launch
+The new submission consists of 226 jobs: 102 heads and 124 `afterok` jobs.
+The already completed insurance-1 chain is not resubmitted.
 
-From Windows PowerShell, from the repository root:
+## Replace the bundle on Izar
+
+From Windows PowerShell at the repository root:
 
 ```powershell
 scp -r .\models\LastIzar chye@izar.hpc.epfl.ch:~/
 ```
 
-On Izar:
+Then on Izar:
 
 ```bash
 cd ~/LastIzar
+bash cleanup_obsolete_h005.sh
 bash submit_all.sh --dry-run
 bash submit_all.sh
 ```
 
-The dry run must end with `71 jobs = 33 heads + 38 afterok jobs`.
+The cleanup script cancels only pending L2--L5 jobs whose reason contains
+`DependencyNeverSatisfied`, deletes only the obsolete task2--task5 result
+directories, and removes only their L2--L5 logs.  It never touches task1.
 
-Results are written under `Results_LastIzar/`; logs are written under
-`slurm_logs/`.  A manually resubmitted stage skips a complete tensor/observable
-pair or resumes its own latest checkpoint.
+Every stage writes under `Results_LastIzar/` and can be downloaded while the
+remaining jobs continue to run.

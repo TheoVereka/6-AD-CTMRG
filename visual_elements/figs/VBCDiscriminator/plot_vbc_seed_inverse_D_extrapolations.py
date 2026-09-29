@@ -120,10 +120,14 @@ def variant_label(rows: list[dict], seeds: dict[str, Seed]) -> str:
     changing = [row for row in rows if row["D"] in {5, 6, 9}]
     if not changing:
         changing = [rows[-1]]
-    return ", ".join(
-        f"D{row['D']} {row['seed_id']} (seed $J_2={seeds[row['seed_id']].J2:g}$)"
-        for row in changing
-    )
+    labels = []
+    for row in changing:
+        seed = seeds[row["seed_id"]]
+        label = f"D{row['D']} {row['seed_id']}"
+        if seed.adiabatic:
+            label += rf" (adiabatic seed $J_2={seed.J2:g}$)"
+        labels.append(label)
+    return ", ".join(labels)
 
 
 def plot_panel(ax: plt.Axes, variants: list[list[dict]], texture: str,

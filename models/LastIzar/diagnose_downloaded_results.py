@@ -42,7 +42,7 @@ def read_sacct(path: Path) -> dict[str, dict[str, str]]:
         for row in csv.DictReader(stream, delimiter="|"):
             job_name = (row.get("JobName") or "").strip()
             job_id = (row.get("JobIDRaw") or "").strip()
-            if not re.fullmatch(r"L[1-5].+", job_name):
+            if not re.fullmatch(r"L.+", job_name):
                 continue
             # Prefer the allocation row, not .batch/.extern steps.
             if not job_id.isdigit():
@@ -62,7 +62,7 @@ def read_squeue(path: Path) -> dict[str, dict[str, str]]:
         if len(fields) != 5:
             continue
         job_id, job_name, state, elapsed, reason = fields
-        if not re.fullmatch(r"L[1-5].+", job_name):
+        if not re.fullmatch(r"L.+", job_name):
             continue
         rows[job_name] = {
             "JobIDRaw": job_id, "JobName": job_name, "State": state,
@@ -153,7 +153,7 @@ def main() -> int:
         error_tail = useful_tail(error_path)
         out_tail = useful_tail(out_path)
         reason = ""
-        if (result_status != "complete"
+        if (result_status != "complete" and state
                 and (state not in {"PENDING", "RUNNING"}
                      or "DependencyNeverSatisfied" in queue_reason)):
             reason = classify_reason(state, error_tail, out_tail)
@@ -204,6 +204,7 @@ def main() -> int:
     state_counts = Counter(row["slurm_state"] or "unknown" for row in rows)
     failures = [row for row in rows
                 if row["result_status"] != "complete"
+                and bool(row["slurm_state"])
                 and (row["slurm_state"] not in {"PENDING", "RUNNING"}
                      or "DependencyNeverSatisfied" in row["queue_reason"])]
     with md_path.open("w", encoding="utf-8") as stream:

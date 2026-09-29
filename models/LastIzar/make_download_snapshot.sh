@@ -17,7 +17,7 @@ sacct -u "${USER}" -S 2026-09-28 \
 
 : > "${DIAG_DIR}/scontrol_dependency_jobs.txt"
 while IFS='|' read -r JOB_ID JOB_NAME JOB_STATE JOB_TIME JOB_REASON; do
-    [[ "${JOB_NAME}" =~ ^L[1-5] ]] || continue
+    [[ "${JOB_NAME}" =~ ^L ]] || continue
     if [[ "${JOB_REASON}" == *Dependency* ]]; then
         scontrol show job -o "${JOB_ID}" \
             >> "${DIAG_DIR}/scontrol_dependency_jobs.txt" || true
