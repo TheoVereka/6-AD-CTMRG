@@ -19,7 +19,5 @@ and one two-panel raw NN-vs-1/D PDF per J2.  No fit is drawn in any figure.
 The three NN ranks use the same encoding in every PDF: strongest is a large
 circle with a solid line, middle is a moderately enlarged square with a dashed
 line, and weakest is an upward triangle at the original size with a dotted
-line.  The D=11 plaquette continuation at J2=.26, .265, and .27 is retained
-even though 0713 has no reference at those points; the unavailable comparison
-fields are recorded as NaN and those points do not bias the global selection
-of reference-qualified data.
+line.  The D=11 plaquette continuation at J2=.26, .265, and .27 is excluded
+because 0713 has no energy/Delta reference at those points.

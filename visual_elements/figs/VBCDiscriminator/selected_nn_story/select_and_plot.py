@@ -200,15 +200,10 @@ def add_candidate(
     if texture not in TEXTURES or J2 not in J2_GRID:
         return
     reference = references.get((D, J2))
-    # 0713 has no D=11 reference at these three low-J2 values, but the
-    # completed a03 plaquette continuation exists and the user explicitly
-    # requires it to remain visible.  Keep it as unreferenced data rather than
-    # inventing zero energy/Delta differences.
-    allow_unreferenced = (
-        texture == "plaquette" and D == 11
-        and any(close(J2, value) for value in (0.26, 0.265, 0.27))
-    )
-    if reference is None and not allow_unreferenced:
+    # Selection requires a 0713 energy/Delta reference.  In particular, the
+    # D=11 plaquette continuation at J2=.26, .265, and .27 is deliberately
+    # banned because those reference points do not exist.
+    if reference is None:
         return
     try:
         observation = observation.resolve()
@@ -824,9 +819,8 @@ def write_report(
         "D=5 plaquette data are excluded unconditionally. The old D=7, J2=.26 "
         "dimer data are also excluded; that point remains missing until a complete "
         "candidate appears under the dedicated D7 repair snapshot root.",
-        "D=11 plaquette points at J2=.26, .265, and .27 are retained without "
-        "energy/Delta comparison because no corresponding 0713 reference exists; "
-        "their CSV reference fields are NaN.",
+        "D=11 plaquette points at J2=.26, .265, and .27 are excluded because "
+        "no corresponding 0713 energy/Delta reference exists.",
         "",
         "## Missing grid points", "",
     ]
