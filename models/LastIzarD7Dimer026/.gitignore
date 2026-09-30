@@ -1,0 +1,5 @@
+Results_D7DimerJ2_0p26/
+slurm_logs/
+download_diagnostics/
+*.tar.gz
+submission_job_ids.tsv

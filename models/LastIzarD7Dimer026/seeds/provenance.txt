@@ -1,0 +1,9 @@
+seed: D7_J2_0p265_dimer_tensor_best.pt
+source: data/distinVBCsJ2Continuation/Results_Izar_J2_sequences/s002_J2_0p3_D_7_dimer-plaquette/left/insurance_2/J2_0p265/sweep_D7_chi91_best.pt
+source_branch: s002 dimer-plaquette, left continuation, insurance 2
+J2: 0.265
+D: 7
+chi: 91
+eta: 0.9992981580339513
+energy_difference_from_0713: 0.00015148750290000512
+sha256: d8d1f8aeae887277c8511003d7db22082735dc805a1502181fac591560132842
