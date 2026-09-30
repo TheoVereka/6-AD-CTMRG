@@ -113,10 +113,15 @@ $normal = @(Get-ChildItem -LiteralPath $plotRoot -Filter '2C3_NN_ranks_vs_J2_D*.
 $connected = @(Get-ChildItem -LiteralPath $plotRoot -Filter '2C3_connected_NN_ranks_vs_J2_D*.pdf')
 $inverse = @(Get-ChildItem -LiteralPath $plotRoot -Filter '2C3_VBC_NN_ranks_vs_inverse_D_J2_*.pdf')
 $inverseConnected = @(Get-ChildItem -LiteralPath $plotRoot -Filter '2C3_VBC_connected_NN_ranks_vs_inverse_D_J2_*.pdf')
+$inverseConnectedRaw = @(Get-ChildItem -LiteralPath $plotRoot -Filter '2C3_VBC_connected_NN_ranks_vs_inverse_D_J2_*_no_fit.png')
 Write-Host "  fixed-D normal: $($normal.Count)"
 Write-Host "  fixed-D connected: $($connected.Count)"
 Write-Host "  inverse-D normal: $($inverse.Count)"
 Write-Host "  inverse-D connected: $($inverseConnected.Count)"
+Write-Host "  inverse-D connected raw/no-fit PNG: $($inverseConnectedRaw.Count)"
+if ($inverseConnectedRaw.Count -ne 9) {
+    throw "Expected 9 raw connected inverse-D PNGs, found $($inverseConnectedRaw.Count)"
+}
 
 $missingFixedD = @()
 foreach ($D in 5..11) {

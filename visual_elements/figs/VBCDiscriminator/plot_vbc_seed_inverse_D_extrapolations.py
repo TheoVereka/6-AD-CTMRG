@@ -98,6 +98,20 @@ def build_variants(rows: list[Point], dimensions: tuple[int, ...],
     return [list(choice) for choice in itertools.product(*options)]
 
 
+def build_raw_rows(rows: list[Point], dimensions: tuple[int, ...],
+                   *, connected: bool = False) -> list[dict]:
+    """Aggregate insurance replicas without combining different D into a fit."""
+    aggregated = []
+    for D in dimensions:
+        for seed_id in sorted({row.seed_id for row in rows if row.D == D}):
+            aggregated.append(
+                aggregate_seed_replicas(
+                    rows, D, seed_id, connected=connected
+                )
+            )
+    return aggregated
+
+
 def linear_fit(x: np.ndarray, y: np.ndarray) -> dict:
     coefficients, covariance = np.polyfit(x, y, 1, cov=True)
     slope, intercept = map(float, coefficients)
@@ -238,6 +252,93 @@ def make_figure(J2: float, by_texture: dict[str, list[list[dict]] | None],
             print(f"  {texture} [{variant['label']}]: {intercepts}")
 
 
+def plot_raw_connected_panel(ax: plt.Axes, rows: list[dict],
+                             seeds: dict[str, Seed]) -> None:
+    """Plot connected-correlation observations only: no fit or guide line."""
+    by_D: dict[int, list[dict]] = {}
+    for row in rows:
+        by_D.setdefault(row["D"], []).append(row)
+
+    marker_handles = []
+    for D in sorted(by_D):
+        selected = sorted(by_D[D], key=lambda row: row["seed_id"])
+        for seed_index, row in enumerate(selected):
+            marker = SEED_MARKERS[seed_index % len(SEED_MARKERS)]
+            for rank, color in enumerate(RANK_COLORS):
+                ax.plot(
+                    [row["inverse_D"]], [row["means"][rank]],
+                    linestyle="none", marker=marker, color=color,
+                    markeredgecolor="black", markeredgewidth=0.35,
+                    markersize=6.0, alpha=0.92, zorder=4,
+                )
+            if len(selected) > 1:
+                seed = seeds[row["seed_id"]]
+                label = f"D={D} {row['seed_id']}"
+                if seed.adiabatic:
+                    label += rf" (seed $J_2={seed.J2:g}$)"
+                marker_handles.append(
+                    Line2D([], [], color="0.25", marker=marker,
+                           linestyle="none", markersize=5.0, label=label)
+                )
+
+        # The x coordinate already fixes D; put one unobtrusive label per column.
+        ax.text(
+            1.0 / D, 0.018, f"D={D}", transform=ax.get_xaxis_transform(),
+            ha="center", va="bottom", fontsize=7.5, color="0.35",
+        )
+
+    if marker_handles:
+        ax.legend(handles=marker_handles, loc="best", frameon=False,
+                  fontsize=6.8)
+    ax.set_xlabel(r"$1/D$", fontsize=12)
+    ax.grid(alpha=0.2)
+
+
+def make_raw_connected_figure(
+    J2: float,
+    by_texture: dict[str, list[dict] | None],
+    seeds: dict[str, Seed],
+    output: Path,
+) -> None:
+    """Write one two-panel raw connected-NN PNG, with no fitting elements."""
+    fig, axes = plt.subplots(
+        1, 2, figsize=(13.2, 5.3), sharex=True, sharey=True,
+        constrained_layout=True,
+    )
+    all_inverse_D = []
+    for ax, texture in zip(axes, TEXTURE_ORDER):
+        ax.set_title(rf"{TEXTURE_TITLES[texture]}, $J_2={J2:g}$", fontsize=12)
+        rows = by_texture[texture]
+        if not rows:
+            ax.set_xlabel(r"$1/D$", fontsize=12)
+            ax.text(0.5, 0.5, "No available data", ha="center", va="center",
+                    color="0.45", transform=ax.transAxes)
+            ax.grid(alpha=0.2)
+            continue
+        plot_raw_connected_panel(ax, rows, seeds)
+        all_inverse_D.extend(row["inverse_D"] for row in rows)
+
+    if not all_inverse_D:
+        plt.close(fig)
+        raise ValueError(f"no connected-NN observations at J2={J2:g}")
+    x_min, x_max = min(all_inverse_D), max(all_inverse_D)
+    x_pad = max(0.004, 0.06 * max(x_max - x_min, 0.01))
+    for ax in axes:
+        ax.set_xlim(x_min - x_pad, x_max + x_pad)
+    axes[0].set_ylabel("connected NN correlation", fontsize=12)
+    rank_handles = [
+        Line2D([], [], color=color, marker="o", linestyle="none",
+               markersize=5.5, label=label)
+        for color, label in zip(RANK_COLORS, RANK_LABELS)
+    ]
+    fig.legend(handles=rank_handles, loc="outside upper center", ncol=3,
+               frameon=False, fontsize=9)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, dpi=250)
+    plt.close(fig)
+    print(f"Saved raw connected-NN data (no fit): {output}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
@@ -259,6 +360,10 @@ def main() -> int:
     parser.add_argument("--Ds", type=int, nargs="+", default=DEFAULT_DS)
     parser.add_argument("--J2", type=float, nargs="*", default=J2_GRID,
                         help="J2 values to consider; default: full continuation grid")
+    parser.add_argument(
+        "--raw-connected-only", action="store_true",
+        help="Only write the per-J2 connected-NN PNGs without fits",
+    )
     args = parser.parse_args()
 
     dimensions = tuple(args.Ds)
@@ -315,9 +420,11 @@ def main() -> int:
         print(f"Sep27 input absent; using legacy data only: {args.sep27_input}")
     all_rows = [*points, *(seed_point(seed) for seed in seeds.values())]
     generated = 0
+    raw_connected_generated = 0
     for J2 in args.J2:
         by_texture: dict[str, list[list[dict]] | None] = {}
         connected_by_texture: dict[str, list[list[dict]] | None] = {}
+        raw_connected_by_texture: dict[str, list[dict] | None] = {}
         missing_by_texture: dict[str, list[int]] = {}
         for texture in TEXTURE_ORDER:
             selected = [row for row in all_rows
@@ -328,6 +435,10 @@ def main() -> int:
             absent = [D for D in dimensions if D not in present]
             missing_by_texture[texture] = absent
             present_dimensions = tuple(D for D in dimensions if D in present)
+            raw_connected_by_texture[texture] = (
+                build_raw_rows(selected, present_dimensions, connected=True)
+                if present_dimensions else None
+            )
             if len(present_dimensions) < 3:
                 by_texture[texture] = None
                 connected_by_texture[texture] = None
@@ -336,6 +447,17 @@ def main() -> int:
             connected_by_texture[texture] = build_variants(
                 selected, present_dimensions, connected=True
             )
+        if any(rows for rows in raw_connected_by_texture.values()):
+            raw_connected_output = args.output_dir / (
+                "2C3_VBC_connected_NN_ranks_vs_inverse_D_"
+                f"J2_{j2_tag(J2)}_no_fit.png"
+            )
+            make_raw_connected_figure(
+                J2, raw_connected_by_texture, seeds, raw_connected_output
+            )
+            raw_connected_generated += 1
+        if args.raw_connected_only:
+            continue
         if all(rows is None for rows in by_texture.values()):
             missing = [
                 f"{texture}: D={','.join(map(str, missing_by_texture[texture]))}"
@@ -356,11 +478,20 @@ def main() -> int:
             connected_output, connected=True,
         )
         generated += 1
+    if args.raw_connected_only:
+        if raw_connected_generated == 0:
+            raise RuntimeError("no connected-NN observations found")
+        print(
+            f"Generated {raw_connected_generated} raw connected-NN PNGs "
+            "without fits"
+        )
+        return 0
     if generated == 0:
         raise RuntimeError("no J2 value has at least three D values for either seed texture")
     print(
         f"Generated {generated} NN and {generated} connected-NN two-panel PDFs; "
-        "no PNG/fit CSV files were written"
+        f"generated {raw_connected_generated} raw connected-NN PNGs without fits; "
+        "no fit CSV files were written"
     )
     return 0
 
