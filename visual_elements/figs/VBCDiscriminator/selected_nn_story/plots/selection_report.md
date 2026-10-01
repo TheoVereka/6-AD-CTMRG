@@ -1,13 +1,13 @@
 # Selected NN-correlation data audit
 
-- Discovered candidates: 447
-- Selected grid points: 99 / 108
-- Global selection objective: 499.49598
-- points with a 0713 reference: 99
+- Discovered candidates: 452
+- Selected grid points: 100 / 108
+- Global selection objective: 684.15331
+- points with a 0713 reference: 100
 - unreferenced points retained explicitly: 0
-- |dE| <= 0.0002: 99/99 compared points
-- relative Delta difference <= 25%: 99/99 compared points
-- relative Delta difference > 35% exceptions: 0
+- |dE| <= 0.0002: 100/100 compared points
+- relative Delta difference <= 25%: 99/100 compared points
+- relative Delta difference > 35% exceptions: 1
 - fixed-a diagnostics: 54 rank fits
 
 The hard energy cutoff is 0.0003. Delta <=25% is preferred and <=35% is the normal wide window. A >35% candidate can enter only in the low-J2 restoration regime, only when its absolute splitting is small enough to support D->infinity equality, and only when the grid point has no energy-qualified <=35% option; every such exception is exposed explicitly.
@@ -17,7 +17,6 @@ D=11 plaquette points at J2=.26, .265, and .27 are excluded because no correspon
 
 ## Missing grid points
 
-- dimer-plaquette, D=7, J2=0.26
 - dimer-plaquette, D=10, J2=0.28
 - plaquette, D=6, J2=0.29
 - plaquette, D=6, J2=0.3
@@ -29,7 +28,7 @@ D=11 plaquette points at J2=.26, .265, and .27 are excluded because no correspon
 
 ## Delta-window exceptions
 
-- none
+- dimer-plaquette, D=7, J2=0.26: 349.8%, d7_repair:pin_h0p02/h0
 
 ## Fixed energy-fit length
 

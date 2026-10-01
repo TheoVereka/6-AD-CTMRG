@@ -14,7 +14,9 @@ observation, so it is safe to run on half-finished cluster downloads.
 
 Outputs under `plots/` include one selected-data CSV, a complete candidate
 audit, the fixed-energy-length diagnostic table, one two-panel NN-vs-J2 PDF,
-and one two-panel raw NN-vs-1/D PDF per J2.  No fit is drawn in any figure.
+one two-panel raw NN-vs-1/D PDF per J2, and separate D-by-J2 provenance tables
+for the dimer-plaquette and plaquette configurations.  No fit is drawn in any
+figure.
 
 The three NN ranks use the same encoding in every PDF: strongest is a large
 circle with a solid line, middle is a moderately enlarged square with a dashed

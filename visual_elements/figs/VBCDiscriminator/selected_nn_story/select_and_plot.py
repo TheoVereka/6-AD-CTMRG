@@ -689,6 +689,54 @@ def selected_records(selection: dict) -> list[dict]:
     return [candidate_record(row, {row.candidate_id}) for row in rows]
 
 
+def provenance_label(row: Candidate) -> str:
+    """Return the protocol that produced the selected h=0 tensor."""
+    source = row.source
+    if (source.startswith("original_2c3")
+            or source in {"legacy_seed:s001", "sep27_seed:a01"}):
+        return "original August"
+    if (source.startswith("legacy:") or source.startswith("sep27:")
+            or source.startswith("lastizar:") and "adiabatic" in source
+            or source.startswith("d7_repair:adiabatic")):
+        return "adiabatic"
+    if "replica1_small_h" in source:
+        return "h=0.005"
+    if (source.startswith("d7_repair:pin_h0p02")
+            or source.startswith("lastizar:task_pin") and "h0p02" in source):
+        return "h=0.02"
+    if source.startswith("lastizar:task_pin") and "h0p01" in source:
+        return "h=0.01"
+    if source.startswith("lastizar:task_pin") and "h0p03" in source:
+        return "h=0.03"
+    if (source.startswith("catalog:")
+            or source in {"legacy_seed:s102", "legacy_seed:s103",
+                          "sep27_seed:a03"}):
+        return "h=0.08"
+    raise RuntimeError(
+        f"unclassified selected-tensor provenance: {source} "
+        f"({row.texture}, D={row.D}, J2={row.J2})"
+    )
+
+
+def write_provenance_tables(selection: dict, output: Path) -> None:
+    """Write one D-by-J2 protocol matrix for each physical configuration."""
+    columns = ["D"] + [f"J2={J2:g}" for J2 in J2_GRID]
+    for texture, filename in (
+        ("dimer-plaquette", "dimer_provenance_table.csv"),
+        ("plaquette", "plaquette_provenance_table.csv"),
+    ):
+        matrix = []
+        for D in D_RANGES[texture]:
+            record = {column: "" for column in columns}
+            record["D"] = D
+            for J2 in J2_GRID:
+                row = selection.get((texture, D, J2))
+                if row is not None:
+                    record[f"J2={J2:g}"] = provenance_label(row)
+            matrix.append(record)
+        write_csv(output / filename, matrix, columns)
+
+
 def combined_color(texture: str, index: int, total: int):
     cmap = plt.get_cmap("YlOrRd" if texture == "dimer-plaquette" else "PuBu")
     fraction = 0.35 if total == 1 else 0.30 + 0.68 * index / (total - 1)
@@ -885,6 +933,7 @@ def main() -> int:
               diagnostic_fields)
     write_report(output / "selection_report.md", discovery, selection, score,
                  diagnostics, fixed_a)
+    write_provenance_tables(selection, output)
 
     plot_vs_j2(selection, output / "NN_corr_vs_J2_selected.pdf")
     for J2 in J2_GRID:
