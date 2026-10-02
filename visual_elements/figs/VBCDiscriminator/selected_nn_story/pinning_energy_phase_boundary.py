@@ -7,12 +7,17 @@ space and are deliberately excluded.  Set A contains (J2,D) pairs with at
 least two distinct positive and two distinct negative fields.  Set B contains
 every discovered scalar-field observation for the pairs in A, including h=0.
 
-Figure 03 shows all physically screened B points.  For figure 04, reruns at a
-fixed (J2,D,h) are reduced before fitting, each finite-D energy branch uses an
-ordinary quadratic E(h), and the finite-D roots enter an equal-D constant
-extrapolation.  Each of the three NN correlations is separately extrapolated
-with the fixed-a_g gapped form on an adaptive contiguous high-D suffix; Delta
-and q are calculated only from the three extrapolated correlations.
+Figure 03 shows all physically screened B points.  For figures 02/04 and the
+crossing-energy comparison, reruns at fixed (J2,D,h) are reduced first.  At
+each (J2,D,branch), energy is fitted quadratically in h; a visibly inconsistent
+h=0 point is omitted by an explicit leave-zero-out test.  The two fitted
+finite-D branches give h_c,D and E_crossing,D, which are then extrapolated in D
+in two different ways: E_crossing,D enters an error-weighted fixed-a_g gapped
+fit, while h_c,D is statistically combined using its uncertainty and its
+energy distance from the extrapolated crossing energy.  Each of the three NN
+correlations is
+separately extrapolated with the same fixed-a_g construction; Delta and q are
+calculated only from the three extrapolated correlations.
 """
 
 from __future__ import annotations
@@ -61,6 +66,8 @@ ROOTS = (
      / "Results_LastIzar"),
     ("d7_repair", DATA / "distinVBCsJ2Continuation" / "D7DimerJ2_0p26"
      / "Results_D7DimerJ2_0p26"),
+    ("kuma_targeted_repairs", DATA / "distinVBCsKumaTargetedRepairs"
+     / "Results_Kuma_TargetedRepairs"),
     ("izar_j2_sequences", DATA / "distinVBCsJ2Continuation"
      / "Results_Izar_J2_sequences"),
     ("external_sep27", DATA / "external" / "Working_AD_Honeycomb_Sep27"),
@@ -167,6 +174,12 @@ def discover_points() -> tuple[list[FieldPoint], list[str], int, int]:
             continue
         for path in sorted(root.rglob("D_*_chi_*_energy_magnetization_correlation.txt")):
             if OBS_RE.fullmatch(path.name) is None:
+                continue
+            # A copied observation can exist while the cluster process is
+            # still writing the stage.  Targeted repairs become visible to
+            # every downstream fit only after their atomic completion marker.
+            if (label == "kuma_targeted_repairs"
+                    and not (path.parent / "COMPLETED.stage").is_file()):
                 continue
             hyperparams_path = path.parent / "hyperparams.yaml"
             if not hyperparams_path.is_file():
@@ -502,6 +515,16 @@ def load_gapped_a() -> dict[float, float]:
             if (row.get("ansatz") == "2C3" and row.get("model") == "gapped"
                     and row.get("parameter") == "a"):
                 values[float(row["J2"])] = float(row["central"])
+    return values
+
+
+def load_gapped_a_errors() -> dict[float, float]:
+    values: dict[float, float] = {}
+    with ENERGY_FITS.open(encoding="utf-8-sig", newline="") as stream:
+        for row in csv.DictReader(stream):
+            if (row.get("ansatz") == "2C3" and row.get("model") == "gapped"
+                    and row.get("parameter") == "a"):
+                values[float(row["J2"])] = abs(float(row["error"]))
     return values
 
 
@@ -1162,6 +1185,120 @@ def plot_phase_boundary(results: list[CrossingResult], output: Path) -> None:
     plt.close(figure)
 
 
+def plot_two_stage_energy_diagnostic(
+    crossing: dict, nodes: list[dict], finite_D: list[dict], output: Path,
+) -> None:
+    """Show finite-D h fits, their crossings, and the combined h_c."""
+    figure, axis = plt.subplots(figsize=(6.8, 5.0), constrained_layout=True)
+    styles = {
+        "dimer-plaquette": ("#d62728", "o", "dimer-plaquette"),
+        "plaquette": ("#1f77b4", "s", "plaquette"),
+    }
+    for branch in SCALAR_BRANCHES:
+        color, marker, label = styles[branch]
+        rows = sorted([row for row in nodes if row["branch"] == branch],
+                      key=lambda row: row["D"])
+        if rows:
+            D_min = min(int(row["D"]) for row in rows)
+            D_max = max(int(row["D"]) for row in rows)
+        for row in rows:
+            D = int(row["D"])
+            alpha = (0.22 if D_max == D_min else
+                     0.16 + 0.34 * (D - D_min) / (D_max - D_min))
+            h_bound = min(float(row["h_max"]), ENERGY_DIAGNOSTIC_H_LIMIT)
+            if branch == "dimer-plaquette":
+                fields = np.linspace(-h_bound, 0.0, 100)
+            else:
+                fields = np.linspace(0.0, h_bound, 100)
+            energy = (float(row["E0"]) + float(row["E1"]) * fields
+                      + float(row["E2"]) * fields ** 2)
+            axis.plot(fields, energy, color=color, alpha=alpha,
+                      linewidth=0.9)
+            raw_h = np.asarray([
+                float(value) for value in str(row["h_values"]).split()
+            ])
+            raw_E = np.asarray([
+                float(value) for value in str(row["E_values"]).split()
+            ])
+            near = np.abs(raw_h) <= ENERGY_DIAGNOSTIC_H_LIMIT + 1.0e-12
+            axis.scatter(raw_h[near], raw_E[near], marker=marker, s=12,
+                         color=color, alpha=alpha, linewidths=0)
+        axis.plot([], [], color=color, linewidth=2.0, label=label)
+    if finite_D:
+        D_min = min(int(row["D"]) for row in finite_D)
+        D_max = max(int(row["D"]) for row in finite_D)
+        for row in finite_D:
+            D = int(row["D"])
+            alpha = (0.65 if D_max == D_min else
+                     0.35 + 0.55 * (D - D_min) / (D_max - D_min))
+            axis.errorbar(
+                float(row["h_c_D"]), float(row["E_crossing_D"]),
+                xerr=float(row["h_c_D_sigma"]),
+                yerr=float(row["E_crossing_D_sigma"]),
+                linestyle="none", marker="x", markersize=5.0,
+                color="black", alpha=alpha, capsize=1.5, zorder=5,
+            )
+    h_c = float(crossing.get("h_c", math.nan))
+    if math.isfinite(h_c):
+        axis.axvline(h_c, color="#8a5a00", linewidth=1.5, linestyle="--",
+                     label=r"$h_c$")
+    axis.set_xlim(-1.08 * ENERGY_DIAGNOSTIC_H_LIMIT,
+                  1.08 * ENERGY_DIAGNOSTIC_H_LIMIT)
+    axis.set_xlabel(r"signed pinning field $h$")
+    axis.set_ylabel("energy per site")
+    axis.set_title(
+        rf"$J_2={float(crossing['J2']):g}$: cross at each $D$, then combine"
+    )
+    axis.grid(alpha=0.2)
+    axis.legend(frameon=False, fontsize=8.5)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(output)
+    plt.close(figure)
+
+
+def plot_two_stage_phase_boundary(crossings: list[dict], output: Path) -> None:
+    valid = [row for row in sorted(crossings, key=lambda row: row["J2"])
+             if math.isfinite(row.get("h_c", math.nan))]
+    figure, axis = plt.subplots(figsize=(6.8, 6.0), constrained_layout=True)
+    if valid:
+        h = np.asarray([row["h_c"] for row in valid], dtype=float)
+        J2 = np.asarray([row["J2"] for row in valid], dtype=float)
+        lower = np.asarray([
+            row.get("h_c_error_low", row.get("error_1sigma", 0.0)) for row in valid
+        ], dtype=float)
+        upper = np.asarray([
+            row.get("h_c_error_high", row.get("error_1sigma", 0.0)) for row in valid
+        ], dtype=float)
+        axis.plot(h, J2, color="#6b2f8a", linewidth=1.8, zorder=3)
+        axis.errorbar(
+            h, J2, xerr=np.vstack((lower, upper)), linestyle="none",
+            marker="o", markersize=6.0, color="#6b2f8a", capsize=2.5,
+            zorder=4, label=r"statistical $h_c$",
+        )
+    axis.plot(
+        [0.0, 0.0], [0.24, 0.275], color="#00d000", linewidth=7.0,
+        solid_capstyle="butt", zorder=2,
+        label=r"$h=0$, $0.24\leq J_2\leq0.275$",
+    )
+    all_h = [0.0] + [float(row["h_c"]) for row in valid]
+    all_errors = [0.0] + [max(
+        float(row.get("h_c_error_low", 0.0)),
+        float(row.get("h_c_error_high", 0.0)),
+    ) for row in valid]
+    limit = max(0.001, 1.2 * max(
+        abs(value) + error for value, error in zip(all_h, all_errors)
+    ))
+    axis.set_xlim(-limit, limit)
+    axis.set_ylim(0.235, 0.345)
+    axis.set_xlabel(r"crossing field $h_c$")
+    axis.set_ylabel(r"$J_2$")
+    axis.grid(alpha=0.20)
+    axis.legend(frameon=False, fontsize=9, loc="best")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(output)
+    plt.close(figure)
+
+
 def full_energy_design(rows: list[FieldPoint], a_g: float) -> np.ndarray:
     """Cubic-in-h energy surface with finite-D corrections through h^2."""
     matrix = []
@@ -1219,154 +1356,394 @@ def full_crossing_uncertainty(
             roots.append(root)
     if len(roots) < 500:
         return math.nan, math.nan, math.nan
-    q025, q975 = np.quantile(roots, [0.025, 0.975])
-    sigma = (float(q975) - float(q025)) / (2.0 * 1.959963984540054)
-    return sigma, float(q025), float(q975)
+    q16, q84 = np.quantile(roots, [0.15865525393145707,
+                                   0.8413447460685429])
+    sigma = float(np.std(roots, ddof=1))
+    return sigma, float(q16), float(q84)
 
 
-def local_full_h_crossings(rows: list[FieldPoint]) -> list[dict]:
-    """Return one ordinary quadratic crossing per bond dimension.
+ENERGY_H_FIT_LIMIT = 8.0e-2
+ENERGY_DIAGNOSTIC_H_LIMIT = 5.0e-3
+ENERGY_MIN_D = 6
+ENERGY_H0_ABS_TOL = 3.0e-4
+ENERGY_H0_RMS_FACTOR = 6.0
+ENERGY_MC_SAMPLES = 12000
+ENERGY_H_MIXTURE_SAMPLES = 100000
 
-    Replicas/protocols at the same field are first replaced by their median,
-    so every sampled field and every D enters exactly once.  This is the
-    finite-D construction that is visually represented by figure 03.
-    """
-    output = []
-    for D in sorted({row.D for row in rows}):
-        coefficients: dict[str, np.ndarray] = {}
-        diagnostics: dict[str, tuple[int, float]] = {}
-        for branch in SCALAR_BRANCHES:
-            subset = [row for row in rows
-                      if row.D == D and row.branch == branch]
-            by_h: dict[float, list[float]] = {}
-            for row in subset:
-                by_h.setdefault(round(row.signed_h, 12), []).append(row.energy)
-            if len(by_h) < 3:
-                continue
-            fields = np.asarray(sorted(by_h), dtype=float)
-            energy = np.asarray([
-                float(np.median(by_h[field])) for field in fields
-            ])
-            degree = 2
-            h_scale = float(np.max(np.abs(fields))) or 1.0
-            scaled = fields / h_scale
-            matrix = np.column_stack([
-                scaled ** power for power in range(degree + 1)
-            ])
-            if np.linalg.matrix_rank(matrix) < degree + 1:
-                continue
-            beta, *_ = np.linalg.lstsq(matrix, energy, rcond=None)
-            residuals = energy - matrix @ beta
-            coeff = np.zeros(3)
-            for power, value in enumerate(beta):
-                coeff[power] = value / (h_scale ** power)
-            coefficients[branch] = coeff
-            diagnostics[branch] = (
-                len(fields), float(np.sqrt(np.mean(residuals ** 2))),
+
+def _quadratic_h_fit(fields: np.ndarray, energies: np.ndarray) -> tuple[
+    np.ndarray, np.ndarray, np.ndarray
+]:
+    """Equal-h OLS in a scaled coordinate, returned in physical h units."""
+    h_scale = float(np.max(np.abs(fields)))
+    if h_scale <= 0.0:
+        raise ValueError("quadratic h fit has no nonzero field")
+    scaled = fields / h_scale
+    design = np.column_stack((np.ones(len(fields)), scaled, scaled ** 2))
+    if len(fields) < 3 or np.linalg.matrix_rank(design) < 3:
+        raise ValueError("quadratic h fit is rank deficient")
+    beta_scaled, *_ = np.linalg.lstsq(design, energies, rcond=None)
+    residual = energies - design @ beta_scaled
+    inverse = np.linalg.pinv(design.T @ design)
+    dof = max(1, len(fields) - 3)
+    covariance_scaled = float(np.sum(residual ** 2) / dof) * inverse
+    transform = np.diag([1.0, 1.0 / h_scale, 1.0 / h_scale ** 2])
+    return (transform @ beta_scaled,
+            positive_semidefinite(transform @ covariance_scaled @ transform),
+            residual)
+
+
+def fit_energy_h_at_D(
+    J2: float, D: int, branch: str, rows: list[FieldPoint],
+) -> dict | None:
+    """First stage: median per h, then the smallest supported near-zero fit."""
+    by_h: dict[float, list[float]] = {}
+    for row in rows:
+        if (row.D == D and row.branch == branch
+                and abs(row.signed_h) <= ENERGY_H_FIT_LIMIT + 1.0e-12):
+            by_h.setdefault(round(row.signed_h, 12), []).append(row.energy)
+    all_fields = np.asarray(sorted(by_h), dtype=float)
+    if len(all_fields) < 3 or not np.any(np.abs(all_fields) > 1.0e-14):
+        return None
+    all_energies = np.asarray([
+        float(np.median(by_h[float(field)])) for field in all_fields
+    ], dtype=float)
+    # Four distinct fields give one residual degree of freedom.  Use the
+    # smallest near-zero window that supports this; fall back to three fields
+    # only when no four-point window exists.
+    chosen = None
+    for minimum_count in (4, 3):
+        for window in (0.005, 0.01, 0.02, 0.04, ENERGY_H_FIT_LIMIT):
+            mask = np.abs(all_fields) <= window + 1.0e-12
+            candidate = all_fields[mask]
+            if (len(candidate) >= minimum_count
+                    and np.linalg.matrix_rank(np.column_stack((
+                        np.ones(len(candidate)), candidate, candidate ** 2,
+                    ))) == 3):
+                chosen = mask
+                break
+        if chosen is not None:
+            break
+    if chosen is None:
+        return None
+    fields = all_fields[chosen]
+    energies = all_energies[chosen]
+
+    excluded_h0 = False
+    h0_residual = math.nan
+    h0_threshold = math.nan
+    zero_indices = np.flatnonzero(np.abs(fields) <= 1.0e-14)
+    nonzero = np.abs(fields) > 1.0e-14
+    if len(zero_indices) == 1 and int(np.count_nonzero(nonzero)) >= 4:
+        try:
+            nonzero_beta, _, nonzero_residual = _quadratic_h_fit(
+                fields[nonzero], energies[nonzero],
             )
-        if set(coefficients) != set(SCALAR_BRANCHES):
-            continue
-        crossing = crossing_from_polynomials(
-            coefficients["plaquette"], coefficients["dimer-plaquette"],
+            h0_residual = abs(float(
+                energies[zero_indices[0]] - nonzero_beta[0]
+            ))
+            nonzero_rms = float(np.sqrt(np.mean(nonzero_residual ** 2)))
+            h0_threshold = max(
+                ENERGY_H0_ABS_TOL, ENERGY_H0_RMS_FACTOR * nonzero_rms,
+            )
+            excluded_h0 = h0_residual > h0_threshold
+        except ValueError:
+            pass
+    used = nonzero if excluded_h0 else np.ones(len(fields), dtype=bool)
+    try:
+        beta, covariance, residual = _quadratic_h_fit(
+            fields[used], energies[used],
         )
-        if not math.isfinite(crossing):
+    except ValueError:
+        return None
+    h_max = float(np.max(np.abs(fields[used])))
+    return {
+        "J2": J2, "D": D, "branch": branch,
+        "E0": float(beta[0]), "E1": float(beta[1]),
+        "E2": float(beta[2]),
+        "cov00": float(covariance[0, 0]),
+        "cov01": float(covariance[0, 1]),
+        "cov02": float(covariance[0, 2]),
+        "cov11": float(covariance[1, 1]),
+        "cov12": float(covariance[1, 2]),
+        "cov22": float(covariance[2, 2]),
+        "h_max": h_max,
+        "n_h": int(np.count_nonzero(used)),
+        "h_values": " ".join(f"{value:g}" for value in fields[used]),
+        "E_values": " ".join(f"{value:.16g}" for value in energies[used]),
+        "h_fit_rms": float(np.sqrt(np.mean(residual ** 2))),
+        "h0_excluded": excluded_h0,
+        "h0_residual": h0_residual, "h0_threshold": h0_threshold,
+        "n_raw": sum(len(by_h[float(field)]) for field in fields),
+    }
+
+
+def build_energy_h_fits(J2: float, rows: list[FieldPoint]) -> list[dict]:
+    nodes = []
+    dimensions = sorted({row.D for row in rows if row.D >= ENERGY_MIN_D})
+    for branch in SCALAR_BRANCHES:
+        for D in dimensions:
+            fit = fit_energy_h_at_D(J2, D, branch, rows)
+            if fit is not None:
+                nodes.append(fit)
+    return nodes
+
+
+def _energy_node_beta(node: dict) -> np.ndarray:
+    return np.asarray([node["E0"], node["E1"], node["E2"]], dtype=float)
+
+
+def _energy_node_covariance(node: dict) -> np.ndarray:
+    return np.asarray([
+        [node["cov00"], node["cov01"], node["cov02"]],
+        [node["cov01"], node["cov11"], node["cov12"]],
+        [node["cov02"], node["cov12"], node["cov22"]],
+    ], dtype=float)
+
+
+def positive_semidefinite(covariance: np.ndarray) -> np.ndarray:
+    covariance = 0.5 * (covariance + covariance.T)
+    eigenvalues, eigenvectors = np.linalg.eigh(covariance)
+    return eigenvectors @ np.diag(np.maximum(eigenvalues, 0.0)) @ eigenvectors.T
+
+
+def build_finite_D_energy_crossings(
+    J2: float, nodes: list[dict],
+) -> list[dict]:
+    """Cross the two fitted h branches independently at every D."""
+    output = []
+    for D in sorted({int(node["D"]) for node in nodes}):
+        by_branch = {
+            branch: next((node for node in nodes if (
+                int(node["D"]) == D and node["branch"] == branch
+            )), None)
+            for branch in SCALAR_BRANCHES
+        }
+        if any(node is None for node in by_branch.values()):
             continue
+        plaquette = by_branch["plaquette"]
+        dimer = by_branch["dimer-plaquette"]
+        assert plaquette is not None and dimer is not None
+        p_beta = _energy_node_beta(plaquette)
+        d_beta = _energy_node_beta(dimer)
+        h_c_D = crossing_from_polynomials(p_beta, d_beta)
+        if not math.isfinite(h_c_D):
+            continue
+        E_p = float(sum(p_beta[power] * h_c_D ** power
+                        for power in range(3)))
+        E_d = float(sum(d_beta[power] * h_c_D ** power
+                        for power in range(3)))
+        E_crossing_D = 0.5 * (E_p + E_d)
+
+        rng = np.random.default_rng(
+            510000 + int(round(1000 * J2)) * 100 + D
+        )
+        p_samples = rng.multivariate_normal(
+            p_beta, positive_semidefinite(_energy_node_covariance(plaquette)),
+            size=4000, check_valid="ignore",
+        )
+        d_samples = rng.multivariate_normal(
+            d_beta, positive_semidefinite(_energy_node_covariance(dimer)),
+            size=4000, check_valid="ignore",
+        )
+        samples = []
+        for sampled_p, sampled_d in zip(p_samples, d_samples):
+            root = crossing_from_polynomials(sampled_p, sampled_d)
+            if not math.isfinite(root):
+                continue
+            sampled_E_p = float(sum(
+                sampled_p[power] * root ** power for power in range(3)
+            ))
+            sampled_E_d = float(sum(
+                sampled_d[power] * root ** power for power in range(3)
+            ))
+            samples.append((root, 0.5 * (sampled_E_p + sampled_E_d)))
+        if len(samples) >= 500:
+            local_covariance = positive_semidefinite(
+                np.cov(np.asarray(samples, dtype=float), rowvar=False, ddof=1)
+            )
+        else:
+            local_covariance = np.zeros((2, 2), dtype=float)
+        h_max = max(float(plaquette["h_max"]), float(dimer["h_max"]))
         output.append({
-            "D": D, "h_c_D": crossing,
-            "plaquette_n_fields": diagnostics["plaquette"][0],
-            "dimer_n_fields": diagnostics["dimer-plaquette"][0],
-            "plaquette_rms": diagnostics["plaquette"][1],
-            "dimer_rms": diagnostics["dimer-plaquette"][1],
-            "plaquette_E0": coefficients["plaquette"][0],
-            "plaquette_E1": coefficients["plaquette"][1],
-            "plaquette_E2": coefficients["plaquette"][2],
-            "dimer_E0": coefficients["dimer-plaquette"][0],
-            "dimer_E1": coefficients["dimer-plaquette"][1],
-            "dimer_E2": coefficients["dimer-plaquette"][2],
+            "J2": J2, "D": D,
+            "h_c_D": h_c_D, "E_crossing_D": E_crossing_D,
+            "h_c_D_sigma": math.sqrt(max(0.0, local_covariance[0, 0])),
+            "E_crossing_D_sigma": math.sqrt(
+                max(0.0, local_covariance[1, 1])
+            ),
+            "hE_covariance": float(local_covariance[0, 1]),
+            "h_max_D": h_max,
+            "plaquette_h_max": float(plaquette["h_max"]),
+            "dimer_h_max": float(dimer["h_max"]),
+            "plaquette_h0_excluded": bool(plaquette["h0_excluded"]),
+            "dimer_h0_excluded": bool(dimer["h0_excluded"]),
+            "branch_energy_mismatch": abs(E_p - E_d),
+            "mc_accepted": len(samples),
         })
     return output
 
 
-def fit_all_good_crossing(
-    J2: float, rows: list[FieldPoint], _a_g: float,
-) -> tuple[dict, list[dict], list[dict]]:
-    """Constant high-D extrapolation of the equally weighted finite-D roots.
+def fit_crossing_observables_vs_D(
+    rows: list[dict], a_g: float, a_g_error: float,
+) -> dict | None:
+    """Error-weight E_c(D) fit, then energy-aware h_c statistics."""
+    selected = sorted(rows, key=lambda row: row["D"])
+    if len(selected) < 3:
+        return None
+    dimensions = np.asarray([row["D"] for row in selected], dtype=float)
+    energies = np.asarray([
+        row["E_crossing_D"] for row in selected
+    ], dtype=float)
+    energy_errors = np.asarray([
+        row["E_crossing_D_sigma"] for row in selected
+    ], dtype=float)
+    positive_E_errors = energy_errors[
+        np.isfinite(energy_errors) & (energy_errors > 0.0)
+    ]
+    E_error_floor = (0.1 * float(np.min(positive_E_errors))
+                     if len(positive_E_errors) else 1.0e-10)
+    energy_errors = np.where(
+        np.isfinite(energy_errors) & (energy_errors > 0.0),
+        energy_errors, E_error_floor,
+    )
+    objective_weights = 1.0 / energy_errors ** 2
 
-    This intentionally contains no robust weighting.  Repeated runs cannot
-    change the answer because they were median-reduced before each D fit.
-    """
-    local = local_full_h_crossings(rows)
-    for item in local:
-        item["J2"] = J2
-    high_D = [item for item in local if item["D"] >= 6]
-    if not high_D:
-        high_D = local
-    finite_values = np.asarray(
-        [item["h_c_D"] for item in high_D], dtype=float,
+    def solve_energy(exponent: float) -> tuple[
+        np.ndarray, np.ndarray, np.ndarray, float
+    ]:
+        design = np.column_stack((
+            np.ones(len(dimensions)), np.exp(-exponent * dimensions),
+        ))
+        inverse = np.linalg.pinv(
+            design.T @ (objective_weights[:, None] * design)
+        )
+        mapping = inverse @ design.T @ np.diag(objective_weights)
+        parameters = mapping @ energies
+        residual = energies - design @ parameters
+        dof = max(1, len(selected) - 2)
+        chi2_reduced = float(
+            np.sum((residual / energy_errors) ** 2) / dof
+        )
+        covariance = inverse * max(1.0, chi2_reduced)
+        return parameters, covariance, residual, chi2_reduced
+
+    parameters, covariance, residual, chi2_reduced = solve_energy(a_g)
+    a_systematic = 0.0
+    if math.isfinite(a_g_error) and a_g_error > 0.0:
+        lower, _, _, _ = solve_energy(max(1.0e-8, a_g - a_g_error))
+        upper, _, _, _ = solve_energy(a_g + a_g_error)
+        a_systematic = 0.5 * float(upper[0] - lower[0])
+    E_crossing = float(parameters[0])
+    E_sigma = math.hypot(
+        math.sqrt(max(0.0, float(covariance[0, 0]))), a_systematic,
     )
-    if not len(finite_values):
-        return ({
-            "J2": J2, "h_c": math.nan, "error95": math.nan,
-            "contains_h0_95": False,
-            "reason": "no D with two three-field quadratic branches",
-        }, [], local)
-    # The final branch energies are the equal-D constant extrapolations of
-    # the three fitted coefficients.  Their closest-to-zero intersection is
-    # the reported central h_c; finite-D roots determine its uncertainty.
-    plaquette_coefficients = np.asarray([
-        float(np.mean([item[f"plaquette_E{power}"] for item in high_D]))
-        for power in range(3)
-    ])
-    dimer_coefficients = np.asarray([
-        float(np.mean([item[f"dimer_E{power}"] for item in high_D]))
-        for power in range(3)
-    ])
-    h_c = crossing_from_polynomials(
-        plaquette_coefficients, dimer_coefficients,
+
+    h_values = np.asarray([row["h_c_D"] for row in selected], dtype=float)
+    h_errors = np.asarray([row["h_c_D_sigma"] for row in selected], dtype=float)
+    positive_h_errors = h_errors[
+        np.isfinite(h_errors) & (h_errors > 0.0)
+    ]
+    h_error_floor = (0.1 * float(np.min(positive_h_errors))
+                     if len(positive_h_errors) else 1.0e-10)
+    h_errors = np.where(
+        np.isfinite(h_errors) & (h_errors > 0.0), h_errors, h_error_floor,
     )
-    finite_spread = (float(np.std(finite_values, ddof=1))
-                     if len(finite_values) >= 2 else math.nan)
-    stat_sigma = (finite_spread / math.sqrt(len(finite_values))
-                  if math.isfinite(finite_spread) else math.nan)
-    error95 = (1.959963984540054 * stat_sigma
-               if math.isfinite(stat_sigma) else math.nan)
-    conditional_q025 = h_c - error95 if math.isfinite(error95) else math.nan
-    conditional_q975 = h_c + error95 if math.isfinite(error95) else math.nan
-    contains_zero = (math.isfinite(h_c) and math.isfinite(error95)
-                     and abs(h_c) <= error95)
-    point_audit = [{
-        "J2": J2, "branch": row.branch, "D": row.D,
-        "signed_h": row.signed_h, "energy": row.energy,
-        "used": True, "aggregation": "median within (D, branch, h)",
-        "point_id": row.point_id, "path": row.path,
-    } for row in rows]
-    result = {
-        "J2": J2, "h_c": h_c, "error95": error95,
-        "contains_h0_95": contains_zero,
-        "conditional_stat_sigma": stat_sigma,
-        "conditional_q025": conditional_q025,
-        "conditional_q975": conditional_q975,
-        "finite_D_crossing_std": finite_spread,
-        "finite_D_crossing_count": len(high_D),
-        "Ds": " ".join(str(item["D"]) for item in high_D),
-        "plaquette_n": sum(item["plaquette_n_fields"] for item in high_D),
-        "dimer_n": sum(item["dimer_n_fields"] for item in high_D),
-        "plaquette_rms": float(np.mean([
-            item["plaquette_rms"] for item in high_D
-        ])),
-        "dimer_rms": float(np.mean([
-            item["dimer_rms"] for item in high_D
-        ])),
-        "plaquette_E0": plaquette_coefficients[0],
-        "plaquette_E1": plaquette_coefficients[1],
-        "plaquette_E2": plaquette_coefficients[2],
-        "dimer_E0": dimer_coefficients[0],
-        "dimer_E1": dimer_coefficients[1],
-        "dimer_E2": dimer_coefficients[2],
-        "reason": ("median per (D,h); ordinary quadratic E_D(h); "
-                   "equal-D coefficient extrapolation; finite-D-root 95% SEM"),
+    energy_distance = np.abs(energies - E_crossing)
+    distance_floor = max(1.0e-12, 1.0e-6 * E_sigma)
+    raw_h_weights = 1.0 / (
+        h_errors * np.maximum(energy_distance, distance_floor)
+    )
+    probabilities = raw_h_weights / np.sum(raw_h_weights)
+    h_c = float(np.sum(probabilities * h_values))
+
+    rng = np.random.default_rng(
+        610000 + int(round(1000.0 * float(selected[0]["J2"])))
+    )
+    choices = rng.choice(
+        len(selected), size=ENERGY_H_MIXTURE_SAMPLES, p=probabilities,
+    )
+    h_samples = rng.normal(h_values[choices], h_errors[choices])
+    h_q16, h_q84 = map(float, np.quantile(
+        h_samples, [0.15865525393145707, 0.8413447460685429]
+    ))
+    for index, row in enumerate(selected):
+        row["E_distance_to_extrapolated"] = float(energy_distance[index])
+        row["h_weight_raw"] = float(raw_h_weights[index])
+        row["h_weight_normalized"] = float(probabilities[index])
+    return {
+        "h_c": h_c, "h_c_q16": h_q16, "h_c_q84": h_q84,
+        "E_crossing": E_crossing, "E_crossing_sigma": E_sigma,
+        "n_D": len(selected),
+        "Ds": " ".join(str(int(value)) for value in dimensions),
+        "h_weights": " ".join(
+            f"{value:.8g}" for value in probabilities
+        ),
+        "E_crossing_D_fit_rms": float(np.sqrt(np.mean(residual ** 2))),
+        "E_crossing_reduced_chi2": chi2_reduced,
+        "a_g": a_g, "a_g_error": a_g_error,
+        "a_g_systematic_E_crossing": a_systematic,
     }
-    return result, point_audit, local
+
+
+def fit_all_good_crossing(
+    J2: float, rows: list[FieldPoint], a_g: float, a_g_error: float,
+) -> tuple[dict, list[dict], list[dict]]:
+    """Cross at each D, extrapolate E_c, then statistically combine h_c,D."""
+    nodes = build_energy_h_fits(J2, rows)
+    finite_D = build_finite_D_energy_crossings(J2, nodes)
+    extrapolation = fit_crossing_observables_vs_D(
+        finite_D, a_g, a_g_error,
+    )
+    if extrapolation is None:
+        return ({
+            "J2": J2, "h_c": math.nan, "error_1sigma": math.nan,
+            "contains_h0_1sigma": False,
+            "reason": "fewer than three finite-D energy crossings",
+        }, nodes, finite_D)
+    h_c = float(extrapolation["h_c"])
+    h_q16 = float(extrapolation["h_c_q16"])
+    h_q84 = float(extrapolation["h_c_q84"])
+    h_error_low = max(0.0, h_c - h_q16)
+    h_error_high = max(0.0, h_q84 - h_c)
+    h_sigma = 0.5 * (h_error_low + h_error_high)
+    E_crossing = float(extrapolation["E_crossing"])
+    E_sigma = float(extrapolation["E_crossing_sigma"])
+    E_q16, E_q84 = E_crossing - E_sigma, E_crossing + E_sigma
+    result = {
+        "J2": J2, "h_c": h_c, "error_1sigma": h_sigma,
+        "h_c_error_low": h_error_low, "h_c_error_high": h_error_high,
+        "h_c_q16": h_q16, "h_c_q84": h_q84,
+        "contains_h0_1sigma": bool(
+            math.isfinite(h_q16) and h_q16 <= 0.0 <= h_q84
+        ),
+        "conditional_stat_sigma": h_sigma,
+        "conditional_q16": h_q16, "conditional_q84": h_q84,
+        "E_crossing": E_crossing, "E_crossing_sigma": E_sigma,
+        "E_crossing_error_low": E_sigma,
+        "E_crossing_error_high": E_sigma,
+        "E_crossing_q16": E_q16, "E_crossing_q84": E_q84,
+        "finite_D_crossing_std": float(np.std(
+            [row["h_c_D"] for row in finite_D], ddof=1
+        )),
+        "finite_D_crossing_count": len(finite_D),
+        "Ds": extrapolation["Ds"],
+        "h_weights": extrapolation["h_weights"],
+        "E_crossing_D_fit_rms": extrapolation["E_crossing_D_fit_rms"],
+        "E_crossing_reduced_chi2": extrapolation[
+            "E_crossing_reduced_chi2"
+        ],
+        "a_g": extrapolation["a_g"],
+        "a_g_error": extrapolation["a_g_error"],
+        "a_g_systematic_E_crossing": extrapolation[
+            "a_g_systematic_E_crossing"
+        ],
+        "reason": ("median per h; quadratic branch fits and energy crossing "
+                   "at each D; optional h=0 outlier removal; E_crossing,D "
+                   "uses an error-weighted fixed-a_g fit; h_c is an "
+                   "energy-proximity/error weighted Gaussian mixture"),
+    }
+    return result, nodes, finite_D
 
 
 def averaged_correlations_by_D(rows: list[FieldPoint]) -> dict[int, np.ndarray]:
@@ -1427,20 +1804,17 @@ def candidate_high_D_correlation_fits(
 def fit_high_D_correlations(
     by_D: dict[int, np.ndarray], a_g: float,
 ) -> dict | None:
-    """Choose the physically stable thermodynamic extrapolation.
+    """Use the common high-D suffix with the stable physical endpoint.
 
-    Every contiguous high-D window containing at least the two largest D
-    values is tried.  The chosen common window for the three ranks is the one
-    whose extrapolated correlation triplet moves least from the actually
-    observed largest-D triplet.  This rejects exact but violently overshooting
-    two-point fits; the fit residual is retained only as an audit diagnostic.
+    The decision is made from the motion of the extrapolated triplet away
+    from the largest-D observation, not from the residual of the fit itself.
+    This rejects exact but violently overshooting two-point extrapolations.
     """
     candidates = candidate_high_D_correlation_fits(by_D, a_g)
     if not candidates:
         return None
     return min(candidates, key=lambda fit: (
-        fit["extrapolation_distance"],
-        -len(fit["Ds"]),
+        fit["extrapolation_distance"], -len(fit["Ds"]),
     ))
 
 
@@ -1530,7 +1904,7 @@ def build_texture_nodes(
             continue
         node = correlation_node(
             J2, signed_h, subset[0].branch, fit,
-            "per-D mean; endpoint-stable high-D fixed-a_g fits of three NN correlations",
+            "per-D mean; endpoint-stable common high-D fixed-a_g window",
         )
         nodes.append(node)
         candidates.append(node)
@@ -1631,80 +2005,6 @@ def centered_edges(
     return np.concatenate(([first], middle, [last]))
 
 
-def plot_selected_delta_comparison(
-    texture_nodes: list[dict], output: Path,
-) -> None:
-    """Replot the selected-NN data as Delta and add the h=0 extrapolation."""
-    selected_csv = HERE / "plots" / "selected_nn_data.csv"
-    if not selected_csv.is_file():
-        raise FileNotFoundError(
-            f"selected NN table is missing: {selected_csv}"
-        )
-    with selected_csv.open(encoding="utf-8-sig", newline="") as stream:
-        rows = [row for row in csv.DictReader(stream)
-                if row.get("selected", "").lower() == "true"]
-
-    textures = ("dimer-plaquette", "plaquette")
-    titles = {
-        "dimer-plaquette": "Dimer-plaquette sector",
-        "plaquette": "Plaquette sector",
-    }
-    figure, axes = plt.subplots(
-        1, 2, figsize=(16.0, 7.7), sharex=True, sharey=True,
-        constrained_layout=True,
-    )
-    for axis, texture in zip(axes, textures):
-        texture_rows = [row for row in rows if row["texture"] == texture]
-        dimensions = sorted({int(row["D"]) for row in texture_rows})
-        cmap = plt.get_cmap("YlOrRd" if texture == "dimer-plaquette" else "PuBu")
-        for index, D in enumerate(dimensions):
-            subset = sorted(
-                [row for row in texture_rows if int(row["D"]) == D],
-                key=lambda row: float(row["J2"]),
-            )
-            if not subset:
-                continue
-            fraction = (0.35 if len(dimensions) == 1 else
-                        0.30 + 0.68 * index / (len(dimensions) - 1))
-            alpha = (0.18 if len(dimensions) == 1 else
-                     0.18 + 0.82 * (D - dimensions[0])
-                     / max(1, dimensions[-1] - dimensions[0]))
-            axis.errorbar(
-                [float(row["J2"]) for row in subset],
-                [float(row["delta"]) for row in subset],
-                yerr=[float(row["delta_error"]) for row in subset],
-                color=cmap(fraction), alpha=alpha, marker="o",
-                markersize=5.2, linestyle="-", linewidth=1.05,
-                elinewidth=0.7, capsize=1.8, label=f"D={D}",
-            )
-
-        maximum_selected_J2 = max(float(row["J2"]) for row in texture_rows)
-        extrapolated = sorted(
-            [row for row in texture_nodes
-             if abs(float(row["signed_h"])) <= 1.0e-12
-             and float(row["J2"]) <= maximum_selected_J2 + 1.0e-12],
-            key=lambda row: float(row["J2"]),
-        )
-        axis.plot(
-            [float(row["J2"]) for row in extrapolated],
-            [float(row["extrapolated_Delta"]) for row in extrapolated],
-            color="0.08", marker="D", markerfacecolor="white",
-            markeredgewidth=1.2, markersize=5.5, linewidth=2.2,
-            label=r"extrapolated $\Delta(J_2,h=0)$", zorder=10,
-        )
-        axis.set_title(titles[texture], fontsize=13)
-        axis.set_xlabel(r"$J_2$", fontsize=12)
-        axis.grid(alpha=0.18)
-        axis.legend(loc="best", fontsize=8.0, frameon=False, ncol=2,
-                    handlelength=1.7, columnspacing=0.8)
-    axes[0].set_ylabel(
-        r"$\Delta=C_{\rm weak}-C_{\rm strong}$", fontsize=12,
-    )
-    output.parent.mkdir(parents=True, exist_ok=True)
-    figure.savefig(output)
-    plt.close(figure)
-
-
 def plot_04_phase_diagram(
     crossings: list[dict], texture_nodes: list[dict], output: Path,
 ) -> None:
@@ -1756,21 +2056,26 @@ def plot_04_phase_diagram(
     hc = [row["h_c"] for row in ordered]
     hc_x = [field_plot_coordinate(value) for value in hc]
     J2 = [row["J2"] for row in ordered]
-    errors = [row["error95"] for row in ordered]
     boundary, = axis.plot(
         hc_x, J2, color="#fff176", linewidth=2.2, marker="o",
         markersize=4.8, zorder=5,
-        label=r"extrapolated energy crossing $h_c$ (95% error)",
+        label=r"statistical energy crossing $h_c$",
     )
     boundary.set_path_effects([
         path_effects.Stroke(linewidth=4.0, foreground="black"),
         path_effects.Normal(),
     ])
-    for value, J2_value, error in zip(hc, J2, errors):
-        if not math.isfinite(error):
+    for row, value, J2_value in zip(ordered, hc, J2):
+        error_low = float(row.get(
+            "h_c_error_low", row.get("error_1sigma", math.nan)
+        ))
+        error_high = float(row.get(
+            "h_c_error_high", row.get("error_1sigma", math.nan)
+        ))
+        if not math.isfinite(error_low) or not math.isfinite(error_high):
             continue
-        left = field_plot_coordinate(value - error)
-        right = field_plot_coordinate(value + error)
+        left = field_plot_coordinate(value - error_low)
+        right = field_plot_coordinate(value + error_high)
         axis.plot([left, right], [J2_value, J2_value], color="#fff176",
                   linewidth=1.4, zorder=4)
         axis.plot([left, left], [J2_value - 0.0006, J2_value + 0.0006],
@@ -1870,38 +2175,26 @@ def main() -> int:
     all_good_points, all_good_audit = screen_normal_energy_curves(
         set_b, original_energies,
     )
+    # Energy extrapolation may use a high-D targeted repair even when that
+    # (J2,D) pair lacks the four-sided field coverage required for Set A.
+    energy_fit_points, energy_fit_audit = screen_normal_energy_curves(
+        points, original_energies,
+    )
     gapped_a = load_gapped_a()
-
-    results: list[CrossingResult] = []
-    fit_audit: list[dict] = []
-    per_D: list[dict] = []
-    for J2 in sorted({row.J2 for row in set_b}):
-        if J2 not in gapped_a:
-            results.append(CrossingResult(
-                J2, False, "missing figure-24 a_g", math.nan, math.nan,
-                math.nan, math.nan, math.nan, math.nan, 0, 0, 0, 0, 0, 0,
-                math.nan, math.nan, "", 0, math.nan,
-            ))
-            continue
-        subset = [row for row in representatives if close(row.J2, J2)]
-        result, audit, local = fit_crossing_for_j2(J2, subset, gapped_a[J2])
-        results.append(result)
-        fit_audit.extend(audit)
-        per_D.extend(local)
-
+    gapped_a_errors = load_gapped_a_errors()
     all_good_crossings: list[dict] = []
-    all_good_crossing_audit: list[dict] = []
-    all_good_local_crossings: list[dict] = []
-    for J2 in sorted({row.J2 for row in all_good_points}):
+    energy_h_fits: list[dict] = []
+    finite_D_energy_crossings: list[dict] = []
+    for J2 in sorted({row.J2 for row in energy_fit_points}):
         if J2 not in gapped_a:
             continue
-        subset = [row for row in all_good_points if close(row.J2, J2)]
-        crossing, audit, local = fit_all_good_crossing(
-            J2, subset, gapped_a[J2],
+        subset = [row for row in energy_fit_points if close(row.J2, J2)]
+        crossing, h_nodes, branch_fits = fit_all_good_crossing(
+            J2, subset, gapped_a[J2], gapped_a_errors.get(J2, 0.0),
         )
         all_good_crossings.append(crossing)
-        all_good_crossing_audit.extend(audit)
-        all_good_local_crossings.extend(local)
+        energy_h_fits.extend(h_nodes)
+        finite_D_energy_crossings.extend(branch_fits)
     texture_nodes, texture_candidates = build_texture_nodes(
         all_good_points, gapped_a,
     )
@@ -1912,19 +2205,27 @@ def main() -> int:
     write_dict_csv(output / "all_good_points.csv",
                    [asdict(row) for row in all_good_points])
     write_dict_csv(output / "all_good_points_audit.csv", all_good_audit)
+    write_dict_csv(output / "energy_fit_points.csv",
+                   [asdict(row) for row in energy_fit_points])
+    write_dict_csv(output / "energy_fit_points_audit.csv", energy_fit_audit)
     write_dict_csv(output / "representative_selection_audit.csv", [
         {**asdict(item.point), "selected_for_fit": item.selected,
          "selection_reason": item.reason} for item in decisions
     ])
-    write_dict_csv(output / "robust_fit_point_audit.csv", fit_audit)
-    write_dict_csv(output / "finite_D_crossing_diagnostics.csv", per_D)
-    write_dict_csv(output / "hc_D_infinity.csv", [asdict(row) for row in results])
+    write_dict_csv(output / "hc_D_infinity.csv", all_good_crossings)
     write_dict_csv(output / "hc_03_all_good_D_infinity.csv",
                    all_good_crossings)
-    write_dict_csv(output / "hc_03_all_good_fit_point_audit.csv",
-                   all_good_crossing_audit)
-    write_dict_csv(output / "hc_03_all_good_finite_D_crossings.csv",
-                   all_good_local_crossings)
+    write_dict_csv(output / "energy_h_quadratic_by_D.csv", energy_h_fits)
+    write_dict_csv(output / "energy_crossings_by_D.csv",
+                   finite_D_energy_crossings)
+    for stale_name in (
+        "robust_fit_point_audit.csv", "finite_D_crossing_diagnostics.csv",
+        "hc_03_all_good_fit_point_audit.csv",
+        "hc_03_all_good_finite_D_crossings.csv",
+        "energy_D_gapped_nodes.csv", "energy_quadratic_branch_fits.csv",
+        "energy_gapped_coefficients_D_infinity.csv",
+    ):
+        (output / stale_name).unlink(missing_ok=True)
     write_dict_csv(output / "texture_D_infinity_nodes.csv", texture_nodes)
     write_dict_csv(output / "texture_D_infinity_candidates.csv",
                    texture_candidates)
@@ -1941,16 +2242,19 @@ def main() -> int:
                r"plaquette $h>0$, dimer-plaquette $h<0$"),
     )
     diagnostics = output / "fit_diagnostics"
-    for result in results:
-        if result.J2 not in gapped_a:
-            continue
-        subset = [row for row in representatives if close(row.J2, result.J2)]
-        token = f"{result.J2:.6f}".rstrip("0").rstrip(".").replace(".", "p")
-        plot_fit_diagnostic(
-            result, subset, gapped_a[result.J2],
-            diagnostics / f"J2_{token}.pdf",
+    for crossing in all_good_crossings:
+        J2 = float(crossing["J2"])
+        nodes = [row for row in energy_h_fits
+                 if close(float(row["J2"]), J2)]
+        branches = [row for row in finite_D_energy_crossings
+                    if close(float(row["J2"]), J2)]
+        token = f"{J2:.6f}".rstrip("0").rstrip(".").replace(".", "p")
+        plot_two_stage_energy_diagnostic(
+            crossing, nodes, branches, diagnostics / f"J2_{token}.pdf",
         )
-    plot_phase_boundary(results, output / "02_hc_vs_J2_phase_boundary.pdf")
+    plot_two_stage_phase_boundary(
+        all_good_crossings, output / "02_hc_vs_J2_phase_boundary.pdf",
+    )
     plot_all_good_points(
         all_good_points, original_energies,
         output / "03_all_good_points.pdf",
@@ -1961,21 +2265,19 @@ def main() -> int:
         all_good_crossings, texture_nodes,
         output / "04_phasediagram.pdf",
     )
-    plot_selected_delta_comparison(
-        texture_nodes, output.parent / "Delta_vs_J2_selected.pdf",
-    )
-
-    accepted = sum(row.accepted for row in results)
+    accepted = sum(math.isfinite(row.get("h_c", math.nan))
+                   for row in all_good_crossings)
     print(f"Discovered scalar pinning observations: {len(points)}")
     print(f"Deduplicated copied observations: {duplicates}")
     print(f"Excluded non-scalar rank-split observations: {rank_split}")
     print(f"Set A: {len(set_a)} (J2,D) pairs")
     print(f"Set B: {len(set_b)} observations")
     print(f"All non-obvious-bad B points: {len(all_good_points)}")
-    print(f"D->infinity crossings: {accepted}/{len(results)} accepted")
-    zero_covered = sum(bool(row.get("contains_h0_95"))
+    print(f"finite-D fitted crossings: "
+          f"{accepted}/{len(all_good_crossings)} accepted")
+    zero_covered = sum(bool(row.get("contains_h0_1sigma"))
                        for row in all_good_crossings)
-    print("03 full-data 95% crossings containing h=0: "
+    print("statistical 1-sigma crossings containing h=0: "
           f"{zero_covered}/{len(all_good_crossings)}")
     print(f"Output: {output}")
     if failures:

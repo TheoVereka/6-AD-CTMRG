@@ -1,0 +1,21 @@
+#!/bin/bash
+#SBATCH --job-name=kr01z
+#SBATCH --qos=long
+#SBATCH --partition=h100
+#SBATCH --gres=gpu:1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=90G
+#SBATCH --time=167:59:50
+#SBATCH --output=logs/%x_%j.log
+
+set -euo pipefail
+module load nvhpc/24.7-mpi
+module load cuda/12.5.1
+source /home/pghosh/venvs/6adctmrg_Kuma/bin/activate
+BUNDLE_DIR="$(pwd)"
+export ALIAS=r01 D=10 CHI=120 SEED_J2=0.29 TARGET_J2=0.28
+export TEXTURE=dimer-plaquette ORIENTATION=0 FIELD=0 FIELD_LABEL=0
+export STAGE_HOURS=48 RANDOM_SEED=281002
+export INPUT_CKPT="${BUNDLE_DIR}/Results_Kuma_TargetedRepairs/r01/h_0p02/sweep_D10_chi120_best.pt"
+bash "${BUNDLE_DIR}/run_one_stage.sh"

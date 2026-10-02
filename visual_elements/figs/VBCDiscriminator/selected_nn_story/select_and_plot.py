@@ -82,6 +82,15 @@ D7_REPAIR_ROOT = (
     DATA / "distinVBCsJ2Continuation" / "D7DimerJ2_0p26"
     / "Results_D7DimerJ2_0p26"
 )
+KUMA_REPAIR_ROOT = (
+    DATA / "distinVBCsKumaTargetedRepairs"
+    / "Results_Kuma_TargetedRepairs"
+)
+KUMA_REPAIR_TARGETS = {
+    "r01": ("dimer-plaquette", 10, 0.28, 120),
+    "r02": ("plaquette", 10, 0.32, 120),
+    "r03": ("plaquette", 11, 0.32, 140),
+}
 ENERGY_FITS = DATA / "processed" / "publicationPlots" / "figure_24_fits.csv"
 DEFAULT_OUTPUT = HERE / "plots"
 
@@ -348,6 +357,49 @@ def discover_d7_repair(discovery: Discovery, references: dict) -> None:
             discovery, references, texture="dimer-plaquette", J2=0.26,
             D=7, chi=91, source=f"d7_repair:{label}",
             observation=observation,
+        )
+
+
+def discover_kuma_repairs(discovery: Discovery, references: dict) -> None:
+    """Read only completed h=0 children of the three targeted Kuma chains."""
+    if not KUMA_REPAIR_ROOT.is_dir():
+        return
+    for alias, (texture, D, J2, chi) in KUMA_REPAIR_TARGETS.items():
+        stage = KUMA_REPAIR_ROOT / alias / "h_0"
+        observation = stage / f"D_{D}_chi_{chi}_energy_magnetization_correlation.txt"
+        tensor = stage / f"sweep_D{D}_chi{chi}_best.pt"
+        if not (stage / "COMPLETED.stage").is_file():
+            continue
+        add_candidate(
+            discovery, references, texture=texture, J2=J2, D=D, chi=chi,
+            source=f"kuma_targeted_repair:{alias}:h0p02_to_h0",
+            observation=observation, tensor=tensor,
+        )
+
+
+def apply_kuma_repairs(
+    selection: dict[tuple[str, int, float], Candidate],
+    eligible: dict[tuple[str, int, float], list[Candidate]],
+    discovered: list[Candidate],
+) -> None:
+    """Add r01 and replace r02/r03, failing loudly if a completed run is bad."""
+    for alias, (texture, D, J2, _chi) in KUMA_REPAIR_TARGETS.items():
+        key = (texture, D, J2)
+        observed = [row for row in discovered if row.key == key]
+        if not observed:
+            continue
+        accepted = [row for row in eligible.get(key, [])
+                    if row.source.startswith(f"kuma_targeted_repair:{alias}:")]
+        if not accepted:
+            reasons = "; ".join(
+                row.rejection_reason or "not eligible" for row in observed
+            )
+            raise RuntimeError(
+                f"completed Kuma repair {alias} failed physical selection: {reasons}"
+            )
+        selection[key] = min(
+            accepted,
+            key=lambda row: (row.local_score, abs(row.energy_difference)),
         )
 
 
@@ -723,6 +775,8 @@ def provenance_label(row: Candidate) -> str:
     if (source.startswith("d7_repair:pin_h0p02")
             or source.startswith("lastizar:task_pin") and "h0p02" in source):
         return "h=0.02"
+    if source.startswith("kuma_targeted_repair:"):
+        return "h=0.02"
     if source.startswith("lastizar:task_pin") and "h0p01" in source:
         return "h=0.01"
     if source.startswith("lastizar:task_pin") and "h0p03" in source:
@@ -800,6 +854,139 @@ def plot_vs_j2(selection: dict, output: Path) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output)
     plt.close(fig)
+
+
+def stable_high_D_rank_fit(rows: list[Candidate], a_g: float) -> dict | None:
+    """Fit all three ranks on one physically stable contiguous high-D suffix.
+
+    Every suffix containing the two largest available bond dimensions is
+    tested.  The common suffix whose extrapolated triplet moves least from the
+    actually observed largest-D triplet is retained.  This is the established
+    selected-story rule: it suppresses exact but violently overshooting
+    two-point extrapolations without selecting a window from fit residuals.
+    """
+    ordered = sorted(rows, key=lambda row: row.D)
+    if len(ordered) < 2:
+        return None
+    candidates = []
+    for count in range(2, len(ordered) + 1):
+        subset = ordered[-count:]
+        dimensions = np.asarray([row.D for row in subset], dtype=float)
+        values = np.asarray([
+            [row.ranks[rank][0] for rank in range(3)] for row in subset
+        ], dtype=float)
+        design = np.column_stack((
+            np.ones(len(subset)), np.exp(-a_g * dimensions),
+        ))
+        beta, *_ = np.linalg.lstsq(design, values, rcond=None)
+        residual = values - design @ beta
+        correlations = np.sort(np.asarray(beta[0], dtype=float))
+        candidates.append({
+            "Ds": [row.D for row in subset],
+            "correlations": correlations,
+            "extrapolation_distance": float(np.max(np.abs(
+                correlations - values[-1]
+            ))),
+            "fit_rms_max": float(np.max(np.sqrt(
+                np.mean(residual ** 2, axis=0)
+            ))),
+        })
+    return min(candidates, key=lambda fit: (
+        fit["extrapolation_distance"], -len(fit["Ds"]),
+    ))
+
+
+def selected_h0_delta_curve(
+    selection: dict, fixed_a: dict[float, float],
+) -> list[dict]:
+    """Extrapolate each sector's ranks, average ranks, then form Delta."""
+    rows = list(selection.values())
+    curve = []
+    for J2 in J2_GRID:
+        if J2 not in fixed_a:
+            continue
+        sector_fits = []
+        for texture in TEXTURES:
+            subset = [
+                row for row in rows
+                if row.texture == texture and close(row.J2, J2)
+            ]
+            fit = stable_high_D_rank_fit(subset, fixed_a[J2])
+            if fit is not None:
+                sector_fits.append((texture, fit))
+        if len(sector_fits) != len(TEXTURES):
+            continue
+        correlations = np.mean(np.asarray([
+            fit["correlations"] for _, fit in sector_fits
+        ]), axis=0)
+        curve.append({
+            "J2": J2,
+            "Delta": float(correlations[2] - correlations[0]),
+            "strongest": float(correlations[0]),
+            "middle": float(correlations[1]),
+            "weakest": float(correlations[2]),
+            "dimer_Ds": " ".join(
+                str(D) for D in sector_fits[0][1]["Ds"]
+            ),
+            "plaquette_Ds": " ".join(
+                str(D) for D in sector_fits[1][1]["Ds"]
+            ),
+        })
+    return curve
+
+
+def plot_delta_vs_j2(
+    selection: dict, fixed_a: dict[float, float], output: Path,
+) -> list[dict]:
+    """Plot selected finite-D splittings and their independent h=0 limit."""
+    extrapolated = selected_h0_delta_curve(selection, fixed_a)
+    figure, axes = plt.subplots(
+        1, 2, figsize=(16.0, 7.7), sharex=True, sharey=True,
+        constrained_layout=True,
+    )
+    for axis, texture in zip(axes, TEXTURES):
+        texture_rows = [
+            row for row in selection.values() if row.texture == texture
+        ]
+        dimensions = sorted({row.D for row in texture_rows})
+        for index, D in enumerate(dimensions):
+            subset = sorted(
+                [row for row in texture_rows if row.D == D],
+                key=lambda row: row.J2,
+            )
+            if not subset:
+                continue
+            alpha = (0.18 if len(dimensions) == 1 else
+                     0.18 + 0.82 * (D - dimensions[0])
+                     / max(1, dimensions[-1] - dimensions[0]))
+            axis.errorbar(
+                [row.J2 for row in subset],
+                [row.delta for row in subset],
+                yerr=[row.delta_error for row in subset],
+                color=combined_color(texture, index, len(dimensions)),
+                alpha=alpha, marker="o", markersize=5.2,
+                linestyle="-", linewidth=1.05, elinewidth=0.7,
+                capsize=1.8, label=f"D={D}",
+            )
+        axis.plot(
+            [row["J2"] for row in extrapolated],
+            [row["Delta"] for row in extrapolated],
+            color="0.08", marker="D", markerfacecolor="white",
+            markeredgewidth=1.2, markersize=5.5, linewidth=2.2,
+            label=r"extrapolated $\Delta(J_2,h=0)$", zorder=10,
+        )
+        axis.set_title(TEXTURE_TITLES[texture], fontsize=13)
+        axis.set_xlabel(r"$J_2$", fontsize=12)
+        axis.grid(alpha=0.18)
+        axis.legend(loc="best", fontsize=8.0, frameon=False, ncol=2,
+                    handlelength=1.7, columnspacing=0.8)
+    axes[0].set_ylabel(
+        r"$\Delta=C_{\rm weak}-C_{\rm strong}$", fontsize=12,
+    )
+    output.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(output)
+    plt.close(figure)
+    return extrapolated
 
 
 def plot_inverse_D(selection: dict, J2: float, output: Path) -> None:
@@ -1006,6 +1193,17 @@ def main() -> int:
     eligible = make_eligible(discovery.candidates)
     fixed_a = load_fixed_a()
     selection, score = select_globally(eligible, fixed_a)
+
+    # Keep the established global selection unchanged except for the explicit
+    # add/replace targets.  Repair candidates therefore cannot perturb any
+    # unrelated (texture,D,J2) choice through the global objective.
+    repair_discovery = Discovery()
+    discover_kuma_repairs(repair_discovery, references)
+    repair_eligible = make_eligible(repair_discovery.candidates)
+    apply_kuma_repairs(selection, repair_eligible, repair_discovery.candidates)
+    discovery.candidates.extend(repair_discovery.candidates)
+    discovery.errors.extend(repair_discovery.errors)
+    score = objective(selection, fixed_a)
     diagnostics = fit_diagnostics(selection, fixed_a)
     selected_ids = {row.candidate_id for row in selection.values()}
 
@@ -1032,6 +1230,9 @@ def main() -> int:
     write_provenance_tables(selection, output)
 
     plot_vs_j2(selection, output / "NN_corr_vs_J2_selected.pdf")
+    plot_delta_vs_j2(
+        selection, fixed_a, output / "Delta_vs_J2_selected.pdf",
+    )
     for J2 in J2_GRID:
         plot_inverse_D(
             selection, J2,

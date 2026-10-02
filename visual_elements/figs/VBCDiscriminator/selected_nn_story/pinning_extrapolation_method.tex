@@ -37,16 +37,11 @@ independently from the unweighted two-parameter fits
  =C_{r,\infty}(J_2,h)+k_r(J_2,h)e^{-a_g(J_2)D},
  \qquad r\in\{\mathrm{strong},\mathrm{mid},\mathrm{weak}\},
 \end{equation}
-where $a_g(J_2)$ is fixed by the original-2C3 gapped energy fit.  Every
-contiguous high-$D$ window containing the two largest available bond
-dimensions is tested, using the same window for all three ranks.  We select
-the window that minimises
-\begin{equation}
- R=\max_r\left|C_{r,\infty}-\bar C_{r,D_{\max}}\right|,
-\end{equation}
-thereby rejecting formally exact but physically overshooting two-point
-extrapolations.  Fit residuals are retained only as diagnostics.  Only after
-these fits do we form
+where $a_g(J_2)$ is fixed by the original-2C3 gapped energy fit.  We test the
+contiguous high-$D$ suffixes containing the two largest available bond
+dimensions and use, for all three ranks, the suffix minimizing
+$\max_r|C_{r,\infty}-C_{r,D_{\max}}|$; every retained $D$ has equal weight.
+Only after these fits do we form
 \begin{equation}
  \Delta(J_2,h)=C_{\rm weak,\infty}-C_{\rm strong,\infty},\qquad
  q(J_2,h)=
@@ -64,35 +59,36 @@ corresponding ranks are then averaged,
 and the preceding definitions give $\Delta(J_2,0)$ and $q(J_2,0)$.  No value
 of either observable is imposed at $h=0$.
 
-For the energy, the median-reduced data of each sector $s\in\{p,d\}$ and
-each bond dimension are fitted by ordinary least squares,
+For the energy, replicas are first median-reduced at fixed $(J_2,D,h,s)$.
+For each bond dimension and sector $s\in\{p,d\}$, the sampled fields receive
+equal weight in
 \begin{equation}
- \widehat E_{s,D}(J_2,h)
- =a_{s,D}(J_2)+b_{s,D}(J_2)h+c_{s,D}(J_2)h^2.
+ E_{s,D}(J_2,h)=A_{s,D}(J_2)+B_{s,D}(J_2)h+C_{s,D}(J_2)h^2.
 \end{equation}
-The final equal-$D$ constant extrapolation is
+An $h=0$ datum is omitted only when its residual from the quadratic fitted to
+the nonzero fields exceeds both $3\times10^{-4}$ and six times that fit's RMS.
+The two finite-$D$ branches define
 \begin{equation}
- E_s(J_2,h)=\frac{1}{N_D}\sum_{D\ge6}\widehat E_{s,D}(J_2,h),
- \qquad
- E(J_2,h)=
- \begin{cases}
- E_d(J_2,h),&h<0,\\
- E_p(J_2,h),&h>0.
- \end{cases}
+ E_{p,D}(J_2,h_{c,D})=E_{d,D}(J_2,h_{c,D}),\qquad
+ E_{{\rm crossing},D}=\frac{E_{p,D}(h_{c,D})+E_{d,D}(h_{c,D})}{2}.
 \end{equation}
-The crossing field is the real root closest to the origin,
+The crossing energy is extrapolated with its statistical error,
 \begin{equation}
- E_p(J_2,h_c)=E_d(J_2,h_c),\qquad |h_c|\le10^{-2}.
+ E_{{\rm crossing},D}=E_{\rm crossing}+k_Ee^{-a_gD},\qquad
+ \chi^2=\sum_D\frac{[E_{{\rm crossing},D}-E_{\rm crossing}
+ -k_Ee^{-a_gD}]^2}{\sigma_{E,D}^2},
 \end{equation}
-For its uncertainty, the same equation is solved separately at every $D$,
-giving $h_{c,D}$.  With
+where $a_g(J_2)$ is fixed by the original-2C3 energy fit.  Its covariance,
+reduced-$\chi^2$ scatter, and the archived uncertainty of $a_g$ give
+$\sigma_{E_{\rm crossing}}$.
+
+The crossing fields are combined without a $D$-fit.  With
 \begin{equation}
- s_h^2=\frac{1}{N_D-1}\sum_D
- \left(h_{c,D}-\overline h_c\right)^2,
+ w_D=\frac{1}{\sigma_{h,D}\,|E_{{\rm crossing},D}-E_{\rm crossing}|},
+ \qquad p_D=\frac{w_D}{\sum_{D'}w_{D'}},\qquad
+ h_c=\sum_Dp_Dh_{c,D},
 \end{equation}
-the plotted horizontal interval is
-\begin{equation}
- h_c\ \pm\ 1.96\,\frac{s_h}{\sqrt{N_D}}.
-\end{equation}
+the asymmetric $1\sigma$ interval is the $15.87\%$--$84.13\%$ interval of
+$P(h)=\sum_Dp_D\,\mathcal N(h_{c,D},\sigma_{h,D})$.
 
 \end{document}

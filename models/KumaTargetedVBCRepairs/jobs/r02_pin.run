@@ -1,0 +1,21 @@
+#!/bin/bash
+#SBATCH --job-name=kr02p
+#SBATCH --qos=long
+#SBATCH --partition=h100
+#SBATCH --gres=gpu:1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=90G
+#SBATCH --time=167:59:50
+#SBATCH --output=logs/%x_%j.log
+
+set -euo pipefail
+module load nvhpc/24.7-mpi
+module load cuda/12.5.1
+source /home/pghosh/venvs/6adctmrg_Kuma/bin/activate
+BUNDLE_DIR="$(pwd)"
+export ALIAS=r02 D=10 CHI=120 SEED_J2=0.31 TARGET_J2=0.32
+export TEXTURE=plaquette ORIENTATION=2 FIELD=0.02 FIELD_LABEL=0p02
+export STAGE_HOURS=48 RANDOM_SEED=321001
+export INPUT_CKPT="${BUNDLE_DIR}/seeds/r02/tensor_best.pt"
+bash "${BUNDLE_DIR}/run_one_stage.sh"

@@ -1,0 +1,4 @@
+alias	D	chi	seed_J2	target_J2	texture	orientation	seed_sha256	action
+r01	10	120	0.29	0.28	dimer-plaquette	0	1cd1133f6d56dc90ba7078fdfeb7d22c0017f3e05a02922ee561c2e69cbd3ca4	add missing h=0 point
+r02	10	120	0.31	0.32	plaquette	2	3920f64613c3eadad05253c3eddfcf53a6205d49d863d83206d65b26f9dd582c	replace existing h=0 point
+r03	11	140	0.31	0.32	plaquette	1	f6a2a6b9b9f3eebbf84837e02d01ddb8cfd324388dc4cc9deaf8b4a867b2e49c	replace existing h=0 point
