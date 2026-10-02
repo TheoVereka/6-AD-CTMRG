@@ -63,4 +63,34 @@ curve check at fixed `(J2,D,branch)`.  It performs no chi cutoff, no
 CTMRG-lookahead cutoff, and no lowest-energy/variational-winner selection.  All
 points, including `h=0`, are small circles.  The exact 03 membership is
 exported as `all_good_points.csv`; every rejection and its curve residual are
-recorded in `all_good_points_audit.csv`.
+recorded in `all_good_points_audit.csv`.  A thick original-2C3 D=10 reference
+curve is drawn first at h=0, underneath every pinning layer: solid for
+`0.24<=J2<=0.275` and dashed for `0.275<=J2<=0.34`.
+
+`04_phasediagram.pdf` first median-reduces reruns at fixed `(J2,D,h)`, fits
+ordinary finite-D branches `E_s,D(h)=a_s,D+b_s,D h+c_s,D h^2`, and averages
+their coefficients with equal D weight.  The closest-to-zero crossing of the
+two resulting energies is reported with a 95% SEM from the finite-D roots.
+For the block background, reruns are first averaged within D.  Every
+contiguous high-D suffix containing the two highest D values is tested.  The
+common suffix for all three ranks is chosen to minimise the largest displacement
+between an extrapolated correlation and its observed value at the highest D;
+this tests the physical stability of the extrapolated endpoint rather than the
+in-sample residual.  Each selected D has one equal weight.  The three
+correlations are separately extrapolated by
+`C_r(D)=C_r,inf+k_r exp[-a_g(J2)D]`, with `a_g` fixed by the original-2C3
+gapped energy fit; only then are Delta and q formed.  The hue is
+`q=(Cweak+Cstrong-2Cmid)/(Cweak-Cstrong)`: dimer-plaquette is `q=-1` (red),
+plaquette is `q=+1` (blue).  The linear brightness scale is the extrapolated
+`Delta=Cweak-Cstrong`.  No h=0 value of q or Delta is imposed.  At h=0, the
+three selected dimer and three selected plaquette correlations are fitted
+separately, corresponding ranks are averaged, and q/Delta are computed from
+that averaged triplet.  At J2 values absent from the selected table, the same
+two-sector construction uses the all-good h=0 data.
+Every D and every sampled field has equal weight, independent of how many
+reruns are present.
+
+`Delta_vs_J2_selected.pdf` uses exactly the selected data underlying
+`NN_corr_vs_J2_selected.pdf`, replaces each correlation triplet by
+`Delta=Cweak-Cstrong`, and overlays the extrapolated h=0 Delta used by the
+phase-diagram background in both texture panels.

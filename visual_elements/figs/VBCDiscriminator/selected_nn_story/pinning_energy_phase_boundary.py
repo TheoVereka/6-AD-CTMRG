@@ -7,11 +7,12 @@ space and are deliberately excluded.  Set A contains (J2,D) pairs with at
 least two distinct positive and two distinct negative fields.  Set B contains
 every discovered scalar-field observation for the pairs in A, including h=0.
 
-The surface figure shows all B points.  Lines use a variational/high-chi
-representative at each (J2,D,h) and never connect different (J2,D) pairs.
-For h_c, each branch is robustly fitted near h=0 with the finite-D coordinate
-x_D=exp[-a_g(J2) D], where a_g is the archived figure-24 original-2C3 gapped
-energy-fit value.  The crossing is calculated from the x_D=0 branch energies.
+Figure 03 shows all physically screened B points.  For figure 04, reruns at a
+fixed (J2,D,h) are reduced before fitting, each finite-D energy branch uses an
+ordinary quadratic E(h), and the finite-D roots enter an equal-D constant
+extrapolation.  Each of the three NN correlations is separately extrapolated
+with the fixed-a_g gapped form on an adaptive contiguous high-D suffix; Delta
+and q are calculated only from the three extrapolated correlations.
 """
 
 from __future__ import annotations
@@ -29,7 +30,9 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+import matplotlib.patheffects as path_effects
 import numpy as np
+from scipy.interpolate import griddata
 
 
 HERE = Path(__file__).resolve().parent
@@ -83,6 +86,9 @@ class FieldPoint:
     replica: int
     energy: float
     chi_energy_shift: float
+    strongest: float
+    middle: float
+    weakest: float
     delta: float
     middle_fraction: float
     texture: str
@@ -213,6 +219,9 @@ def discover_points() -> tuple[list[FieldPoint], list[str], int, int]:
                     orientation=orientation, replica=replica,
                     energy=observation.energy_per_site,
                     chi_energy_shift=chi_shift, delta=observation.delta,
+                    strongest=observation.rank1,
+                    middle=observation.rank2,
+                    weakest=observation.rank3,
                     middle_fraction=observation.middle_fraction,
                     texture=observation.texture, content_sha256=digest,
                 ))
@@ -538,6 +547,45 @@ def robust_fit(X: np.ndarray, y: np.ndarray, degree: int) -> RobustFit | None:
     )
 
 
+def robust_weighted_fit_all(
+    X: np.ndarray, y: np.ndarray, degree: int,
+) -> RobustFit | None:
+    """Huber-weighted fit in which every supplied point retains nonzero weight."""
+    n, p = X.shape
+    if n < p or np.linalg.matrix_rank(X) < p:
+        return None
+    beta, *_ = np.linalg.lstsq(X, y, rcond=None)
+    weights = np.ones(n)
+    scale = 2.0e-7
+    for _ in range(60):
+        residuals = y - X @ beta
+        median = float(np.median(residuals))
+        scale = max(
+            1.4826 * float(np.median(np.abs(residuals - median))), 2.0e-7,
+        )
+        ratio = np.abs(residuals - median) / (1.5 * scale)
+        new_weights = np.ones(n)
+        mask = ratio > 1.0
+        new_weights[mask] = 1.0 / ratio[mask]
+        weighted_X = X * np.sqrt(new_weights)[:, None]
+        weighted_y = y * np.sqrt(new_weights)
+        new_beta, *_ = np.linalg.lstsq(weighted_X, weighted_y, rcond=None)
+        if np.max(np.abs(new_beta - beta)) <= 1.0e-12:
+            beta, weights = new_beta, new_weights
+            break
+        beta, weights = new_beta, new_weights
+    residuals = y - X @ beta
+    effective_dof = max(1.0, float(np.sum(weights)) - p)
+    sigma2 = float(np.sum(weights * residuals ** 2) / effective_dof)
+    covariance = sigma2 * np.linalg.pinv(X.T @ (weights[:, None] * X))
+    return RobustFit(
+        degree=degree, beta=beta, covariance=covariance,
+        residuals=residuals, inliers=np.ones(n, dtype=bool),
+        rms=float(np.sqrt(np.mean(residuals ** 2))), scale=scale,
+        n=n, n_inlier=n,
+    )
+
+
 def design(rows: list[FieldPoint], a_g: float, degree: int) -> np.ndarray:
     columns = []
     for row in rows:
@@ -844,7 +892,10 @@ def plot_energy_surface(
     plt.close(figure)
 
 
-def plot_all_good_points(rows: list[FieldPoint], output: Path) -> None:
+def plot_all_good_points(
+    rows: list[FieldPoint], original_energies: dict[tuple[float, int], float],
+    output: Path, video_output: Path | None = None,
+) -> None:
     """Plot every non-obvious-bad B point without convergence ranking.
 
     Unlike the fit-representative surface, this deliberately applies no chi
@@ -857,6 +908,27 @@ def plot_all_good_points(rows: list[FieldPoint], output: Path) -> None:
     cmap = plt.get_cmap("viridis")
     figure = plt.figure(figsize=(11.0, 8.2), constrained_layout=True)
     axis = figure.add_subplot(111, projection="3d")
+    axis.computed_zorder = False
+
+    # Draw the unbiased D=10 reference first so every pinning curve/point is
+    # layered above it.  Include J2=.275 in both pieces for visual continuity.
+    reference = sorted(
+        (J2, energy) for (J2, D), energy in original_energies.items()
+        if D == 10 and 0.24 - 1.0e-12 <= J2 <= 0.34 + 1.0e-12
+    )
+    solid = [(J2, energy) for J2, energy in reference
+             if J2 <= 0.275 + 1.0e-12]
+    dashed = [(J2, energy) for J2, energy in reference
+              if J2 >= 0.275 - 1.0e-12]
+    for segment, linestyle, line_color in (
+        (solid, "-", "#c62828"), (dashed, "--", "0.10"),
+    ):
+        if len(segment) >= 2:
+            axis.plot(
+                [item[0] for item in segment], [0.0] * len(segment),
+                [item[1] for item in segment], color=line_color,
+                linestyle=linestyle, linewidth=3.2, alpha=0.90, zorder=0,
+            )
     for D in dimensions:
         alpha = 0.18 + 0.78 * norm(D)
         color = cmap(norm(D))
@@ -866,7 +938,7 @@ def plot_all_good_points(rows: list[FieldPoint], output: Path) -> None:
             [row.signed_h for row in subset],
             [row.energy for row in subset],
             color=[color], alpha=alpha, s=7, marker="o",
-            linewidths=0.0, depthshade=False,
+            linewidths=0.0, depthshade=False, zorder=2,
         )
         for J2 in sorted({row.J2 for row in subset}):
             for branch in SCALAR_BRANCHES:
@@ -881,7 +953,7 @@ def plot_all_good_points(rows: list[FieldPoint], output: Path) -> None:
                 energies = [float(np.median(by_h[field])) for field in fields]
                 axis.plot(
                     [J2] * len(fields), fields, energies,
-                    color=color, alpha=alpha, linewidth=0.55,
+                    color=color, alpha=alpha, linewidth=0.55, zorder=1,
                 )
     axis.set_xlabel(r"$J_2$")
     axis.set_ylabel(r"signed pinning field $h$")
@@ -896,8 +968,37 @@ def plot_all_good_points(rows: list[FieldPoint], output: Path) -> None:
     colorbar = figure.colorbar(scalar, ax=axis, pad=0.10, shrink=0.70)
     colorbar.set_label(r"$D$ (also encoded by opacity)")
     colorbar.set_ticks(dimensions)
+    axis.legend(handles=[
+        Line2D([], [], color="#c62828", linewidth=3.2, linestyle="-",
+               label=r"original 2C3 $D=10$, $0.24\leq J_2\leq0.275$"),
+        Line2D([], [], color="0.10", linewidth=3.2, linestyle="--",
+               label=r"original 2C3 $D=10$, $0.275\leq J_2\leq0.34$"),
+    ], loc="upper left", frameon=False, fontsize=8)
     output.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(output)
+    if video_output is not None:
+        from matplotlib.animation import FFMpegWriter, FuncAnimation
+
+        video_output.parent.mkdir(parents=True, exist_ok=True)
+        # Rotate clockwise through the same half turn used in the original
+        # movie; only the direction is reversed.
+        azimuths = np.linspace(-58.0, -238.0, 61)
+
+        def rotate(frame: int) -> tuple:
+            axis.view_init(elev=24, azim=float(azimuths[frame]))
+            return (axis,)
+
+        animation = FuncAnimation(
+            figure, rotate, frames=len(azimuths), interval=100, blit=False,
+        )
+        animation.save(
+            video_output,
+            writer=FFMpegWriter(
+                fps=10, bitrate=2400,
+                metadata={"title": "03 all-good pinning-energy surface"},
+            ),
+            dpi=120,
+        )
     plt.close(figure)
 
 
@@ -1061,6 +1162,684 @@ def plot_phase_boundary(results: list[CrossingResult], output: Path) -> None:
     plt.close(figure)
 
 
+def full_energy_design(rows: list[FieldPoint], a_g: float) -> np.ndarray:
+    """Cubic-in-h energy surface with finite-D corrections through h^2."""
+    matrix = []
+    for row in rows:
+        x_D = math.exp(-a_g * row.D)
+        h = row.signed_h
+        matrix.append([
+            1.0, x_D, h, h * x_D, h * h, h * h * x_D, h ** 3,
+        ])
+    return np.asarray(matrix, dtype=float)
+
+
+def full_energy_coefficients(fit: RobustFit) -> np.ndarray:
+    """Return ascending D=infinity polynomial coefficients in h."""
+    return np.asarray([
+        fit.beta[0], fit.beta[2], fit.beta[4], fit.beta[6],
+    ], dtype=float)
+
+
+def crossing_from_polynomials(
+    plaquette: np.ndarray, dimer: np.ndarray, limit: float = 0.01,
+) -> float:
+    difference = np.asarray(plaquette) - np.asarray(dimer)
+    while len(difference) > 1 and abs(difference[-1]) < 1.0e-12:
+        difference = difference[:-1]
+    if len(difference) <= 1:
+        return math.nan
+    roots = np.roots(difference[::-1])
+    real = [float(root.real) for root in roots
+            if abs(root.imag) <= 1.0e-8 and abs(root.real) <= limit]
+    return min(real, key=abs) if real else math.nan
+
+
+def full_crossing_uncertainty(
+    plaquette: RobustFit, dimer: RobustFit, seed: int,
+) -> tuple[float, float, float]:
+    rng = np.random.default_rng(seed)
+    try:
+        p_samples = rng.multivariate_normal(
+            plaquette.beta, plaquette.covariance, size=5000,
+            check_valid="ignore",
+        )
+        d_samples = rng.multivariate_normal(
+            dimer.beta, dimer.covariance, size=5000,
+            check_valid="ignore",
+        )
+    except (ValueError, np.linalg.LinAlgError):
+        return math.nan, math.nan, math.nan
+    roots = []
+    for p_beta, d_beta in zip(p_samples, d_samples):
+        p_coeff = p_beta[[0, 2, 4, 6]]
+        d_coeff = d_beta[[0, 2, 4, 6]]
+        root = crossing_from_polynomials(p_coeff, d_coeff)
+        if math.isfinite(root):
+            roots.append(root)
+    if len(roots) < 500:
+        return math.nan, math.nan, math.nan
+    q025, q975 = np.quantile(roots, [0.025, 0.975])
+    sigma = (float(q975) - float(q025)) / (2.0 * 1.959963984540054)
+    return sigma, float(q025), float(q975)
+
+
+def local_full_h_crossings(rows: list[FieldPoint]) -> list[dict]:
+    """Return one ordinary quadratic crossing per bond dimension.
+
+    Replicas/protocols at the same field are first replaced by their median,
+    so every sampled field and every D enters exactly once.  This is the
+    finite-D construction that is visually represented by figure 03.
+    """
+    output = []
+    for D in sorted({row.D for row in rows}):
+        coefficients: dict[str, np.ndarray] = {}
+        diagnostics: dict[str, tuple[int, float]] = {}
+        for branch in SCALAR_BRANCHES:
+            subset = [row for row in rows
+                      if row.D == D and row.branch == branch]
+            by_h: dict[float, list[float]] = {}
+            for row in subset:
+                by_h.setdefault(round(row.signed_h, 12), []).append(row.energy)
+            if len(by_h) < 3:
+                continue
+            fields = np.asarray(sorted(by_h), dtype=float)
+            energy = np.asarray([
+                float(np.median(by_h[field])) for field in fields
+            ])
+            degree = 2
+            h_scale = float(np.max(np.abs(fields))) or 1.0
+            scaled = fields / h_scale
+            matrix = np.column_stack([
+                scaled ** power for power in range(degree + 1)
+            ])
+            if np.linalg.matrix_rank(matrix) < degree + 1:
+                continue
+            beta, *_ = np.linalg.lstsq(matrix, energy, rcond=None)
+            residuals = energy - matrix @ beta
+            coeff = np.zeros(3)
+            for power, value in enumerate(beta):
+                coeff[power] = value / (h_scale ** power)
+            coefficients[branch] = coeff
+            diagnostics[branch] = (
+                len(fields), float(np.sqrt(np.mean(residuals ** 2))),
+            )
+        if set(coefficients) != set(SCALAR_BRANCHES):
+            continue
+        crossing = crossing_from_polynomials(
+            coefficients["plaquette"], coefficients["dimer-plaquette"],
+        )
+        if not math.isfinite(crossing):
+            continue
+        output.append({
+            "D": D, "h_c_D": crossing,
+            "plaquette_n_fields": diagnostics["plaquette"][0],
+            "dimer_n_fields": diagnostics["dimer-plaquette"][0],
+            "plaquette_rms": diagnostics["plaquette"][1],
+            "dimer_rms": diagnostics["dimer-plaquette"][1],
+            "plaquette_E0": coefficients["plaquette"][0],
+            "plaquette_E1": coefficients["plaquette"][1],
+            "plaquette_E2": coefficients["plaquette"][2],
+            "dimer_E0": coefficients["dimer-plaquette"][0],
+            "dimer_E1": coefficients["dimer-plaquette"][1],
+            "dimer_E2": coefficients["dimer-plaquette"][2],
+        })
+    return output
+
+
+def fit_all_good_crossing(
+    J2: float, rows: list[FieldPoint], _a_g: float,
+) -> tuple[dict, list[dict], list[dict]]:
+    """Constant high-D extrapolation of the equally weighted finite-D roots.
+
+    This intentionally contains no robust weighting.  Repeated runs cannot
+    change the answer because they were median-reduced before each D fit.
+    """
+    local = local_full_h_crossings(rows)
+    for item in local:
+        item["J2"] = J2
+    high_D = [item for item in local if item["D"] >= 6]
+    if not high_D:
+        high_D = local
+    finite_values = np.asarray(
+        [item["h_c_D"] for item in high_D], dtype=float,
+    )
+    if not len(finite_values):
+        return ({
+            "J2": J2, "h_c": math.nan, "error95": math.nan,
+            "contains_h0_95": False,
+            "reason": "no D with two three-field quadratic branches",
+        }, [], local)
+    # The final branch energies are the equal-D constant extrapolations of
+    # the three fitted coefficients.  Their closest-to-zero intersection is
+    # the reported central h_c; finite-D roots determine its uncertainty.
+    plaquette_coefficients = np.asarray([
+        float(np.mean([item[f"plaquette_E{power}"] for item in high_D]))
+        for power in range(3)
+    ])
+    dimer_coefficients = np.asarray([
+        float(np.mean([item[f"dimer_E{power}"] for item in high_D]))
+        for power in range(3)
+    ])
+    h_c = crossing_from_polynomials(
+        plaquette_coefficients, dimer_coefficients,
+    )
+    finite_spread = (float(np.std(finite_values, ddof=1))
+                     if len(finite_values) >= 2 else math.nan)
+    stat_sigma = (finite_spread / math.sqrt(len(finite_values))
+                  if math.isfinite(finite_spread) else math.nan)
+    error95 = (1.959963984540054 * stat_sigma
+               if math.isfinite(stat_sigma) else math.nan)
+    conditional_q025 = h_c - error95 if math.isfinite(error95) else math.nan
+    conditional_q975 = h_c + error95 if math.isfinite(error95) else math.nan
+    contains_zero = (math.isfinite(h_c) and math.isfinite(error95)
+                     and abs(h_c) <= error95)
+    point_audit = [{
+        "J2": J2, "branch": row.branch, "D": row.D,
+        "signed_h": row.signed_h, "energy": row.energy,
+        "used": True, "aggregation": "median within (D, branch, h)",
+        "point_id": row.point_id, "path": row.path,
+    } for row in rows]
+    result = {
+        "J2": J2, "h_c": h_c, "error95": error95,
+        "contains_h0_95": contains_zero,
+        "conditional_stat_sigma": stat_sigma,
+        "conditional_q025": conditional_q025,
+        "conditional_q975": conditional_q975,
+        "finite_D_crossing_std": finite_spread,
+        "finite_D_crossing_count": len(high_D),
+        "Ds": " ".join(str(item["D"]) for item in high_D),
+        "plaquette_n": sum(item["plaquette_n_fields"] for item in high_D),
+        "dimer_n": sum(item["dimer_n_fields"] for item in high_D),
+        "plaquette_rms": float(np.mean([
+            item["plaquette_rms"] for item in high_D
+        ])),
+        "dimer_rms": float(np.mean([
+            item["dimer_rms"] for item in high_D
+        ])),
+        "plaquette_E0": plaquette_coefficients[0],
+        "plaquette_E1": plaquette_coefficients[1],
+        "plaquette_E2": plaquette_coefficients[2],
+        "dimer_E0": dimer_coefficients[0],
+        "dimer_E1": dimer_coefficients[1],
+        "dimer_E2": dimer_coefficients[2],
+        "reason": ("median per (D,h); ordinary quadratic E_D(h); "
+                   "equal-D coefficient extrapolation; finite-D-root 95% SEM"),
+    }
+    return result, point_audit, local
+
+
+def averaged_correlations_by_D(rows: list[FieldPoint]) -> dict[int, np.ndarray]:
+    """Average reruns first, giving every D exactly one triplet and one weight."""
+    samples: dict[int, list[np.ndarray]] = {}
+    for row in rows:
+        samples.setdefault(row.D, []).append(np.asarray([
+            row.strongest, row.middle, row.weakest,
+        ], dtype=float))
+    return {
+        D: np.mean(np.asarray(values), axis=0)
+        for D, values in samples.items()
+    }
+
+
+def fit_correlation_window(
+    by_D: dict[int, np.ndarray], a_g: float, selected: list[int],
+) -> dict:
+    """Unweighted fixed-a_g fits of all three ranks on one shared D window."""
+    x_D = np.exp(-a_g * np.asarray(selected, dtype=float))
+    matrix = np.column_stack((np.ones(len(selected)), x_D))
+    values = np.asarray([by_D[D] for D in selected], dtype=float)
+    beta, *_ = np.linalg.lstsq(matrix, values, rcond=None)
+    residuals = values - matrix @ beta
+    errors = np.full(3, math.nan)
+    if len(selected) > 2:
+        inverse = np.linalg.pinv(matrix.T @ matrix)
+        for rank in range(3):
+            sigma2 = float(np.sum(residuals[:, rank] ** 2)
+                           / (len(selected) - 2))
+            errors[rank] = math.sqrt(max(0.0, sigma2 * inverse[0, 0]))
+    ordering = np.argsort(beta[0])
+    correlations = np.asarray(beta[0])[ordering]
+    largest_D_values = np.asarray(by_D[max(selected)], dtype=float)
+    return {
+        "Ds": list(selected),
+        "correlations": correlations,
+        "errors": errors[ordering],
+        "rms": np.sqrt(np.mean(residuals ** 2, axis=0)),
+        "max_abs_residual": float(np.max(np.abs(residuals))),
+        "extrapolation_distance": float(np.max(np.abs(
+            correlations - largest_D_values
+        ))),
+    }
+
+
+def candidate_high_D_correlation_fits(
+    by_D: dict[int, np.ndarray], a_g: float,
+) -> list[dict]:
+    """All contiguous high-D windows, from the two largest D values onward."""
+    dimensions = sorted(by_D)
+    return [
+        fit_correlation_window(by_D, a_g, dimensions[-count:])
+        for count in range(2, len(dimensions) + 1)
+    ] if len(dimensions) >= 2 else []
+
+
+def fit_high_D_correlations(
+    by_D: dict[int, np.ndarray], a_g: float,
+) -> dict | None:
+    """Choose the physically stable thermodynamic extrapolation.
+
+    Every contiguous high-D window containing at least the two largest D
+    values is tried.  The chosen common window for the three ranks is the one
+    whose extrapolated correlation triplet moves least from the actually
+    observed largest-D triplet.  This rejects exact but violently overshooting
+    two-point fits; the fit residual is retained only as an audit diagnostic.
+    """
+    candidates = candidate_high_D_correlation_fits(by_D, a_g)
+    if not candidates:
+        return None
+    return min(candidates, key=lambda fit: (
+        fit["extrapolation_distance"],
+        -len(fit["Ds"]),
+    ))
+
+
+def correlation_node(
+    J2: float, signed_h: float, branch: str, fit: dict, handling: str,
+) -> dict:
+    strongest, middle, weakest = map(float, fit["correlations"])
+    errors = np.asarray(fit["errors"], dtype=float)
+    delta = weakest - strongest
+    q = ((weakest + strongest - 2.0 * middle) / delta
+         if delta > 1.0e-12 else 0.0)
+    delta_error = (float(math.hypot(errors[0], errors[2]))
+                   if np.all(np.isfinite(errors[[0, 2]])) else math.nan)
+    if delta > 1.0e-12 and np.all(np.isfinite(errors)):
+        numerator = weakest + strongest - 2.0 * middle
+        denominator2 = delta * delta
+        derivatives = np.asarray([
+            (delta + numerator) / denominator2,
+            -2.0 / delta,
+            (delta - numerator) / denominator2,
+        ])
+        q_error = float(np.sqrt(np.sum((derivatives * errors) ** 2)))
+    else:
+        q_error = math.nan
+    return {
+        "J2": J2, "signed_h": signed_h, "branch": branch,
+        "q": q, "q_error": q_error,
+        "q_fraction": 0.5 * (1.0 - q),
+        "strongest_extrapolated": strongest,
+        "middle_extrapolated": middle,
+        "weakest_extrapolated": weakest,
+        "extrapolated_Delta": delta,
+        "Delta_error": delta_error,
+        "handling": handling,
+        "n": len(fit["Ds"]),
+        "Ds": " ".join(str(D) for D in fit["Ds"]),
+        "fit_rms_max": float(np.max(fit["rms"])),
+        "fit_max_abs_residual": fit["max_abs_residual"],
+        "extrapolation_distance": fit["extrapolation_distance"],
+    }
+
+
+def selected_h0_fits(gapped_a: dict[float, float]) -> dict[tuple[float, str], dict]:
+    selected_csv = HERE / "plots" / "selected_nn_data.csv"
+    if not selected_csv.is_file():
+        return {}
+    with selected_csv.open(encoding="utf-8-sig", newline="") as stream:
+        rows = [row for row in csv.DictReader(stream)
+                if row.get("selected", "").lower() == "true"]
+    fits: dict[tuple[float, str], dict] = {}
+    keys = sorted({(float(row["J2"]), row["texture"]) for row in rows})
+    for J2, texture in keys:
+        if J2 not in gapped_a:
+            continue
+        subset = [row for row in rows
+                  if close(float(row["J2"]), J2) and row["texture"] == texture]
+        by_D: dict[int, list[np.ndarray]] = {}
+        for row in subset:
+            by_D.setdefault(int(row["D"]), []).append(np.asarray([
+                float(row["strongest"]), float(row["middle"]),
+                float(row["weakest"]),
+            ]))
+        averaged = {D: np.mean(values, axis=0) for D, values in by_D.items()}
+        fit = fit_high_D_correlations(averaged, gapped_a[J2])
+        if fit is not None:
+            fits[(J2, texture)] = fit
+    return fits
+
+
+def build_texture_nodes(
+    rows: list[FieldPoint], gapped_a: dict[float, float],
+) -> tuple[list[dict], list[dict]]:
+    nodes: list[dict] = []
+    candidates: list[dict] = []
+    keys = sorted({(row.J2, round(row.signed_h, 12)) for row in rows
+                   if abs(row.signed_h) > 1.0e-12})
+    for J2, signed_h in keys:
+        if J2 not in gapped_a:
+            continue
+        subset = [row for row in rows if (
+            close(row.J2, J2) and close(row.signed_h, signed_h)
+        )]
+        fit = fit_high_D_correlations(
+            averaged_correlations_by_D(subset), gapped_a[J2],
+        )
+        if fit is None:
+            continue
+        node = correlation_node(
+            J2, signed_h, subset[0].branch, fit,
+            "per-D mean; endpoint-stable high-D fixed-a_g fits of three NN correlations",
+        )
+        nodes.append(node)
+        candidates.append(node)
+
+    # h=0: extrapolate all three ranks independently in both preparation
+    # sectors, average corresponding thermodynamic ranks, then form Delta/q.
+    component_fits = selected_h0_fits(gapped_a)
+    all_J2 = sorted({row.J2 for row in rows})
+    for J2 in all_J2:
+        if J2 not in gapped_a:
+            continue
+        components: list[tuple[str, dict]] = []
+        for branch in SCALAR_BRANCHES:
+            fit = component_fits.get((J2, branch))
+            if fit is None:
+                subset = [row for row in rows if (
+                    close(row.J2, J2) and abs(row.signed_h) <= 1.0e-12
+                    and row.branch == branch
+                )]
+                fit = fit_high_D_correlations(
+                    averaged_correlations_by_D(subset), gapped_a[J2],
+                ) if subset else None
+            if fit is not None:
+                components.append((branch, fit))
+                candidates.append(correlation_node(
+                    J2, 0.0, branch, fit,
+                    "h=0 component: selected NN data when available; "
+                    "otherwise all-good branch data",
+                ))
+        if len(components) != 2:
+            continue
+        correlations = np.mean(
+            np.asarray([fit["correlations"] for _, fit in components]), axis=0,
+        )
+        component_errors = np.asarray(
+            [fit["errors"] for _, fit in components], dtype=float,
+        )
+        errors = np.sqrt(np.nansum(component_errors ** 2, axis=0)) / 2.0
+        if not np.any(np.isfinite(component_errors)):
+            errors[:] = math.nan
+        combined = {
+            "correlations": correlations,
+            "errors": errors,
+            "Ds": sorted({D for _, fit in components for D in fit["Ds"]}),
+            "rms": np.mean(np.asarray([fit["rms"] for _, fit in components]),
+                           axis=0),
+            "max_abs_residual": max(
+                fit["max_abs_residual"] for _, fit in components
+            ),
+            "extrapolation_distance": max(
+                fit["extrapolation_distance"] for _, fit in components
+            ),
+        }
+        nodes.append(correlation_node(
+            J2, 0.0, "average of dimer/plaquette h=0 sectors", combined,
+            "fit 2x3 h=0 correlations, then average corresponding ranks",
+        ))
+    return sorted(nodes, key=lambda row: (row["J2"], row["signed_h"])), candidates
+
+
+def texture_rgb(q: np.ndarray, delta: np.ndarray, delta_max: float) -> np.ndarray:
+    q = np.clip(q, -1.0, 1.0)
+    strength = np.clip(delta / max(delta_max, 1.0e-12), 0.0, 1.0)
+    red = np.asarray([0.92, 0.10, 0.10])
+    purple = np.asarray([0.60, 0.16, 0.72])
+    blue = np.asarray([0.10, 0.30, 1.00])
+    negative = np.clip(-q, 0.0, 1.0)[..., None]
+    positive = np.clip(q, 0.0, 1.0)[..., None]
+    neutral = 1.0 - negative - positive
+    base = negative * red + neutral * purple + positive * blue
+    return base * strength[..., None]
+
+
+def field_plot_coordinate(value: float | np.ndarray) -> float | np.ndarray:
+    """Signed log-|h| coordinate with a quarter-decade gap around h=0."""
+    values = np.asarray(value, dtype=float)
+    magnitude = np.abs(values)
+    result = np.zeros_like(values)
+    small = (magnitude > 0.0) & (magnitude < 1.0e-3)
+    result[small] = np.sign(values[small]) * 0.25 * magnitude[small] / 1.0e-3
+    logarithmic = magnitude >= 1.0e-3
+    result[logarithmic] = np.sign(values[logarithmic]) * (
+        0.25 + np.log10(magnitude[logarithmic] / 1.0e-3)
+    )
+    return float(result) if result.ndim == 0 else result
+
+
+def centered_edges(
+    centers: np.ndarray, lower: float | None = None,
+    upper: float | None = None,
+) -> np.ndarray:
+    centers = np.asarray(centers, dtype=float)
+    middle = 0.5 * (centers[:-1] + centers[1:])
+    first = (lower if lower is not None
+             else centers[0] - 0.5 * (centers[1] - centers[0]))
+    last = (upper if upper is not None
+            else centers[-1] + 0.5 * (centers[-1] - centers[-2]))
+    return np.concatenate(([first], middle, [last]))
+
+
+def plot_selected_delta_comparison(
+    texture_nodes: list[dict], output: Path,
+) -> None:
+    """Replot the selected-NN data as Delta and add the h=0 extrapolation."""
+    selected_csv = HERE / "plots" / "selected_nn_data.csv"
+    if not selected_csv.is_file():
+        raise FileNotFoundError(
+            f"selected NN table is missing: {selected_csv}"
+        )
+    with selected_csv.open(encoding="utf-8-sig", newline="") as stream:
+        rows = [row for row in csv.DictReader(stream)
+                if row.get("selected", "").lower() == "true"]
+
+    textures = ("dimer-plaquette", "plaquette")
+    titles = {
+        "dimer-plaquette": "Dimer-plaquette sector",
+        "plaquette": "Plaquette sector",
+    }
+    figure, axes = plt.subplots(
+        1, 2, figsize=(16.0, 7.7), sharex=True, sharey=True,
+        constrained_layout=True,
+    )
+    for axis, texture in zip(axes, textures):
+        texture_rows = [row for row in rows if row["texture"] == texture]
+        dimensions = sorted({int(row["D"]) for row in texture_rows})
+        cmap = plt.get_cmap("YlOrRd" if texture == "dimer-plaquette" else "PuBu")
+        for index, D in enumerate(dimensions):
+            subset = sorted(
+                [row for row in texture_rows if int(row["D"]) == D],
+                key=lambda row: float(row["J2"]),
+            )
+            if not subset:
+                continue
+            fraction = (0.35 if len(dimensions) == 1 else
+                        0.30 + 0.68 * index / (len(dimensions) - 1))
+            alpha = (0.18 if len(dimensions) == 1 else
+                     0.18 + 0.82 * (D - dimensions[0])
+                     / max(1, dimensions[-1] - dimensions[0]))
+            axis.errorbar(
+                [float(row["J2"]) for row in subset],
+                [float(row["delta"]) for row in subset],
+                yerr=[float(row["delta_error"]) for row in subset],
+                color=cmap(fraction), alpha=alpha, marker="o",
+                markersize=5.2, linestyle="-", linewidth=1.05,
+                elinewidth=0.7, capsize=1.8, label=f"D={D}",
+            )
+
+        maximum_selected_J2 = max(float(row["J2"]) for row in texture_rows)
+        extrapolated = sorted(
+            [row for row in texture_nodes
+             if abs(float(row["signed_h"])) <= 1.0e-12
+             and float(row["J2"]) <= maximum_selected_J2 + 1.0e-12],
+            key=lambda row: float(row["J2"]),
+        )
+        axis.plot(
+            [float(row["J2"]) for row in extrapolated],
+            [float(row["extrapolated_Delta"]) for row in extrapolated],
+            color="0.08", marker="D", markerfacecolor="white",
+            markeredgewidth=1.2, markersize=5.5, linewidth=2.2,
+            label=r"extrapolated $\Delta(J_2,h=0)$", zorder=10,
+        )
+        axis.set_title(titles[texture], fontsize=13)
+        axis.set_xlabel(r"$J_2$", fontsize=12)
+        axis.grid(alpha=0.18)
+        axis.legend(loc="best", fontsize=8.0, frameon=False, ncol=2,
+                    handlelength=1.7, columnspacing=0.8)
+    axes[0].set_ylabel(
+        r"$\Delta=C_{\rm weak}-C_{\rm strong}$", fontsize=12,
+    )
+    output.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(output)
+    plt.close(figure)
+
+
+def plot_04_phase_diagram(
+    crossings: list[dict], texture_nodes: list[dict], output: Path,
+) -> None:
+    valid_crossings = [row for row in crossings
+                       if math.isfinite(row.get("h_c", math.nan))]
+    h_values = np.asarray([row["signed_h"] for row in texture_nodes])
+    j_values = np.asarray([row["J2"] for row in texture_nodes])
+    q_values = np.asarray([row["q"] for row in texture_nodes])
+    delta_values = np.asarray([
+        row["extrapolated_Delta"] for row in texture_nodes
+    ])
+
+    # Evaluate only at the actually sampled rectangular grid and render each
+    # value as one flat cell.  Nearest fill covers the few missing edge nodes;
+    # it does not create a smooth interpolation between physical samples.
+    h_centers = np.asarray(sorted(set(h_values)), dtype=float)
+    x_centers = np.asarray(field_plot_coordinate(h_centers), dtype=float)
+    j_centers = np.asarray(sorted(set(j_values)), dtype=float)
+    H, J = np.meshgrid(x_centers, j_centers)
+    points = np.column_stack((field_plot_coordinate(h_values), j_values))
+    q_grid = griddata(points, q_values, (H, J), method="nearest")
+    delta_grid = griddata(points, delta_values, (H, J), method="nearest")
+    delta_max = math.ceil(float(np.nanmax(delta_values)) * 20.0) / 20.0
+    rgb = texture_rgb(q_grid, delta_grid, delta_max)
+    h_edges = centered_edges(
+        x_centers, field_plot_coordinate(-1.0e-1),
+        field_plot_coordinate(1.0e-1),
+    )
+    j_edges = centered_edges(j_centers)
+
+    figure = plt.figure(figsize=(9.6, 7.2), constrained_layout=True)
+    grid = figure.add_gridspec(1, 3, width_ratios=(12.0, 0.55, 0.55))
+    axis = figure.add_subplot(grid[0])
+    hue_axis = figure.add_subplot(grid[1])
+    brightness_axis = figure.add_subplot(grid[2])
+    cell_count = rgb.shape[0] * rgb.shape[1]
+    cell_cmap = matplotlib.colors.ListedColormap(
+        rgb.reshape(cell_count, 3), name="texture_cells",
+    )
+    cell_norm = matplotlib.colors.BoundaryNorm(
+        np.arange(cell_count + 1) - 0.5, cell_count,
+    )
+    axis.pcolormesh(
+        h_edges, j_edges, np.arange(cell_count).reshape(rgb.shape[:2]),
+        cmap=cell_cmap, norm=cell_norm, shading="flat",
+        antialiased=False, rasterized=True, zorder=0,
+    )
+    ordered = sorted(valid_crossings, key=lambda row: row["J2"])
+    hc = [row["h_c"] for row in ordered]
+    hc_x = [field_plot_coordinate(value) for value in hc]
+    J2 = [row["J2"] for row in ordered]
+    errors = [row["error95"] for row in ordered]
+    boundary, = axis.plot(
+        hc_x, J2, color="#fff176", linewidth=2.2, marker="o",
+        markersize=4.8, zorder=5,
+        label=r"extrapolated energy crossing $h_c$ (95% error)",
+    )
+    boundary.set_path_effects([
+        path_effects.Stroke(linewidth=4.0, foreground="black"),
+        path_effects.Normal(),
+    ])
+    for value, J2_value, error in zip(hc, J2, errors):
+        if not math.isfinite(error):
+            continue
+        left = field_plot_coordinate(value - error)
+        right = field_plot_coordinate(value + error)
+        axis.plot([left, right], [J2_value, J2_value], color="#fff176",
+                  linewidth=1.4, zorder=4)
+        axis.plot([left, left], [J2_value - 0.0006, J2_value + 0.0006],
+                  color="#fff176", linewidth=1.2, zorder=4)
+        axis.plot([right, right], [J2_value - 0.0006, J2_value + 0.0006],
+                  color="#fff176", linewidth=1.2, zorder=4)
+    qsl, = axis.plot(
+        [0.0, 0.0], [0.24, 0.275], color="#00d000", linewidth=7.0,
+        solid_capstyle="butt", zorder=2,
+        label=r"QSL: $h=0$, $0.24\leq J_2\leq0.275$",
+    )
+    axis.text(
+        field_plot_coordinate(-2.5e-2), 0.334, "dimer-plaquette",
+        color="white", fontsize=11, fontweight="semibold",
+        ha="center", va="center", zorder=3,
+    )
+    axis.text(
+        field_plot_coordinate(2.5e-2), 0.334, "plaquette",
+        color="white", fontsize=11, fontweight="semibold",
+        ha="center", va="center", zorder=3,
+    )
+    ticks_h = np.asarray([-1.0e-1, -1.0e-2, -1.0e-3, 0.0,
+                          1.0e-3, 1.0e-2, 1.0e-1])
+    axis.set_xticks(field_plot_coordinate(ticks_h))
+    axis.set_xticklabels([
+        r"$-10^{-1}$", r"$-10^{-2}$", r"$-10^{-3}$", "$0$",
+        r"$10^{-3}$", r"$10^{-2}$", r"$10^{-1}$",
+    ])
+    axis.set_xlim(field_plot_coordinate(-1.0e-1),
+                  field_plot_coordinate(1.0e-1))
+    axis.set_ylim(0.238, 0.343)
+    axis.set_xlabel(r"signed pinning field $h$")
+    axis.set_ylabel(r"$J_2$")
+    axis.grid(axis="y", color="white", alpha=0.22, linewidth=0.7)
+    axis.legend(loc="lower right", framealpha=0.88, fontsize=8.5)
+
+    hue_cmap = matplotlib.colors.LinearSegmentedColormap.from_list(
+        "dimer_purple_plaquette",
+        [(0.92, 0.10, 0.10), (0.60, 0.16, 0.72), (0.10, 0.30, 1.00)],
+    )
+    hue_bar = matplotlib.colorbar.ColorbarBase(
+        hue_axis, cmap=hue_cmap,
+        norm=matplotlib.colors.Normalize(-1.0, 1.0),
+        orientation="vertical", ticks=[-1.0, 0.0, 1.0],
+    )
+    hue_bar.set_ticklabels([
+        r"$-1$", "$0$", r"$+1$",
+    ])
+    hue_bar.set_label(
+        r"extrapolated $q=(C_{\rm weak}+C_{\rm strong}-2C_{\rm mid})/"
+        r"(C_{\rm weak}-C_{\rm strong})$"
+    )
+    brightness_cmap = matplotlib.colors.LinearSegmentedColormap.from_list(
+        "delta_brightness", ["black", "white"],
+    )
+    brightness_bar = matplotlib.colorbar.ColorbarBase(
+        brightness_axis, cmap=brightness_cmap,
+        norm=matplotlib.colors.Normalize(vmin=0.0, vmax=delta_max),
+        orientation="vertical",
+        ticks=np.linspace(0.0, delta_max, 4),
+    )
+    brightness_bar.set_label(
+        r"extrapolated $\Delta=C_{\rm weak}-C_{\rm strong}$"
+    )
+    output.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(output)
+    plt.close(figure)
+
+
 def write_dict_csv(path: Path, rows: list[dict], fields: list[str] | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if fields is None:
@@ -1076,6 +1855,10 @@ def write_dict_csv(path: Path, rows: list[dict], fields: list[str] | None = None
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--make-video", action="store_true",
+        help="also render the short 180-degree z-axis rotation of figure 03",
+    )
     args = parser.parse_args()
     output = args.output_dir.resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -1106,6 +1889,23 @@ def main() -> int:
         fit_audit.extend(audit)
         per_D.extend(local)
 
+    all_good_crossings: list[dict] = []
+    all_good_crossing_audit: list[dict] = []
+    all_good_local_crossings: list[dict] = []
+    for J2 in sorted({row.J2 for row in all_good_points}):
+        if J2 not in gapped_a:
+            continue
+        subset = [row for row in all_good_points if close(row.J2, J2)]
+        crossing, audit, local = fit_all_good_crossing(
+            J2, subset, gapped_a[J2],
+        )
+        all_good_crossings.append(crossing)
+        all_good_crossing_audit.extend(audit)
+        all_good_local_crossings.extend(local)
+    texture_nodes, texture_candidates = build_texture_nodes(
+        all_good_points, gapped_a,
+    )
+
     write_dict_csv(output / "set_A.csv", set_a)
     write_dict_csv(output / "set_B_all_observations.csv",
                    [asdict(row) for row in set_b])
@@ -1119,6 +1919,15 @@ def main() -> int:
     write_dict_csv(output / "robust_fit_point_audit.csv", fit_audit)
     write_dict_csv(output / "finite_D_crossing_diagnostics.csv", per_D)
     write_dict_csv(output / "hc_D_infinity.csv", [asdict(row) for row in results])
+    write_dict_csv(output / "hc_03_all_good_D_infinity.csv",
+                   all_good_crossings)
+    write_dict_csv(output / "hc_03_all_good_fit_point_audit.csv",
+                   all_good_crossing_audit)
+    write_dict_csv(output / "hc_03_all_good_finite_D_crossings.csv",
+                   all_good_local_crossings)
+    write_dict_csv(output / "texture_D_infinity_nodes.csv", texture_nodes)
+    write_dict_csv(output / "texture_D_infinity_candidates.csv",
+                   texture_candidates)
     write_dict_csv(output / "discovery_failures.csv",
                    [{"failure": failure} for failure in failures], ["failure"])
 
@@ -1143,7 +1952,17 @@ def main() -> int:
         )
     plot_phase_boundary(results, output / "02_hc_vs_J2_phase_boundary.pdf")
     plot_all_good_points(
-        all_good_points, output / "03_all_good_points.pdf",
+        all_good_points, original_energies,
+        output / "03_all_good_points.pdf",
+        (output / "03_all_good_points_z_rotation.mp4"
+         if args.make_video else None),
+    )
+    plot_04_phase_diagram(
+        all_good_crossings, texture_nodes,
+        output / "04_phasediagram.pdf",
+    )
+    plot_selected_delta_comparison(
+        texture_nodes, output.parent / "Delta_vs_J2_selected.pdf",
     )
 
     accepted = sum(row.accepted for row in results)
@@ -1154,6 +1973,10 @@ def main() -> int:
     print(f"Set B: {len(set_b)} observations")
     print(f"All non-obvious-bad B points: {len(all_good_points)}")
     print(f"D->infinity crossings: {accepted}/{len(results)} accepted")
+    zero_covered = sum(bool(row.get("contains_h0_95"))
+                       for row in all_good_crossings)
+    print("03 full-data 95% crossings containing h=0: "
+          f"{zero_covered}/{len(all_good_crossings)}")
     print(f"Output: {output}")
     if failures:
         print(f"Discovery failures recorded: {len(failures)}")

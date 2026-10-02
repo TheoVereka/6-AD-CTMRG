@@ -1,0 +1,98 @@
+\documentclass[10pt]{article}
+\usepackage{amsmath,amssymb}
+\usepackage[margin=1in]{geometry}
+\begin{document}
+
+\section*{Pinning-field observables and crossing field}
+
+We use the signed field convention $h>0$ for plaquette pinning and $h<0$
+for dimer--plaquette pinning.  For each rank $r$, repeated runs at fixed
+$(J_2,D,h)$ are first averaged,
+\begin{equation}
+ \bar C_{r,D}(J_2,h)=\frac{1}{n_D}\sum_{i=1}^{n_D}C^{(i)}_{r,D}(J_2,h),
+\end{equation}
+so every retained bond dimension has the same total weight, irrespective of
+the number of replicas or protocols available at that $D$.
+
+For the three sorted antiferromagnetic nearest-neighbour correlations,
+\begin{equation}
+ C_{\rm strong}\le C_{\rm mid}\le C_{\rm weak},
+\end{equation}
+we define
+\begin{equation}
+ \Delta_D=C_{\rm weak}-C_{\rm strong},\qquad
+ f_D=\frac{C_{\rm mid}-C_{\rm strong}}
+           {C_{\rm weak}-C_{\rm strong}},\qquad
+ q_D=1-2f_D
+ =\frac{C_{\rm weak}+C_{\rm strong}-2C_{\rm mid}}
+        {C_{\rm weak}-C_{\rm strong}}.
+\end{equation}
+Thus $q=-1$ is dimer--plaquette, $q=+1$ is plaquette, and $\Delta\ge0$
+measures the total bond splitting.
+
+At each sampled $(J_2,h)$, the three thermodynamic correlations are obtained
+independently from the unweighted two-parameter fits
+\begin{equation}
+ \bar C_{r,D}(J_2,h)
+ =C_{r,\infty}(J_2,h)+k_r(J_2,h)e^{-a_g(J_2)D},
+ \qquad r\in\{\mathrm{strong},\mathrm{mid},\mathrm{weak}\},
+\end{equation}
+where $a_g(J_2)$ is fixed by the original-2C3 gapped energy fit.  Every
+contiguous high-$D$ window containing the two largest available bond
+dimensions is tested, using the same window for all three ranks.  We select
+the window that minimises
+\begin{equation}
+ R=\max_r\left|C_{r,\infty}-\bar C_{r,D_{\max}}\right|,
+\end{equation}
+thereby rejecting formally exact but physically overshooting two-point
+extrapolations.  Fit residuals are retained only as diagnostics.  Only after
+these fits do we form
+\begin{equation}
+ \Delta(J_2,h)=C_{\rm weak,\infty}-C_{\rm strong,\infty},\qquad
+ q(J_2,h)=
+ \frac{C_{\rm weak,\infty}+C_{\rm strong,\infty}
+       -2C_{\rm mid,\infty}}
+      {C_{\rm weak,\infty}-C_{\rm strong,\infty}}.
+\end{equation}
+At $h=0$, the selected dimer--plaquette and plaquette data are fitted
+separately by the same procedure, giving six extrapolated correlations.  The
+corresponding ranks are then averaged,
+\begin{equation}
+ C_{r,\infty}(J_2,0)=\frac{C^{(d)}_{r,\infty}(J_2,0)
+                              +C^{(p)}_{r,\infty}(J_2,0)}{2},
+\end{equation}
+and the preceding definitions give $\Delta(J_2,0)$ and $q(J_2,0)$.  No value
+of either observable is imposed at $h=0$.
+
+For the energy, the median-reduced data of each sector $s\in\{p,d\}$ and
+each bond dimension are fitted by ordinary least squares,
+\begin{equation}
+ \widehat E_{s,D}(J_2,h)
+ =a_{s,D}(J_2)+b_{s,D}(J_2)h+c_{s,D}(J_2)h^2.
+\end{equation}
+The final equal-$D$ constant extrapolation is
+\begin{equation}
+ E_s(J_2,h)=\frac{1}{N_D}\sum_{D\ge6}\widehat E_{s,D}(J_2,h),
+ \qquad
+ E(J_2,h)=
+ \begin{cases}
+ E_d(J_2,h),&h<0,\\
+ E_p(J_2,h),&h>0.
+ \end{cases}
+\end{equation}
+The crossing field is the real root closest to the origin,
+\begin{equation}
+ E_p(J_2,h_c)=E_d(J_2,h_c),\qquad |h_c|\le10^{-2}.
+\end{equation}
+For its uncertainty, the same equation is solved separately at every $D$,
+giving $h_{c,D}$.  With
+\begin{equation}
+ s_h^2=\frac{1}{N_D-1}\sum_D
+ \left(h_{c,D}-\overline h_c\right)^2,
+\end{equation}
+the plotted horizontal interval is
+\begin{equation}
+ h_c\ \pm\ 1.96\,\frac{s_h}{\sqrt{N_D}}.
+\end{equation}
+
+\end{document}
