@@ -18,8 +18,49 @@ one two-panel raw NN-vs-1/D PDF per J2, and separate D-by-J2 provenance tables
 for the dimer-plaquette and plaquette configurations.  No fit is drawn in any
 figure.
 
+`plots/energy_vs_inverse_D/` contains exactly two energy-vs-1/D PDFs, one per
+configuration, with every J2 and D included.  Dimer-plaquette J2 values use a
+red gradient and plaquette J2 values use a blue gradient.  Selected energies
+are scatter-only.  For each J2, the corresponding archived figure-24
+original-2C3 gapped curve is drawn in black, with J2 encoded by transparency;
+these curves are not refits of the selected data.
+
 The three NN ranks use the same encoding in every PDF: strongest is a large
 circle with a solid line, middle is a moderately enlarged square with a dashed
 line, and weakest is an upward triangle at the original size with a dotted
 line.  The D=11 plaquette continuation at J2=.26, .265, and .27 is excluded
 because 0713 has no energy/Delta reference at those points.
+
+## Signed pinning-energy surface and crossing line
+
+Run the independent signed-field analysis with:
+
+```powershell
+python .\visual_elements\figs\VBCDiscriminator\selected_nn_story\pinning_energy_phase_boundary.py
+```
+
+It maps plaquette pinning to positive `h` and dimer-plaquette pinning to
+negative `h`.  Set A requires at least two distinct nonzero fields on each
+side for the same `(J2,D)`; `h=0` does not count towards this coverage test.
+Set B retains every observation belonging to Set A.  Rank-split pinning is
+excluded because it is a different direction in order-parameter space.
+
+`plots/pinning_energy_phase_boundary/01_signed_h_energy_surface.pdf` is the
+literal all-B plot, including failed runs.  The `01b_...` companion applies
+the documented variational, texture, chi, and energy screening.  Only points
+with identical `(J2,D)` are joined.  `fit_diagnostics/` contains one PDF per
+J2 showing the finite-D points/curves and the two black D-to-infinity branch
+curves used to infer the crossing.  The final `02_...` plot connects only
+crossings that pass the fit and signed-response checks; rejected estimates
+remain visible as grey crosses.  Every inclusion, rejection, fit residual,
+finite-D crossing, and D-to-infinity result is exported to the adjacent CSV
+audit files.
+
+`03_all_good_points.pdf` is the deliberately inclusive comparison surface.
+It uses every Set-B point that passes the broad original-2C3 energy envelope,
+the pinning-texture consistency check, and a permissive smooth/monotonic E(h)
+curve check at fixed `(J2,D,branch)`.  It performs no chi cutoff, no
+CTMRG-lookahead cutoff, and no lowest-energy/variational-winner selection.  All
+points, including `h=0`, are small circles.  The exact 03 membership is
+exported as `all_good_points.csv`; every rejection and its curve residual are
+recorded in `all_good_points_audit.csv`.

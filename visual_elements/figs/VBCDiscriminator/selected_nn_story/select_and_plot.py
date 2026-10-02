@@ -478,6 +478,25 @@ def load_fixed_a() -> dict[float, float]:
     return values
 
 
+def load_gapped_energy_fits() -> dict[float, dict[str, float]]:
+    """Load the archived figure-24 original-2C3 gapped-fit parameters."""
+    grouped: dict[float, dict[str, float]] = {}
+    if not ENERGY_FITS.is_file():
+        return grouped
+    with ENERGY_FITS.open(encoding="utf-8-sig", newline="") as stream:
+        for row in csv.DictReader(stream):
+            if row.get("ansatz") != "2C3" or row.get("model") != "gapped":
+                continue
+            J2 = float(row["J2"])
+            parameter = row.get("parameter", "")
+            if J2 in J2_GRID and parameter in {"E0", "k", "a"}:
+                grouped.setdefault(J2, {})[parameter] = float(row["central"])
+    return {
+        J2: parameters for J2, parameters in grouped.items()
+        if set(parameters) == {"E0", "k", "a"}
+    }
+
+
 def fixed_a_fit(rows: list[Candidate], rank: int, a: float) -> dict:
     D = np.asarray([row.D for row in rows], dtype=float)
     y = np.asarray([row.ranks[rank][0] for row in rows], dtype=float)
@@ -821,6 +840,83 @@ def plot_inverse_D(selection: dict, J2: float, output: Path) -> None:
     plt.close(fig)
 
 
+def plot_energy_inverse_D_all_j2(
+    selection: dict, texture: str,
+    fits: dict[float, dict[str, float]], output: Path,
+) -> None:
+    rows = [row for row in selection.values() if row.texture == texture]
+    if not rows:
+        return
+
+    figure, axis = plt.subplots(figsize=(7.2, 6.2), constrained_layout=True)
+    base = plt.get_cmap("Reds" if texture == "dimer-plaquette" else "Blues")
+    # Match figure 24: smaller J2 is darker, larger J2 is lighter.
+    shade_cmap = matplotlib.colors.LinearSegmentedColormap.from_list(
+        f"{texture}_J2_shades", [base(0.95), base(0.38)], N=256,
+    )
+    norm = matplotlib.colors.Normalize(min(J2_GRID), max(J2_GRID))
+    xmax = max(1.0 / row.D for row in rows)
+    xline = np.linspace(0.0, xmax, 360)
+    all_y: list[float] = [row.energy for row in rows]
+
+    for J2 in J2_GRID:
+        subset = sorted(
+            [row for row in rows if close(row.J2, J2)], key=lambda row: row.D,
+        )
+        if not subset:
+            continue
+        color = shade_cmap(norm(J2))
+        axis.scatter(
+            [1.0 / row.D for row in subset],
+            [row.energy for row in subset],
+            color=color, marker="o", s=61, edgecolors="white",
+            linewidths=0.48, zorder=4,
+        )
+        fit = fits[J2]
+        fitted = (fit["E0"] + fit["k"]
+                  * np.exp(-fit["a"] / np.maximum(xline, 1.0e-15)))
+        # The archived reference curves are black; J2 is encoded through
+        # transparency in the same dark-to-light direction as the scatter.
+        alpha = 0.74 - 0.54 * norm(J2)
+        axis.plot(xline, fitted, color="black", alpha=alpha,
+                  linewidth=1.35, zorder=2)
+        all_y.extend(float(value) for value in fitted)
+
+    all_y_array = np.asarray(all_y, dtype=float)
+    span = max(float(np.ptp(all_y_array)), 1.0e-5)
+    axis.set_ylim(float(np.min(all_y_array)) - 0.07 * span,
+                  float(np.max(all_y_array)) + 0.07 * span)
+    axis.set_xlim(0.0, xmax * 1.035)
+    axis.set_xlabel(r"$1/D$", fontsize=12)
+    axis.set_ylabel(r"$E$ per site", fontsize=12)
+    title = ("Dimer-plaquette" if texture == "dimer-plaquette"
+             else "Plaquette")
+    axis.set_title(title, fontsize=13)
+    axis.grid(alpha=0.18)
+
+    fit_handle = Line2D(
+        [], [], color="black", alpha=0.46, linewidth=1.8,
+        label="original 2C3 gapped fit",
+    )
+    selected_handle = Line2D(
+        [], [], linestyle="none", marker="o", markersize=7.5,
+        markerfacecolor=base(0.72), markeredgecolor="white",
+        label=r"selected $h=0$ tensors",
+    )
+    axis.legend(handles=[selected_handle, fit_handle], frameon=False,
+                fontsize=9, loc="best")
+    scalar = plt.cm.ScalarMappable(norm=norm, cmap=shade_cmap)
+    scalar.set_array([])
+    colorbar = figure.colorbar(scalar, ax=axis, pad=0.025)
+    colorbar.set_label(r"$J_2$", rotation=0, labelpad=12)
+    colorbar.set_ticks(J2_GRID)
+    colorbar.set_ticklabels([f"{J2:g}" for J2 in J2_GRID])
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(output)
+    plt.close(figure)
+
+
 def expected_keys() -> list[tuple[str, int, float]]:
     return [
         (texture, D, J2)
@@ -940,6 +1036,20 @@ def main() -> int:
         plot_inverse_D(
             selection, J2,
             output / f"NN_corr_vs_inverse_D_J2_{j2_tag(J2)}.pdf",
+        )
+    energy_fits = load_gapped_energy_fits()
+    energy_output = output / "energy_vs_inverse_D"
+    missing_energy_fits = [J2 for J2 in J2_GRID if J2 not in energy_fits]
+    if missing_energy_fits:
+        raise RuntimeError(
+            f"missing figure-24 gapped-energy fits at J2={missing_energy_fits}"
+        )
+    for texture, suffix in (
+        ("dimer-plaquette", "dimer"), ("plaquette", "plaquette")
+    ):
+        plot_energy_inverse_D_all_j2(
+            selection, texture, energy_fits,
+            energy_output / f"energy_vs_inverse_D_all_J2_{suffix}.pdf",
         )
 
     missing = len(expected_keys()) - len(selection)
