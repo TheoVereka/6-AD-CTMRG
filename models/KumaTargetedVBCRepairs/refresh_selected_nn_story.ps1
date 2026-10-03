@@ -46,9 +46,12 @@ try {
 
     python .\visual_elements\figs\VBCDiscriminator\selected_nn_story\plot_crossing_energy_comparison.py
     if ($LASTEXITCODE -ne 0) { throw "plot_crossing_energy_comparison.py failed with exit code $LASTEXITCODE" }
+
+    python .\visual_elements\figs\VBCDiscriminator\selected_nn_story\render_publication_plots.py
+    if ($LASTEXITCODE -ne 0) { throw "render_publication_plots.py failed with exit code $LASTEXITCODE" }
 }
 finally {
     Pop-Location
 }
 
-Write-Host "Refreshed selected NN story. E_crossing,D received its error-weighted gapped extrapolation; h_c,D was statistically combined by uncertainty and energy proximity; all dependent plots were regenerated."
+Write-Host "Refreshed selected NN story and publication outputs in selected_nn_story\pubPlots."

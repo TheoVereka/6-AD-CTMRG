@@ -113,3 +113,13 @@ replace their previous selections.  Repair candidates are applied only after
 the established global selection, so they cannot change unrelated grid points.
 `05_E_crossing_vs_original_2C3.pdf` compares the energy at the fitted pinning
 branch crossing with the archived original-2C3 thermodynamic energy.
+
+## Publication rendering
+
+`render_publication_plots.py` is a pure presentation layer.  It reads the
+completed CSV products in `plots`, applies the exact `PublicationPlots`
+stylesheet, removes panel titles, and writes the six final PDFs plus the
+rotating energy-surface MP4 to `pubPlots`.  It performs no selection and no
+fit.  `models/KumaTargetedVBCRepairs/refresh_selected_nn_story.ps1` invokes it
+only after the selected-NN and pinning-energy analyses have been refreshed,
+so completed r01/r02/r03 repairs automatically enter every publication plot.

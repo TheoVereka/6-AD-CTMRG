@@ -52,3 +52,7 @@ The refresh first rebuilds the selected points and crosses the fitted energy
 branches at every D.  It error-weights the gapped extrapolation of
 `E_crossing,D`, statistically combines `h_c,D` by uncertainty and energy
 proximity, and finally regenerates all dependent plots.
+It then applies the canonical `PublicationPlots` stylesheet and writes the six
+final PDFs plus the refreshed 180-degree MP4 to
+`visual_elements\figs\VBCDiscriminator\selected_nn_story\pubPlots`.
+The MP4 step requires `ffmpeg` on `PATH`.
