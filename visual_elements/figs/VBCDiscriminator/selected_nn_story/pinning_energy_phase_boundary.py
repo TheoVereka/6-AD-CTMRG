@@ -1768,6 +1768,7 @@ def averaged_correlations_by_D(rows: list[FieldPoint]) -> dict[int, np.ndarray]:
 
 def fit_correlation_window(
     by_D: dict[int, np.ndarray], a_g: float, selected: list[int],
+    a_g_error: float = 0.0,
 ) -> dict:
     """Unweighted fixed-a_g fits of all three ranks on one shared D window."""
     x_D = np.exp(-a_g * np.asarray(selected, dtype=float))
@@ -1784,11 +1785,47 @@ def fit_correlation_window(
             errors[rank] = math.sqrt(max(0.0, sigma2 * inverse[0, 0]))
     ordering = np.argsort(beta[0])
     correlations = np.asarray(beta[0])[ordering]
+    delta = float(correlations[2] - correlations[0])
+    symmetric_delta_error = (
+        float(math.hypot(errors[ordering][0], errors[ordering][2]))
+        if np.all(np.isfinite(errors[ordering][[0, 2]])) else math.nan
+    )
+    if len(selected) == 2:
+        # A two-point exponential has no residual degree of freedom.  Its
+        # symmetric model error is the distance from the extrapolate to the
+        # largest-D splitting, combined in quadrature with the nonlinear
+        # one-sigma propagation of the published uncertainty of a_g.  This is
+        # the two-point-only analogue of comparing with an adjacent three-D
+        # window when such a window exists.
+        largest_D_delta = float(values[-1, 2] - values[-1, 0])
+        endpoint_systematic = abs(delta - largest_D_delta)
+        a_g_systematic = 0.0
+        if math.isfinite(a_g_error) and a_g_error > 0.0:
+            for trial_a in (max(1.0e-8, a_g - a_g_error),
+                            a_g + a_g_error):
+                trial_x = np.exp(-trial_a * np.asarray(selected, dtype=float))
+                trial_matrix = np.column_stack((
+                    np.ones(len(selected)), trial_x,
+                ))
+                trial_beta, *_ = np.linalg.lstsq(
+                    trial_matrix, values, rcond=None,
+                )
+                trial_correlations = np.sort(trial_beta[0])
+                trial_delta = float(
+                    trial_correlations[2] - trial_correlations[0]
+                )
+                a_g_systematic = max(
+                    a_g_systematic, abs(trial_delta - delta),
+                )
+        symmetric_delta_error = float(math.hypot(
+            endpoint_systematic, a_g_systematic,
+        ))
     largest_D_values = np.asarray(by_D[max(selected)], dtype=float)
     return {
         "Ds": list(selected),
         "correlations": correlations,
         "errors": errors[ordering],
+        "Delta_error": symmetric_delta_error,
         "rms": np.sqrt(np.mean(residuals ** 2, axis=0)),
         "max_abs_residual": float(np.max(np.abs(residuals))),
         "extrapolation_distance": float(np.max(np.abs(
@@ -1798,18 +1835,20 @@ def fit_correlation_window(
 
 
 def candidate_high_D_correlation_fits(
-    by_D: dict[int, np.ndarray], a_g: float,
+    by_D: dict[int, np.ndarray], a_g: float, a_g_error: float = 0.0,
 ) -> list[dict]:
     """All contiguous high-D windows, from the two largest D values onward."""
     dimensions = sorted(by_D)
     return [
-        fit_correlation_window(by_D, a_g, dimensions[-count:])
+        fit_correlation_window(
+            by_D, a_g, dimensions[-count:], a_g_error,
+        )
         for count in range(2, len(dimensions) + 1)
     ] if len(dimensions) >= 2 else []
 
 
 def fit_high_D_correlations(
-    by_D: dict[int, np.ndarray], a_g: float,
+    by_D: dict[int, np.ndarray], a_g: float, a_g_error: float = 0.0,
 ) -> dict | None:
     """Use the common high-D suffix with the stable physical endpoint.
 
@@ -1817,7 +1856,9 @@ def fit_high_D_correlations(
     from the largest-D observation, not from the residual of the fit itself.
     This rejects exact but violently overshooting two-point extrapolations.
     """
-    candidates = candidate_high_D_correlation_fits(by_D, a_g)
+    candidates = candidate_high_D_correlation_fits(
+        by_D, a_g, a_g_error,
+    )
     if not candidates:
         return None
     return min(candidates, key=lambda fit: (
@@ -1833,8 +1874,11 @@ def correlation_node(
     delta = weakest - strongest
     q = ((weakest + strongest - 2.0 * middle) / delta
          if delta > 1.0e-12 else 0.0)
-    delta_error = (float(math.hypot(errors[0], errors[2]))
-                   if np.all(np.isfinite(errors[[0, 2]])) else math.nan)
+    delta_error = float(fit.get(
+        "Delta_error",
+        (float(math.hypot(errors[0], errors[2]))
+         if np.all(np.isfinite(errors[[0, 2]])) else math.nan),
+    ))
     if delta > 1.0e-12 and np.all(np.isfinite(errors)):
         numerator = weakest + strongest - 2.0 * middle
         denominator2 = delta * delta
@@ -1894,6 +1938,7 @@ def selected_h0_fits(gapped_a: dict[float, float]) -> dict[tuple[float, str], di
             "Ds": selected_fit["Ds"],
             "correlations": selected_fit["correlations"],
             "errors": selected_fit["errors"],
+            "Delta_error": selected_fit["Delta_error"],
             "rms": np.full(3, selected_fit["fit_rms_max"]),
             "max_abs_residual": selected_fit["fit_rms_max"],
             "extrapolation_distance": selected_fit[
@@ -1907,6 +1952,7 @@ def selected_h0_fits(gapped_a: dict[float, float]) -> dict[tuple[float, str], di
 
 def build_texture_nodes(
     rows: list[FieldPoint], gapped_a: dict[float, float],
+    gapped_a_errors: dict[float, float],
 ) -> tuple[list[dict], list[dict]]:
     nodes: list[dict] = []
     candidates: list[dict] = []
@@ -1920,6 +1966,7 @@ def build_texture_nodes(
         )]
         fit = fit_high_D_correlations(
             averaged_correlations_by_D(subset), gapped_a[J2],
+            gapped_a_errors.get(J2, 0.0),
         )
         if fit is None:
             continue
@@ -1945,9 +1992,24 @@ def build_texture_nodes(
                     close(row.J2, J2) and abs(row.signed_h) <= 1.0e-12
                     and row.branch == branch
                 )]
-                fit = fit_high_D_correlations(
-                    averaged_correlations_by_D(subset), gapped_a[J2],
-                ) if subset else None
+                if subset:
+                    by_D = averaged_correlations_by_D(subset)
+                    audited_window = selected_story.EXTRAPOLATION_WINDOWS.get(
+                        (branch, J2)
+                    )
+                    if (audited_window is not None
+                            and all(D in by_D for D in audited_window)):
+                        fit = fit_correlation_window(
+                            by_D, gapped_a[J2], list(audited_window),
+                            gapped_a_errors.get(J2, 0.0),
+                        )
+                    else:
+                        fit = fit_high_D_correlations(
+                            by_D, gapped_a[J2],
+                            gapped_a_errors.get(J2, 0.0),
+                        )
+                else:
+                    fit = None
             if fit is not None:
                 components.append((branch, fit))
                 candidates.append(correlation_node(
@@ -1978,6 +2040,9 @@ def build_texture_nodes(
             "extrapolation_distance": max(
                 fit["extrapolation_distance"] for _, fit in components
             ),
+            "Delta_error": float(math.sqrt(sum(
+                fit["Delta_error"] ** 2 for _, fit in components
+            )) / 2.0),
         }
         nodes.append(correlation_node(
             J2, 0.0, "average of dimer/plaquette h=0 sectors", combined,
@@ -2217,7 +2282,7 @@ def main() -> int:
         energy_h_fits.extend(h_nodes)
         finite_D_energy_crossings.extend(branch_fits)
     texture_nodes, texture_candidates = build_texture_nodes(
-        all_good_points, gapped_a,
+        all_good_points, gapped_a, gapped_a_errors,
     )
 
     write_dict_csv(output / "set_A.csv", set_a)

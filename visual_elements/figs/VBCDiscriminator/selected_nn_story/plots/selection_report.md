@@ -10,10 +10,13 @@
 - relative Delta difference > 35% exceptions: 2
 - fixed-a diagnostics: 54 rank fits
 
-The hard energy cutoff is 0.0003. Delta <=25% is preferred and <=35% is the normal wide window. A >35% candidate can enter only in the low-J2 restoration regime, only when its absolute splitting is small enough to support D->infinity equality, and only when the grid point has no energy-qualified <=35% option; every such exception is exposed explicitly.
+The hard energy cutoff is 0.0003. Delta <=25% is preferred and <=35% is the normal wide window. Automatic >35% exceptions are confined to the low-J2 restoration regime. The sole additional exception is the explicitly approved r01 targeted repair at dimer D=10, J2=.28; it still passes the hard energy and dimer-texture checks. Every exception is exposed below.
 
 D=5 plaquette data are excluded unconditionally. The old D=7, J2=.26 dimer data are also excluded; that point remains missing until a complete candidate appears under the dedicated D7 repair snapshot root.
 D=11 plaquette points at J2=.26, .265, and .27 are excluded because no corresponding 0713 energy/Delta reference exists.
+All D=11 plaquette data at J2=.32 are excluded explicitly; D=10 uses the completed r02 targeted repair.
+The common-rank extrapolation windows overridden after physical inspection are: dimer J2=.28 -> D=7..10, plaquette J2=.28 -> D=6..10, plaquette J2=.29 -> D=8..11, and plaquette J2=.31 -> D={9,11}. For the phase-boundary extension, dimer J2=.33 uses D=6..9. Every case uses the identical fixed-a_g gapped fit for all three ranks; only the common D window changes.
+Every two-D extrapolation has a symmetric error. If a neighbouring three-D window exists, its displacement supplies the window systematic. For a genuinely two-point-only texture sector, the distance to the largest-D splitting is combined in quadrature with the a_g +/- sigma_a_g propagation.
 
 ## Missing grid points
 

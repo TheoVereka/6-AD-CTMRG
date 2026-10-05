@@ -186,8 +186,14 @@ def delta(observation: dict) -> tuple[float, float]:
         return float("nan"), float("nan")
     order = np.argsort([entry[0] for entry in groups])
     rank1, rank3 = groups[int(order[0])], groups[int(order[-1])]
-    central = (rank3[2] - rank1[2]) / 24.0
-    error = math.sqrt(rank3[1] ** 2 + rank1[1] ** 2) / 2.0
+    # Each rank sum contains six symmetry-related NN correlations.  The old
+    # publication pipeline divided their difference by 24, i.e. it plotted
+    # one quarter of the physical rank-mean splitting used everywhere else:
+    #   (sum_weak - sum_strong)/24 = (C_weak - C_strong)/4.
+    # Restore the unscaled definition and scale its propagated uncertainty by
+    # the same factor of four.
+    central = (rank3[2] - rank1[2]) / 6.0
+    error = 2.0 * math.sqrt(rank3[1] ** 2 + rank1[1] ** 2)
     return float(central), float(error)
 
 

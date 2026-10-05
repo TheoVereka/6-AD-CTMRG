@@ -98,6 +98,14 @@ EXTRAPOLATION_WINDOWS = {
     ("dimer-plaquette", 0.28): (7, 8, 9, 10),
     ("plaquette", 0.28): (6, 7, 8, 9, 10),
     ("plaquette", 0.29): (8, 9, 10, 11),
+    # D=10 is the back-bending member of the last-three-D plaquette data.
+    # The same fixed-a_g fit on D={9,11} keeps the extrapolate inside their
+    # observed high-D interval and below the neighbouring J2=.32 value.
+    ("plaquette", 0.31): (9, 11),
+    # The D=8,9 two-point continuation lies above the neighbouring J2=.34
+    # dimer result.  All four available, texture-consistent D values give a
+    # stable fixed-a_g continuation with a finite regression uncertainty.
+    ("dimer-plaquette", 0.33): (6, 7, 8, 9),
 }
 ENERGY_FITS = DATA / "processed" / "publicationPlots" / "figure_24_fits.csv"
 DEFAULT_OUTPUT = HERE / "plots"
@@ -889,6 +897,9 @@ def stable_high_D_rank_fit(rows: list[Candidate], a_g: float) -> dict | None:
     actually observed largest-D triplet is retained.  This is the established
     selected-story rule: it suppresses exact but violently overshooting
     two-point extrapolations without selecting a window from fit residuals.
+    Explicitly audited mixed/back-bending cases use the common-D windows
+    listed in ``EXTRAPOLATION_WINDOWS`` instead; all three ranks still share
+    exactly the same window and fixed energy-fit length.
     """
     ordered = sorted(rows, key=lambda row: row.D)
     if len(ordered) < 2:
@@ -896,18 +907,21 @@ def stable_high_D_rank_fit(rows: list[Candidate], a_g: float) -> dict | None:
     texture = ordered[0].texture
     J2 = ordered[0].J2
     forced = EXTRAPOLATION_WINDOWS.get((texture, J2))
-    if forced is not None:
-        by_D = {row.D: row for row in ordered}
-        if all(D in by_D for D in forced):
-            ordered = [by_D[D] for D in forced]
-            counts = (len(ordered),)
-        else:
-            counts = range(2, len(ordered) + 1)
-    else:
-        counts = range(2, len(ordered) + 1)
+    by_D = {row.D: row for row in ordered}
+    forced_valid = forced is not None and all(D in by_D for D in forced)
+    subsets = [ordered[-count:] for count in range(2, len(ordered) + 1)]
+    # An audited window may deliberately stop below the largest available D
+    # (e.g. a mixed highest-D state), so add it explicitly when it is not a
+    # conventional suffix.  Retain the ordinary suffixes to quantify the
+    # window uncertainty of an explicit two-D choice.
+    if forced_valid:
+        forced_subset = [by_D[D] for D in forced]
+        if [row.D for row in forced_subset] not in [
+            [row.D for row in subset] for subset in subsets
+        ]:
+            subsets.append(forced_subset)
     candidates = []
-    for count in counts:
-        subset = ordered[-count:]
+    for subset in subsets:
         dimensions = np.asarray([row.D for row in subset], dtype=float)
         values = np.asarray([
             [row.ranks[rank][0] for rank in range(3)] for row in subset
@@ -942,11 +956,12 @@ def stable_high_D_rank_fit(rows: list[Candidate], a_g: float) -> dict | None:
         errors = np.sqrt(np.maximum(
             0.0, measurement_variance + model_variance,
         ))[ordering]
+        delta_error = float(math.hypot(errors[0], errors[2]))
         candidates.append({
             "Ds": [row.D for row in subset],
             "correlations": correlations,
             "errors": errors,
-            "Delta_error": float(math.hypot(errors[0], errors[2])),
+            "Delta_error": delta_error,
             "extrapolation_distance": float(np.max(np.abs(
                 correlations - values[-1]
             ))),
@@ -959,9 +974,56 @@ def stable_high_D_rank_fit(rows: list[Candidate], a_g: float) -> dict | None:
                 else "automatic endpoint-stable high-D suffix"
             ),
         })
-    return min(candidates, key=lambda fit: (
-        fit["extrapolation_distance"], -len(fit["Ds"]),
-    ))
+    if forced_valid:
+        best = next(fit for fit in candidates if fit["Ds"] == list(forced))
+    else:
+        best = min(candidates, key=lambda fit: (
+            fit["extrapolation_distance"], -len(fit["Ds"]),
+        ))
+    # A two-D fit has no residual degree of freedom, so propagating only the
+    # tiny measurement errors can produce a formally nonzero but visually and
+    # physically meaningless uncertainty.  In that case include the change
+    # from the adjacent three-D high-D window as a one-sigma window systematic.
+    # This leaves the selected central value untouched and applies the same
+    # rule to every selected two-D extrapolation, whether automatic or audited.
+    if len(best["Ds"]) == 2:
+        three_D = next((fit for fit in candidates if len(fit["Ds"]) == 3), None)
+        if three_D is not None:
+            best = dict(best)
+            original_delta_error = float(best["Delta_error"])
+            rank_systematic = np.abs(
+                best["correlations"] - three_D["correlations"]
+            )
+            best["errors"] = np.sqrt(
+                best["errors"] ** 2 + rank_systematic ** 2
+            )
+            delta_best = best["correlations"][2] - best["correlations"][0]
+            delta_three = (
+                three_D["correlations"][2] - three_D["correlations"][0]
+            )
+            systematic = abs(float(delta_best - delta_three))
+            best["Delta_window_systematic"] = systematic
+            target_delta_error = float(math.hypot(
+                original_delta_error, systematic,
+            ))
+            current_delta_error = float(math.hypot(
+                best["errors"][0], best["errors"][2],
+            ))
+            # Preserve the direct Delta-window systematic even if correlated
+            # rank motions partially cancel in quadrature.  Distribute only
+            # the missing variance equally over the two endpoint ranks so
+            # downstream correlation-based propagation returns the same sigma.
+            if current_delta_error < target_delta_error:
+                extra = math.sqrt(
+                    (target_delta_error ** 2 - current_delta_error ** 2) / 2.0
+                )
+                best["errors"][[0, 2]] = np.hypot(
+                    best["errors"][[0, 2]], extra,
+                )
+            best["Delta_error"] = float(math.hypot(
+                best["errors"][0], best["errors"][2],
+            ))
+    return best
 
 
 def selected_h0_delta_curve(
@@ -1230,17 +1292,30 @@ def write_report(
         f"- fixed-a diagnostics: {len(diagnostics)} rank fits",
         "",
         "The hard energy cutoff is 0.0003. Delta <=25% is preferred and <=35% "
-        "is the normal wide window. A >35% candidate can enter only in the "
-        "low-J2 restoration regime, only when its absolute splitting is small "
-        "enough to support D->infinity equality, and only when the grid point "
-        "has no energy-qualified <=35% option; every such exception is exposed "
-        "explicitly.",
+        "is the normal wide window. Automatic >35% exceptions are confined to "
+        "the low-J2 restoration regime. The sole additional exception is the "
+        "explicitly approved r01 targeted repair at dimer D=10, J2=.28; it "
+        "still passes the hard energy and dimer-texture checks. Every exception "
+        "is exposed below.",
         "",
         "D=5 plaquette data are excluded unconditionally. The old D=7, J2=.26 "
         "dimer data are also excluded; that point remains missing until a complete "
         "candidate appears under the dedicated D7 repair snapshot root.",
         "D=11 plaquette points at J2=.26, .265, and .27 are excluded because "
         "no corresponding 0713 energy/Delta reference exists.",
+        "All D=11 plaquette data at J2=.32 are excluded explicitly; D=10 uses "
+        "the completed r02 targeted repair.",
+        "The common-rank extrapolation windows overridden after physical "
+        "inspection are: dimer J2=.28 -> D=7..10, plaquette J2=.28 -> "
+        "D=6..10, plaquette J2=.29 -> D=8..11, and plaquette J2=.31 -> "
+        "D={9,11}. For the phase-boundary extension, dimer J2=.33 uses "
+        "D=6..9. Every case uses the identical fixed-a_g gapped fit for all "
+        "three ranks; only the common D window changes.",
+        "Every two-D extrapolation has a symmetric error. If a neighbouring "
+        "three-D window exists, its displacement supplies the window "
+        "systematic. For a genuinely two-point-only texture sector, the "
+        "distance to the largest-D splitting is combined in quadrature with "
+        "the a_g +/- sigma_a_g propagation.",
         "",
         "## Missing grid points", "",
     ]

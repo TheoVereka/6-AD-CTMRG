@@ -8,7 +8,7 @@ then an `afterok` job resumes that tensor at h=0.
 |---|---|---|---|---|---|
 | r01 | J2=0.29 dimer | J2=0.28 | dimer-plaquette | 10, 120 | add |
 | r02 | J2=0.31 plaquette | J2=0.32 | plaquette | 10, 120 | replace |
-| r03 | J2=0.31 plaquette | J2=0.32 | plaquette | 11, 140 | replace |
+| r03 | J2=0.31 plaquette | J2=0.32 | plaquette | 11, 140 | computed, but excluded from the selected story |
 
 The static `.run` files exactly follow the previously successful Kuma setup:
 `long` QoS, `h100` partition, one GPU, 16 CPU cores, 90 GB host memory,
@@ -48,6 +48,8 @@ scp -r pghosh@kuma:/scratch/pghosh/KumaTargetedVBCRepairs/Results_Kuma_TargetedR
 ```
 
 Then run `refresh_selected_nn_story.ps1` from this folder on the local machine.
+The refresh requires and consumes r01/r02 only.  It deliberately ignores r03
+and removes every plaquette D=11, J2=0.32 point from the selected data.
 The refresh first rebuilds the selected points and crosses the fitted energy
 branches at every D.  It error-weights the gapped extrapolation of
 `E_crossing,D`, statistically combines `h_c,D` by uncertainty and energy

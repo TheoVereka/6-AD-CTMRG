@@ -37,6 +37,7 @@ REPO = HERE.parents[3]
 DATA = REPO.parent / "data"
 ANALYSIS = HERE / "plots"
 PHASE = ANALYSIS / "pinning_energy_phase_boundary"
+FIGURE17_DATA = DATA / "processed" / "publicationPlots" / "figure_17_data.csv"
 DEFAULT_OUTPUT = HERE / "pubPlots"
 STYLE = FIGS_DIR / "PublicationPlots" / "plottingStyle" / "everyday_stylesheet.mplstyle"
 
@@ -46,6 +47,8 @@ import select_and_plot as selected_story  # noqa: E402
 
 
 DOUBLE_FIGSIZE = (13.3, 5.2)
+NN_DOUBLE_FIGSIZE = (13.3, 7.8)
+HC_COMPARISON_FIGSIZE = (15.2, 5.4)
 SINGLE_FIGSIZE = (6.65, 5.2)
 COLORBAR_FIGSIZE = (7.85, 5.2)
 PHASE_FIGSIZE = (10.6, 6.0)
@@ -130,20 +133,32 @@ def selected_objects(rows: list[dict[str, str]]) -> dict[tuple[str, int, float],
 
 
 def dimension_encoding(D: int) -> tuple[float, float]:
-    """Absolute-D marker/line encoding shared by both NN panels.
-
-    D=5,7,9 reproduce the old weakest/middle/strongest marker sizes
-    3.2, 5.2, and 7.2.  Intermediate and larger dimensions continue with the
-    same monotone unit step, so one common D-only legend is unambiguous.
-    """
-    offset = D - 5
-    return 3.2 + offset, 1.20 + 0.25 * offset
+    """Compressed absolute-D marker scale and original analysis linewidth."""
+    fraction = np.clip((D - 5) / (11 - 5), 0.0, 1.0)
+    # D=5 keeps its current size; D=11 is exactly 70% of its old 9.2 size.
+    marker_size = 3.2 + fraction * (0.70 * 9.2 - 3.2)
+    return float(marker_size), 1.05
 
 
-def rank_color(texture: str, rank: int) -> np.ndarray:
-    if texture == "dimer-plaquette":
-        return YELLOW if rank == 0 else CYAN
-    return YELLOW if rank < 2 else CYAN
+NN_RANK_GRADIENTS = (
+    # Brown-yellow / green / purple rank families.  Low/high endpoints shift
+    # hue as well as brightness, and the central colors anchor middle-high D.
+    mcolors.LinearSegmentedColormap.from_list(
+        "nn_brown_yellow_D",
+        [(0.0, "#FFD447"), (0.62, "#D89000"), (1.0, "#8A4F00")],
+    ),
+    mcolors.LinearSegmentedColormap.from_list(
+        "nn_green_D", [(0.0, "#67D66F"), (0.62, "#00A65A"), (1.0, "#006B3C")],
+    ),
+    mcolors.LinearSegmentedColormap.from_list(
+        "nn_purple_D", [(0.0, "#C067E8"), (0.62, "#7B2CBF"), (1.0, "#3C178F")],
+    ),
+)
+
+
+def rank_D_color(rank: int, D: int, dimensions: list[int]) -> np.ndarray:
+    fraction = ((D - dimensions[0]) / max(1, dimensions[-1] - dimensions[0]))
+    return NN_RANK_GRADIENTS[rank](fraction)
 
 
 def add_sector_text(axis: plt.Axes, texture: str) -> None:
@@ -155,46 +170,73 @@ def add_sector_text(axis: plt.Axes, texture: str) -> None:
 
 def plot_nn_vs_j2(rows: list[dict[str, str]], output: Path) -> None:
     figure, axes = plt.subplots(
-        1, 2, figsize=DOUBLE_FIGSIZE, sharex=True, sharey=True,
+        1, 2, figsize=NN_DOUBLE_FIGSIZE, sharex=True, sharey=True,
         constrained_layout=True,
     )
+    all_dimensions = sorted({int(row["D"]) for row in rows})
     for axis, texture in zip(axes, TEXTURES):
         local = [row for row in rows if row["texture"] == texture]
-        for D in sorted({int(row["D"]) for row in local}):
+        dimensions = sorted({int(row["D"]) for row in local})
+        for D in dimensions:
             subset = sorted(
                 [row for row in local if int(row["D"]) == D],
                 key=lambda row: float(row["J2"]),
             )
             marker_size, linewidth = dimension_encoding(D)
+            alpha = 0.08 + 0.92 * (
+                (D - all_dimensions[0])
+                / max(1, all_dimensions[-1] - all_dimensions[0])
+            )
             for rank, field in enumerate(RANK_FIELDS):
+                color = rank_D_color(rank, D, all_dimensions)
                 axis.errorbar(
                     [float(row["J2"]) for row in subset],
                     [float(row[field]) for row in subset],
                     yerr=[float(row[f"{field}_error"]) for row in subset],
-                    color=rank_color(texture, rank), marker="o",
-                    markersize=marker_size, linestyle="-",
-                    linewidth=linewidth, elinewidth=max(1.0, 0.72 * linewidth),
-                    capsize=2.3, zorder=2 + D,
+                    color=color, alpha=alpha,
+                    marker=selected_story.RANK_MARKERS[rank],
+                    markerfacecolor=color,
+                    markeredgecolor=color,
+                    markeredgewidth=0.8,
+                    markersize=marker_size,
+                    linestyle=selected_story.RANK_LINESTYLES[rank],
+                    linewidth=linewidth, elinewidth=0.75,
+                    capsize=2.0, zorder=2 + D,
                 )
         add_sector_text(axis, texture)
         axis.set_xlabel(r"$J_2$")
         axis.tick_params(which="both", top=True, right=True)
     axes[0].set_ylabel(r"nearest-neighbour correlation")
 
-    handles = []
-    labels = []
-    for D in sorted({int(row["D"]) for row in rows}):
+    # Interleave ranks within each D because Matplotlib packs a multi-column
+    # legend column-major.  The visible rows are therefore weak, middle,
+    # strong, each containing the complete D sequence.
+    handles, labels = [], []
+    rank_order = (2, 1, 0)
+    rank_labels = {2: "weak", 1: "middle", 0: "strong"}
+    for D in all_dimensions:
         marker_size, linewidth = dimension_encoding(D)
-        handle = axes[0].errorbar(
-            [], [], yerr=[], color="black", marker="o", linestyle="-",
-            markersize=marker_size, linewidth=linewidth,
-            elinewidth=max(1.0, 0.72 * linewidth), capsize=2.3,
+        alpha = 0.08 + 0.92 * (
+            (D - all_dimensions[0])
+            / max(1, all_dimensions[-1] - all_dimensions[0])
         )
-        handles.append(handle)
-        labels.append(rf"$D={D}$")
+        for rank in rank_order:
+            color = rank_D_color(rank, D, all_dimensions)
+            handle = Line2D(
+                [], [], color=color, alpha=alpha,
+                marker=selected_story.RANK_MARKERS[rank],
+                linestyle=selected_story.RANK_LINESTYLES[rank],
+                markerfacecolor=color, markeredgecolor=color,
+                markeredgewidth=0.8, markersize=marker_size,
+                linewidth=linewidth,
+            )
+            handles.append(handle)
+            prefix = rf"{rank_labels[rank]}, " if D == all_dimensions[0] else ""
+            labels.append(prefix + rf"$D={D}$")
     figure.legend(
-        handles, labels, loc="outside upper center", ncol=len(handles),
-        fontsize=14, handlelength=1.45, columnspacing=0.9,
+        handles, labels, loc="outside upper center", ncol=len(all_dimensions),
+        fontsize=12.5, handlelength=1.45, columnspacing=0.72,
+        handletextpad=0.45, labelspacing=0.38,
     )
     save_pdf(figure, output)
 
@@ -280,18 +322,26 @@ def crossing_rows() -> list[dict[str, str]]:
     return [row for row in rows if math.isfinite(finite(row.get("h_c")))]
 
 
-def plot_hc_phase_boundary(rows: list[dict[str, str]], output: Path) -> None:
+def plot_hc_phase_boundary(
+    rows: list[dict[str, str]], texture_candidates: list[dict[str, str]],
+    output: Path,
+) -> None:
     ordered = sorted(rows, key=lambda row: float(row["J2"]))
     h = np.asarray([float(row["h_c"]) for row in ordered])
     J2 = np.asarray([float(row["J2"]) for row in ordered])
     lower = np.asarray([float(row["h_c_error_low"]) for row in ordered])
     upper = np.asarray([float(row["h_c_error_high"]) for row in ordered])
 
-    figure, axis = plt.subplots(figsize=SINGLE_FIGSIZE)
-    figure.subplots_adjust(left=0.18, right=0.96, bottom=0.17, top=0.96)
-    axis.plot(h, J2, color=PURPLE, linewidth=2.2, zorder=3)
+    figure = plt.figure(figsize=HC_COMPARISON_FIGSIZE)
+    grid = figure.add_gridspec(
+        1, 2, width_ratios=(0.92, 1.28),
+        left=0.065, right=0.945, bottom=0.17, top=0.96, wspace=0.14,
+    )
+    axis = figure.add_subplot(grid[0])
+    crossing_color = "black"
+    axis.plot(h, J2, color=crossing_color, linewidth=2.2, zorder=3)
     axis.errorbar(
-        h, J2, xerr=np.vstack((lower, upper)), color=PURPLE,
+        h, J2, xerr=np.vstack((lower, upper)), color=crossing_color,
         linestyle="none", marker="o", markersize=6.5,
         elinewidth=1.8, capsize=3.0, zorder=4,
         label=r"energy crossing $h_c$",
@@ -311,6 +361,97 @@ def plot_hc_phase_boundary(rows: list[dict[str, str]], output: Path) -> None:
     axis.set_ylabel(r"$J_2$")
     axis.tick_params(which="both", top=True, right=True)
     axis.legend(loc="best", fontsize=14)
+
+    # Right panel: reproduce publication figure 17 from its immutable exported
+    # data, then add the two independently extrapolated h=0 VBC sectors.
+    figure17 = read_csv(FIGURE17_DATA)
+    m_rows = sorted([
+        row for row in figure17
+        if row["series"] == "m_extrap" and float(row["J2"]) >= 0.20
+    ], key=lambda row: float(row["J2"]))
+    old_delta_rows = sorted([
+        row for row in figure17
+        if row["series"] == "delta_extrap" and float(row["J2"]) >= 0.20
+    ], key=lambda row: float(row["J2"]))
+    h0_sector_rows = {
+        branch: sorted([
+            row for row in texture_candidates
+            if row["branch"] == branch
+            and close(float(row["signed_h"]), 0.0)
+        ], key=lambda row: float(row["J2"]))
+        for branch in TEXTURES
+    }
+
+    comparison_left = figure.add_subplot(grid[1])
+    comparison_right = comparison_left.twinx()
+    fig17_purple, fig17_orange = "#6f2dbd", "#d95f02"
+    comparison_left.errorbar(
+        [float(row["J2"]) for row in m_rows],
+        [float(row["y"]) for row in m_rows],
+        yerr=[float(row["y_error"]) for row in m_rows],
+        color=fig17_purple, marker="s", linestyle="-",
+        linewidth=2.2, markersize=5.8, elinewidth=1.4, capsize=2.7,
+        label=r"$m_{\rm extrap}$", zorder=4,
+    )
+    # Keep J2=.27 as the fully opaque endpoint of the solid segment and the
+    # starting point of the translucent dashed segment.  Draw the latter
+    # first so the shared marker remains fully opaque.
+    for segment, linestyle, alpha, label in (
+        ([row for row in old_delta_rows if float(row["J2"]) >= 0.27],
+         "--", 0.40, "_nolegend_"),
+        ([row for row in old_delta_rows if float(row["J2"]) <= 0.27],
+         "-", 1.00, r"original 2C3 $\Delta_{\rm extrap}$"),
+    ):
+        comparison_right.errorbar(
+            [float(row["J2"]) for row in segment],
+            [float(row["y"]) for row in segment],
+            yerr=[float(row["y_error"]) for row in segment],
+            color=fig17_orange, alpha=alpha, marker="s",
+            linestyle=linestyle, linewidth=2.2, markersize=5.8,
+            elinewidth=1.4, capsize=2.7, label=label, zorder=4,
+        )
+    for branch, color, marker, label in (
+        ("dimer-plaquette", "#C62828", "v",
+         r"dimer-plaquette $\Delta_{\rm extrap}(h=0)$"),
+        ("plaquette", "#1565C0", "^",
+         r"plaquette $\Delta_{\rm extrap}(h=0)$"),
+    ):
+        sector_rows = h0_sector_rows[branch]
+        comparison_right.errorbar(
+            [float(row["J2"]) for row in sector_rows],
+            [float(row["extrapolated_Delta"]) for row in sector_rows],
+            yerr=[float(row["Delta_error"]) for row in sector_rows],
+            color=color, marker=marker, markerfacecolor=color,
+            linestyle="-", linewidth=1.70, markersize=6.4,
+            elinewidth=1.20, capsize=2.8,
+            label=label, zorder=6,
+        )
+    for transition, label in ((0.24, r"$J_2=0.24$"),
+                              (0.27, r"$J_2=0.27$")):
+        comparison_left.axvline(
+            transition, color="0.35", linestyle="--", linewidth=1.4,
+            zorder=1,
+        )
+        comparison_left.text(
+            transition - 0.0022, 0.965, label,
+            transform=comparison_left.get_xaxis_transform(), rotation=90,
+            ha="right", va="top", color="0.28", fontsize=15,
+        )
+    comparison_left.set_xlim(0.195, 0.345)
+    comparison_left.set_ylim(bottom=0.0)
+    comparison_right.set_ylim(bottom=0.0)
+    comparison_left.set_xlabel(r"$J_2$")
+    comparison_left.set_ylabel(r"$m$", color=fig17_purple)
+    comparison_right.set_ylabel(r"$\Delta$", color=fig17_orange)
+    comparison_left.tick_params(axis="y", colors=fig17_purple)
+    comparison_right.tick_params(axis="y", colors=fig17_orange)
+    comparison_left.tick_params(which="both", top=True)
+    handles_left, labels_left = comparison_left.get_legend_handles_labels()
+    handles_right, labels_right = comparison_right.get_legend_handles_labels()
+    comparison_left.legend(
+        handles_left + handles_right, labels_left + labels_right,
+        loc="lower right", fontsize=11.5,
+    )
     save_pdf(figure, output)
 
 
@@ -626,6 +767,9 @@ def main() -> int:
     selection = selected_objects(raw_selected)
     crossings = crossing_rows()
     texture_rows = read_csv(PHASE / "texture_D_infinity_nodes.csv")
+    texture_candidates = read_csv(
+        PHASE / "texture_D_infinity_candidates.csv"
+    )
     all_good = read_csv(PHASE / "all_good_points.csv")
 
     plot_delta_vs_j2(
@@ -633,7 +777,8 @@ def main() -> int:
     )
     plot_nn_vs_j2(raw_selected, output / "NN_corr_vs_J2_selected.pdf")
     plot_hc_phase_boundary(
-        crossings, output / "02_hc_vs_J2_phase_boundary.pdf",
+        crossings, texture_candidates,
+        output / "02_hc_vs_J2_phase_boundary.pdf",
     )
     plot_phase_diagram(crossings, texture_rows, output / "04_phasediagram.pdf")
     energy_fits = selected_story.load_gapped_energy_fits()
