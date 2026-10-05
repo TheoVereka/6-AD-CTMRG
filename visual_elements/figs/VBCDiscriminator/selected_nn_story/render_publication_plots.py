@@ -203,7 +203,27 @@ def plot_delta_vs_j2(
     rows: list[dict[str, str]], selection: dict, output: Path,
 ) -> None:
     fixed_a = selected_story.load_fixed_a()
-    extrapolated = selected_story.selected_h0_delta_curve(selection, fixed_a)
+    selected_values = list(selection.values())
+    extrapolated: dict[str, list[dict[str, float]]] = {
+        texture: [] for texture in TEXTURES
+    }
+    for texture in TEXTURES:
+        for J2 in selected_story.J2_GRID:
+            if J2 not in fixed_a:
+                continue
+            subset = [
+                row for row in selected_values
+                if row.texture == texture and close(row.J2, J2)
+            ]
+            fit = selected_story.stable_high_D_rank_fit(subset, fixed_a[J2])
+            if fit is None:
+                continue
+            correlations = fit["correlations"]
+            extrapolated[texture].append({
+                "J2": J2,
+                "Delta": float(correlations[2] - correlations[0]),
+                "Delta_error": float(fit["Delta_error"]),
+            })
     figure, axes = plt.subplots(
         1, 2, figsize=DOUBLE_FIGSIZE, sharex=True, sharey=True,
         constrained_layout=True,
@@ -231,12 +251,17 @@ def plot_delta_vs_j2(
                 linewidth=1.65, elinewidth=1.1, capsize=2.5,
                 label=rf"$D={D}$",
             )
-        axis.plot(
-            [row["J2"] for row in extrapolated],
-            [row["Delta"] for row in extrapolated],
+        axis.errorbar(
+            [row["J2"] for row in extrapolated[texture]],
+            [row["Delta"] for row in extrapolated[texture]],
+            yerr=[row["Delta_error"] for row in extrapolated[texture]],
             color="black", marker="D", markerfacecolor="white",
             markeredgewidth=1.5, markersize=6.2, linewidth=2.4,
-            label=r"extrapolated $\Delta(J_2,0)$", zorder=10,
+            elinewidth=1.35, capsize=3.0,
+            label=(r"extrapolated dimer-plaquette $\Delta$"
+                   if texture == "dimer-plaquette"
+                   else r"extrapolated plaquette $\Delta$"),
+            zorder=10,
         )
         add_sector_text(axis, texture)
         axis.set_xlabel(r"$J_2$")

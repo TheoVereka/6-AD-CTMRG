@@ -16,8 +16,7 @@ if ([IO.Path]::GetFullPath($InputRoot).TrimEnd('\') -ne [IO.Path]::GetFullPath($
 
 $Targets = @(
     @{ Alias="r01"; D=10; Chi=120 },
-    @{ Alias="r02"; D=10; Chi=120 },
-    @{ Alias="r03"; D=11; Chi=140 }
+    @{ Alias="r02"; D=10; Chi=120 }
 )
 foreach ($Target in $Targets) {
     foreach ($Stage in @("h_0p02", "h_0")) {

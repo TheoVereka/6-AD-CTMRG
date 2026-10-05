@@ -89,7 +89,15 @@ KUMA_REPAIR_ROOT = (
 KUMA_REPAIR_TARGETS = {
     "r01": ("dimer-plaquette", 10, 0.28, 120),
     "r02": ("plaquette", 10, 0.32, 120),
-    "r03": ("plaquette", 11, 0.32, 140),
+}
+# Explicit common-D windows for the three sector extrapolations whose fully
+# automatic endpoint rule is known to follow a mixed or locally back-bending
+# high-D point.  These windows are used for all three ranks together; no rank
+# and no target Delta is fitted separately.
+EXTRAPOLATION_WINDOWS = {
+    ("dimer-plaquette", 0.28): (7, 8, 9, 10),
+    ("plaquette", 0.28): (6, 7, 8, 9, 10),
+    ("plaquette", 0.29): (8, 9, 10, 11),
 }
 ENERGY_FITS = DATA / "processed" / "publicationPlots" / "figure_24_fits.csv"
 DEFAULT_OUTPUT = HERE / "plots"
@@ -382,7 +390,13 @@ def apply_kuma_repairs(
     eligible: dict[tuple[str, int, float], list[Candidate]],
     discovered: list[Candidate],
 ) -> None:
-    """Add r01 and replace r02/r03, failing loudly if a completed run is bad."""
+    """Apply the two explicitly approved completed targeted repairs.
+
+    r01 is accepted as a documented Delta-window exception: its energy and
+    texture pass the hard physical checks, and the user selected it after
+    direct inspection.  r02 passes the ordinary filters.  The r03/D=11 target
+    is intentionally absent from ``KUMA_REPAIR_TARGETS`` and is never read.
+    """
     for alias, (texture, D, J2, _chi) in KUMA_REPAIR_TARGETS.items():
         key = (texture, D, J2)
         observed = [row for row in discovered if row.key == key]
@@ -390,6 +404,17 @@ def apply_kuma_repairs(
             continue
         accepted = [row for row in eligible.get(key, [])
                     if row.source.startswith(f"kuma_targeted_repair:{alias}:")]
+        if not accepted and alias == "r01":
+            accepted = [
+                row for row in observed
+                if abs(row.energy_difference) <= ENERGY_HARD
+                and row.eta >= 0.25
+            ]
+            for row in accepted:
+                row.eligible = True
+                row.delta_exception = True
+                row.rejection_reason = ""
+                row.local_score = local_score(row)
         if not accepted:
             reasons = "; ".join(
                 row.rejection_reason or "not eligible" for row in observed
@@ -868,28 +893,71 @@ def stable_high_D_rank_fit(rows: list[Candidate], a_g: float) -> dict | None:
     ordered = sorted(rows, key=lambda row: row.D)
     if len(ordered) < 2:
         return None
+    texture = ordered[0].texture
+    J2 = ordered[0].J2
+    forced = EXTRAPOLATION_WINDOWS.get((texture, J2))
+    if forced is not None:
+        by_D = {row.D: row for row in ordered}
+        if all(D in by_D for D in forced):
+            ordered = [by_D[D] for D in forced]
+            counts = (len(ordered),)
+        else:
+            counts = range(2, len(ordered) + 1)
+    else:
+        counts = range(2, len(ordered) + 1)
     candidates = []
-    for count in range(2, len(ordered) + 1):
+    for count in counts:
         subset = ordered[-count:]
         dimensions = np.asarray([row.D for row in subset], dtype=float)
         values = np.asarray([
             [row.ranks[rank][0] for rank in range(3)] for row in subset
+        ], dtype=float)
+        value_errors = np.asarray([
+            [row.ranks[rank][1] for rank in range(3)] for row in subset
         ], dtype=float)
         design = np.column_stack((
             np.ones(len(subset)), np.exp(-a_g * dimensions),
         ))
         beta, *_ = np.linalg.lstsq(design, values, rcond=None)
         residual = values - design @ beta
-        correlations = np.sort(np.asarray(beta[0], dtype=float))
+        ordering = np.argsort(beta[0])
+        correlations = np.asarray(beta[0], dtype=float)[ordering]
+
+        # One-sigma uncertainty of each intercept.  The first contribution
+        # propagates the reported finite-D correlation errors.  For three or
+        # more D values the second contribution adds the ordinary regression
+        # uncertainty from the residual scatter about the fixed-a_g curve.
+        inverse_design = np.linalg.pinv(design)
+        intercept_weights = inverse_design[0]
+        measurement_variance = np.sum(
+            (intercept_weights[:, None] * value_errors) ** 2, axis=0,
+        )
+        model_variance = np.zeros(3, dtype=float)
+        if len(subset) > 2:
+            covariance_factor = np.linalg.pinv(design.T @ design)[0, 0]
+            model_variance = (
+                np.sum(residual ** 2, axis=0) / (len(subset) - 2)
+                * covariance_factor
+            )
+        errors = np.sqrt(np.maximum(
+            0.0, measurement_variance + model_variance,
+        ))[ordering]
         candidates.append({
             "Ds": [row.D for row in subset],
             "correlations": correlations,
+            "errors": errors,
+            "Delta_error": float(math.hypot(errors[0], errors[2])),
             "extrapolation_distance": float(np.max(np.abs(
                 correlations - values[-1]
             ))),
             "fit_rms_max": float(np.max(np.sqrt(
                 np.mean(residual ** 2, axis=0)
             ))),
+            "window_rule": (
+                "explicit common-D physical window"
+                if forced is not None and list(forced) == [row.D for row in subset]
+                else "automatic endpoint-stable high-D suffix"
+            ),
         })
     return min(candidates, key=lambda fit: (
         fit["extrapolation_distance"], -len(fit["Ds"]),
@@ -938,7 +1006,7 @@ def selected_h0_delta_curve(
 def plot_delta_vs_j2(
     selection: dict, fixed_a: dict[float, float], output: Path,
 ) -> list[dict]:
-    """Plot selected finite-D splittings and their independent h=0 limit."""
+    """Plot finite-D splittings and each sector's own extrapolated limit."""
     extrapolated = selected_h0_delta_curve(selection, fixed_a)
     figure, axes = plt.subplots(
         1, 2, figsize=(16.0, 7.7), sharex=True, sharey=True,
@@ -968,12 +1036,33 @@ def plot_delta_vs_j2(
                 linestyle="-", linewidth=1.05, elinewidth=0.7,
                 capsize=1.8, label=f"D={D}",
             )
-        axis.plot(
-            [row["J2"] for row in extrapolated],
-            [row["Delta"] for row in extrapolated],
+        sector_curve = []
+        for J2 in J2_GRID:
+            if J2 not in fixed_a:
+                continue
+            fit = stable_high_D_rank_fit(
+                [row for row in texture_rows if close(row.J2, J2)],
+                fixed_a[J2],
+            )
+            if fit is not None:
+                sector_curve.append({
+                    "J2": J2,
+                    "Delta": float(
+                        fit["correlations"][2] - fit["correlations"][0]
+                    ),
+                    "Delta_error": fit["Delta_error"],
+                })
+        axis.errorbar(
+            [row["J2"] for row in sector_curve],
+            [row["Delta"] for row in sector_curve],
+            yerr=[row["Delta_error"] for row in sector_curve],
             color="0.08", marker="D", markerfacecolor="white",
             markeredgewidth=1.2, markersize=5.5, linewidth=2.2,
-            label=r"extrapolated $\Delta(J_2,h=0)$", zorder=10,
+            elinewidth=1.2, capsize=2.5,
+            label=(r"extrapolated dimer-plaquette $\Delta$"
+                   if texture == "dimer-plaquette"
+                   else r"extrapolated plaquette $\Delta$"),
+            zorder=10,
         )
         axis.set_title(TEXTURE_TITLES[texture], fontsize=13)
         axis.set_xlabel(r"$J_2$", fontsize=12)
@@ -1201,6 +1290,9 @@ def main() -> int:
     discover_kuma_repairs(repair_discovery, references)
     repair_eligible = make_eligible(repair_discovery.candidates)
     apply_kuma_repairs(selection, repair_eligible, repair_discovery.candidates)
+    # The D=11 plaquette point at J2=.32 is explicitly excluded, irrespective
+    # of source (old continuation, original tensor, or r03 repair).
+    selection.pop(("plaquette", 11, 0.32), None)
     discovery.candidates.extend(repair_discovery.candidates)
     discovery.errors.extend(repair_discovery.errors)
     score = objective(selection, fixed_a)

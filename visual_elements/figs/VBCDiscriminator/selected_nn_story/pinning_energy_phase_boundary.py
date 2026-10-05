@@ -29,6 +29,7 @@ import math
 import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from types import SimpleNamespace
 
 import matplotlib
 
@@ -48,8 +49,10 @@ DATA = REPO.parent / "data"
 import sys
 
 sys.path.insert(0, str(VBC_DIR))
+sys.path.insert(0, str(HERE))
 from analyze_branch_runs import find_lookahead, read_scalar_hyperparams  # noqa: E402
 from analyze_existing_twoc3 import parse_observation  # noqa: E402
+import select_and_plot as selected_story  # noqa: E402
 
 
 DEFAULT_OUTPUT = HERE / "plots" / "pinning_energy_phase_boundary"
@@ -174,6 +177,10 @@ def discover_points() -> tuple[list[FieldPoint], list[str], int, int]:
             continue
         for path in sorted(root.rglob("D_*_chi_*_energy_magnetization_correlation.txt")):
             if OBS_RE.fullmatch(path.name) is None:
+                continue
+            # r03 is the rejected J2=.32, D=11 plaquette repair.  It is not
+            # part of either the selected h=0 story or the energy surface.
+            if label == "kuma_targeted_repairs" and "r03" in path.parts:
                 continue
             # A copied observation can exist while the cluster process is
             # still writing the stage.  Targeted repairs become visible to
@@ -1871,14 +1878,28 @@ def selected_h0_fits(gapped_a: dict[float, float]) -> dict[tuple[float, str], di
             continue
         subset = [row for row in rows
                   if close(float(row["J2"]), J2) and row["texture"] == texture]
-        by_D: dict[int, list[np.ndarray]] = {}
+        fit_rows = []
         for row in subset:
-            by_D.setdefault(int(row["D"]), []).append(np.asarray([
-                float(row["strongest"]), float(row["middle"]),
-                float(row["weakest"]),
-            ]))
-        averaged = {D: np.mean(values, axis=0) for D, values in by_D.items()}
-        fit = fit_high_D_correlations(averaged, gapped_a[J2])
+            fit_rows.append(SimpleNamespace(
+                D=int(row["D"]), J2=J2, texture=texture,
+                ranks=tuple(
+                    (float(row[name]), float(row[f"{name}_error"]))
+                    for name in ("strongest", "middle", "weakest")
+                ),
+            ))
+        selected_fit = selected_story.stable_high_D_rank_fit(
+            fit_rows, gapped_a[J2],
+        )
+        fit = None if selected_fit is None else {
+            "Ds": selected_fit["Ds"],
+            "correlations": selected_fit["correlations"],
+            "errors": selected_fit["errors"],
+            "rms": np.full(3, selected_fit["fit_rms_max"]),
+            "max_abs_residual": selected_fit["fit_rms_max"],
+            "extrapolation_distance": selected_fit[
+                "extrapolation_distance"
+            ],
+        }
         if fit is not None:
             fits[(J2, texture)] = fit
     return fits
