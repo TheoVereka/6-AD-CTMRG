@@ -1,0 +1,5 @@
+seed_path,D,source_chi,run_chi,orientation,signed_h,vbc_branch,source
+seeds/D8/dimer/h_0p08.pt,8,104,144,1,-0.08,dimer-plaquette,Results_Izar_replica1/J2_0.26/D_8/orientation_1/dimer-plaquette/replica_1/h_0p08/sweep_D8_chi104_best.pt
+seeds/D8/plaquette/h_0p08.pt,8,104,144,1,+0.08,plaquette,Results_Izar_replica1/J2_0.26/D_8/orientation_1/plaquette/replica_1/h_0p08/sweep_D8_chi104_best.pt
+seeds/D9/dimer/h_0p08.pt,9,108,162,1,-0.08,dimer-plaquette,Results_Izar_replica1/J2_0.26/D_9/orientation_1/dimer-plaquette/replica_1/h_0p08/sweep_D9_chi108_best.pt
+seeds/D9/plaquette/h_0p08.pt,9,108,162,1,+0.08,plaquette,Results_Izar_replica1/J2_0.26/D_9/orientation_1/plaquette/replica_1/h_0p08/sweep_D9_chi108_best.pt

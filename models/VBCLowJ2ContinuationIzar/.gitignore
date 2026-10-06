@@ -1,0 +1,5 @@
+Results_Izar_lowJ2/
+slurm_logs/
+*.log
+*.out
+*.error
