@@ -367,17 +367,20 @@ def plot_hc_phase_boundary(
     figure17 = read_csv(FIGURE17_DATA)
     m_rows = sorted([
         row for row in figure17
-        if row["series"] == "m_extrap" and float(row["J2"]) >= 0.20
+        if (row["series"] == "m_extrap"
+            and 0.20 <= float(row["J2"]) <= 0.32)
     ], key=lambda row: float(row["J2"]))
     old_delta_rows = sorted([
         row for row in figure17
-        if row["series"] == "delta_extrap" and float(row["J2"]) >= 0.20
+        if (row["series"] == "delta_extrap"
+            and 0.20 <= float(row["J2"]) <= 0.32)
     ], key=lambda row: float(row["J2"]))
     h0_sector_rows = {
         branch: sorted([
             row for row in texture_candidates
             if row["branch"] == branch
             and close(float(row["signed_h"]), 0.0)
+            and float(row["J2"]) <= 0.32 + 1.0e-12
         ], key=lambda row: float(row["J2"]))
         for branch in TEXTURES
     }
@@ -437,7 +440,7 @@ def plot_hc_phase_boundary(
             transform=comparison_left.get_xaxis_transform(), rotation=90,
             ha="right", va="top", color="0.28", fontsize=15,
         )
-    comparison_left.set_xlim(0.195, 0.345)
+    comparison_left.set_xlim(0.195, 0.325)
     comparison_left.set_ylim(bottom=0.0)
     comparison_right.set_ylim(bottom=0.0)
     comparison_left.set_xlabel(r"$J_2$")
@@ -479,6 +482,8 @@ def plot_phase_diagram(
         phase.field_plot_coordinate(1.0e-1),
     )
     j_edges = phase.centered_edges(j_centers)
+    truncated_at_032 = float(np.max(j_centers)) <= 0.32 + 1.0e-12
+    texture_label_y = 0.315 if truncated_at_032 else 0.334
 
     figure = plt.figure(figsize=PHASE_FIGSIZE)
     grid = figure.add_gridspec(
@@ -530,12 +535,12 @@ def plot_phase_diagram(
         solid_capstyle="butt", zorder=2, label=r"QSL at $h=0$",
     )
     axis.text(
-        phase.field_plot_coordinate(-2.5e-2), 0.334,
+        phase.field_plot_coordinate(-2.5e-2), texture_label_y,
         "dimer-plaquette", color="white", fontsize=16,
         fontweight="semibold", ha="center", va="center", zorder=3,
     )
     axis.text(
-        phase.field_plot_coordinate(2.5e-2), 0.334,
+        phase.field_plot_coordinate(2.5e-2), texture_label_y,
         "plaquette", color="white", fontsize=16,
         fontweight="semibold", ha="center", va="center", zorder=3,
     )
@@ -553,7 +558,13 @@ def plot_phase_diagram(
     axis.get_xticklabels()[4].set_ha("left")
     axis.set_xlim(phase.field_plot_coordinate(-1.0e-1),
                   phase.field_plot_coordinate(1.0e-1))
-    axis.set_ylim(0.238, 0.343)
+    if truncated_at_032:
+        # Keep the complete J2=.32 colour cell (whose upper edge is .325),
+        # while ensuring the visible axis and tick labels stop at J2=.32.
+        axis.set_ylim(0.238, 0.325)
+        axis.set_yticks([0.24, 0.26, 0.28, 0.30, 0.32])
+    else:
+        axis.set_ylim(0.238, 0.343)
     axis.set_xlabel(r"signed pinning field $h$")
     axis.set_ylabel(r"$J_2$")
     axis.tick_params(axis="y", labelsize=18)
@@ -781,6 +792,12 @@ def main() -> int:
         output / "02_hc_vs_J2_phase_boundary.pdf",
     )
     plot_phase_diagram(crossings, texture_rows, output / "04_phasediagram.pdf")
+    plot_phase_diagram(
+        [row for row in crossings if float(row["J2"]) <= 0.32 + 1.0e-12],
+        [row for row in texture_rows
+         if float(row["J2"]) <= 0.32 + 1.0e-12],
+        output / "04_phasediagram_J2_le_0p32.pdf",
+    )
     energy_fits = selected_story.load_gapped_energy_fits()
     plot_energy_vs_inverse_D(
         raw_selected, "dimer-plaquette", energy_fits,
@@ -798,6 +815,7 @@ def main() -> int:
     expected = [
         "Delta_vs_J2_selected.pdf", "NN_corr_vs_J2_selected.pdf",
         "02_hc_vs_J2_phase_boundary.pdf", "04_phasediagram.pdf",
+        "04_phasediagram_J2_le_0p32.pdf",
         "energy_vs_inverse_D_all_J2_dimer.pdf",
         "energy_vs_inverse_D_all_J2_plaquette.pdf",
     ]

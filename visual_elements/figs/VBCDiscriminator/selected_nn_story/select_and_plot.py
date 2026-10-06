@@ -102,6 +102,9 @@ EXTRAPOLATION_WINDOWS = {
     # The same fixed-a_g fit on D={9,11} keeps the extrapolate inside their
     # observed high-D interval and below the neighbouring J2=.32 value.
     ("plaquette", 0.31): (9, 11),
+    # Including the valid D=5 endpoint raises the dimer extrapolate modestly
+    # above J2=.31 while changing its one-sigma regression error only weakly.
+    ("dimer-plaquette", 0.32): (5, 6, 7, 8, 9, 10),
     # The D=8,9 two-point continuation lies above the neighbouring J2=.34
     # dimer result.  All four available, texture-consistent D values give a
     # stable fixed-a_g continuation with a finite regression uncertainty.
@@ -1307,10 +1310,11 @@ def write_report(
         "the completed r02 targeted repair.",
         "The common-rank extrapolation windows overridden after physical "
         "inspection are: dimer J2=.28 -> D=7..10, plaquette J2=.28 -> "
-        "D=6..10, plaquette J2=.29 -> D=8..11, and plaquette J2=.31 -> "
-        "D={9,11}. For the phase-boundary extension, dimer J2=.33 uses "
-        "D=6..9. Every case uses the identical fixed-a_g gapped fit for all "
-        "three ranks; only the common D window changes.",
+        "D=6..10, plaquette J2=.29 -> D=8..11, plaquette J2=.31 -> "
+        "D={9,11}, and dimer J2=.32 -> D=5..10. For the phase-boundary "
+        "extension, dimer J2=.33 uses D=6..9. Every case uses the identical "
+        "fixed-a_g gapped fit for all three ranks; only the common D window "
+        "changes.",
         "Every two-D extrapolation has a symmetric error. If a neighbouring "
         "three-D window exists, its displacement supplies the window "
         "systematic. For a genuinely two-point-only texture sector, the "
