@@ -19,7 +19,7 @@ from torch.utils.checkpoint import checkpoint as _ckpt
 
 
 def build_connection_couplings(
-    connection: str, t: int
+    connection: str, t: int | float
 ) -> tuple[list[float], tuple[float, float, float], float]:
     """Return the 36 J values for a plaquette or dimer continuation point.
 
@@ -30,8 +30,8 @@ def build_connection_couplings(
     """
     if connection not in ('plaq', 'dimer'):
         raise ValueError("connection must be 'plaq' or 'dimer'")
-    if type(t) is not int or not 0 <= t <= 8:
-        raise ValueError('t must be an integer from 0 to 8')
+    if type(t) not in (int, float) or not 0 <= t <= 8:
+        raise ValueError('t must be a finite number from 0 to 8')
 
     weak_j1 = 0.125 * t
     j2 = 0.04 * t

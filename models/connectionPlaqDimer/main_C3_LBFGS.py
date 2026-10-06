@@ -28,7 +28,7 @@ N_GPUS = 1
 # ── Sweep control ─────────────────────────────────────────────────────────────
 
 D_BOND_LIST   = [  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12]
-CHI_MIN_LIST  = [ 36, 54, 72, 90,108,126,144,162,160,160,180]
+CHI_MIN_LIST  = [ 40, 60, 80,100,120,140,160,180,180,160,192]
 CHI_MAX_LIST  = [ 40, 60, 80,100,120,140,160,180,180,160,192]
 CHI_STEP_LIST = [  4,  6,  8, 10, 12, 14, 16, 18, 20, 11, 12]
 #   Default chi schedule parameters (one per D in D_BOND_LIST).
@@ -2078,8 +2078,8 @@ def main():
         '--connection', choices=['plaq', 'dimer'], default=None,
         help='Use the connection Hamiltonian with NN group couplings set by --t.')
     parser.add_argument(
-        '--t', type=int, choices=range(9), default=None,
-        help='Connection point 0..8; requires --connection.')
+        '--t', type=float, default=None,
+        help='Connection point 0..8, including fractional points; requires --connection.')
     parser.add_argument(
         '--vbc-branch', choices=['none', 'plaquette', 'dimer-plaquette', 'rank-split'],
         default='none',
@@ -2196,6 +2196,10 @@ def main():
     args = parser.parse_args()
     if (args.connection is None) != (args.t is None):
         parser.error('--connection and --t must be supplied together')
+    if args.t is not None and not 0.0 <= args.t <= 8.0:
+        parser.error('--t must be between 0 and 8')
+    if args.t is not None and args.t.is_integer():
+        args.t = int(args.t)
     if args.connection is not None and (args.vbc_branch != 'none' or args.vbc_field != 0.0):
         parser.error('--connection cannot be combined with VBC pinning')
     if args.connection is not None and any(
