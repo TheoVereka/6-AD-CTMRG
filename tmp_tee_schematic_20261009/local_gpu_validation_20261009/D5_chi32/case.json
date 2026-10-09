@@ -1,0 +1,153 @@
+{
+  "D": 5,
+  "chi": 32,
+  "chi_convention": "ceil(1.25*D**2)",
+  "status": "passed",
+  "passed": true,
+  "configuration": {
+    "D": [
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "device": "cuda",
+    "output": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\local_gpu_validation_20261009",
+    "reuse_edges": false,
+    "edges_only": false,
+    "inspect": false,
+    "subspace": 64,
+    "block_size": 4,
+    "modes": [
+      8,
+      16,
+      32
+    ],
+    "eig_tol": 1e-09,
+    "entropy_tol": 0.0001,
+    "max_matvec": 1600,
+    "progress_every": 20,
+    "batch": 4,
+    "seed": 20261009,
+    "threads": 2,
+    "ctm_max_steps": 200,
+    "ctm_retries": 2,
+    "ctm_conv_tol": 1e-07,
+    "ctm_conv_mode": "both",
+    "ctm_e_conv_threshold": 2e-08,
+    "rsvd_mode": "full_svd"
+  },
+  "pairs": [
+    {
+      "D": 5,
+      "pair": 1,
+      "status": "passed",
+      "passed": true,
+      "criteria": {
+        "operator_pack_isometry_matvec": true,
+        "a_converged_stage_with_at_least_16_modes": true,
+        "mode_increase_stability": true,
+        "independent_seed_stability": true,
+        "T1_iterative_vs_full_spectrum": true,
+        "finite_and_physical_bound": true,
+        "D2_full_dense_reference": true
+      },
+      "seconds": 169.17517190000217
+    }
+  ],
+  "device": "cuda",
+  "subspace": 64,
+  "block_size": 4,
+  "source": {
+    "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p26\\2tensor_twoC3\\D_5\\tensor_best.pt",
+    "sha256": "f9b7242704881dbd8ec8c89048bc4e1e446568921d18ab6306cb61ec3acef412",
+    "manifest": {
+      "D": 5,
+      "J2": 0.26,
+      "J2_label": "0p26",
+      "ansatz": "2tensor_twoC3",
+      "chi": 50,
+      "copied_files": [
+        "energy_magnetization_correlation.txt",
+        "hyperparams.yaml",
+        "lookahead_chi_55_energy_magnetization_correlation.txt",
+        "run.log",
+        "tensor_best.pt"
+      ],
+      "energy_per_site": -0.4327170350214,
+      "is_variational_chi": true,
+      "lookahead_chi": 55,
+      "lookahead_delta": 3.278536000461685e-07,
+      "lookahead_energy_per_site": -0.4327167071678,
+      "selection_reason": "highest_chi_lowest_energy",
+      "source_job": "0730newdata/Working_AD_Honeycomb_August19/Results_J2_twoc3_0.26/D_5",
+      "source_observation": "D_5_chi_50_energy_magnetization_correlation.txt",
+      "variational_chi_threshold": 2e-05
+    },
+    "actual_selected_0713summary_tensor": true
+  },
+  "ctm": {
+    "D": 5,
+    "chi": 32,
+    "checkpoint_sha256": "f9b7242704881dbd8ec8c89048bc4e1e446568921d18ab6306cb61ec3acef412",
+    "loaded_checkpoint_metadata": {
+      "D_bond": 5,
+      "chi": 50,
+      "loss": -2.5963022101286835,
+      "energy": -2.5963022101282913,
+      "step": 292,
+      "timestamp": "2026-08-19 10:19:15"
+    },
+    "environments": [
+      {
+        "label": "normal_a_b",
+        "attempts": [
+          {
+            "attempt": 1,
+            "steps": 17,
+            "step_limit": 200,
+            "step_limit_reached": false,
+            "seconds": 11.279263899996295
+          }
+        ],
+        "step_limit_reached": false,
+        "steps": 17,
+        "step_limit": 200,
+        "retry_count": 0,
+        "seconds": 11.282101700002386
+      },
+      {
+        "label": "swapped_b_a",
+        "attempts": [
+          {
+            "attempt": 1,
+            "steps": 12,
+            "step_limit": 200,
+            "step_limit_reached": false,
+            "seconds": 6.069603800002369
+          }
+        ],
+        "step_limit_reached": false,
+        "steps": 12,
+        "step_limit": 200,
+        "retry_count": 0,
+        "seconds": 6.070954199996777
+      }
+    ],
+    "reused_saved_edges": false,
+    "converged": true,
+    "configuration": {
+      "initial_max_steps": 200,
+      "max_retries": 2,
+      "retry_step_multiplier": 2,
+      "conv_mode": "both",
+      "conv_tol": 1e-07,
+      "energy_threshold": 2e-08,
+      "rsvd_mode": "full_svd"
+    }
+  },
+  "seconds": 186.6264530999979,
+  "GPU_peak_allocated_GiB": 0.6540331840515137,
+  "GPU_peak_reserved_GiB": 0.787109375
+}

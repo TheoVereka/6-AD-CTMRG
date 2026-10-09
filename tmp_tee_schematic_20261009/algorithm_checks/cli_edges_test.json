@@ -1,0 +1,382 @@
+{
+  "schema": "twoc3_renyi2_spectra_v1",
+  "length_convention": "L=cut D-bonds; exponent=L/2; geometric circumference=3L/2 honeycomb sides",
+  "bond_D": 2,
+  "chi": 4,
+  "pair": 1,
+  "normal_swap_envs": [
+    1,
+    1
+  ],
+  "target_absolute_S2_error": 0.0001,
+  "memory_budget": {
+    "dtype": "float64",
+    "one_T2_vector_GB": 2.048e-06,
+    "Q_plus_AQ_GB": 0.000196608,
+    "two_contraction_work_GB": 1.6384e-05,
+    "restart_and_block_allowance_GB": 4.9152e-05,
+    "note": "Main arrays only; CUDA/BLAS workspace and restart keep-size must be included in peak RAM/VRAM."
+  },
+  "configuration": {
+    "checkpoint": null,
+    "edge_file": "tmp_tee_schematic_20261009/algorithm_checks/positive_edges_cli.npz",
+    "pair": 1,
+    "chi": 64,
+    "device": "cpu",
+    "J1": 1.0,
+    "J2": null,
+    "ctm_max_steps": 70,
+    "ctm_conv_tol": 1e-07,
+    "ctm_conv_mode": "both",
+    "ctm_e_conv_threshold": 2e-08,
+    "rsvd_mode": "augmented",
+    "save_edges": null,
+    "L_min": 100,
+    "L_max": 1000,
+    "L_step": 100,
+    "modes": [
+      4,
+      8
+    ],
+    "block_size": 4,
+    "subspace": 48,
+    "eig_tol": 1e-10,
+    "entropy_tol": 0.0001,
+    "max_matvec": 800,
+    "progress_every": 10,
+    "batch": 8,
+    "seed": 20261009,
+    "threads": 2,
+    "output": "tmp_tee_schematic_20261009/algorithm_checks/cli_edges_test.json"
+  },
+  "stages": [
+    {
+      "modes_requested_per_sector": 4,
+      "T1": {
+        "eigenvalues": [
+          {
+            "real": 0.019700402915167222,
+            "imag": 0.0
+          },
+          {
+            "real": -0.005742093465058246,
+            "imag": 0.0
+          },
+          {
+            "real": -0.003939208610998019,
+            "imag": 0.0
+          },
+          {
+            "real": -0.002947437237418724,
+            "imag": 0.0
+          }
+        ],
+        "relative_residuals": [
+          7.957433166341174e-16,
+          8.088195779731508e-16,
+          2.100090180122456e-15,
+          3.5908884231524575e-15
+        ],
+        "converged": true,
+        "matvec_count": 16,
+        "restarts": 0,
+        "subspace_dim": 16,
+        "reason": "ritz_residuals_converged_tail_not_certified",
+        "orthogonality_error": 2.362580278890043e-15,
+        "requested_k": 4
+      },
+      "T2": [
+        {
+          "eigenvalues": [
+            {
+              "real": 0.000315181320608513,
+              "imag": 0.0
+            },
+            {
+              "real": -0.00010442816475465786,
+              "imag": 0.0
+            },
+            {
+              "real": -6.904752270912364e-05,
+              "imag": 0.0
+            },
+            {
+              "real": -4.5111868296820616e-05,
+              "imag": 0.0
+            }
+          ],
+          "relative_residuals": [
+            4.90194232407452e-16,
+            2.0980300460913736e-15,
+            2.5472305669665445e-13,
+            3.1901833969316155e-11
+          ],
+          "converged": true,
+          "matvec_count": 56,
+          "restarts": 1,
+          "subspace_dim": 16,
+          "reason": "ritz_residuals_converged_tail_not_certified",
+          "orthogonality_error": 7.505670930251327e-15,
+          "requested_k": 4,
+          "replica_parity": 1,
+          "transfer_matvec_count": 56
+        },
+        {
+          "eigenvalues": [
+            {
+              "real": -8.422355018260872e-05,
+              "imag": 0.0
+            },
+            {
+              "real": -5.874520450166716e-05,
+              "imag": 2.9224819800116216e-05
+            },
+            {
+              "real": -5.874520450166716e-05,
+              "imag": -2.9224819800116216e-05
+            },
+            {
+              "real": 2.1595478118547086e-05,
+              "imag": 8.520878004379967e-06
+            },
+            {
+              "real": 2.1595478118547086e-05,
+              "imag": -8.520878004379967e-06
+            }
+          ],
+          "relative_residuals": [
+            8.220265921653275e-16,
+            1.820746313060018e-15,
+            1.820746313060018e-15,
+            1.4739282403132454e-11,
+            1.4739282403132454e-11
+          ],
+          "converged": true,
+          "matvec_count": 72,
+          "restarts": 1,
+          "subspace_dim": 32,
+          "reason": "ritz_residuals_converged_tail_not_certified",
+          "orthogonality_error": 9.848779932079908e-15,
+          "requested_k": 4,
+          "replica_parity": -1,
+          "transfer_matvec_count": 72
+        }
+      ],
+      "seconds": 0.11919570000100066,
+      "eigensolvers_converged": true,
+      "maximum_imaginary_trace_relative": 2.0842243713222724e-63,
+      "S2": [
+        10.406504098193636,
+        20.813008196387273,
+        31.21951229458068,
+        41.626016392774545,
+        52.032520490967954,
+        62.43902458916136,
+        72.845528687355,
+        83.25203278554909,
+        93.65853688374227,
+        104.06504098193591
+      ]
+    },
+    {
+      "modes_requested_per_sector": 8,
+      "T1": {
+        "eigenvalues": [
+          {
+            "real": 0.019700402915167222,
+            "imag": 0.0
+          },
+          {
+            "real": -0.005742093465058246,
+            "imag": 0.0
+          },
+          {
+            "real": -0.003939208610998019,
+            "imag": 0.0
+          },
+          {
+            "real": -0.002947437237418724,
+            "imag": 0.0
+          },
+          {
+            "real": 0.001989998023212464,
+            "imag": 0.00017486581715688053
+          },
+          {
+            "real": 0.001989998023212464,
+            "imag": -0.00017486581715688053
+          },
+          {
+            "real": -0.0015997995911565016,
+            "imag": 0.0
+          },
+          {
+            "real": 0.0012158132254685102,
+            "imag": 0.0
+          }
+        ],
+        "relative_residuals": [
+          7.957433166341174e-16,
+          8.088195779731508e-16,
+          2.100090180122456e-15,
+          3.5908884231524575e-15,
+          1.4366957254679616e-15,
+          1.4366957254679616e-15,
+          3.4428269389432e-15,
+          3.3598185211852155e-15
+        ],
+        "converged": true,
+        "matvec_count": 16,
+        "restarts": 0,
+        "subspace_dim": 16,
+        "reason": "ritz_residuals_converged_tail_not_certified",
+        "orthogonality_error": 2.362580278890043e-15,
+        "requested_k": 8
+      },
+      "T2": [
+        {
+          "eigenvalues": [
+            {
+              "real": 0.000315181320608513,
+              "imag": 0.0
+            },
+            {
+              "real": -0.00010442816475465797,
+              "imag": 0.0
+            },
+            {
+              "real": -6.904752270913858e-05,
+              "imag": 0.0
+            },
+            {
+              "real": -4.511186829478476e-05,
+              "imag": 0.0
+            },
+            {
+              "real": 2.931172670178049e-05,
+              "imag": 1.1490815152794662e-05
+            },
+            {
+              "real": 2.931172670178049e-05,
+              "imag": -1.1490815152794662e-05
+            },
+            {
+              "real": 3.07156407868699e-05,
+              "imag": 0.0
+            },
+            {
+              "real": -2.4228474101162147e-05,
+              "imag": 0.0
+            }
+          ],
+          "relative_residuals": [
+            4.994866998954453e-16,
+            1.9147616936575178e-15,
+            3.586498844177991e-15,
+            2.6244388998434146e-15,
+            1.8355441312894603e-13,
+            1.8355441312894603e-13,
+            1.1735814447021689e-13,
+            1.7918547135567302e-11
+          ],
+          "converged": true,
+          "matvec_count": 72,
+          "restarts": 1,
+          "subspace_dim": 41,
+          "reason": "ritz_residuals_converged_tail_not_certified",
+          "orthogonality_error": 1.2980099972920614e-14,
+          "requested_k": 8,
+          "replica_parity": 1,
+          "transfer_matvec_count": 72
+        },
+        {
+          "eigenvalues": [
+            {
+              "real": -8.42235501826087e-05,
+              "imag": 0.0
+            },
+            {
+              "real": -5.874520450166719e-05,
+              "imag": 2.9224819800116145e-05
+            },
+            {
+              "real": -5.874520450166719e-05,
+              "imag": -2.9224819800116145e-05
+            },
+            {
+              "real": 2.1595478118494183e-05,
+              "imag": 8.520878004248765e-06
+            },
+            {
+              "real": 2.1595478118494183e-05,
+              "imag": -8.520878004248765e-06
+            },
+            {
+              "real": 2.1532120959094367e-05,
+              "imag": 7.67427106366012e-06
+            },
+            {
+              "real": 2.1532120959094367e-05,
+              "imag": -7.67427106366012e-06
+            },
+            {
+              "real": 2.126283848882837e-05,
+              "imag": 0.0
+            }
+          ],
+          "relative_residuals": [
+            7.107698868286967e-16,
+            2.1455317626868386e-15,
+            2.1455317626868386e-15,
+            2.511239159194828e-12,
+            2.511239159194828e-12,
+            9.934993755505725e-13,
+            9.934993755505725e-13,
+            1.4460001855901726e-11
+          ],
+          "converged": true,
+          "matvec_count": 68,
+          "restarts": 1,
+          "subspace_dim": 37,
+          "reason": "ritz_residuals_converged_tail_not_certified",
+          "orthogonality_error": 1.1944743245029566e-14,
+          "requested_k": 8,
+          "replica_parity": -1,
+          "transfer_matvec_count": 68
+        }
+      ],
+      "seconds": 0.12568109999847366,
+      "eigensolvers_converged": true,
+      "maximum_imaginary_trace_relative": 2.08422437132245e-63,
+      "S2": [
+        10.406504098193636,
+        20.813008196387273,
+        31.21951229458068,
+        41.626016392774545,
+        52.032520490967954,
+        62.43902458916136,
+        72.845528687355,
+        83.25203278554909,
+        93.65853688374227,
+        104.06504098193591
+      ],
+      "max_absolute_S2_change": 0.0,
+      "spectral_stability_within_target": true
+    }
+  ],
+  "status": "spectrally_stable_estimate",
+  "precision_certified": false,
+  "L": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900,
+    1000
+  ],
+  "precision_note": "Measured mode/block stability is not a rigorous omitted-spectrum bound. CTM/D errors are separate."
+}

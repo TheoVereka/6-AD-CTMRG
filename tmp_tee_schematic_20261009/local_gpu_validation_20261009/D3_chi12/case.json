@@ -1,0 +1,147 @@
+{
+  "D": 3,
+  "chi": 12,
+  "chi_convention": "ceil(1.25*D**2)",
+  "status": "passed",
+  "passed": true,
+  "configuration": {
+    "D": [
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "device": "cuda",
+    "output": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\local_gpu_validation_20261009",
+    "reuse_edges": false,
+    "edges_only": false,
+    "inspect": false,
+    "subspace": 64,
+    "block_size": 4,
+    "modes": [
+      8,
+      16,
+      32
+    ],
+    "eig_tol": 1e-09,
+    "entropy_tol": 0.0001,
+    "max_matvec": 1600,
+    "progress_every": 20,
+    "batch": 4,
+    "seed": 20261009,
+    "threads": 2,
+    "ctm_max_steps": 200,
+    "ctm_retries": 2,
+    "ctm_conv_tol": 1e-07,
+    "ctm_conv_mode": "both",
+    "ctm_e_conv_threshold": 2e-08,
+    "rsvd_mode": "full_svd"
+  },
+  "pairs": [
+    {
+      "D": 3,
+      "pair": 1,
+      "status": "passed",
+      "passed": true,
+      "criteria": {
+        "operator_pack_isometry_matvec": true,
+        "a_converged_stage_with_at_least_16_modes": true,
+        "mode_increase_stability": true,
+        "independent_seed_stability": true,
+        "T1_iterative_vs_full_spectrum": true,
+        "finite_and_physical_bound": true,
+        "D2_full_dense_reference": true
+      },
+      "seconds": 3.5286453000007896
+    }
+  ],
+  "device": "cuda",
+  "subspace": 64,
+  "block_size": 4,
+  "source": {
+    "checkpoint": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p26\\2tensor_twoC3\\D_3\\tensor_best.pt",
+    "sha256": "b1a688339664e80dff79710403b607e4e07db0b7e8956cb4563775403c5c74aa",
+    "manifest": {
+      "D": 3,
+      "J2": 0.26,
+      "J2_label": "0p26",
+      "ansatz": "2tensor_twoC3",
+      "chi": 24,
+      "copied_files": [
+        "energy_magnetization_correlation.txt",
+        "hyperparams.yaml",
+        "lookahead_chi_27_energy_magnetization_correlation.txt",
+        "run.log",
+        "tensor_best.pt"
+      ],
+      "energy_per_site": -0.429736501007,
+      "source_job": "2tensor_twoC3__J2_0p26_20260714_100445",
+      "source_observation": "D_3_chi_24_energy_magnetization_correlation.txt"
+    },
+    "actual_selected_0713summary_tensor": true
+  },
+  "ctm": {
+    "D": 3,
+    "chi": 12,
+    "checkpoint_sha256": "b1a688339664e80dff79710403b607e4e07db0b7e8956cb4563775403c5c74aa",
+    "loaded_checkpoint_metadata": {
+      "D_bond": 3,
+      "chi": 24,
+      "loss": -2.5784189750048556,
+      "energy": -2.5784190060419836,
+      "step": 1128,
+      "timestamp": "2026-07-14 10:41:55"
+    },
+    "environments": [
+      {
+        "label": "normal_a_b",
+        "attempts": [
+          {
+            "attempt": 1,
+            "steps": 14,
+            "step_limit": 200,
+            "step_limit_reached": false,
+            "seconds": 0.31789500000013504
+          }
+        ],
+        "step_limit_reached": false,
+        "steps": 14,
+        "step_limit": 200,
+        "retry_count": 0,
+        "seconds": 0.3199437000002945
+      },
+      {
+        "label": "swapped_b_a",
+        "attempts": [
+          {
+            "attempt": 1,
+            "steps": 13,
+            "step_limit": 200,
+            "step_limit_reached": false,
+            "seconds": 0.22074519999296172
+          }
+        ],
+        "step_limit_reached": false,
+        "steps": 13,
+        "step_limit": 200,
+        "retry_count": 0,
+        "seconds": 0.2226980999985244
+      }
+    ],
+    "reused_saved_edges": false,
+    "converged": true,
+    "configuration": {
+      "initial_max_steps": 200,
+      "max_retries": 2,
+      "retry_step_multiplier": 2,
+      "conv_mode": "both",
+      "conv_tol": 1e-07,
+      "energy_threshold": 2e-08,
+      "rsvd_mode": "full_svd"
+    }
+  },
+  "seconds": 4.1751615999965,
+  "GPU_peak_allocated_GiB": 0.03113269805908203,
+  "GPU_peak_reserved_GiB": 0.04296875
+}

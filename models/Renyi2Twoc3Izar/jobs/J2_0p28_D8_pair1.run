@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+#SBATCH --qos=long
+#SBATCH --partition=gpu
+#SBATCH --gres=gpu:1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=40G
+#SBATCH --time=167:59:50
+#SBATCH --exclude=i39
+#SBATCH --job-name=r2j028D8p1
+#SBATCH --output=slurm_logs/%x-%N-%j.out
+#SBATCH --error=slurm_logs/%x-%N-%j.error
+
+set -euo pipefail
+if [[ -n "${BUNDLE_DIR:-}" ]]; then
+    BUNDLE_DIR="$(cd -- "${BUNDLE_DIR}" && pwd)"
+elif [[ -f "${PWD}/run_pair.sh" ]]; then
+    BUNDLE_DIR="${PWD}"
+elif [[ -n "${SLURM_SUBMIT_DIR:-}" && -f "${SLURM_SUBMIT_DIR}/run_pair.sh" ]]; then
+    BUNDLE_DIR="${SLURM_SUBMIT_DIR}"
+else
+    BUNDLE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+fi
+export BUNDLE_DIR
+exec bash "${BUNDLE_DIR}/run_pair.sh" 0.28 1

@@ -1,0 +1,80 @@
+{
+  "projection": "cabinet_oblique",
+  "elev": null,
+  "azim": null,
+  "depth_scale": 0.5,
+  "depth_angle": 60.0,
+  "screen_projection_matrix": [
+    [
+      -1.0,
+      0.25000000000000006,
+      0.0
+    ],
+    [
+      0.0,
+      0.4330127018922193,
+      1.0
+    ]
+  ],
+  "camera_right": [
+    -1.0,
+    0.25000000000000006,
+    0.0
+  ],
+  "camera_up": [
+    0.0,
+    0.4330127018922193,
+    1.0
+  ],
+  "camera_toward_eye": [
+    -0.22360679774997902,
+    -0.8944271909999159,
+    0.38729833462074165
+  ],
+  "ray_origin_right": [
+    -1.0,
+    0.0,
+    0.0
+  ],
+  "ray_origin_up": [
+    0.0,
+    0.0,
+    1.0
+  ],
+  "world_bounds": {
+    "minimum": [
+      -2.5915127018922193,
+      -3.032,
+      -6.1585
+    ],
+    "maximum": [
+      0.5915127018922193,
+      3.032,
+      2.1585
+    ]
+  },
+  "screen_bounds": {
+    "xmin": -1.2214491821517615,
+    "xmax": 3.219687582697324,
+    "ymin": -7.336376439026559,
+    "ymax": 3.3363764390265587
+  },
+  "width": 1900,
+  "height": 4566,
+  "supersample": 2,
+  "padding_output_pixels": 2.0,
+  "world_units_per_output_pixel": 0.00233744040255215,
+  "primitive_count": 165,
+  "transparent_fragment_count": 0,
+  "occlusion": "analytic_per_pixel_nearest_opaque_then_depth_sorted_transparent_fragments",
+  "transparent_solid_model": "one_nearest_surface_per_object",
+  "context_background_policy": "explicit_schematic_underlay_before_depth_tested_foreground",
+  "context_background_primitive_count": 0,
+  "context_background_fragment_count": 0,
+  "symbol_foreground_policy": "owner_symbol_silhouette_hides_attached_objects_only;unrelated_foreground_uses_ray_depth",
+  "symbol_silhouette_count": 20,
+  "symbol_owned_primitive_count": 48,
+  "chi_square_occlusion_policy": "chi_tubes_unmasked_share_actual_foreground_ray_depth_with_square_faces",
+  "chi_chain_true_depth_primitive_count": 25,
+  "output_path": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\figures\\step_07.png"
+}

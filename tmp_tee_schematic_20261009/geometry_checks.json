@@ -1,0 +1,308 @@
+{
+  "boundary_degree_counts": {
+    "2": 16,
+    "3": 30,
+    "1": 2
+  },
+  "degree_one_nodes_1_based": [
+    [
+      1,
+      12
+    ],
+    [
+      4,
+      12
+    ]
+  ],
+  "01": {
+    "elements": 110,
+    "by_kind": {
+      "sphere": 48,
+      "cylinder": 62
+    },
+    "by_role": {
+      "site": 48,
+      "zigzag": 44,
+      "vertical": 18
+    }
+  },
+  "02": {
+    "elements": 228,
+    "by_kind": {
+      "sphere": 96,
+      "cylinder": 132
+    },
+    "by_role": {
+      "site": 96,
+      "zigzag": 80,
+      "cut_half": 16,
+      "vertical": 36
+    }
+  },
+  "02_bis": {
+    "elements": 246,
+    "by_kind": {
+      "sphere": 114,
+      "cylinder": 132
+    },
+    "by_role": {
+      "site": 96,
+      "zigzag": 80,
+      "cut_half": 16,
+      "vertical": 36,
+      "ellipsis": 18
+    }
+  },
+  "03": {
+    "elements": 300,
+    "by_kind": {
+      "sphere": 96,
+      "cylinder": 204
+    },
+    "by_role": {
+      "site": 96,
+      "zigzag": 80,
+      "cut_half": 16,
+      "vertical": 36,
+      "physical_trace": 24,
+      "physical_open": 48
+    }
+  },
+  "03_bis": {
+    "elements": 318,
+    "by_kind": {
+      "sphere": 114,
+      "cylinder": 204
+    },
+    "by_role": {
+      "site": 96,
+      "zigzag": 80,
+      "cut_half": 16,
+      "vertical": 36,
+      "physical_trace": 24,
+      "physical_open": 48,
+      "ellipsis": 18
+    }
+  },
+  "04": {
+    "elements": 576,
+    "by_kind": {
+      "sphere": 192,
+      "cylinder": 384
+    },
+    "by_role": {
+      "site": 192,
+      "zigzag": 160,
+      "cut_half": 32,
+      "vertical": 72,
+      "physical_trace": 72,
+      "physical_open": 48
+    }
+  },
+  "05": {
+    "elements": 592,
+    "by_kind": {
+      "sphere": 192,
+      "cylinder": 400
+    },
+    "by_role": {
+      "site": 192,
+      "zigzag": 160,
+      "cut_half": 32,
+      "vertical": 72,
+      "physical_trace": 72,
+      "physical_open": 48,
+      "flying": 16
+    }
+  },
+  "05_bis": {
+    "elements": 637,
+    "by_kind": {
+      "sphere": 237,
+      "cylinder": 400
+    },
+    "by_role": {
+      "site": 192,
+      "zigzag": 160,
+      "cut_half": 32,
+      "vertical": 72,
+      "physical_trace": 72,
+      "physical_open": 48,
+      "flying": 16,
+      "ellipsis": 45
+    }
+  },
+  "06": {
+    "elements": 158,
+    "by_kind": {
+      "sphere": 46,
+      "cylinder": 104,
+      "square": 8
+    },
+    "by_role": {
+      "site": 40,
+      "zigzag": 40,
+      "cut_half": 16,
+      "vertical": 18,
+      "physical_trace": 20,
+      "edge_symbol": 8,
+      "chi_chain": 10,
+      "ellipsis": 6
+    }
+  },
+  "06_bis": {
+    "elements": 161,
+    "by_kind": {
+      "sphere": 49,
+      "cylinder": 104,
+      "square": 8
+    },
+    "by_role": {
+      "site": 40,
+      "zigzag": 40,
+      "cut_half": 16,
+      "vertical": 18,
+      "physical_trace": 20,
+      "edge_symbol": 8,
+      "chi_chain": 10,
+      "ellipsis": 9
+    }
+  },
+  "07": {
+    "elements": 93,
+    "by_kind": {
+      "cylinder": 73,
+      "square": 20
+    },
+    "by_role": {
+      "cut_half": 32,
+      "flying": 16,
+      "edge_symbol": 20,
+      "chi_chain": 25
+    }
+  },
+  "07_bis": {
+    "elements": 123,
+    "by_kind": {
+      "cylinder": 73,
+      "square": 20,
+      "sphere": 30
+    },
+    "by_role": {
+      "cut_half": 32,
+      "flying": 16,
+      "edge_symbol": 20,
+      "chi_chain": 25,
+      "ellipsis": 30
+    }
+  },
+  "flying_bundle_projection_gaps": [
+    {
+      "source": "left_copy",
+      "destination": "right_bottom",
+      "layer": "lower",
+      "min_screen_gap": 0.7244443697168008
+    },
+    {
+      "source": "left_copy",
+      "destination": "right_middle",
+      "layer": "upper",
+      "min_screen_gap": 0.19411428382689033
+    },
+    {
+      "source": "left_original",
+      "destination": "right_middle",
+      "layer": "lower",
+      "min_screen_gap": 0.724444369716801
+    },
+    {
+      "source": "left_original",
+      "destination": "right_top",
+      "layer": "upper",
+      "min_screen_gap": 0.1941142838268905
+    }
+  ],
+  "projection_checks": {
+    "x_points_left": true,
+    "z_points_up": true,
+    "y_points_up_right": true,
+    "xz_faces_are_true_squares": true,
+    "logical_left_right_preserved": true,
+    "camera_is_above_front": true,
+    "screen_projection_matrix": [
+      [
+        -1.0,
+        0.25000000000000006,
+        0.0
+      ],
+      [
+        0.0,
+        0.4330127018922193,
+        1.0
+      ]
+    ]
+  },
+  "parameters": {
+    "site_diameter": 0.1,
+    "layer_gap": 0.19,
+    "hex_bond": 1.0,
+    "gray_stub": 0.03,
+    "square_side": 0.3,
+    "bottom_shift": 6.0,
+    "edge_join_length": 0.0,
+    "gray_radius": 0.006,
+    "bulk_blue_rgb": [
+      110,
+      150,
+      255
+    ],
+    "gray_rgb": [
+      160,
+      160,
+      160
+    ],
+    "vertical_line_style": "dotted_round_marks",
+    "ghost_opacity": 0.25,
+    "ghost_gray_trace_count": 20,
+    "square_anchor": "center_on_original_ket_bra_pair_center",
+    "square_precedence": "exact_symbol_silhouette_masks_only_attached_objects",
+    "chi_square_occlusion": "true_ray_depth_without_symbol_owner_mask",
+    "palette_rgb": {
+      "a": [
+        122,
+        191,
+        165
+      ],
+      "b": [
+        219,
+        140,
+        191
+      ],
+      "c": [
+        145,
+        157,
+        199
+      ],
+      "d": [
+        171,
+        215,
+        101
+      ],
+      "e": [
+        236,
+        145,
+        105
+      ],
+      "f": [
+        246,
+        219,
+        82
+      ]
+    },
+    "camera": {
+      "projection": "cabinet",
+      "depth_scale": 0.5,
+      "depth_angle": 60.0
+    }
+  }
+}

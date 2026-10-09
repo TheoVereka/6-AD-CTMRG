@@ -1,0 +1,105 @@
+{
+  "all_checks_passed": true,
+  "checks": [
+    {
+      "name": "normal_real_requires_restarts",
+      "converged": true,
+      "reason": "ritz_residuals_converged_tail_not_certified",
+      "roots_returned": 6,
+      "max_relative_residual": 7.434781934252303e-11,
+      "max_eigenvalue_match_error": 7.882583474838611e-15,
+      "wanted_cluster_size": 6,
+      "matvec_count": 128,
+      "restarts": 9,
+      "orthogonality_error": 1.4680934332770588e-14
+    },
+    {
+      "name": "exact_degeneracy_5_block_8",
+      "converged": true,
+      "reason": "ritz_residuals_converged_tail_not_certified",
+      "roots_returned": 5,
+      "max_relative_residual": 6.500680139180029e-11,
+      "max_eigenvalue_match_error": 6.439293542825908e-15,
+      "wanted_cluster_size": 5,
+      "matvec_count": 198,
+      "restarts": 9,
+      "orthogonality_error": 2.053867506886032e-14
+    },
+    {
+      "name": "complex_pairs_real_basis",
+      "converged": true,
+      "reason": "ritz_residuals_converged_tail_not_certified",
+      "roots_returned": 5,
+      "max_relative_residual": 3.1070388406432745e-11,
+      "max_eigenvalue_match_error": 3.5422900465195845e-15,
+      "wanted_cluster_size": 5,
+      "matvec_count": 84,
+      "restarts": 4,
+      "orthogonality_error": 9.200865370605175e-15
+    },
+    {
+      "name": "nonnormal_real_matrix",
+      "converged": true,
+      "reason": "ritz_residuals_converged_tail_not_certified",
+      "roots_returned": 6,
+      "max_relative_residual": 4.170287388192075e-11,
+      "max_eigenvalue_match_error": 1.9095836023552692e-14,
+      "wanted_cluster_size": 6,
+      "matvec_count": 140,
+      "restarts": 11,
+      "orthogonality_error": 2.1246954176696857e-14
+    },
+    {
+      "name": "orthogonal_projector",
+      "converged": true,
+      "matvec_count": 184,
+      "restarts": 17,
+      "max_relative_residual": 5.5794523674905614e-11
+    },
+    {
+      "name": "failure_not_silently_successful",
+      "converged": false,
+      "reason": "max_matvec_reached"
+    },
+    {
+      "name": "scaled_trace_powers_no_overflow",
+      "entropies": [
+        {
+          "L_cells": 50,
+          "cut_bonds_2L": 100,
+          "S2": 34.945041118433664,
+          "trace1_cancellation": 1.0,
+          "trace2_cancellation": 1.0
+        },
+        {
+          "L_cells": 500,
+          "cut_bonds_2L": 1000,
+          "S2": 346.86127235242475,
+          "trace1_cancellation": 1.0,
+          "trace2_cancellation": 1.0
+        },
+        {
+          "L_cells": 1000,
+          "cut_bonds_2L": 2000,
+          "S2": 693.4348626323972,
+          "trace1_cancellation": 1.0,
+          "trace2_cancellation": 1.0
+        }
+      ]
+    },
+    {
+      "name": "nonnormal_residual_is_not_forward_accuracy",
+      "relative_residual": 5.494505494505114e-13,
+      "eigenvalue_error": 0.001
+    },
+    {
+      "name": "dimension_only_tail_radius_limits",
+      "limits": {
+        "50": 0.5774657335389212,
+        "100": 0.7599116616679344,
+        "500": 0.9465697510179597,
+        "1000": 0.972918162549122
+      }
+    }
+  ]
+}

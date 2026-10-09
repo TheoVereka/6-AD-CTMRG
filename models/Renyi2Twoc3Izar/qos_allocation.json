@@ -1,0 +1,59 @@
+{
+  "ready": true,
+  "created_utc": "2026-10-09T17:48:30.583043+00:00",
+  "source": "User supplied current running job 3204848 and explicitly assigned first five J2 to normal, last five to long",
+  "queue_snapshot": [
+    {
+      "job_id": "3204848",
+      "name": "i7p02m12",
+      "qos": "normal",
+      "walltime": "3-00:00:00"
+    }
+  ],
+  "normal_running": 1,
+  "long_running": 0,
+  "qos_running_limit": 16,
+  "available_slots_at_snapshot": {
+    "normal": 15,
+    "long": 16
+  },
+  "new_jobs": {
+    "normal": 15,
+    "long": 15
+  },
+  "combined_requested_slots": {
+    "normal": 16,
+    "long": 15
+  },
+  "minimum_jobs_waiting_for_QOS_slots": 0,
+  "total_new_jobs": 30,
+  "J2_priority": [
+    "0.26",
+    "0.25",
+    "0.265",
+    "0.32",
+    "0.20",
+    "0.27",
+    "0.245",
+    "0.275",
+    "0.24",
+    "0.28"
+  ],
+  "J2_split_between_QOS": [],
+  "allocation_rule": "User-directed fixed allocation: first five J2 values normal (three days), last five long (seven days). Queue refresh only updates capacity accounting; it never changes this allocation.",
+  "normal_J2": [
+    "0.26",
+    "0.25",
+    "0.265",
+    "0.32",
+    "0.20"
+  ],
+  "long_J2": [
+    "0.27",
+    "0.245",
+    "0.275",
+    "0.24",
+    "0.28"
+  ],
+  "scope": "QOS-slot accounting only; available GPUs, priorities and partition limits can still cause waiting."
+}

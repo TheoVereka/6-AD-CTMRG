@@ -1,0 +1,78 @@
+{
+  "figure_count": 12,
+  "ordered_steps": [
+    "01",
+    "02",
+    "02_bis",
+    "03",
+    "03_bis",
+    "04",
+    "05",
+    "05_bis",
+    "06",
+    "06_bis",
+    "07",
+    "07_bis"
+  ],
+  "png_dimensions": {
+    "01": [
+      1900,
+      404
+    ],
+    "02": [
+      1900,
+      437
+    ],
+    "02_bis": [
+      1900,
+      552
+    ],
+    "03": [
+      1900,
+      437
+    ],
+    "03_bis": [
+      1900,
+      552
+    ],
+    "04": [
+      1900,
+      1559
+    ],
+    "05": [
+      1900,
+      1559
+    ],
+    "05_bis": [
+      1900,
+      1625
+    ],
+    "06": [
+      1900,
+      974
+    ],
+    "06_bis": [
+      1900,
+      940
+    ],
+    "07": [
+      1900,
+      4566
+    ],
+    "07_bis": [
+      1900,
+      4455
+    ]
+  },
+  "combined_pdf_pages": 12,
+  "combined_pdf_font_objects": 0,
+  "missing_markdown_links": [],
+  "projection": "xz square; xy 60/120 parallelogram, depth length .5",
+  "geometry_check_count": 15,
+  "diagram_revision": "v6",
+  "figure_white_margin_pixels": "1-2",
+  "composite_font": "Times New Roman",
+  "composite_label_points": 10.5,
+  "composite_width_in": 3.4,
+  "composite_first_panel": "step_03_bis.png"
+}

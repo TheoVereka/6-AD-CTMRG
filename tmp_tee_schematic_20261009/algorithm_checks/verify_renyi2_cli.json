@@ -1,0 +1,56 @@
+{
+  "scope": "Small checkpoint CLI end-to-end and saved canonical-edge reload; observed process return codes.",
+  "checkpoint_pairs": [
+    {
+      "pair": 1,
+      "normal_swap_envs": [
+        1,
+        1
+      ],
+      "checkpoint_status": "spectrally_stable_estimate",
+      "reload_status": "spectrally_stable_estimate",
+      "maximum_S2_reload_difference": 0.0,
+      "all_eigensolvers_converged": true,
+      "returncode_checkpoint": 0,
+      "returncode_reload": 0
+    },
+    {
+      "pair": 2,
+      "normal_swap_envs": [
+        2,
+        3
+      ],
+      "checkpoint_status": "spectrally_stable_estimate",
+      "reload_status": "spectrally_stable_estimate",
+      "maximum_S2_reload_difference": 0.0,
+      "all_eigensolvers_converged": true,
+      "returncode_checkpoint": 0,
+      "returncode_reload": 0
+    },
+    {
+      "pair": 3,
+      "normal_swap_envs": [
+        3,
+        2
+      ],
+      "checkpoint_status": "spectrally_stable_estimate",
+      "reload_status": "spectrally_stable_estimate",
+      "maximum_S2_reload_difference": 0.0,
+      "all_eigensolvers_converged": true,
+      "returncode_checkpoint": 0,
+      "returncode_reload": 0
+    }
+  ],
+  "NPZ_reference": {
+    "status": "spectrally_stable_estimate",
+    "maximum_full_spectrum_reference_difference": 4.547473508864641e-13,
+    "returncode": 0
+  },
+  "expected_failure": {
+    "argument": "--max-matvec 1",
+    "observed_native_python_returncode": 2,
+    "status": "eigensolver_not_converged",
+    "entropy_not_emitted": true,
+    "precision_certified": false
+  }
+}

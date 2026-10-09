@@ -1,0 +1,149 @@
+{
+  "all_checks_passed": true,
+  "check_count": 15,
+  "checks": [
+    {
+      "name": "continuation_group_counts",
+      "passed": true,
+      "counts": {
+        "02_bis": 6,
+        "03_bis": 6,
+        "05_bis": 15,
+        "06_bis": 3,
+        "07_bis": 10
+      }
+    },
+    {
+      "name": "two_and_three_branches_preserve_their_distinct_physical_legs",
+      "passed": true
+    },
+    {
+      "name": "continuation_branches_only_add_elements",
+      "passed": true
+    },
+    {
+      "name": "left_context_ellipsis_has_quarter_opacity_underlay",
+      "passed": true
+    },
+    {
+      "name": "five_regions_and_five_full_or_half_chains_all_extended",
+      "passed": true
+    },
+    {
+      "name": "all_continuation_symbols_retain_equal_screen_dot_spacing",
+      "passed": true,
+      "screen_spacing": 0.14
+    },
+    {
+      "name": "chi_tubes_never_have_symbol_owner_masks",
+      "passed": true
+    },
+    {
+      "name": "thin_attached_wires_keep_symbol_masks",
+      "passed": true
+    },
+    {
+      "name": "tube_in_front_of_square_is_visible_by_ray_depth",
+      "passed": true
+    },
+    {
+      "name": "square_in_front_of_tube_hides_it_by_ray_depth",
+      "passed": true
+    },
+    {
+      "name": "mutual_tube_square_occlusion_is_draw_order_independent",
+      "passed": true
+    },
+    {
+      "name": "both_clipped_half_tubes_use_the_same_actual_ray_depth",
+      "passed": true
+    },
+    {
+      "name": "attached_thin_wire_mask_is_retained_without_affecting_chi_tubes",
+      "passed": true
+    },
+    {
+      "name": "all_twelve_retained_scenes_match_current_camera_and_minimal_borders",
+      "passed": true,
+      "margins": {
+        "01": [
+          1,
+          1,
+          2,
+          2
+        ],
+        "02": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "02_bis": [
+          1,
+          1,
+          2,
+          2
+        ],
+        "03": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "03_bis": [
+          1,
+          1,
+          2,
+          2
+        ],
+        "04": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "05": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "05_bis": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "06": [
+          2,
+          1,
+          1,
+          1
+        ],
+        "06_bis": [
+          2,
+          1,
+          2,
+          2
+        ],
+        "07": [
+          1,
+          1,
+          2,
+          2
+        ],
+        "07_bis": [
+          0,
+          1,
+          2,
+          2
+        ]
+      }
+    },
+    {
+      "name": "render_metadata_discloses_true_chi_depth",
+      "passed": true
+    }
+  ],
+  "asset_checks_skipped": false
+}

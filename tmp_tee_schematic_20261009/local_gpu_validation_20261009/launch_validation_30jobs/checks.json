@@ -1,0 +1,110 @@
+{
+  "all_checks_passed": true,
+  "checks": [
+    {
+      "case": "fixed user allocation and capacity arithmetic",
+      "normal_running": 1,
+      "long_running": 0,
+      "normal_new": 15,
+      "long_new": 15,
+      "hypothetical_test_only": true
+    },
+    {
+      "case": "fixed user allocation and capacity arithmetic",
+      "normal_running": 1,
+      "long_running": 1,
+      "normal_new": 15,
+      "long_new": 15,
+      "hypothetical_test_only": true
+    },
+    {
+      "case": "fixed user allocation and capacity arithmetic",
+      "normal_running": 0,
+      "long_running": 2,
+      "normal_new": 15,
+      "long_new": 15,
+      "hypothetical_test_only": true
+    },
+    {
+      "case": "fixed user allocation and capacity arithmetic",
+      "normal_running": 2,
+      "long_running": 0,
+      "normal_new": 15,
+      "long_new": 15,
+      "hypothetical_test_only": true
+    },
+    {
+      "case": "fixed user allocation and capacity arithmetic",
+      "normal_running": 3,
+      "long_running": 1,
+      "normal_new": 15,
+      "long_new": 15,
+      "hypothetical_test_only": true
+    },
+    {
+      "case": "parse actual squeue format",
+      "mocked_only": true
+    },
+    {
+      "case": "pending allocation prevents submission",
+      "passed": true
+    },
+    {
+      "case": "generated 30 headers and dry run",
+      "normal_running": 1,
+      "long_running": 0,
+      "passed": true,
+      "disposable_fixture_only": true
+    },
+    {
+      "case": "generated 30 headers and dry run",
+      "normal_running": 1,
+      "long_running": 1,
+      "passed": true,
+      "disposable_fixture_only": true
+    },
+    {
+      "case": "generated 30 headers and dry run",
+      "normal_running": 0,
+      "long_running": 2,
+      "passed": true,
+      "disposable_fixture_only": true
+    },
+    {
+      "case": "generated 30 headers and dry run",
+      "normal_running": 2,
+      "long_running": 0,
+      "passed": true,
+      "disposable_fixture_only": true
+    },
+    {
+      "case": "generated 30 headers and dry run",
+      "normal_running": 3,
+      "long_running": 1,
+      "passed": true,
+      "disposable_fixture_only": true
+    },
+    {
+      "case": "exported bundle",
+      "passed": true
+    },
+    {
+      "case": "sbatch chdir",
+      "passed": true
+    },
+    {
+      "case": "Slurm submit directory",
+      "passed": true
+    },
+    {
+      "case": "local wrapper fallback",
+      "passed": true
+    }
+  ],
+  "production_allocation_ready": true,
+  "fixed_user_allocation": "first five J2 normal, last five long; capacity refresh cannot change allocation",
+  "numerical_four_file_hashes_unchanged": true,
+  "actual_cluster_queries": 0,
+  "actual_submissions": 0,
+  "disposable_test_copies_removed": true
+}

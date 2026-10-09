@@ -1,0 +1,32 @@
+{
+  "completed": true,
+  "verified_utc": "2026-10-09T17:58:15.209752+00:00",
+  "approved_targets": 21,
+  "all_approved_targets_absent": true,
+  "deleted_files_total": 14281,
+  "deleted_bytes_total": 4737946890,
+  "deleted_GiB_total": 4.412556895986199,
+  "execution_logs": [
+    "executed_20261009_195404_440.json",
+    "executed_20261009_195509_614.json"
+  ],
+  "note": "First execution partially deleted targets before a DLL removal failed; second execution completed all remaining targets. Totals are from the first full inventory, verified against final absence.",
+  "final_artifacts_unchanged_during_cleanup": true,
+  "preserved_artifact_sha256": {
+    "src_code/scripts/renyi2_twoc3.py": "c09f4bff7864ba7c6aed3afdc347aff6b06367a0c3687c708958ab6836b094b4",
+    "src_code/scripts/renyi2_spectral.py": "2eb73602eeb7245a03f8d593e1ab0c6a0cd7833051f70dc3f4acef21ea6c9d46",
+    "tmp_tee_schematic_20261009/build_schematics.py": "04a4b5829f670e3deb4f512234618fadd5adbe04ffe9e214e1c99ca8c3ad120c",
+    "tmp_tee_schematic_20261009/depth_renderer.py": "038d880e1dc3e4e46806344124586ea905604fbb4f9e4d3da669fdb5fbd0c31c",
+    "tmp_tee_schematic_20261009/assemble_review.py": "2238b4d7d079c1ff717e753ddc5a55f047b822fc8b87789f7712a8832b294159",
+    "tmp_tee_schematic_20261009/figures/four_panel_bis.png": "8e01906f8e38050bd5249630a9aac1fb237f32697882f73a9fcb44d0cf81ef14",
+    "tmp_tee_schematic_20261009/figures/four_panel_bis.pdf": "b44a424e6b82775a1ce9a6d6369b1bcbcab4ae8db6e676f0ea9a342a80f4fbc0",
+    "tmp_tee_schematic_20261009/local_gpu_validation_20261009/validation_summary.json": "1e9aea94025ecffd42011b183d0b1439d59008d28af4c2d330a90df0f33f56dc",
+    "tmp_tee_schematic_20261009/local_gpu_validation_20261009/production_final/final_cli_validation.json": "e4b67ae134416fab89087e29eefd161daee937ca7eeae170d221754b69af3124",
+    "tmp_tee_schematic_20261009\\我们的数值背景.txt": "8c865c6dec0154a57bcd5a515b4baf13ba2679887ba62bdf7cb1323829a695da"
+  },
+  "local_D2_D6_gate_passed": true,
+  "final_CLI_validation_passed": true,
+  "cluster_bundle_code_hashes_valid": true,
+  "cluster_bundle_job_count": 30,
+  "cluster_bundle_fixed_QOS_preserved": true
+}

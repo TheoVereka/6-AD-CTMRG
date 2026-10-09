@@ -1,0 +1,53 @@
+{
+  "passed": true,
+  "cases": [
+    {
+      "D": 2,
+      "chi": 5,
+      "status": "spectrally_stable_estimate",
+      "executed_modes": [
+        8,
+        16
+      ],
+      "max_absolute_S2_error": 9.094947017729282e-13,
+      "reference": "independent_full_dense_T1_T2_same_CPU_edges",
+      "CPU_vs_GPU_CTM_S2_difference": 9.04428816284053e-08,
+      "passed": true,
+      "runtime": {
+        "seconds": 1.2723901000063051,
+        "torch_version": "2.6.0+cpu",
+        "torch_cuda_version": null,
+        "device": "cpu"
+      }
+    },
+    {
+      "D": 4,
+      "chi": 20,
+      "status": "spectrally_stable_estimate",
+      "executed_modes": [
+        8,
+        16
+      ],
+      "max_absolute_S2_error": 0.0,
+      "reference": "actual_GPU_driver_full_T1",
+      "CPU_vs_GPU_CTM_S2_difference": null,
+      "passed": true,
+      "runtime": {
+        "seconds": 10.324636800003645,
+        "torch_version": "2.6.0+cu124",
+        "torch_cuda_version": "12.4",
+        "device": "cuda:0",
+        "GPU_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+        "peak_allocated_GiB": 0.18918418884277344,
+        "peak_reserved_GiB": 0.2578125
+      }
+    }
+  ],
+  "edge_cache_preserves_CTM_metadata": true,
+  "solver_identical_to_full_D2_D6_GPU_test": true,
+  "post_full_test_changes": "Only stop-after-stable mode control flow, source hashes and runtime/VRAM logging; T1/T2 contractions, packed coordinates and eigensolver unchanged.",
+  "final_source_sha256": {
+    "renyi2_spectral.py": "2eb73602eeb7245a03f8d593e1ab0c6a0cd7833051f70dc3f4acef21ea6c9d46",
+    "renyi2_twoc3.py": "c09f4bff7864ba7c6aed3afdc347aff6b06367a0c3687c708958ab6836b094b4"
+  }
+}

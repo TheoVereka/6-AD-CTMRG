@@ -1,0 +1,87 @@
+{
+  "gate_passed": true,
+  "full_D2_to_D6_gate_passed": true,
+  "D_values": [
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "chi_values": [
+    5,
+    12,
+    20,
+    32,
+    45
+  ],
+  "dtype": "float64",
+  "device": "cuda",
+  "basis": 64,
+  "block_size": 4,
+  "lengths": "100:2:1000",
+  "absolute_S2_target": 0.0001,
+  "checks": "D2: all three environment pairs, including independent full dense T2; D3-D6: pair1. Each tested pair: packed isometry/matvec, eigensolver convergence, mode increase, independent seed, T1 full spectrum, finite entropy/Schmidt bound.",
+  "validation_summary_relative_path": "tmp_tee_schematic_20261009/local_gpu_validation_20261009/validation_summary.json",
+  "validation_summary_sha256": "1e9aea94025ecffd42011b183d0b1439d59008d28af4c2d330a90df0f33f56dc",
+  "source_sha256": {
+    "renyi2_twoc3.py": "c09f4bff7864ba7c6aed3afdc347aff6b06367a0c3687c708958ab6836b094b4",
+    "renyi2_spectral.py": "2eb73602eeb7245a03f8d593e1ab0c6a0cd7833051f70dc3f4acef21ea6c9d46",
+    "correlation_length.py": "a9c335a23667915ef6dbab29a5e3b4cacb8a11b8fb4b312a1d61106c65a5734a",
+    "core_C3.py": "fb175b144fda2faf7514ee9d4be968251e6cb0e1b8ca3718be41eab2b9937f0c"
+  },
+  "production_cli_validation_relative_directory": "tmp_tee_schematic_20261009/local_gpu_validation_20261009/production_final",
+  "production_cli_checks": "D4 GPU chi20 batch2: 8->16 mode stability, stops before32; exact match to validation driver. D2 CPU original tensor CTM/cache/CLI completed; same-edges dense comparison recorded in original validation directory.",
+  "cluster_jobs_created_after_gate": true,
+  "cluster_jobs_submitted": false,
+  "cluster_D8_ran_locally": false,
+  "memory_scope": "D8 chi80 basis64 batch2 VRAM is a static estimate; D6 observed peaks in original validation summary.",
+  "final_production_cli_validation": {
+    "relative_path": "tmp_tee_schematic_20261009/local_gpu_validation_20261009/production_final/final_cli_validation.json",
+    "sha256": "e4b67ae134416fab89087e29eefd161daee937ca7eeae170d221754b69af3124",
+    "passed": true,
+    "cases": [
+      {
+        "D": 2,
+        "chi": 5,
+        "reference": "independent_full_dense_T1_T2_same_CPU_edges",
+        "max_absolute_S2_error": 9.094947017729282e-13,
+        "executed_modes": [
+          8,
+          16
+        ],
+        "passed": true
+      },
+      {
+        "D": 4,
+        "chi": 20,
+        "reference": "actual_GPU_driver_full_T1",
+        "max_absolute_S2_error": 0.0,
+        "executed_modes": [
+          8,
+          16
+        ],
+        "passed": true
+      }
+    ]
+  },
+  "environment_pair_coverage": {
+    "D2": [
+      1,
+      2,
+      3
+    ],
+    "D3": [
+      1
+    ],
+    "D4": [
+      1
+    ],
+    "D5": [
+      1
+    ],
+    "D6": [
+      1
+    ]
+  }
+}

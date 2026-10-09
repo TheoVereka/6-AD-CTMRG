@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Thirty Izar heads and their afterok continuations toward lower J2.
+# Twenty Izar heads (D=6,7 only) and their afterok continuations toward lower J2.
 set -euo pipefail
 
 BUNDLE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,7 +23,7 @@ grep -Fq "CHI_MIN_LIST  = ${LOCKED_CHI}" main_C3_LBFGS.py || {
 grep -Fq "CHI_MAX_LIST  = ${LOCKED_CHI}" main_C3_LBFGS.py || {
     echo "Bundled main_C3_LBFGS.py does not have the locked CHI_MAX_LIST" >&2; exit 3;
 }
-for D in 6 7 8; do
+for D in 6 7; do
     for texture in dimer plaquette; do
         for field_code in 0p01 0p02 0p04 0p08; do
             [[ -s "${BUNDLE_DIR}/seeds/D${D}/${texture}/h_${field_code}.pt" ]] || {
@@ -68,7 +68,6 @@ submit_chain() {
     case "${D}" in
         6) CHI=108; ORIENTATION=2 ;;
         7) CHI=126; ORIENTATION=1 ;;
-        8) CHI=144; ORIENTATION=1 ;;
         *) echo "Unsupported D=${D}" >&2; exit 2 ;;
     esac
     if [[ "${signed_h}" == -* ]]; then
@@ -97,12 +96,8 @@ submit_chain() {
     done
 }
 
-for D in 6 7 8; do
-    if [[ "${D}" == "8" ]]; then
-        standard_run=izar_7days_stage.run
-    else
-        standard_run=izar_3days_stage.run
-    fi
+for D in 6 7; do
+    standard_run=izar_3days_stage.run
     for signed_h in -0.01 +0.01; do
         submit_chain "${D}" "${signed_h}" main "${standard_run}" \
             0.25 0.24 0.23 0.22 0.21 0.20 0.19 0.18 0.17 0.16
@@ -125,12 +120,12 @@ for D in 6 7 8; do
     done
 done
 
-[[ "${job_count}" == "246" && "${head_count}" == "30" && "${dependency_count}" == "216" ]] || {
+[[ "${job_count}" == "164" && "${head_count}" == "20" && "${dependency_count}" == "144" ]] || {
     echo "Internal count error: jobs=${job_count}, heads=${head_count}, dependencies=${dependency_count}" >&2
     exit 6
 }
 if [[ "${DRY_RUN}" == "1" ]]; then
-    echo "Dry run complete: 246 jobs = 30 heads + 216 afterok jobs; nothing submitted."
+    echo "Dry run complete: 164 jobs = 20 heads + 144 afterok jobs; nothing submitted."
 else
-    echo "Submitted 246 jobs = 30 heads + 216 afterok jobs."
+    echo "Submitted 164 jobs = 20 heads + 144 afterok jobs."
 fi

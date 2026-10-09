@@ -1,0 +1,112 @@
+{
+  "schema": "twoc3_renyi2_spectra_v1",
+  "length_convention": "L=cut D-bonds; exponent=L/2; geometric circumference=3L/2 honeycomb sides",
+  "bond_D": 2,
+  "chi": 4,
+  "pair": 1,
+  "normal_swap_envs": [
+    1,
+    1
+  ],
+  "target_absolute_S2_error": 0.0001,
+  "memory_budget": {
+    "dtype": "float64",
+    "one_T2_vector_GB": 2.048e-06,
+    "Q_plus_AQ_GB": 0.000196608,
+    "two_contraction_work_GB": 1.6384e-05,
+    "restart_and_block_allowance_GB": 4.9152e-05,
+    "note": "Main arrays only; CUDA/BLAS workspace and restart keep-size must be included in peak RAM/VRAM."
+  },
+  "configuration": {
+    "checkpoint": null,
+    "edge_file": "tmp_tee_schematic_20261009\\algorithm_checks\\positive_edges_cli.npz",
+    "pair": 1,
+    "chi": 64,
+    "device": "cpu",
+    "J1": 1.0,
+    "J2": null,
+    "ctm_max_steps": 70,
+    "ctm_conv_tol": 1e-07,
+    "ctm_conv_mode": "both",
+    "ctm_e_conv_threshold": 2e-08,
+    "rsvd_mode": "augmented",
+    "save_edges": null,
+    "L_min": 100,
+    "L_max": 1000,
+    "L_step": 100,
+    "modes": [
+      4,
+      8
+    ],
+    "block_size": 4,
+    "subspace": 48,
+    "eig_tol": 1e-10,
+    "entropy_tol": 0.0001,
+    "max_matvec": 1,
+    "progress_every": 10,
+    "batch": 8,
+    "seed": 20261009,
+    "threads": 2,
+    "output": "tmp_tee_schematic_20261009\\algorithm_checks\\cli_expected_nonconvergence.json"
+  },
+  "stages": [
+    {
+      "modes_requested_per_sector": 4,
+      "T1": {
+        "eigenvalues": [],
+        "relative_residuals": [],
+        "converged": false,
+        "matvec_count": 1,
+        "restarts": 0,
+        "subspace_dim": 1,
+        "reason": "max_matvec_reached",
+        "orthogonality_error": 4.440892098500626e-16,
+        "requested_k": 4
+      },
+      "T2": [
+        {
+          "eigenvalues": [],
+          "relative_residuals": [],
+          "converged": false,
+          "matvec_count": 1,
+          "restarts": 0,
+          "subspace_dim": 1,
+          "reason": "max_matvec_reached",
+          "orthogonality_error": 4.440892098500626e-16,
+          "requested_k": 4,
+          "replica_parity": 1,
+          "transfer_matvec_count": 1
+        },
+        {
+          "eigenvalues": [],
+          "relative_residuals": [],
+          "converged": false,
+          "matvec_count": 1,
+          "restarts": 0,
+          "subspace_dim": 1,
+          "reason": "max_matvec_reached",
+          "orthogonality_error": 0.0,
+          "requested_k": 4,
+          "replica_parity": -1,
+          "transfer_matvec_count": 1
+        }
+      ],
+      "seconds": 0.04213569999774336,
+      "eigensolvers_converged": false
+    }
+  ],
+  "status": "eigensolver_not_converged",
+  "precision_certified": false,
+  "L": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900,
+    1000
+  ]
+}

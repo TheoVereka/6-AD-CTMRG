@@ -1,0 +1,46 @@
+[
+  {
+    "solver": "original",
+    "parity": 1,
+    "converged": false,
+    "matvec": 224,
+    "restarts": 2,
+    "largest_returned_modulus": 0.48038957855692926,
+    "maximum_residual": 0.9999999992804794,
+    "gram_error": 65.3420141640342,
+    "reason": "subspace_too_small_for_detected_boundary_cluster"
+  },
+  {
+    "solver": "original",
+    "parity": -1,
+    "converged": false,
+    "matvec": 800,
+    "restarts": 12,
+    "largest_returned_modulus": 3.1467771303555905e-05,
+    "maximum_residual": 0.9799466961538423,
+    "gram_error": 276.4769878080382,
+    "reason": "max_matvec_reached"
+  },
+  {
+    "solver": "repaired",
+    "parity": 1,
+    "converged": true,
+    "matvec": 16,
+    "restarts": 0,
+    "largest_returned_modulus": 0.013214587530832982,
+    "maximum_residual": 2.380802133176493e-12,
+    "gram_error": 2.5042370476795163e-15,
+    "reason": "ritz_residuals_converged_tail_not_certified"
+  },
+  {
+    "solver": "repaired",
+    "parity": -1,
+    "converged": true,
+    "matvec": 20,
+    "restarts": 0,
+    "largest_returned_modulus": 6.267423155789347e-08,
+    "maximum_residual": 1.1666201543593299e-11,
+    "gram_error": 2.2077506895105247e-15,
+    "reason": "ritz_residuals_converged_tail_not_certified"
+  }
+]

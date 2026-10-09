@@ -1,0 +1,366 @@
+{
+  "generated_UTC": "2026-10-09T17:09:06.708081+00:00",
+  "full_gate_passed": true,
+  "summary_read_error": null,
+  "runtime": {
+    "python": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\.venv_cuda\\Scripts\\python.exe",
+    "torch_version": "2.6.0+cu124",
+    "torch_cuda_version": "12.4",
+    "cuda_available": true,
+    "device": "cuda",
+    "actual_checkpoints": [
+      "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p26\\2tensor_twoC3\\D_2\\tensor_best.pt",
+      "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p26\\2tensor_twoC3\\D_3\\tensor_best.pt",
+      "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p26\\2tensor_twoC3\\D_4\\tensor_best.pt",
+      "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p26\\2tensor_twoC3\\D_5\\tensor_best.pt",
+      "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p26\\2tensor_twoC3\\D_6\\tensor_best.pt"
+    ],
+    "chi_values": {
+      "2": 5,
+      "3": 12,
+      "4": 20,
+      "5": 32,
+      "6": 45
+    },
+    "source_files_sha256": {
+      "tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\run_local_gpu_validation.py": "b2516bba7b7354c1cd59ef2ce140eb1ffa95a2a337cec85ebbaf0926a57f3f73",
+      "src_code\\scripts\\renyi2_twoc3.py": "291979aa24e1435b5f5a60a85772558de8558805c40e1622a44282dffe90d4f3",
+      "src_code\\scripts\\renyi2_spectral.py": "2eb73602eeb7245a03f8d593e1ab0c6a0cd7833051f70dc3f4acef21ea6c9d46"
+    },
+    "GPU_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+    "GPU_total_GiB": 7.99560546875
+  },
+  "cases": [
+    {
+      "D": 2,
+      "chi": 5,
+      "status": "passed",
+      "passed": true,
+      "seconds": 5.68792769999709,
+      "peak_allocated_GiB": 0.010876655578613281,
+      "peak_reserved_GiB": 0.021484375,
+      "pair_numbers": [
+        1,
+        2,
+        3
+      ],
+      "mode_counts": [
+        16,
+        16,
+        16
+      ],
+      "mode_change": 0.0,
+      "seed_change": 9.094947017729282e-13,
+      "dense_error": 0.0,
+      "T1_entropy_error": 1.8189894035458565e-12,
+      "operator_error": 7.794099079636912e-16,
+      "max_residual": 6.171377770133146e-10,
+      "max_orthogonality_error": 9.368723148805161e-15,
+      "matvec_count": 855,
+      "restart_count": 0,
+      "rank_deflations": 9,
+      "random_completions": 0,
+      "gram_repairs": 0,
+      "ctm_steps": [
+        6,
+        6
+      ],
+      "ctm_retries": [
+        0,
+        0
+      ],
+      "errors": [],
+      "criteria": [
+        {
+          "pair": 1,
+          "operator_pack_isometry_matvec": true,
+          "a_converged_stage_with_at_least_16_modes": true,
+          "mode_increase_stability": true,
+          "independent_seed_stability": true,
+          "T1_iterative_vs_full_spectrum": true,
+          "finite_and_physical_bound": true,
+          "D2_full_dense_reference": true
+        },
+        {
+          "pair": 2,
+          "operator_pack_isometry_matvec": true,
+          "a_converged_stage_with_at_least_16_modes": true,
+          "mode_increase_stability": true,
+          "independent_seed_stability": true,
+          "T1_iterative_vs_full_spectrum": true,
+          "finite_and_physical_bound": true,
+          "D2_full_dense_reference": true
+        },
+        {
+          "pair": 3,
+          "operator_pack_isometry_matvec": true,
+          "a_converged_stage_with_at_least_16_modes": true,
+          "mode_increase_stability": true,
+          "independent_seed_stability": true,
+          "T1_iterative_vs_full_spectrum": true,
+          "finite_and_physical_bound": true,
+          "D2_full_dense_reference": true
+        }
+      ],
+      "case_file": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\D2_chi5\\case.json"
+    },
+    {
+      "D": 3,
+      "chi": 12,
+      "status": "passed",
+      "passed": true,
+      "seconds": 4.1751615999965,
+      "peak_allocated_GiB": 0.03113269805908203,
+      "peak_reserved_GiB": 0.04296875,
+      "pair_numbers": [
+        1
+      ],
+      "mode_counts": [
+        16
+      ],
+      "mode_change": 0.0,
+      "seed_change": 1.8189894035458565e-12,
+      "dense_error": null,
+      "T1_entropy_error": 0.0,
+      "operator_error": 6.923279948114268e-16,
+      "max_residual": 5.725588479820955e-10,
+      "max_orthogonality_error": 2.3804313314727768e-14,
+      "matvec_count": 689,
+      "restart_count": 9,
+      "rank_deflations": 0,
+      "random_completions": 0,
+      "gram_repairs": 0,
+      "ctm_steps": [
+        14,
+        13
+      ],
+      "ctm_retries": [
+        0,
+        0
+      ],
+      "errors": [],
+      "criteria": [
+        {
+          "pair": 1,
+          "operator_pack_isometry_matvec": true,
+          "a_converged_stage_with_at_least_16_modes": true,
+          "mode_increase_stability": true,
+          "independent_seed_stability": true,
+          "T1_iterative_vs_full_spectrum": true,
+          "finite_and_physical_bound": true,
+          "D2_full_dense_reference": true
+        }
+      ],
+      "case_file": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\D3_chi12\\case.json"
+    },
+    {
+      "D": 4,
+      "chi": 20,
+      "status": "passed",
+      "passed": true,
+      "seconds": 17.55541789999552,
+      "peak_allocated_GiB": 0.1889934539794922,
+      "peak_reserved_GiB": 0.2578125,
+      "pair_numbers": [
+        1
+      ],
+      "mode_counts": [
+        16
+      ],
+      "mode_change": 9.094947017729282e-13,
+      "seed_change": 2.7284841053187847e-12,
+      "dense_error": null,
+      "T1_entropy_error": 0.0,
+      "operator_error": 1.4504828072619237e-15,
+      "max_residual": 9.260591725028553e-10,
+      "max_orthogonality_error": 2.7314262771290135e-14,
+      "matvec_count": 727,
+      "restart_count": 10,
+      "rank_deflations": 0,
+      "random_completions": 0,
+      "gram_repairs": 0,
+      "ctm_steps": [
+        13,
+        13
+      ],
+      "ctm_retries": [
+        0,
+        0
+      ],
+      "errors": [],
+      "criteria": [
+        {
+          "pair": 1,
+          "operator_pack_isometry_matvec": true,
+          "a_converged_stage_with_at_least_16_modes": true,
+          "mode_increase_stability": true,
+          "independent_seed_stability": true,
+          "T1_iterative_vs_full_spectrum": true,
+          "finite_and_physical_bound": true,
+          "D2_full_dense_reference": true
+        }
+      ],
+      "case_file": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\D4_chi20\\case.json"
+    },
+    {
+      "D": 5,
+      "chi": 32,
+      "status": "passed",
+      "passed": true,
+      "seconds": 186.6264530999979,
+      "peak_allocated_GiB": 0.6540331840515137,
+      "peak_reserved_GiB": 0.787109375,
+      "pair_numbers": [
+        1
+      ],
+      "mode_counts": [
+        16
+      ],
+      "mode_change": 1.8189894035458565e-12,
+      "seed_change": 1.8189894035458565e-12,
+      "dense_error": null,
+      "T1_entropy_error": 5.4569682106375694e-12,
+      "operator_error": 1.099188653631964e-15,
+      "max_residual": 9.018206280874239e-10,
+      "max_orthogonality_error": 3.0198449316845934e-14,
+      "matvec_count": 740,
+      "restart_count": 10,
+      "rank_deflations": 0,
+      "random_completions": 0,
+      "gram_repairs": 0,
+      "ctm_steps": [
+        17,
+        12
+      ],
+      "ctm_retries": [
+        0,
+        0
+      ],
+      "errors": [],
+      "criteria": [
+        {
+          "pair": 1,
+          "operator_pack_isometry_matvec": true,
+          "a_converged_stage_with_at_least_16_modes": true,
+          "mode_increase_stability": true,
+          "independent_seed_stability": true,
+          "T1_iterative_vs_full_spectrum": true,
+          "finite_and_physical_bound": true,
+          "D2_full_dense_reference": true
+        }
+      ],
+      "case_file": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\D5_chi32\\case.json"
+    },
+    {
+      "D": 6,
+      "chi": 45,
+      "status": "passed",
+      "passed": true,
+      "seconds": 1517.1523732999995,
+      "peak_allocated_GiB": 2.4935007095336914,
+      "peak_reserved_GiB": 2.6328125,
+      "pair_numbers": [
+        1
+      ],
+      "mode_counts": [
+        16
+      ],
+      "mode_change": 3.637978807091713e-12,
+      "seed_change": 1.8189894035458565e-12,
+      "dense_error": null,
+      "T1_entropy_error": 0.0,
+      "operator_error": 2.124760251836684e-15,
+      "max_residual": 8.88458371695657e-10,
+      "max_orthogonality_error": 4.9749932831197785e-14,
+      "matvec_count": 746,
+      "restart_count": 11,
+      "rank_deflations": 0,
+      "random_completions": 0,
+      "gram_repairs": 0,
+      "ctm_steps": [
+        14,
+        14
+      ],
+      "ctm_retries": [
+        0,
+        0
+      ],
+      "errors": [],
+      "criteria": [
+        {
+          "pair": 1,
+          "operator_pack_isometry_matvec": true,
+          "a_converged_stage_with_at_least_16_modes": true,
+          "mode_increase_stability": true,
+          "independent_seed_stability": true,
+          "T1_iterative_vs_full_spectrum": true,
+          "finite_and_physical_bound": true,
+          "D2_full_dense_reference": true
+        }
+      ],
+      "case_file": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\D6_chi45\\case.json"
+    }
+  ],
+  "total_seconds": 1731.412368199999,
+  "source_hashes": {
+    "tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\run_local_gpu_validation.py": "b2516bba7b7354c1cd59ef2ce140eb1ffa95a2a337cec85ebbaf0926a57f3f73",
+    "src_code\\scripts\\renyi2_twoc3.py": "291979aa24e1435b5f5a60a85772558de8558805c40e1622a44282dffe90d4f3",
+    "src_code\\scripts\\renyi2_spectral.py": "2eb73602eeb7245a03f8d593e1ab0c6a0cd7833051f70dc3f4acef21ea6c9d46"
+  },
+  "final_cli_validation_path": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\production_final\\final_cli_validation.json",
+  "final_cli_validation": {
+    "passed": true,
+    "cases": [
+      {
+        "D": 2,
+        "chi": 5,
+        "status": "spectrally_stable_estimate",
+        "executed_modes": [
+          8,
+          16
+        ],
+        "max_absolute_S2_error": 9.094947017729282e-13,
+        "reference": "independent_full_dense_T1_T2_same_CPU_edges",
+        "CPU_vs_GPU_CTM_S2_difference": 9.04428816284053e-08,
+        "passed": true,
+        "runtime": {
+          "seconds": 1.2723901000063051,
+          "torch_version": "2.6.0+cpu",
+          "torch_cuda_version": null,
+          "device": "cpu"
+        }
+      },
+      {
+        "D": 4,
+        "chi": 20,
+        "status": "spectrally_stable_estimate",
+        "executed_modes": [
+          8,
+          16
+        ],
+        "max_absolute_S2_error": 0.0,
+        "reference": "actual_GPU_driver_full_T1",
+        "CPU_vs_GPU_CTM_S2_difference": null,
+        "passed": true,
+        "runtime": {
+          "seconds": 10.324636800003645,
+          "torch_version": "2.6.0+cu124",
+          "torch_cuda_version": "12.4",
+          "device": "cuda:0",
+          "GPU_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+          "peak_allocated_GiB": 0.18918418884277344,
+          "peak_reserved_GiB": 0.2578125
+        }
+      }
+    ],
+    "edge_cache_preserves_CTM_metadata": true,
+    "solver_identical_to_full_D2_D6_GPU_test": true,
+    "post_full_test_changes": "Only stop-after-stable mode control flow, source hashes and runtime/VRAM logging; T1/T2 contractions, packed coordinates and eigensolver unchanged.",
+    "final_source_sha256": {
+      "renyi2_spectral.py": "2eb73602eeb7245a03f8d593e1ab0c6a0cd7833051f70dc3f4acef21ea6c9d46",
+      "renyi2_twoc3.py": "c09f4bff7864ba7c6aed3afdc347aff6b06367a0c3687c708958ab6836b094b4"
+    }
+  },
+  "final_cli_passed": true,
+  "final_cli_read_error": null
+}

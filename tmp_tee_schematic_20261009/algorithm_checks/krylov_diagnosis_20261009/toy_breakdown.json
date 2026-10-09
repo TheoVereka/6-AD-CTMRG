@@ -1,0 +1,30 @@
+{
+  "exact_old_basis": {
+    "old_gram_error": 0.0,
+    "before_norm": 0.0001,
+    "after_norm": 1e-17,
+    "raw_old_basis_component": 0.0,
+    "threshold": 1.1102230246251566e-18,
+    "r_diagonal": [
+      -1e-17
+    ],
+    "keep": [
+      true
+    ],
+    "normalized_old_basis_overlap": 0.0
+  },
+  "slightly_inexact_old_basis": {
+    "old_gram_error": 4.999999969612645e-09,
+    "before_norm": 0.00010000000025,
+    "after_norm": 1.0000000312499976e-17,
+    "raw_old_basis_component": 2.499999926913806e-21,
+    "threshold": 1.1102230274007142e-18,
+    "r_diagonal": [
+      -1.0000000312499976e-17
+    ],
+    "keep": [
+      true
+    ],
+    "normalized_old_basis_overlap": 0.0002499999848787903
+  }
+}

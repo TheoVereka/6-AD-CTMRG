@@ -20,9 +20,9 @@ BUNDLE_DIR="$(cd -- "${BUNDLE_DIR}" && pwd)"
 cd "${BUNDLE_DIR}"
 
 case "${D}:${CHI}" in
-    6:108|7:126|8:144) ;;
+    6:108|7:126) ;;
     *)
-        echo "Refusing unlocked D/chi pair D=${D}, chi=${CHI}; expected 6:108, 7:126, or 8:144" >&2
+        echo "Refusing D=${D}, chi=${CHI}; Izar D=8 is permanently banned, expected 6:108 or 7:126" >&2
         exit 70
         ;;
 esac
@@ -47,7 +47,11 @@ if [[ -s "${BEST_CKPT}" && -s "${OBS_FILE}" ]]; then
     echo "Already complete: D=${D}, signed h=${SIGNED_H}, J2=${TARGET_J2}"
     exit 0
 fi
-if [[ -s "${LATEST_CKPT}" ]]; then
+if [[ "${FORCE_INPUT_CHECKPOINT:-0}" == "1" ]]; then
+    # Recovery jobs must restart from the explicitly selected last completed
+    # J2 tensor, never from a partial checkpoint left by a failed target job.
+    RESUME_CKPT="${INPUT_CKPT}"
+elif [[ -s "${LATEST_CKPT}" ]]; then
     RESUME_CKPT="${LATEST_CKPT}"
 elif [[ -s "${BEST_CKPT}" ]]; then
     RESUME_CKPT="${BEST_CKPT}"
@@ -65,6 +69,8 @@ fi
 echo "D=${D}; chi=${CHI}; J2=${TARGET_J2}; signed h=${SIGNED_H}"
 echo "branch=${BRANCH}; field magnitude=${FIELD}; orientation=${ORIENTATION}"
 echo "resume=${RESUME_CKPT}; output=${OUTPUT_DIR}; pure L-BFGS"
+[[ "${FORCE_INPUT_CHECKPOINT:-0}" == "1" ]] && \
+    echo "recovery mode: ignored any target-stage partial checkpoint"
 
 python -u "${BUNDLE_DIR}/main_C3_LBFGS.py" \
     --J2 "${TARGET_J2}" \

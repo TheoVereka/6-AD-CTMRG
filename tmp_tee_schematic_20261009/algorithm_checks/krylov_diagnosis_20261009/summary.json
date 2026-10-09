@@ -1,0 +1,18 @@
+[
+  {
+    "parity": 1,
+    "result_reason": "max_matvec_reached",
+    "final_orthogonality": 353.33283170667846,
+    "final_radius": 2.1049723338663666,
+    "first_bad_event": 26,
+    "exact_radius": 0.013214587530832992
+  },
+  {
+    "parity": -1,
+    "result_reason": "max_matvec_reached",
+    "final_orthogonality": 300.6954706952074,
+    "final_radius": 0.00023052164383504056,
+    "first_bad_event": 101,
+    "exact_radius": 6.267423155789136e-08
+  }
+]

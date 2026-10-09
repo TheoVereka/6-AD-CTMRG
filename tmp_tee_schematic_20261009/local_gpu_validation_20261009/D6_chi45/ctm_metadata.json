@@ -1,0 +1,60 @@
+{
+  "D": 6,
+  "chi": 45,
+  "checkpoint_sha256": "df82a87b0f026999055cf73ccd23d29fa936d2b728cdd269e09f3afb1c3732c0",
+  "loaded_checkpoint_metadata": {
+    "D_bond": 6,
+    "chi": 72,
+    "loss": -2.6016598762322487,
+    "energy": -2.6016598762212046,
+    "step": 290,
+    "timestamp": "2026-08-19 10:36:53"
+  },
+  "environments": [
+    {
+      "label": "normal_a_b",
+      "attempts": [
+        {
+          "attempt": 1,
+          "steps": 14,
+          "step_limit": 200,
+          "step_limit_reached": false,
+          "seconds": 42.93392579999636
+        }
+      ],
+      "step_limit_reached": false,
+      "steps": 14,
+      "step_limit": 200,
+      "retry_count": 0,
+      "seconds": 42.9359414999999
+    },
+    {
+      "label": "swapped_b_a",
+      "attempts": [
+        {
+          "attempt": 1,
+          "steps": 14,
+          "step_limit": 200,
+          "step_limit_reached": false,
+          "seconds": 42.2093834000043
+        }
+      ],
+      "step_limit_reached": false,
+      "steps": 14,
+      "step_limit": 200,
+      "retry_count": 0,
+      "seconds": 42.21096110000508
+    }
+  ],
+  "reused_saved_edges": false,
+  "converged": true,
+  "configuration": {
+    "initial_max_steps": 200,
+    "max_retries": 2,
+    "retry_step_multiplier": 2,
+    "conv_mode": "both",
+    "conv_tol": 1e-07,
+    "energy_threshold": 2e-08,
+    "rsvd_mode": "full_svd"
+  }
+}

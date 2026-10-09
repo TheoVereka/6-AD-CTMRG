@@ -1,0 +1,5 @@
+Constructing explicit T1 (16 square), real float64.
+Spectrum stage: 4 modes per replica sector.
+T2 sector +1, dimension 136; starting block 4.
+T2 sector -1, dimension 120; starting block 4.
+Result: eigensolver_not_converged; saved D:\HyraiOn\ENS_Lyon\Internship\2026-EPFL\6-AD-CTMRG\tmp_tee_schematic_20261009\algorithm_checks\cli_expected_nonconvergence.json

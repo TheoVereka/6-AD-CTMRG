@@ -1,12 +1,14 @@
 # Low-J2 fixed-pinning continuation on Izar
 
-This self-contained bundle launches 30 Slurm dependency-chain heads.  The
+This self-contained bundle launches 20 Slurm dependency-chain heads.  The
 first stage of every chain resumes its matching optimized `J2=0.26` tensor;
 every later stage is submitted with `afterok` and resumes the immediately
 preceding J2 best tensor.
 
-Exactly one environment dimension is run for each D: `D=6 -> chi=108`,
-`D=7 -> chi=126`, and `D=8 -> chi=144`.  The initial checkpoint is loaded
+Exactly one environment dimension is run for each D: `D=6 -> chi=108` and
+`D=7 -> chi=126`.  Izar `D=8` is permanently banned; its old jobs must be
+cancelled and its old result directories are excluded from both snapshots and
+local analysis.  The initial checkpoint is loaded
 with `--resume-tensors-only`, so its historical CTM environment/chi is ignored.
 
 | signed field | target J2 sequence |
@@ -17,9 +19,9 @@ with `--resume-tensors-only`, so its historical CTM environment/chi is ignored.
 | `-0.08,+0.08` main | `0.23,0.20,...,0.02` in steps of `0.03` |
 | `-0.08,+0.08` extra | `0.24,0.22,...,0.12` |
 
-For `D=6,7`, the main grids use Izar's three-day `normal` QOS; `D=8` uses
-the seven-day `long` QOS.  Every extra `|h|=0.08` grid uses the seven-day
-configuration for all D.  The `.run` files preserve the known working Izar
+For `D=6,7`, the main grids use Izar's three-day `normal` QOS.  Every extra
+`|h|=0.08` grid uses the seven-day configuration.  The `.run` files preserve
+the known working Izar
 stack: `partition=gpu`, one GPU, one CPU, 40 GB, `exclude=i39`, GCC 11.3,
 CUDA 11.8, and `/home/chye/venvs/6adctmrg_Izar`.
 
@@ -38,5 +40,15 @@ bash submit_all.sh --dry-run
 bash submit_all.sh
 ```
 
-Expected submission: **246 Slurm jobs = 30 heads + 216 afterok jobs**.
+Expected submission: **164 Slurm jobs = 20 heads + 144 afterok jobs**.
 Results are written under `Results_Izar_lowJ2/`.
+
+To cancel only this bundle's D=8 jobs, copy and run
+`cancel_lowJ2_D8_jobs.sh` on Izar.  Its exact job-name regular expression does
+not match the other VBC projects.
+
+From local PowerShell, the upload plus cancellation is one command:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\models\VBCLowJ2ContinuationIzar\cancel_D8_on_izar.ps1
+```

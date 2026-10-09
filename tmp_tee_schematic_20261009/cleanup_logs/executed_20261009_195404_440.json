@@ -1,0 +1,162 @@
+﻿{
+    "GeneratedUTC":  "2026-10-09T17:54:04.4420515Z",
+    "Mode":  "executed",
+    "Workspace":  "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG",
+    "Before":  {
+                   "FileCount":  14281,
+                   "Bytes":  4737946890,
+                   "Targets":  [
+                                   {
+                                       "RelativePath":  "tmp_tee_isolated_20261009",
+                                       "AbsolutePath":  "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_isolated_20261009",
+                                       "IsDirectory":  true,
+                                       "FileCount":  94,
+                                       "Bytes":  1860219
+                                   },
+                                   {
+                                       "RelativePath":  "tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\.venv_cuda",
+                                       "AbsolutePath":  "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\.venv_cuda",
+                                       "IsDirectory":  true,
+                                       "FileCount":  13972,
+                                       "Bytes":  4701849869
+                                   },
+                                   {
+                                       "RelativePath":  "tmp_tee_schematic_20261009\\previous_view_v2",
+                                       "AbsolutePath":  "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\previous_view_v2",
+                                       "IsDirectory":  true,
+                                       "FileCount":  41,
+                                       "Bytes":  5746749
+                                   },
+                                   {
+                                       "RelativePath":  "tmp_tee_schematic_20261009\\previous_view_v3",
+                                       "AbsolutePath":  "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\previous_view_v3",
+                                       "IsDirectory":  true,
+                                       "FileCount":  40,
+                                       "Bytes":  14944073
+                                   },
+                                   {
+                                       "RelativePath":  "tmp_tee_schematic_20261009\\previous_view_v4",
+                                       "AbsolutePath":  "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\previous_view_v4",
+                                       "IsDirectory":  true,
+                                       "FileCount":  41,
+                                       "Bytes":  5541716
+                                   },
+                                   {
+                                       "RelativePath":  "tmp_tee_schematic_20261009\\previous_view_v5",
+                                       "AbsolutePath":  "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\previous_view_v5",
+                                       "IsDirectory":  true,
+                                       "FileCount":  41,
+                                       "Bytes":  6718927
+                                   },
+                                   {
+                                       "RelativePath":  "tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\driver_smoke_cpu",
+                                       "AbsolutePath":  "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\driver_smoke_cpu",
+                                       "IsDirectory":  true,
+                                       "FileCount":  12,
+                                       "Bytes":  552989
+                                   },
+                                   {
+                                       "RelativePath":  "tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\driver_retry_smoke_cpu",
+                                       "AbsolutePath":  "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\driver_retry_smoke_cpu",
+                                       "IsDirectory":  true,
+                                       "FileCount":  12,
+                                       "Bytes":  556136
+                                   },
+                                   {
+                                       "RelativePath":  "tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\driver_retry_limit_smoke_cpu",
+                                       "AbsolutePath":  "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\driver_retry_limit_smoke_cpu",
+                                       "IsDirectory":  true,
+                                       "FileCount":  6,
+                                       "Bytes":  27432
+                                   },
+                                   {
+                                       "RelativePath":  "tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\production_packed_smoke.json",
+                                       "AbsolutePath":  "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\production_packed_smoke.json",
+                                       "IsDirectory":  false,
+                                       "FileCount":  1,
+                                       "Bytes":  45482
+                                   },
+                                   {
+                                       "RelativePath":  "tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\production_packed_smoke.csv",
+                                       "AbsolutePath":  "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\production_packed_smoke.csv",
+                                       "IsDirectory":  false,
+                                       "FileCount":  1,
+                                       "Bytes":  23017
+                                   },
+                                   {
+                                       "RelativePath":  "tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\launch_cleanup_readonly_audit.md",
+                                       "AbsolutePath":  "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\launch_cleanup_readonly_audit.md",
+                                       "IsDirectory":  false,
+                                       "FileCount":  1,
+                                       "Bytes":  11782
+                                   },
+                                   {
+                                       "RelativePath":  "tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\launch_validation",
+                                       "AbsolutePath":  "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\launch_validation",
+                                       "IsDirectory":  true,
+                                       "FileCount":  11,
+                                       "Bytes":  15007
+                                   },
+                                   {
+                                       "RelativePath":  "tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\report_snapshots\\not_passed_28f694bd0c63.json",
+                                       "AbsolutePath":  "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\report_snapshots\\not_passed_28f694bd0c63.json",
+                                       "IsDirectory":  false,
+                                       "FileCount":  1,
+                                       "Bytes":  9955
+                                   },
+                                   {
+                                       "RelativePath":  "tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\report_snapshots\\not_passed_28f694bd0c63.md",
+                                       "AbsolutePath":  "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\report_snapshots\\not_passed_28f694bd0c63.md",
+                                       "IsDirectory":  false,
+                                       "FileCount":  1,
+                                       "Bytes":  3496
+                                   },
+                                   {
+                                       "RelativePath":  "tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\report_snapshots\\not_passed_5860f5a146be.json",
+                                       "AbsolutePath":  "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\report_snapshots\\not_passed_5860f5a146be.json",
+                                       "IsDirectory":  false,
+                                       "FileCount":  1,
+                                       "Bytes":  9904
+                                   },
+                                   {
+                                       "RelativePath":  "tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\report_snapshots\\not_passed_5860f5a146be.md",
+                                       "AbsolutePath":  "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\report_snapshots\\not_passed_5860f5a146be.md",
+                                       "IsDirectory":  false,
+                                       "FileCount":  1,
+                                       "Bytes":  3479
+                                   },
+                                   {
+                                       "RelativePath":  "tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\report_snapshots\\not_passed_c850cc14a1cc.json",
+                                       "AbsolutePath":  "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\report_snapshots\\not_passed_c850cc14a1cc.json",
+                                       "IsDirectory":  false,
+                                       "FileCount":  1,
+                                       "Bytes":  9341
+                                   },
+                                   {
+                                       "RelativePath":  "tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\report_snapshots\\not_passed_c850cc14a1cc.md",
+                                       "AbsolutePath":  "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\report_snapshots\\not_passed_c850cc14a1cc.md",
+                                       "IsDirectory":  false,
+                                       "FileCount":  1,
+                                       "Bytes":  3472
+                                   },
+                                   {
+                                       "RelativePath":  "tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\report_snapshots\\passed_a3593ff7c4a2.json",
+                                       "AbsolutePath":  "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\report_snapshots\\passed_a3593ff7c4a2.json",
+                                       "IsDirectory":  false,
+                                       "FileCount":  1,
+                                       "Bytes":  10344
+                                   },
+                                   {
+                                       "RelativePath":  "tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\report_snapshots\\passed_a3593ff7c4a2.md",
+                                       "AbsolutePath":  "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\local_gpu_validation_20261009\\report_snapshots\\passed_a3593ff7c4a2.md",
+                                       "IsDirectory":  false,
+                                       "FileCount":  1,
+                                       "Bytes":  3501
+                                   }
+                               ]
+               },
+    "After":  null,
+    "ProtectedArtifactsUnchanged":  null,
+    "Completed":  false,
+    "Error":  "The process cannot access the file \u0027torch_cpu.dll\u0027 because it is being used by another process."
+}

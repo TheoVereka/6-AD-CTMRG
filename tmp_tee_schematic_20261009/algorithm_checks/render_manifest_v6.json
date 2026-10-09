@@ -1,0 +1,355 @@
+{
+  "projection_matrix": [
+    [
+      -1.0,
+      0.25000000000000006,
+      0.0
+    ],
+    [
+      0.0,
+      0.4330127018922193,
+      1.0
+    ]
+  ],
+  "toward_eye": [
+    -0.22360679774997902,
+    -0.8944271909999159,
+    0.38729833462074165
+  ],
+  "world_unit": "honeycomb bond length 1",
+  "scene_order": [
+    "01",
+    "02",
+    "02_bis",
+    "03",
+    "03_bis",
+    "04",
+    "05",
+    "05_bis",
+    "06",
+    "06_bis",
+    "07",
+    "07_bis"
+  ],
+  "four_panel_candidates": [
+    "02_bis",
+    "05_bis",
+    "06_bis",
+    "07_bis"
+  ],
+  "alternative_upper_left": "03_bis",
+  "panels": {
+    "01": {
+      "scene_json": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\coordinates\\step_01.json",
+      "camera_json": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\coordinates\\camera_01.json",
+      "figure": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\figures\\step_01.png",
+      "width": 1900,
+      "height": 404,
+      "world_units_per_output_pixel": 0.005670506034614359,
+      "screen_bounds": {
+        "xmin": -5.324480732883641,
+        "xmax": 5.449480732883641,
+        "ymin": -1.1454422189921005,
+        "ymax": 1.1454422189921005
+      },
+      "world_bounds": {
+        "minimum": [
+          -4.81437447464421,
+          -2.544721359549996,
+          -0.05361902647381805
+        ],
+        "maximum": [
+          4.81437447464421,
+          2.544721359549996,
+          0.05361902647381805
+        ]
+      }
+    },
+    "02": {
+      "scene_json": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\coordinates\\step_02.json",
+      "camera_json": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\coordinates\\camera_02.json",
+      "figure": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\figures\\step_02.png",
+      "width": 1900,
+      "height": 437,
+      "world_units_per_output_pixel": 0.005670506034614359,
+      "screen_bounds": {
+        "xmin": -5.324480732883641,
+        "xmax": 5.449480732883641,
+        "ymin": -1.2390055685632373,
+        "ymax": 1.2390055685632373
+      },
+      "world_bounds": {
+        "minimum": [
+          -4.81437447464421,
+          -2.544721359549996,
+          -0.14861902647381806
+        ],
+        "maximum": [
+          4.81437447464421,
+          2.544721359549996,
+          0.14861902647381806
+        ]
+      }
+    },
+    "02_bis": {
+      "scene_json": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\coordinates\\step_02_bis.json",
+      "camera_json": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\coordinates\\camera_02_bis.json",
+      "figure": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\figures\\step_02_bis.png",
+      "width": 1900,
+      "height": 552,
+      "world_units_per_output_pixel": 0.005860271855299807,
+      "screen_bounds": {
+        "xmin": -5.567258262534817,
+        "xmax": 5.567258262534817,
+        "ymin": -1.6174350320627466,
+        "ymax": 1.6174350320627466
+      },
+      "world_bounds": {
+        "minimum": [
+          -5.5563526563518835,
+          -3.658008644468636,
+          -0.14861902647381806
+        ],
+        "maximum": [
+          5.5563526563518835,
+          3.658008644468636,
+          0.14861902647381806
+        ]
+      }
+    },
+    "03": {
+      "scene_json": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\coordinates\\step_03.json",
+      "camera_json": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\coordinates\\camera_03.json",
+      "figure": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\figures\\step_03.png",
+      "width": 1900,
+      "height": 437,
+      "world_units_per_output_pixel": 0.005670506034614359,
+      "screen_bounds": {
+        "xmin": -5.324480732883641,
+        "xmax": 5.449480732883641,
+        "ymin": -1.2390055685632373,
+        "ymax": 1.2390055685632373
+      },
+      "world_bounds": {
+        "minimum": [
+          -4.81437447464421,
+          -2.544721359549996,
+          -0.14861902647381806
+        ],
+        "maximum": [
+          4.81437447464421,
+          2.544721359549996,
+          0.14861902647381806
+        ]
+      }
+    },
+    "03_bis": {
+      "scene_json": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\coordinates\\step_03_bis.json",
+      "camera_json": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\coordinates\\camera_03_bis.json",
+      "figure": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\figures\\step_03_bis.png",
+      "width": 1900,
+      "height": 552,
+      "world_units_per_output_pixel": 0.005860271855299807,
+      "screen_bounds": {
+        "xmin": -5.567258262534817,
+        "xmax": 5.567258262534817,
+        "ymin": -1.6174350320627466,
+        "ymax": 1.6174350320627466
+      },
+      "world_bounds": {
+        "minimum": [
+          -5.5563526563518835,
+          -3.658008644468636,
+          -0.14861902647381806
+        ],
+        "maximum": [
+          5.5563526563518835,
+          3.658008644468636,
+          0.14861902647381806
+        ]
+      }
+    },
+    "04": {
+      "scene_json": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\coordinates\\step_04.json",
+      "camera_json": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\coordinates\\camera_04.json",
+      "figure": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\figures\\step_04.png",
+      "width": 1900,
+      "height": 1559,
+      "world_units_per_output_pixel": 0.006725358355289464,
+      "screen_bounds": {
+        "xmin": -5.326590437524991,
+        "xmax": 7.451590437524991,
+        "ymin": -7.242416837948137,
+        "ymax": 3.242416837948137
+      },
+      "world_bounds": {
+        "minimum": [
+          -6.81437447464421,
+          -2.544721359549996,
+          -6.148619026473818
+        ],
+        "maximum": [
+          4.81437447464421,
+          2.544721359549996,
+          2.1486190264738183
+        ]
+      }
+    },
+    "05": {
+      "scene_json": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\coordinates\\step_05.json",
+      "camera_json": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\coordinates\\camera_05.json",
+      "figure": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\figures\\step_05.png",
+      "width": 1900,
+      "height": 1559,
+      "world_units_per_output_pixel": 0.006725358355289464,
+      "screen_bounds": {
+        "xmin": -5.326590437524991,
+        "xmax": 7.451590437524991,
+        "ymin": -7.242416837948137,
+        "ymax": 3.242416837948137
+      },
+      "world_bounds": {
+        "minimum": [
+          -6.81437447464421,
+          -2.544721359549996,
+          -6.148619026473818
+        ],
+        "maximum": [
+          4.81437447464421,
+          2.544721359549996,
+          2.1486190264738183
+        ]
+      }
+    },
+    "05_bis": {
+      "scene_json": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\coordinates\\step_05_bis.json",
+      "camera_json": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\coordinates\\camera_05_bis.json",
+      "figure": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\figures\\step_05_bis.png",
+      "width": 1900,
+      "height": 1625,
+      "world_units_per_output_pixel": 0.006915124175974913,
+      "screen_bounds": {
+        "xmin": -5.569367967176167,
+        "xmax": 7.569367967176167,
+        "ymin": -7.618538392979617,
+        "ymax": 3.618538392979615
+      },
+      "world_bounds": {
+        "minimum": [
+          -7.5563526563518835,
+          -3.658008644468637,
+          -6.148619026473818
+        ],
+        "maximum": [
+          5.5563526563518835,
+          3.658008644468636,
+          2.1486190264738183
+        ]
+      }
+    },
+    "06": {
+      "scene_json": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\coordinates\\step_06.json",
+      "camera_json": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\coordinates\\camera_06.json",
+      "figure": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\figures\\step_06.png",
+      "width": 1900,
+      "height": 974,
+      "world_units_per_output_pixel": 0.0034431183664064514,
+      "screen_bounds": {
+        "xmin": -5.320025957547225,
+        "xmax": 1.2218989386250327,
+        "ymin": -1.6767986444399419,
+        "ymax": 1.6767986444399419
+      },
+      "world_bounds": {
+        "minimum": [
+          -0.5915127018922193,
+          -3.8095160973029976,
+          -0.1585
+        ],
+        "maximum": [
+          4.81437447464421,
+          3.8095160973029976,
+          0.1585
+        ]
+      }
+    },
+    "06_bis": {
+      "scene_json": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\coordinates\\step_06_bis.json",
+      "camera_json": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\coordinates\\camera_06_bis.json",
+      "figure": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\figures\\step_06_bis.png",
+      "width": 1900,
+      "height": 940,
+      "world_units_per_output_pixel": 0.0035709654117702726,
+      "screen_bounds": {
+        "xmin": -5.562679649647757,
+        "xmax": 1.22215463271576,
+        "ymin": -1.6783537435320282,
+        "ymax": 1.6783537435320282
+      },
+      "world_bounds": {
+        "minimum": [
+          -0.5915127018922193,
+          -3.8095160973029976,
+          -0.1585
+        ],
+        "maximum": [
+          5.5563526563518835,
+          3.8095160973029976,
+          0.1585
+        ]
+      }
+    },
+    "07": {
+      "scene_json": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\coordinates\\step_07.json",
+      "camera_json": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\coordinates\\camera_07.json",
+      "figure": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\figures\\step_07.png",
+      "width": 1900,
+      "height": 4566,
+      "world_units_per_output_pixel": 0.00233744040255215,
+      "screen_bounds": {
+        "xmin": -1.2214491821517615,
+        "xmax": 3.219687582697324,
+        "ymin": -7.336376439026559,
+        "ymax": 3.3363764390265587
+      },
+      "world_bounds": {
+        "minimum": [
+          -2.5915127018922193,
+          -3.032,
+          -6.1585
+        ],
+        "maximum": [
+          0.5915127018922193,
+          3.032,
+          2.1585
+        ]
+      }
+    },
+    "07_bis": {
+      "scene_json": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\coordinates\\step_07_bis.json",
+      "camera_json": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\coordinates\\camera_07_bis.json",
+      "figure": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\6-AD-CTMRG\\tmp_tee_schematic_20261009\\figures\\step_07_bis.png",
+      "width": 1900,
+      "height": 4455,
+      "world_units_per_output_pixel": 0.0025621321157301875,
+      "screen_bounds": {
+        "xmin": -1.434025509943678,
+        "xmax": 3.434025509943678,
+        "ymin": -7.707149287788994,
+        "ymax": 3.707149287788992
+      },
+      "world_bounds": {
+        "minimum": [
+          -2.5915127018922193,
+          -3.8810702725829915,
+          -6.1585
+        ],
+        "maximum": [
+          0.5915127018922193,
+          3.8810702725829915,
+          2.1585
+        ]
+      }
+    }
+  }
+}

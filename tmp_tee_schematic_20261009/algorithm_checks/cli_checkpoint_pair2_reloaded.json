@@ -1,0 +1,287 @@
+{
+  "schema": "twoc3_renyi2_spectra_v1",
+  "length_convention": "L=cut D-bonds; exponent=L/2; geometric circumference=3L/2 honeycomb sides",
+  "bond_D": 2,
+  "chi": 4,
+  "pair": 2,
+  "normal_swap_envs": [
+    2,
+    3
+  ],
+  "target_absolute_S2_error": 0.0001,
+  "memory_budget": {
+    "dtype": "float64",
+    "one_T2_vector_GB": 2.048e-06,
+    "Q_plus_AQ_GB": 0.00016384,
+    "two_contraction_work_GB": 1.6384e-05,
+    "restart_and_block_allowance_GB": 4.9152e-05,
+    "note": "Main arrays only; CUDA/BLAS workspace and restart keep-size must be included in peak RAM/VRAM."
+  },
+  "configuration": {
+    "checkpoint": null,
+    "edge_file": "tmp_tee_schematic_20261009/algorithm_checks/tiny_checkpoint_pair2_edges.npz",
+    "pair": 2,
+    "chi": 64,
+    "device": "cpu",
+    "J1": 1.0,
+    "J2": null,
+    "ctm_max_steps": 70,
+    "ctm_conv_tol": 1e-07,
+    "ctm_conv_mode": "both",
+    "ctm_e_conv_threshold": 2e-08,
+    "rsvd_mode": "augmented",
+    "save_edges": null,
+    "L_min": 100,
+    "L_max": 1000,
+    "L_step": 100,
+    "modes": [
+      2,
+      4
+    ],
+    "block_size": 4,
+    "subspace": 40,
+    "eig_tol": 1e-10,
+    "entropy_tol": 0.0001,
+    "max_matvec": 800,
+    "progress_every": 10,
+    "batch": 8,
+    "seed": 20261009,
+    "threads": 2,
+    "output": "tmp_tee_schematic_20261009/algorithm_checks/cli_checkpoint_pair2_reloaded.json"
+  },
+  "stages": [
+    {
+      "modes_requested_per_sector": 2,
+      "T1": {
+        "eigenvalues": [
+          {
+            "real": 0.17301846559449058,
+            "imag": 0.0
+          },
+          {
+            "real": -1.2259072498347073e-06,
+            "imag": 0.0
+          }
+        ],
+        "relative_residuals": [
+          9.011162205494673e-15,
+          3.735028874964364e-12
+        ],
+        "converged": true,
+        "matvec_count": 10,
+        "restarts": 0,
+        "subspace_dim": 10,
+        "reason": "ritz_residuals_converged_tail_not_certified",
+        "orthogonality_error": 3.121872669181908e-14,
+        "requested_k": 2
+      },
+      "T2": [
+        {
+          "eigenvalues": [
+            {
+              "real": 0.029934471604716698,
+              "imag": 0.0
+            },
+            {
+              "real": -2.0695572670604876e-07,
+              "imag": 0.0
+            }
+          ],
+          "relative_residuals": [
+            2.7110153439949116e-15,
+            1.1493845220974394e-13
+          ],
+          "converged": true,
+          "matvec_count": 12,
+          "restarts": 0,
+          "subspace_dim": 12,
+          "reason": "ritz_residuals_converged_tail_not_certified",
+          "orthogonality_error": 3.7735870369550295e-14,
+          "requested_k": 2,
+          "replica_parity": 1,
+          "transfer_matvec_count": 12
+        },
+        {
+          "eigenvalues": [
+            {
+              "real": -2.0286502842342677e-07,
+              "imag": 0.0
+            },
+            {
+              "real": -9.671083132565964e-08,
+              "imag": 0.0
+            }
+          ],
+          "relative_residuals": [
+            1.69714057586214e-13,
+            4.735743293190695e-13
+          ],
+          "converged": true,
+          "matvec_count": 10,
+          "restarts": 0,
+          "subspace_dim": 10,
+          "reason": "ritz_residuals_converged_tail_not_certified",
+          "orthogonality_error": 1.7977660100596415e-14,
+          "requested_k": 2,
+          "replica_parity": -1,
+          "transfer_matvec_count": 10
+        }
+      ],
+      "seconds": 0.06483900000239373,
+      "eigensolvers_converged": true,
+      "maximum_imaginary_trace_relative": 0.0,
+      "S2": [
+        0.0015330450736428247,
+        0.0030660901472856494,
+        0.004599135220928474,
+        0.006132180294571299,
+        0.007665225368214124,
+        0.009198270441856948,
+        0.010731315515386086,
+        0.012264360589142598,
+        0.013797405662671736,
+        0.015330450736428247
+      ]
+    },
+    {
+      "modes_requested_per_sector": 4,
+      "T1": {
+        "eigenvalues": [
+          {
+            "real": 0.1730184655944907,
+            "imag": 0.0
+          },
+          {
+            "real": -1.2259072499923905e-06,
+            "imag": 0.0
+          },
+          {
+            "real": 6.544016804493897e-07,
+            "imag": 0.0
+          },
+          {
+            "real": -5.345465346793748e-07,
+            "imag": 0.0
+          }
+        ],
+        "relative_residuals": [
+          2.558989180401928e-13,
+          5.653042468717979e-12,
+          1.2822011551666495e-11,
+          2.120905788250782e-12
+        ],
+        "converged": true,
+        "matvec_count": 16,
+        "restarts": 0,
+        "subspace_dim": 16,
+        "reason": "ritz_residuals_converged_tail_not_certified",
+        "orthogonality_error": 1.995528956811193e-12,
+        "requested_k": 4
+      },
+      "T2": [
+        {
+          "eigenvalues": [
+            {
+              "real": 0.029934471604716757,
+              "imag": 0.0
+            },
+            {
+              "real": -2.0695572670342963e-07,
+              "imag": 0.0
+            },
+            {
+              "real": -9.242846579075672e-08,
+              "imag": 0.0
+            },
+            {
+              "real": 5.973366040653986e-08,
+              "imag": 0.0
+            }
+          ],
+          "relative_residuals": [
+            2.0865209089926048e-12,
+            8.291511854813159e-13,
+            5.3416947844019275e-12,
+            3.762080860694372e-12
+          ],
+          "converged": true,
+          "matvec_count": 20,
+          "restarts": 0,
+          "subspace_dim": 20,
+          "reason": "ritz_residuals_converged_tail_not_certified",
+          "orthogonality_error": 1.7339437256548606e-11,
+          "requested_k": 4,
+          "replica_parity": 1,
+          "transfer_matvec_count": 20
+        },
+        {
+          "eigenvalues": [
+            {
+              "real": -2.028650284227697e-07,
+              "imag": 0.0
+            },
+            {
+              "real": -9.671083133291612e-08,
+              "imag": 0.0
+            },
+            {
+              "real": -3.692890308976821e-08,
+              "imag": 0.0
+            },
+            {
+              "real": 3.685022861729758e-08,
+              "imag": 0.0
+            }
+          ],
+          "relative_residuals": [
+            2.218179456315279e-14,
+            4.5651139086252e-14,
+            5.0342736935584894e-11,
+            3.2162270158838395e-11
+          ],
+          "converged": true,
+          "matvec_count": 16,
+          "restarts": 0,
+          "subspace_dim": 16,
+          "reason": "ritz_residuals_converged_tail_not_certified",
+          "orthogonality_error": 1.1891443263004127e-13,
+          "requested_k": 4,
+          "replica_parity": -1,
+          "transfer_matvec_count": 16
+        }
+      ],
+      "seconds": 0.06611859999975422,
+      "eigensolvers_converged": true,
+      "maximum_imaginary_trace_relative": 0.0,
+      "S2": [
+        0.001533045073614403,
+        0.003066090147228806,
+        0.004599135220928474,
+        0.006132180294457612,
+        0.007665225368100437,
+        0.009198270441856948,
+        0.010731315515386086,
+        0.012264360588915224,
+        0.013797405662671736,
+        0.015330450736200874
+      ],
+      "max_absolute_S2_change": 2.2737367544323206e-13,
+      "spectral_stability_within_target": true
+    }
+  ],
+  "status": "spectrally_stable_estimate",
+  "precision_certified": false,
+  "L": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900,
+    1000
+  ],
+  "precision_note": "Measured mode/block stability is not a rigorous omitted-spectrum bound. CTM/D errors are separate."
+}

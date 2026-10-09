@@ -1,0 +1,958 @@
+{
+  "python": "D:\\Programs\\Python312\\python.exe",
+  "python_version": "3.12.1 (tags/v3.12.1:2305ca5, Dec  7 2023, 22:03:25) [MSC v.1937 64 bit (AMD64)]",
+  "torch_version": "2.6.0+cpu",
+  "torch_cuda_version": null,
+  "torch_cuda_available": false,
+  "nvidia_smi": "NVIDIA GeForce RTX 4060 Laptop GPU, 551.23, 8188, 7545",
+  "disk": {
+    "C:/": {
+      "total_bytes": 214749409280,
+      "used_bytes": 160527790080,
+      "free_bytes": 54221619200
+    },
+    "D:/": {
+      "total_bytes": 592323801088,
+      "used_bytes": 532045934592,
+      "free_bytes": 60277866496
+    }
+  },
+  "summary_root": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary",
+  "preferred_test_checkpoints": [
+    {
+      "D": 2,
+      "J2": 0.26,
+      "optimized_chi": 20,
+      "requested_test_chi_float": 5.0,
+      "ceil_test_chi": 5,
+      "checkpoint_path": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p26\\2tensor_twoC3\\D_2\\tensor_best.pt",
+      "checkpoint_bytes": 2272,
+      "checkpoint_sha256": "b3fa536e228fed54136a5880ecbd53cbadfff69c15bd49e842a68c394e72b3ac",
+      "source_job": "2tensor_twoC3__J2_0p26_20260714_100445",
+      "original_filename": "sweep_D2_chi20_best.pt",
+      "original_path": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713core\\2tensor_twoC3__J2_0p26_20260714_100445\\sweep_D2_chi20_best.pt",
+      "original_exists": true,
+      "manifest": {
+        "D": 2,
+        "J2": 0.26,
+        "J2_label": "0p26",
+        "ansatz": "2tensor_twoC3",
+        "chi": 20,
+        "copied_files": [
+          "energy_magnetization_correlation.txt",
+          "hyperparams.yaml",
+          "lookahead_chi_22_energy_magnetization_correlation.txt",
+          "run.log",
+          "tensor_best.pt"
+        ],
+        "energy_per_site": -0.4117958601782,
+        "is_variational_chi": true,
+        "lookahead_chi": 22,
+        "lookahead_delta": 4.000133557724439e-13,
+        "lookahead_energy_per_site": -0.4117958601778,
+        "selection_reason": "highest_chi_lowest_energy",
+        "source_job": "2tensor_twoC3__J2_0p26_20260714_100445",
+        "source_observation": "D_2_chi_20_energy_magnetization_correlation.txt",
+        "variational_chi_threshold": 2e-05
+      },
+      "checkpoint_keys": [
+        "a_raw",
+        "b_raw",
+        "D_bond",
+        "chi",
+        "loss",
+        "energy",
+        "step",
+        "timestamp",
+        "log"
+      ],
+      "tensor_metadata": {
+        "a_raw": {
+          "shape": [
+            2,
+            2,
+            2,
+            2
+          ],
+          "dtype": "torch.float64",
+          "is_complex": false,
+          "finite": true
+        },
+        "b_raw": {
+          "shape": [
+            2,
+            2,
+            2,
+            2
+          ],
+          "dtype": "torch.float64",
+          "is_complex": false,
+          "finite": true
+        }
+      },
+      "checkpoint_metadata": {
+        "D_bond": 2,
+        "chi": 20,
+        "loss": -2.470775161068909,
+        "energy": -2.47077516106891,
+        "step": 471,
+        "timestamp": "2026-07-14 10:12:10"
+      }
+    },
+    {
+      "D": 3,
+      "J2": 0.26,
+      "optimized_chi": 24,
+      "requested_test_chi_float": 11.25,
+      "ceil_test_chi": 12,
+      "checkpoint_path": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p26\\2tensor_twoC3\\D_3\\tensor_best.pt",
+      "checkpoint_bytes": 32736,
+      "checkpoint_sha256": "b1a688339664e80dff79710403b607e4e07db0b7e8956cb4563775403c5c74aa",
+      "source_job": "2tensor_twoC3__J2_0p26_20260714_100445",
+      "original_filename": "sweep_D3_chi24_best.pt",
+      "original_path": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713core\\2tensor_twoC3__J2_0p26_20260714_100445\\sweep_D3_chi24_best.pt",
+      "original_exists": true,
+      "manifest": {
+        "D": 3,
+        "J2": 0.26,
+        "J2_label": "0p26",
+        "ansatz": "2tensor_twoC3",
+        "chi": 24,
+        "copied_files": [
+          "energy_magnetization_correlation.txt",
+          "hyperparams.yaml",
+          "lookahead_chi_27_energy_magnetization_correlation.txt",
+          "run.log",
+          "tensor_best.pt"
+        ],
+        "energy_per_site": -0.429736501007,
+        "source_job": "2tensor_twoC3__J2_0p26_20260714_100445",
+        "source_observation": "D_3_chi_24_energy_magnetization_correlation.txt"
+      },
+      "checkpoint_keys": [
+        "a_raw",
+        "b_raw",
+        "D_bond",
+        "chi",
+        "loss",
+        "energy",
+        "step",
+        "timestamp",
+        "log"
+      ],
+      "tensor_metadata": {
+        "a_raw": {
+          "shape": [
+            3,
+            3,
+            3,
+            2
+          ],
+          "dtype": "torch.float64",
+          "is_complex": false,
+          "finite": true
+        },
+        "b_raw": {
+          "shape": [
+            3,
+            3,
+            3,
+            2
+          ],
+          "dtype": "torch.float64",
+          "is_complex": false,
+          "finite": true
+        }
+      },
+      "checkpoint_metadata": {
+        "D_bond": 3,
+        "chi": 24,
+        "loss": -2.5784189750048556,
+        "energy": -2.5784190060419836,
+        "step": 1128,
+        "timestamp": "2026-07-14 10:41:55"
+      }
+    },
+    {
+      "D": 4,
+      "J2": 0.26,
+      "optimized_chi": 36,
+      "requested_test_chi_float": 20.0,
+      "ceil_test_chi": 20,
+      "checkpoint_path": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p26\\2tensor_twoC3\\D_4\\tensor_best.pt",
+      "checkpoint_bytes": 17376,
+      "checkpoint_sha256": "de2fbbf66928c4ece42777c3452c9e4b5126f63e16f04ace40bcee51f9197146",
+      "source_job": "2tensor_twoC3__J2_0p26_20260714_100445",
+      "original_filename": "sweep_D4_chi36_best.pt",
+      "original_path": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713core\\2tensor_twoC3__J2_0p26_20260714_100445\\sweep_D4_chi36_best.pt",
+      "original_exists": true,
+      "manifest": {
+        "D": 4,
+        "J2": 0.26,
+        "J2_label": "0p26",
+        "ansatz": "2tensor_twoC3",
+        "chi": 36,
+        "copied_files": [
+          "energy_magnetization_correlation.txt",
+          "hyperparams.yaml",
+          "lookahead_chi_40_energy_magnetization_correlation.txt",
+          "run.log",
+          "tensor_best.pt"
+        ],
+        "energy_per_site": -0.4318136066227,
+        "source_job": "2tensor_twoC3__J2_0p26_20260714_100445",
+        "source_observation": "D_4_chi_36_energy_magnetization_correlation.txt"
+      },
+      "checkpoint_keys": [
+        "a_raw",
+        "b_raw",
+        "D_bond",
+        "chi",
+        "loss",
+        "energy",
+        "step",
+        "timestamp",
+        "log"
+      ],
+      "tensor_metadata": {
+        "a_raw": {
+          "shape": [
+            4,
+            4,
+            4,
+            2
+          ],
+          "dtype": "torch.float64",
+          "is_complex": false,
+          "finite": true
+        },
+        "b_raw": {
+          "shape": [
+            4,
+            4,
+            4,
+            2
+          ],
+          "dtype": "torch.float64",
+          "is_complex": false,
+          "finite": true
+        }
+      },
+      "checkpoint_metadata": {
+        "D_bond": 4,
+        "chi": 36,
+        "loss": -2.5908816259359506,
+        "energy": -2.590881639736102,
+        "step": 1432,
+        "timestamp": "2026-07-14 11:03:57"
+      }
+    },
+    {
+      "D": 5,
+      "J2": 0.26,
+      "optimized_chi": 50,
+      "requested_test_chi_float": 31.25,
+      "ceil_test_chi": 32,
+      "checkpoint_path": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p26\\2tensor_twoC3\\D_5\\tensor_best.pt",
+      "checkpoint_bytes": 18528,
+      "checkpoint_sha256": "f9b7242704881dbd8ec8c89048bc4e1e446568921d18ab6306cb61ec3acef412",
+      "source_job": "0730newdata/Working_AD_Honeycomb_August19/Results_J2_twoc3_0.26/D_5",
+      "original_filename": "sweep_D5_chi50_best.pt",
+      "original_path": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713core\\0730newdata\\Working_AD_Honeycomb_August19\\Results_J2_twoc3_0.26\\D_5\\sweep_D5_chi50_best.pt",
+      "original_exists": false,
+      "manifest": {
+        "D": 5,
+        "J2": 0.26,
+        "J2_label": "0p26",
+        "ansatz": "2tensor_twoC3",
+        "chi": 50,
+        "copied_files": [
+          "energy_magnetization_correlation.txt",
+          "hyperparams.yaml",
+          "lookahead_chi_55_energy_magnetization_correlation.txt",
+          "run.log",
+          "tensor_best.pt"
+        ],
+        "energy_per_site": -0.4327170350214,
+        "is_variational_chi": true,
+        "lookahead_chi": 55,
+        "lookahead_delta": 3.278536000461685e-07,
+        "lookahead_energy_per_site": -0.4327167071678,
+        "selection_reason": "highest_chi_lowest_energy",
+        "source_job": "0730newdata/Working_AD_Honeycomb_August19/Results_J2_twoc3_0.26/D_5",
+        "source_observation": "D_5_chi_50_energy_magnetization_correlation.txt",
+        "variational_chi_threshold": 2e-05
+      },
+      "checkpoint_keys": [
+        "a_raw",
+        "b_raw",
+        "D_bond",
+        "chi",
+        "loss",
+        "energy",
+        "step",
+        "timestamp",
+        "log"
+      ],
+      "tensor_metadata": {
+        "a_raw": {
+          "shape": [
+            5,
+            5,
+            5,
+            2
+          ],
+          "dtype": "torch.float64",
+          "is_complex": false,
+          "finite": true
+        },
+        "b_raw": {
+          "shape": [
+            5,
+            5,
+            5,
+            2
+          ],
+          "dtype": "torch.float64",
+          "is_complex": false,
+          "finite": true
+        }
+      },
+      "checkpoint_metadata": {
+        "D_bond": 5,
+        "chi": 50,
+        "loss": -2.5963022101286835,
+        "energy": -2.5963022101282913,
+        "step": 292,
+        "timestamp": "2026-08-19 10:19:15"
+      }
+    },
+    {
+      "D": 6,
+      "J2": 0.26,
+      "optimized_chi": 72,
+      "requested_test_chi_float": 45.0,
+      "ceil_test_chi": 45,
+      "checkpoint_path": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p26\\2tensor_twoC3\\D_6\\tensor_best.pt",
+      "checkpoint_bytes": 21408,
+      "checkpoint_sha256": "df82a87b0f026999055cf73ccd23d29fa936d2b728cdd269e09f3afb1c3732c0",
+      "source_job": "0730newdata/Working_AD_Honeycomb_August19/Results_J2_twoc3_0.26/D_6",
+      "original_filename": "sweep_D6_chi72_best.pt",
+      "original_path": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713core\\0730newdata\\Working_AD_Honeycomb_August19\\Results_J2_twoc3_0.26\\D_6\\sweep_D6_chi72_best.pt",
+      "original_exists": false,
+      "manifest": {
+        "D": 6,
+        "J2": 0.26,
+        "J2_label": "0p26",
+        "ansatz": "2tensor_twoC3",
+        "chi": 72,
+        "copied_files": [
+          "energy_magnetization_correlation.txt",
+          "hyperparams.yaml",
+          "lookahead_chi_78_energy_magnetization_correlation.txt",
+          "run.log",
+          "tensor_best.pt"
+        ],
+        "energy_per_site": -0.4336099793702,
+        "is_variational_chi": true,
+        "lookahead_chi": 78,
+        "lookahead_delta": 1.5414669000124448e-06,
+        "lookahead_energy_per_site": -0.4336084379033,
+        "selection_reason": "highest_chi_lowest_energy",
+        "source_job": "0730newdata/Working_AD_Honeycomb_August19/Results_J2_twoc3_0.26/D_6",
+        "source_observation": "D_6_chi_72_energy_magnetization_correlation.txt",
+        "variational_chi_threshold": 2e-05
+      },
+      "checkpoint_keys": [
+        "a_raw",
+        "b_raw",
+        "D_bond",
+        "chi",
+        "loss",
+        "energy",
+        "step",
+        "timestamp",
+        "log"
+      ],
+      "tensor_metadata": {
+        "a_raw": {
+          "shape": [
+            6,
+            6,
+            6,
+            2
+          ],
+          "dtype": "torch.float64",
+          "is_complex": false,
+          "finite": true
+        },
+        "b_raw": {
+          "shape": [
+            6,
+            6,
+            6,
+            2
+          ],
+          "dtype": "torch.float64",
+          "is_complex": false,
+          "finite": true
+        }
+      },
+      "checkpoint_metadata": {
+        "D_bond": 6,
+        "chi": 72,
+        "loss": -2.6016598762322487,
+        "energy": -2.6016598762212046,
+        "step": 290,
+        "timestamp": "2026-08-19 10:36:53"
+      }
+    }
+  ],
+  "D8_target_checkpoints": [
+    {
+      "D": 8,
+      "J2": 0.24,
+      "optimized_chi": 104,
+      "requested_test_chi_float": 80.0,
+      "ceil_test_chi": 80,
+      "checkpoint_path": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p24\\2tensor_twoC3\\D_8\\tensor_best.pt",
+      "checkpoint_bytes": 29286,
+      "checkpoint_sha256": "7b4f2a1576705884407eae9eca46aa903a1d19d071ab5cdff4cb4ffe659a9dfb",
+      "source_job": "external/Results_J2_0.24/D_8",
+      "original_filename": "sweep_D8_chi104_best.pt",
+      "original_path": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713core\\external\\Results_J2_0.24\\D_8\\sweep_D8_chi104_best.pt",
+      "original_exists": true,
+      "manifest": {
+        "D": 8,
+        "J2": 0.24,
+        "J2_label": "0p24",
+        "ansatz": "2tensor_twoC3",
+        "chi": 104,
+        "copied_files": [
+          "energy_magnetization_correlation.txt",
+          "hyperparams.yaml",
+          "lookahead_chi_112_energy_magnetization_correlation.txt",
+          "run.log",
+          "tensor_best.pt"
+        ],
+        "energy_per_site": -0.4402652370156,
+        "source_job": "external/Results_J2_0.24/D_8",
+        "source_observation": "D_8_chi_104_energy_magnetization_correlation.txt"
+      },
+      "checkpoint_keys": [
+        "a_raw",
+        "b_raw",
+        "D_bond",
+        "chi",
+        "loss",
+        "energy",
+        "step",
+        "timestamp",
+        "log"
+      ],
+      "tensor_metadata": {
+        "a_raw": {
+          "shape": [
+            8,
+            8,
+            8,
+            2
+          ],
+          "dtype": "torch.float64",
+          "is_complex": false,
+          "finite": true
+        },
+        "b_raw": {
+          "shape": [
+            8,
+            8,
+            8,
+            2
+          ],
+          "dtype": "torch.float64",
+          "is_complex": false,
+          "finite": true
+        }
+      },
+      "checkpoint_metadata": {
+        "D_bond": 8,
+        "chi": 104,
+        "loss": -2.641591422093836,
+        "energy": -2.641591422093342,
+        "step": 256,
+        "timestamp": "2026-07-15 06:07:15"
+      }
+    },
+    {
+      "D": 8,
+      "J2": 0.245,
+      "optimized_chi": 112,
+      "requested_test_chi_float": 80.0,
+      "ceil_test_chi": 80,
+      "checkpoint_path": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p245\\2tensor_twoC3\\D_8\\tensor_best.pt",
+      "checkpoint_bytes": 18726,
+      "checkpoint_sha256": "b7ac870b5eb09550bd12b83ca718bc21ab45afe0a2a610f545c01447185514b8",
+      "source_job": "0730newdata/0727core/2tensor_twoC3__J2_0p245_20260730_211313",
+      "original_filename": "sweep_D8_chi112_best.pt",
+      "original_path": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713core\\0730newdata\\0727core\\2tensor_twoC3__J2_0p245_20260730_211313\\sweep_D8_chi112_best.pt",
+      "original_exists": false,
+      "manifest": {
+        "D": 8,
+        "J2": 0.245,
+        "J2_label": "0p245",
+        "ansatz": "2tensor_twoC3",
+        "chi": 112,
+        "copied_files": [
+          "energy_magnetization_correlation.txt",
+          "hyperparams.yaml",
+          "lookahead_chi_120_energy_magnetization_correlation.txt",
+          "run.log",
+          "tensor_best.pt"
+        ],
+        "energy_per_site": -0.4387385592657,
+        "is_variational_chi": true,
+        "lookahead_chi": 120,
+        "lookahead_delta": 5.4553735999718356e-06,
+        "lookahead_energy_per_site": -0.4387331038921,
+        "selection_reason": "highest_chi_lowest_energy",
+        "source_job": "0730newdata/0727core/2tensor_twoC3__J2_0p245_20260730_211313",
+        "source_observation": "D_8_chi_112_energy_magnetization_correlation.txt",
+        "variational_chi_threshold": 2e-05
+      },
+      "checkpoint_keys": [
+        "a_raw",
+        "b_raw",
+        "D_bond",
+        "chi",
+        "loss",
+        "energy",
+        "step",
+        "timestamp",
+        "log"
+      ],
+      "tensor_metadata": {
+        "a_raw": {
+          "shape": [
+            8,
+            8,
+            8,
+            2
+          ],
+          "dtype": "torch.float64",
+          "is_complex": false,
+          "finite": true
+        },
+        "b_raw": {
+          "shape": [
+            8,
+            8,
+            8,
+            2
+          ],
+          "dtype": "torch.float64",
+          "is_complex": false,
+          "finite": true
+        }
+      },
+      "checkpoint_metadata": {
+        "D_bond": 8,
+        "chi": 112,
+        "loss": -2.632436255839468,
+        "energy": -2.632431355594261,
+        "step": 273,
+        "timestamp": "2026-08-01 08:46:28"
+      }
+    },
+    {
+      "D": 8,
+      "J2": 0.25,
+      "optimized_chi": 104,
+      "requested_test_chi_float": 80.0,
+      "ceil_test_chi": 80,
+      "checkpoint_path": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p25\\2tensor_twoC3\\D_8\\tensor_best.pt",
+      "checkpoint_bytes": 28454,
+      "checkpoint_sha256": "9f92cf26c1c2722cf787e4020302e791df1831062e48cfda6ce535bbb1e13b86",
+      "source_job": "external/Results_J2_0.25/D_8",
+      "original_filename": "sweep_D8_chi104_best.pt",
+      "original_path": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713core\\external\\Results_J2_0.25\\D_8\\sweep_D8_chi104_best.pt",
+      "original_exists": true,
+      "manifest": {
+        "D": 8,
+        "J2": 0.25,
+        "J2_label": "0p25",
+        "ansatz": "2tensor_twoC3",
+        "chi": 104,
+        "copied_files": [
+          "energy_magnetization_correlation.txt",
+          "hyperparams.yaml",
+          "lookahead_chi_112_energy_magnetization_correlation.txt",
+          "run.log",
+          "tensor_best.pt"
+        ],
+        "energy_per_site": -0.4372386733638,
+        "source_job": "external/Results_J2_0.25/D_8",
+        "source_observation": "D_8_chi_104_energy_magnetization_correlation.txt"
+      },
+      "checkpoint_keys": [
+        "a_raw",
+        "b_raw",
+        "D_bond",
+        "chi",
+        "loss",
+        "energy",
+        "step",
+        "timestamp",
+        "log"
+      ],
+      "tensor_metadata": {
+        "a_raw": {
+          "shape": [
+            8,
+            8,
+            8,
+            2
+          ],
+          "dtype": "torch.float64",
+          "is_complex": false,
+          "finite": true
+        },
+        "b_raw": {
+          "shape": [
+            8,
+            8,
+            8,
+            2
+          ],
+          "dtype": "torch.float64",
+          "is_complex": false,
+          "finite": true
+        }
+      },
+      "checkpoint_metadata": {
+        "D_bond": 8,
+        "chi": 104,
+        "loss": -2.623432035173061,
+        "energy": -2.6234320401827618,
+        "step": 238,
+        "timestamp": "2026-07-15 07:44:15"
+      }
+    },
+    {
+      "D": 8,
+      "J2": 0.26,
+      "optimized_chi": 104,
+      "requested_test_chi_float": 80.0,
+      "ceil_test_chi": 80,
+      "checkpoint_path": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p26\\2tensor_twoC3\\D_8\\tensor_best.pt",
+      "checkpoint_bytes": 30374,
+      "checkpoint_sha256": "6f5ae6fca3899c565155ba8c7206bff8a89949dacf020c30e87955b5524ccc2c",
+      "source_job": "0730newdata/Working_AD_Honeycomb_August19/Results_J2_twoc3_0.26/D_8",
+      "original_filename": "sweep_D8_chi104_best.pt",
+      "original_path": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713core\\0730newdata\\Working_AD_Honeycomb_August19\\Results_J2_twoc3_0.26\\D_8\\sweep_D8_chi104_best.pt",
+      "original_exists": false,
+      "manifest": {
+        "D": 8,
+        "J2": 0.26,
+        "J2_label": "0p26",
+        "ansatz": "2tensor_twoC3",
+        "chi": 104,
+        "copied_files": [
+          "energy_magnetization_correlation.txt",
+          "hyperparams.yaml",
+          "lookahead_chi_112_energy_magnetization_correlation.txt",
+          "run.log",
+          "tensor_best.pt"
+        ],
+        "energy_per_site": -0.4343870123737,
+        "is_variational_chi": true,
+        "lookahead_chi": 112,
+        "lookahead_delta": 7.551044599984902e-06,
+        "lookahead_energy_per_site": -0.4343794613291,
+        "selection_reason": "lower_chi_lower_energy_and_variational",
+        "source_job": "0730newdata/Working_AD_Honeycomb_August19/Results_J2_twoc3_0.26/D_8",
+        "source_observation": "D_8_chi_104_energy_magnetization_correlation.txt",
+        "variational_chi_threshold": 2e-05
+      },
+      "checkpoint_keys": [
+        "a_raw",
+        "b_raw",
+        "D_bond",
+        "chi",
+        "loss",
+        "energy",
+        "step",
+        "timestamp",
+        "log"
+      ],
+      "tensor_metadata": {
+        "a_raw": {
+          "shape": [
+            8,
+            8,
+            8,
+            2
+          ],
+          "dtype": "torch.float64",
+          "is_complex": false,
+          "finite": true
+        },
+        "b_raw": {
+          "shape": [
+            8,
+            8,
+            8,
+            2
+          ],
+          "dtype": "torch.float64",
+          "is_complex": false,
+          "finite": true
+        }
+      },
+      "checkpoint_metadata": {
+        "D_bond": 8,
+        "chi": 104,
+        "loss": -2.6063220741625237,
+        "energy": -2.6063220742419526,
+        "step": 279,
+        "timestamp": "2026-08-19 14:03:46"
+      }
+    },
+    {
+      "D": 8,
+      "J2": 0.265,
+      "optimized_chi": 104,
+      "requested_test_chi_float": 80.0,
+      "ceil_test_chi": 80,
+      "checkpoint_path": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p265\\2tensor_twoC3\\D_8\\tensor_best.pt",
+      "checkpoint_bytes": 28518,
+      "checkpoint_sha256": "30c7c86b2ac9a2751a945f566eb645b7fc830d35cf2125a75b50d8f20f15e9a9",
+      "source_job": "0730newdata/0727core/2tensor_twoC3__J2_0p265_20260727_211930",
+      "original_filename": "sweep_D8_chi104_best.pt",
+      "original_path": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713core\\0730newdata\\0727core\\2tensor_twoC3__J2_0p265_20260727_211930\\sweep_D8_chi104_best.pt",
+      "original_exists": false,
+      "manifest": {
+        "D": 8,
+        "J2": 0.265,
+        "J2_label": "0p265",
+        "ansatz": "2tensor_twoC3",
+        "chi": 104,
+        "copied_files": [
+          "energy_magnetization_correlation.txt",
+          "hyperparams.yaml",
+          "lookahead_chi_112_energy_magnetization_correlation.txt",
+          "run.log",
+          "tensor_best.pt"
+        ],
+        "energy_per_site": -0.4330308105537,
+        "is_variational_chi": true,
+        "lookahead_chi": 112,
+        "lookahead_delta": 1.4930011900005091e-05,
+        "lookahead_energy_per_site": -0.4330158805418,
+        "selection_reason": "lower_chi_lower_energy_and_variational",
+        "source_job": "0730newdata/0727core/2tensor_twoC3__J2_0p265_20260727_211930",
+        "source_observation": "D_8_chi_104_energy_magnetization_correlation.txt",
+        "variational_chi_threshold": 2e-05
+      },
+      "checkpoint_keys": [
+        "a_raw",
+        "b_raw",
+        "D_bond",
+        "chi",
+        "loss",
+        "energy",
+        "step",
+        "timestamp",
+        "log"
+      ],
+      "tensor_metadata": {
+        "a_raw": {
+          "shape": [
+            8,
+            8,
+            8,
+            2
+          ],
+          "dtype": "torch.float64",
+          "is_complex": false,
+          "finite": true
+        },
+        "b_raw": {
+          "shape": [
+            8,
+            8,
+            8,
+            2
+          ],
+          "dtype": "torch.float64",
+          "is_complex": false,
+          "finite": true
+        }
+      },
+      "checkpoint_metadata": {
+        "D_bond": 8,
+        "chi": 104,
+        "loss": -2.5981848634430365,
+        "energy": -2.598184863322306,
+        "step": 239,
+        "timestamp": "2026-07-29 03:47:17"
+      }
+    },
+    {
+      "D": 8,
+      "J2": 0.27,
+      "optimized_chi": 104,
+      "requested_test_chi_float": 80.0,
+      "ceil_test_chi": 80,
+      "checkpoint_path": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p27\\2tensor_twoC3\\D_8\\tensor_best.pt",
+      "checkpoint_bytes": 29478,
+      "checkpoint_sha256": "5406e429c5ac9ac55b4efdfb131381c1bfb63753364c027fc1c1cd57788b0d55",
+      "source_job": "external/Results_J2_0.27/D_8",
+      "original_filename": "sweep_D8_chi104_best.pt",
+      "original_path": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713core\\external\\Results_J2_0.27\\D_8\\sweep_D8_chi104_best.pt",
+      "original_exists": true,
+      "manifest": {
+        "D": 8,
+        "J2": 0.27,
+        "J2_label": "0p27",
+        "ansatz": "2tensor_twoC3",
+        "chi": 104,
+        "copied_files": [
+          "energy_magnetization_correlation.txt",
+          "hyperparams.yaml",
+          "lookahead_chi_112_energy_magnetization_correlation.txt",
+          "run.log",
+          "tensor_best.pt"
+        ],
+        "energy_per_site": -0.4316550562418,
+        "source_job": "external/Results_J2_0.27/D_8",
+        "source_observation": "D_8_chi_104_energy_magnetization_correlation.txt"
+      },
+      "checkpoint_keys": [
+        "a_raw",
+        "b_raw",
+        "D_bond",
+        "chi",
+        "loss",
+        "energy",
+        "step",
+        "timestamp",
+        "log"
+      ],
+      "tensor_metadata": {
+        "a_raw": {
+          "shape": [
+            8,
+            8,
+            8,
+            2
+          ],
+          "dtype": "torch.float64",
+          "is_complex": false,
+          "finite": true
+        },
+        "b_raw": {
+          "shape": [
+            8,
+            8,
+            8,
+            2
+          ],
+          "dtype": "torch.float64",
+          "is_complex": false,
+          "finite": true
+        }
+      },
+      "checkpoint_metadata": {
+        "D_bond": 8,
+        "chi": 104,
+        "loss": -2.589930336899137,
+        "energy": -2.5899303374505065,
+        "step": 260,
+        "timestamp": "2026-07-15 00:15:30"
+      }
+    },
+    {
+      "D": 8,
+      "J2": 0.275,
+      "optimized_chi": 112,
+      "requested_test_chi_float": 80.0,
+      "ceil_test_chi": 80,
+      "checkpoint_path": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713summary\\J2_0p275\\2tensor_twoC3\\D_8\\tensor_best.pt",
+      "checkpoint_bytes": 18662,
+      "checkpoint_sha256": "e7f34fdbac402bfac4bd08b908a5afb46a2e4a4049848966180a8c61674b7107",
+      "source_job": "0730newdata/Working_AD_Honeycomb_August19/Results_J2_twoc3_0.275/D_8",
+      "original_filename": "sweep_D8_chi112_best.pt",
+      "original_path": "D:\\HyraiOn\\ENS_Lyon\\Internship\\2026-EPFL\\data\\0713core\\0730newdata\\Working_AD_Honeycomb_August19\\Results_J2_twoc3_0.275\\D_8\\sweep_D8_chi112_best.pt",
+      "original_exists": false,
+      "manifest": {
+        "D": 8,
+        "J2": 0.275,
+        "J2_label": "0p275",
+        "ansatz": "2tensor_twoC3",
+        "chi": 112,
+        "copied_files": [
+          "energy_magnetization_correlation.txt",
+          "hyperparams.yaml",
+          "lookahead_chi_120_energy_magnetization_correlation.txt",
+          "run.log",
+          "tensor_best.pt"
+        ],
+        "energy_per_site": -0.4303882490411,
+        "is_variational_chi": true,
+        "lookahead_chi": 120,
+        "lookahead_delta": 8.127472700014682e-06,
+        "lookahead_energy_per_site": -0.4303801215684,
+        "selection_reason": "highest_chi_lowest_energy",
+        "source_job": "0730newdata/Working_AD_Honeycomb_August19/Results_J2_twoc3_0.275/D_8",
+        "source_observation": "D_8_chi_112_energy_magnetization_correlation.txt",
+        "variational_chi_threshold": 2e-05
+      },
+      "checkpoint_keys": [
+        "a_raw",
+        "b_raw",
+        "D_bond",
+        "chi",
+        "loss",
+        "energy",
+        "step",
+        "timestamp",
+        "log"
+      ],
+      "tensor_metadata": {
+        "a_raw": {
+          "shape": [
+            8,
+            8,
+            8,
+            2
+          ],
+          "dtype": "torch.float64",
+          "is_complex": false,
+          "finite": true
+        },
+        "b_raw": {
+          "shape": [
+            8,
+            8,
+            8,
+            2
+          ],
+          "dtype": "torch.float64",
+          "is_complex": false,
+          "finite": true
+        }
+      },
+      "checkpoint_metadata": {
+        "D_bond": 8,
+        "chi": 112,
+        "loss": -2.582328512214638,
+        "energy": -2.5823294942463355,
+        "step": 251,
+        "timestamp": "2026-08-19 17:05:02"
+      }
+    }
+  ],
+  "D8_tensor_count": 7,
+  "eventual_three_pair_job_count": 21,
+  "mutations": "Only this dedicated inventory JSON/Markdown output; no environment, data or cluster files changed."
+}

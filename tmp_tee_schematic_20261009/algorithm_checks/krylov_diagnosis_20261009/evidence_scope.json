@@ -1,0 +1,71 @@
+{
+  "scope": "Audit of existing test coverage and read-only dense versus matrix-free solver isolation; no production algorithm edits.",
+  "full_spectrum_length_test": {
+    "source_script": "../verify_renyi2_core.py",
+    "source_result": "../verify_renyi2_core.json",
+    "input": "../positive_edges_cli.npz",
+    "input_family": "real locally purified positive boundary MPO, not the tiny PEPS checkpoint",
+    "bond_D": 2,
+    "chi": 4,
+    "eigensolver": "numpy.linalg.eigvals, all 16 T1 and all 256 T2 roots",
+    "krylov_or_modes_used": false,
+    "all_lengths": {"minimum": 100, "maximum": 1000, "step": 2, "count": 451},
+    "checks_on_all_lengths": ["finite S2", "Schmidt-rank bounds", "large scalar rescaling stability"],
+    "independent_matrix_power_reference_lengths": [100, 102, 128, 200, 256, 500, 768, 998, 1000],
+    "matrix_power_reference_count": 9,
+    "maximum_matrix_power_reference_absolute_error": 1.8189894035458565e-12,
+    "scalar_rescaling_maximum_absolute_errors": {"-140": 5.047695594839752e-11, "140": 5.411493475548923e-11}
+  },
+  "checkpoint_cli_posthoc_full_spectrum_comparison": {
+    "checkpoint": "../tiny_checkpoint_D2.pt",
+    "input_family": "positive leg-asymmetric D2 two-C3 PEPS checkpoint and its actual CTMRG chi4 edges",
+    "cut_bond_lengths": [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000],
+    "requested_modes_per_sector": [2, 4],
+    "reference": "Independent explicit T1/T2 from each saved normalized edge cache, followed by complete numpy eigenspectra",
+    "pairs": [
+      {"normal_env": 1, "swap_env": 1, "edge_cache": "../tiny_checkpoint_pair1_edges.npz", "CLI_result": "../cli_checkpoint_pair1_saved.json", "modes2_max_absolute_S2_error": 1.3642420526593924e-12, "modes4_max_absolute_S2_error": 4.547473508864641e-13},
+      {"normal_env": 2, "swap_env": 3, "edge_cache": "../tiny_checkpoint_pair2_edges.npz", "CLI_result": "../cli_checkpoint_pair2_saved.json", "modes2_max_absolute_S2_error": 9.094947017729282e-13, "modes4_max_absolute_S2_error": 6.821210263296962e-13},
+      {"normal_env": 3, "swap_env": 2, "edge_cache": "../tiny_checkpoint_pair3_edges.npz", "CLI_result": "../cli_checkpoint_pair3_saved.json", "modes2_max_absolute_S2_error": 1.3642420526593924e-12, "modes4_max_absolute_S2_error": 1.5916157281026244e-12}
+    ],
+    "cache_reload_S2_difference_for_all_three_pairs": 0.0,
+    "coverage_limit": "These are 10 lengths for these three caches; not the 451-length full-spectrum test and not a general small-mode guarantee."
+  },
+  "positive_MPO_cli_reference": {
+    "input": "../positive_edges_cli.npz",
+    "CLI_result": "../cli_edges_test.json",
+    "requested_modes_per_sector": [4, 8],
+    "number_of_CLI_lengths": 10,
+    "full_spectrum_reference_overlap_lengths": [100, 200, 500, 1000],
+    "maximum_overlap_absolute_S2_error": 4.547473508864641e-13
+  },
+  "fixed_matrix_isolation_parameters": {"n": 256, "k": 8, "block_size": 4, "subspace": 80, "tol": 1e-10, "max_matvec": 800, "seed": 20261009, "dtype": "float64", "projector": "replica parity +1 or -1"},
+  "fixed_matrix_isolation": [
+    {"input": "CTM_cache", "operator": "fixed_dense", "parity": 1, "converged": false, "reason": "subspace_too_small_for_detected_boundary_cluster", "matvec": 150, "restarts": 1, "orthogonality_error": 32.11296581110192, "leading_root_abs": 0.22533880593346833},
+    {"input": "CTM_cache", "operator": "matrix_free", "parity": 1, "converged": false, "reason": "subspace_too_small_for_detected_boundary_cluster", "matvec": 80, "restarts": 0, "orthogonality_error": 3.2441978126141477, "leading_root_abs": 0.037816704533586216},
+    {"input": "CTM_cache", "operator": "fixed_dense", "parity": -1, "converged": false, "reason": "max_matvec_reached", "matvec": 800, "restarts": 12, "orthogonality_error": 24.4492917540198, "leading_root_abs": 2.7165178557015608e-6},
+    {"input": "CTM_cache", "operator": "matrix_free", "parity": -1, "converged": false, "reason": "max_matvec_reached", "matvec": 800, "restarts": 12, "orthogonality_error": 268.8277376889727, "leading_root_abs": 0.00012955114428627343},
+    {"input": "purified_positive_MPO", "operator": "fixed_dense", "parity": 1, "converged": true, "matvec": 60, "restarts": 0, "orthogonality_error": 3.6657265769785684e-15, "leading_root_abs": 0.00031518132060851347},
+    {"input": "purified_positive_MPO", "operator": "matrix_free", "parity": 1, "converged": true, "matvec": 60, "restarts": 0, "orthogonality_error": 3.3979637219009392e-15, "leading_root_abs": 0.0003151813206085138},
+    {"input": "purified_positive_MPO", "operator": "fixed_dense", "parity": -1, "converged": true, "matvec": 60, "restarts": 0, "orthogonality_error": 2.871020431596181e-15, "leading_root_abs": 8.422355018260841e-5},
+    {"input": "purified_positive_MPO", "operator": "matrix_free", "parity": -1, "converged": true, "matvec": 60, "restarts": 0, "orthogonality_error": 3.3377979794118524e-15, "leading_root_abs": 8.422355018260841e-5}
+  ],
+  "input_singular_value_comparison": {
+    "rank_threshold_definition": "256 * float64_eps * largest_singular_value",
+    "CTM_cache": {"T2_dense_spectral_radius": 0.013214587530832997, "numerical_rank": 72, "threshold": 7.586600312761669e-16, "smallest_singular_value": 4.656550387828094e-31},
+    "purified_positive_MPO": {"numerical_rank": 256, "threshold": 1.4180030863986388e-16, "smallest_singular_value": 1.0652370053088588e-10}
+  },
+  "PSD_diagonal_control": {
+    "matrix": "diag(1,.4,.2,.1,0,...,0), dimension64, exact rank4",
+    "requested_k": 8,
+    "subspace": 40,
+    "max_matvec": 200,
+    "converged": false,
+    "reason": "subspace_too_small_for_detected_boundary_cluster",
+    "matvec": 40,
+    "restarts": 0,
+    "orthogonality_error": 2.4233659936212673e-15,
+    "max_relative_residual": 1.0,
+    "leading_root": 1.0000000000000007,
+    "interpretation": "Zero-cluster/residual handling can fail even for PSD operators without basis collapse; positivity and numerical rank are distinct from solver correctness."
+  }
+}

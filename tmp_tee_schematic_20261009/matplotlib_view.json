@@ -1,0 +1,17 @@
+{
+  "projection": "cabinet_oblique",
+  "depth_scale": 0.5,
+  "depth_angle": 60.0,
+  "screen_projection_matrix": [
+    [
+      -1.0,
+      0.25000000000000006,
+      0.0
+    ],
+    [
+      0.0,
+      0.4330127018922193,
+      1.0
+    ]
+  ]
+}
